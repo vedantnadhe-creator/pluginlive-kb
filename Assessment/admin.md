@@ -1,0 +1,328 @@
+# Admin Assessment Workflow
+
+> All admin-facing assessment management is handled by the `Assessment` class in `admin-node/app/models/Assessment.js` (13,739 lines, 105 methods). This covers the full lifecycle: dashboard stats, listing, assignment, communication, reporting, proctoring review, student list management, subscriptions, and analytics.
+
+---
+
+## File Reference
+
+**Primary File:** `admin-node/app/models/Assessment.js`
+
+---
+
+## Dashboard & Counts
+
+These are the top-level stats shown on admin dashboards.
+
+| Function | Purpose | Supports |
+|----------|---------|--------|
+| `getTotalCollegeCount(entityType)` | Count of all active institutes in `institutes_campuses` | college, corporate |
+| `getTotalCompanyCount(entityType)` | Count of all active corporates | corporate |
+| `getActiveAssessmentCount(entityType)` | Count of institute/corporate assessment maps where `end_time >= now` | college, corporate |
+| `getAssessmentSentCount(entityType)` | Total number of student assignments created (across all assessments) | college, corporate |
+| `getAssessmentCompletedCount(entityType)` | Count of assessment maps where `end_time < now` | college, corporate |
+
+---
+
+## Assessment Listing
+
+### `getActiveAssessments({ pageNo, pageLimit, searchBy, order, sort, type_name, isSubscribed, isTrial, states, cities, entityType, instituteId })`
+
+Lists all **currently active assessments** (end_time >= now) for the admin dashboard.
+
+**Returns per row:**
+- `id` — assessmentInstituteMapId
+- `assessmentType`, `assessmentName`
+- `assessmentSent`, `assessmentCompleted` — student counts
+- `collegeName`, `collegeLogoUrl`, `collegeCity`, `collegeState`
+- `assessmentSubDate`, `endDate`
+- `subscription_type` — subscribed / trial
+- `allowProctoring`
+
+**Filters:**
+- `searchBy` — searches assessment name + college name
+- `type_name` — filter by assessment type
+- `states`, `cities` — comma-separated geographic filters
+- `isSubscribed`, `isTrial` — subscription type filters
+- `instituteId` — filter for a specific institute
+- `sort` + `order` — sorting by creation date / start time
+
+**Also returns:** `totalCount`, `subscribedCount`, `trialCount` for tab-level badge counts
+
+**Supports:** College and Corporate (separate query branches)
+
+---
+
+### `getCompletedAssessments({ pageNo, pageLimit, searchBy, order, sort, type_name, isSubscribed, isTrial, states, cities, entityType, instituteId })`
+
+Lists **past assessments** (end_time < now) in the Completed tab.
+
+Same parameters and return structure as `getActiveAssessments`. Separate internal handlers per entity type:
+- `handleCollegeAssessments()` — queries `assessment_institute_map`
+- `handleCorporateAssessments()` — queries `assessment_corporate_map`
+
+---
+
+### `getAssessmentDetails({ assessmentInstituteMapID, entityType, filters, pageNo, pageLimit, searchQuery })`
+
+The most complex admin function — fetches the **student-level details** for a specific assessment.
+
+**Purpose:** Powers the assessment detail/drill-down page, showing each assigned student with full status, scores, and profile info.
+
+**Filters available:**
+- `degree`, `department`, `specialization` — education filters
+- `CEFR` — filter by assigned CEFR level (communication)
+- `aptitude_level` — filter by student aptitude level
+- `assessment_intitude_map_id` — sub-map filter
+- `consistency.assessment_type` + `consistency.level` — filter by attendance pattern (`highConsistency >= 80%`, `moderateConsistency 60–80%`, `inconsistent < 60%`)
+- `searchQuery` — searches name, email, phone
+
+**Per-student data returned:**
+- Basic: name, email, phone, degree, department, specialization, photo
+- Dates: sentDate, startDate, endDate, startedDateTime, droppedOffDateTime
+- Status: `scoresCalculated`, `assignedCefr`, `resultingCefr`
+- **Type-specific scores:**
+
+| Assessment Type | Score Fields |
+|----------------|-------------|
+| Communication | Per-section scores (reading/listening/speaking/writing), overall CEFR level, dictation score, sentence completion score |
+| Aptitude | `overallPercentage`, `criticalReasoningPercentage`, `quantitativePercentage`, `logicalReasoningPercentage` |
+| Behavior | `behaviorProficiencies` (by competency), `behaviorScores`, `overallScore`, `keyStrengths` |
+| Role-Based | `mcqScore`, `subjectiveScore`, `videoScore`, `overallScore` |
+| Custom | Custom assessment report data |
+
+**Also returns:** `totalCount`, `cefrLevel`, `allowProctoring`, `instituteCampusId`, `sections`, assessment start/end times
+
+---
+
+### `exportStudentData({ assessmentInstituteMapID, entityType })`
+
+Generates an **Excel (.xlsx) export** of all student data for a given assessment using ExcelJS.
+Returns a buffer for download.
+
+**Supports:** College and Corporate
+
+---
+
+## Subscription Management
+
+| Function | Purpose |
+|----------|--------|
+| `getSubscribedInstitutes({ pageNo, pageLimit, searchBy, order, sort, type_name, isSubscribed, isTrial, states, cities })` | Lists institutes with subscriptions. Paginated, filterable by geography and subscription type |
+| `getSubscriptionRenewalInstitutes(...)` | Lists institutes whose subscriptions are expiring soon |
+| `getSubscribedInstitutesStates()` | All distinct states of subscribed institutes (for filter dropdown) |
+| `getSubscribedInstitutesCities({ state })` | Cities within a state for subscribed institutes |
+| `getSubscribedInstitutesByCity({ city })` | Institute list for a specific city |
+| `getSubscribedAssessmentByInstitute({ institute_id })` | Assessments + subscription info for a specific institute |
+| `getSubscribedAssessmentByCorporate({ corporate_id })` | Same for corporate |
+| `getSubscribedCorporateStates()` | States for subscribed corporates |
+| `getSubscribedCorporateCities({ state })` | Cities for subscribed corporates |
+| `getSubscribedCorporateCompaniesByCity({ city })` | Corporate companies by city |
+| `assignSubscription(entityId, assessmentTypes, entityType, subscriptionType, tokenLimit, durationDays, accessLevel, practiceDegreeSets)` | Creates or updates a subscription record. Sets `tokenLimit`, `durationDays`, `subscriptionType` (trial/subscribed), `accessLevel`, `practiceDegreeSets` |
+
+---
+
+## Geographic Filters (for Admin UI Dropdowns)
+
+| Function | Purpose |
+|----------|--------|
+| `getAllInstituteStates()` | All states with active institutes |
+| `getAllInstituteCities({ state })` | Cities in a given state |
+| `getAllInstitutesByCity({ city })` | Institutes in a city |
+| `getCorporateStates()` | All corporate states |
+| `getCorporateCities({ state })` | Cities with corporates |
+| `getCorporateCompaniesByCity({ city })` | Corporates in a city |
+
+---
+
+## Assessment Assignment
+
+All assignment functions follow the same pattern:
+1. Validate inputs
+2. Resolve student data (fetch existing / create new)
+3. Create `assessmentInstituteMap` or `assessmentCorporateMap`
+4. Create `assessmentSet` + question mapping
+5. Create `assessmentAssignedStudent` records
+6. Send invitation emails via `StudentService`
+
+### `assignCommunicationAssessment(create, entityId, name, instructions, assessmentType, startTime, endTime, startDate, endDate, bulkUploadData, email, assessmentDomain, entityType, allowProctoring, cefrLevel, isOneTime)`
+
+- Selects from pool of available question sets matching `cefrLevel` and `assessmentDomain`
+- Tracks set assignment per student to avoid repeating sets (`trackSetAssignment`)
+- Gets available fresh sets for each student (`getAvailableSets`)
+- Handles both Institute and Corporate entity types
+- `isOneTime = true` → no schedule linkage
+- Creates/updates students that don't exist
+
+### `assignAptitudeAssessment(create, entityId, name, instructions, assessmentType, startTime, endTime, startDate, endDate, assessmentDomain, bulkUploadData, email, entityType, allowProctoring, aptitudeType, aptitudeSubtopics, difficultyLevel, difficultySettings, allowNegativeMarking, isOneTime)`
+
+- Selects questions per subtopic + difficulty from pool
+- Supports "pegging" (same student always gets same question set) via `global.peggingMaps`
+- Creates main assessment + optionally two diagnosis assessments
+- Runs student creation with concurrency control (`runWithConcurrency`)
+
+### `selectAptitudeQuestionsForAssessment(aptitudeTypes, subtopics, difficultySettings, studentEmails, isPegging, excludeQuestionIds)`
+
+- Core question selection logic for aptitude
+- Selects only **unassigned** fresh questions per subtopic per difficulty
+- Supports pegging: if `isPegging = true`, reuses previously assigned questions for the same student
+- Excludes already-used `questionIds`
+
+### `assignBehaviorAssessment(create, entityId, name, instructions, assessmentType, startTime, endTime, startDate, endDate, assessmentDomain, bulkUploadData, email, entityType)`
+
+- Standard behavior assessment assignment
+- No question generation required — uses existing behavior question bank
+
+### `assignRoleBasedAssessment(create, entityId, name, instructions, assessmentType, startTime, endTime, startDate, endDate, assessmentDomain, bulkUploadData, email, entityType, allowProctoring, roleName, skills, seniority, jobDescription, industry_domain, generatedQuestions)`
+
+- If `generatedQuestions` is null, calls `generateRoleBasedQuestions()` first
+- Delegates to `createRoleBasedAssessment()` in `script/generateRoleBasedQuestions.js`
+
+### `addStudentsToExistingAssessment({ assessmentInstituteMapId, assessmentCorporateMapId, bulkUploadData, entityType, email })`
+
+Adds new students to an **already-live** assessment. Handles two cases:
+- **Scheduled assessments:** Updates student list JSON in the schedule, then sends diagnosis to new students via `_sendDiagnosisToNewScheduleStudents()`
+- **One-time assessments:** Directly inserts `assessmentAssignedStudent` records using the existing assessment map and set via `_addStudentsToOneTimeAssessment()`
+
+Supports: Communication, Aptitude, Behavior, Role_Based
+
+---
+
+## Question Generation (Admin-Triggered)
+
+| Function | Purpose |
+|----------|--------|
+| `generateCommunicationQuestions(cefrLevel, assessmentDomain)` | Triggers `AssessmentSetGenerator` to generate a new communication question set for a given CEFR level |
+| `generateAptitudeQuestions({ aptitudeType, aptitudeSubtopics, difficultySettings })` | Calls FastAPI to generate new aptitude questions for given types/subtopics/difficulties |
+| `generateRoleBasedQuestions({ jobRole, skills, seniority, jobDescription, industry_domain })` | Calls FastAPI to generate role-based assessment questions. Returns the full question data structure |
+
+---
+
+## Student Communication
+
+| Function | Purpose |
+|----------|--------|
+| `sendRemindersToStudents(assessmentInstituteMapID, entityType, selectedStudents, bulkUploadData, instituteId)` | Sends reminder emails to unattempted students. Accepts specific student emails or bulk data. Normalizes emails before sending |
+| `resendInvitesToStudents(assessmentInstituteMapID, entityType, selectedStudents)` | Re-triggers the invitation email for selected students. Used when original email was missed/bounced |
+| `sendRoleBasedAssessmentEmails(assessmentId, entityType, selectedStudents, bulkUploadData, instituteId)` | Sends role-based specific invitation emails |
+
+---
+
+## Student List Management (CRUD)
+
+Admins can save reusable student lists, referenced by schedules.
+
+| Function | Purpose |
+|----------|--------|
+| `saveStudentList({ instituteCampusId, listName, studentsData, createdBy })` | Creates a new saved student list |
+| `getStudentLists({ instituteCampusId, searchQuery })` | Returns all student lists for an institute (with search) |
+| `updateStudentList({ listId, instituteCampusId, listName, studentsData, updatedBy })` | Updates name and/or student data of an existing list |
+| `deleteStudentList({ listId, instituteCampusId })` | Soft-deletes a student list |
+
+---
+
+## Practice Assessment Management
+
+| Function | Purpose |
+|----------|--------|
+| `savePracticeAccess(practiceData)` | Grants a student practice access (sets allowed assessment types and degree sets) |
+| `assignPracticeAssessment(studentEmail, assessmentType, cefrLevel, selectedTopics, entityType)` | Routes to Communication or Aptitude practice assignment |
+| `assignPracticeAssessmentCommunication(studentEmail, cefrLevel, entityType)` | Assigns a communication practice session using a fresh unassigned set matched to the student's CEFR level |
+| `assignPracticeAssessmentAptitude(studentEmail, selectedTopics, entityType)` | Selects questions from `selectQuestionsForPractice()` based on student's weak topics |
+| `selectQuestionsForPractice(subSectionIds, studentEmail)` | Picks fresh unattempted questions prioritizing student's weakest sub-sections |
+| `calculateAptitudePracticeTopicPriority(studentEmail)` | Calculates which aptitude topics to focus on for practice based on past performance |
+| `getStudentAttemptedQuestions(studentEmail)` | Returns IDs of all questions the student has previously attempted (for exclusion) |
+
+---
+
+## Assessment Scheduling
+
+| Function | Purpose |
+|----------|--------|
+| `createAssessmentSchedule(scheduleName, assessmentType, assessmentConfig, scheduleStartDate, scheduleEndDate, frequencyType, frequencyValue, assessmentValidityDays, listName, studentsData, instituteCampusId, entityType, createdBy)` | Creates a recurring assessment schedule. Saves the student list + schedule config. See `schedule.md` for details |
+
+---
+
+## Proctoring Review (Admin-Side)
+
+| Function | Purpose |
+|----------|--------|
+| `getProctoringDetails(assessment_assigned_id)` | Fetches full proctoring log for a student's assessment: all snapshots with face detection results (`faceDetected` count per snapshot), `isValid` final result, timestamps |
+| `getAudioVideoProctoring(assessment_assigned_id)` | Returns audio-video proctoring event log for a student's session |
+
+---
+
+## Analytics & Reporting
+
+### CEFR (Communication) Analytics
+
+| Function | Purpose |
+|----------|--------|
+| `getPiChartDataForCefr(assessmentInstituteMapId)` | Returns CEFR level distribution (count per level: A1–C2) for all students in an assessment |
+| `getSetOfstudentsForCefrPieChart(assessmentInstituteMapId, cefrLevel)` | Returns the list of students in a specific CEFR slice of the pie chart |
+| `getCommunicationAssessmentGroupsWithNormalizedScores(assessmentInstituteMapId, passingYear)` | Groups students by assessment set/schedule, returns normalized scores per group. Powers the grouped score comparison graph |
+| `getParticularCommunicationAssessmentStudentDetails(assessmentInstituteMapId)` | Returns per-student section scores for a communication assessment group |
+| `_getCommunicationDiagnosisScores(studentEmails, commTypeId)` | Internal — fetches diagnosis-specific communication scores for a list of students |
+
+### Aptitude Analytics
+
+| Function | Purpose |
+|----------|--------|
+| `getPiChartDataForAptitude(assessmentInstituteMapId)` | Returns aptitude level distribution (Beginner/Learner/Competent/Advanced) |
+| `getSetOfStudentsForAptitudePieChart(assessmentInstituteMapId, aptitudeLevel)` | Returns students in a specific aptitude level slice |
+| `getAptitudeAssessmentGroups(assessmentInstituteMapId, passingYear)` | Groups students by schedule/passing year, returns per-group aptitude level stats |
+| `getParticularAptitudeAssessmentStudentDetails(assessmentInstituteMapId)` | Per-student aptitude scores for a group |
+| `_getAptitudeDiagnosisScores(studentEmails, aptitudeTypeId)` | Internal — diagnosis scores for aptitude per student list |
+| `getAptitudeTopics()` | Returns all available aptitude sections + sub-sections with IDs |
+
+### Consistency Analytics
+
+| Function | Purpose |
+|----------|--------|
+| `getConsistencyData(assessmentInstituteMapId, assessmentType)` | Returns consistency distribution: percentage of students in High (≥80%), Moderate (60–80%), and Inconsistent (<60%) attendance categories |
+| `getStudentsByConsistencyCategory(assessmentInstituteMapId, assessmentType, category)` | Returns the list of students in a specific consistency category |
+| `getStudentsByScheduleAndPassingYear(scheduleId, passingYear)` | Returns students matching a schedule + passing year combination |
+
+---
+
+## Participant & Eligibility
+
+| Function | Purpose |
+|----------|--------|
+| `getAssessmentAssignedParticipants({ bulkUploadData, entityId, entityType })` | Pre-checks which students in a bulk upload are already assigned to assessments. Returns existing assignments map |
+| `getDegreeStreamMapId(degreeId, streamId)` | Resolves a degree-stream combination to a `degreeStreamMapId` |
+| `getBatchDegreeStreamMapIds(students)` | Batch resolves degree-stream map IDs for multiple students (returns a `Map`) |
+
+---
+
+## Audit & Activity
+
+| Function | Purpose |
+|----------|--------|
+| `createAuditEntry(operationType, changeDescription, metadata, email, transaction)` | Inserts a record into `assessment_audit` table. Links to assessment maps for traceability |
+| `updateAuditEntry(auditId, changeDescription, metadata, email)` | Updates an existing audit entry (e.g., on completion of a generation job) |
+| `getTopActivityLogs()` | Returns the latest audit entries for admin activity feed |
+
+---
+
+## Role-Based Assessment Helpers
+
+| Function | Purpose |
+|----------|--------|
+| `getRoleBasedSectionId(sectionName)` | Looks up section ID by name (MCQ/Subjective/Video) |
+| `selectRoleBasedQuestionsForAssessment(mcqSectionId, subjectiveSectionId, studentEmails)` | Selects fresh unassigned role-based questions for students |
+| `getRoleBasedAssessmentWithConfig(assessmentSetId)` | Fetches assessment set + config (role name, sections, questions) |
+| `updateRoleBasedAssessmentConfig(assessmentSetId, configData)` | Updates config for an existing role-based set |
+| `createRoleBasedAssessment({ entityId, name, instructions, ... })` | Internal helper to orchestrate full role-based assessment creation (maps, sets, question mappings, assignments) |
+| `getCefrProgression(currentLevel)` | Returns the next/previous CEFR level for progression tracking |
+
+---
+
+## Key Design Patterns
+
+- **Entity Duality:** Almost every function supports both `entityType = "college"` (→ `assessment_institute_map`) and `entityType = "corporate"` (→ `assessment_corporate_map`) with separate query branches
+- **Concurrency Control:** `runWithConcurrency()` limits parallel student processing to avoid DB overload during bulk assignments
+- **Pegging:** The "pegging" system (`global.peggingMaps`) ensures a student always receives the same aptitude questions, preventing question pool gaming
+- **Batch Queries:** `getBatchDegreeStreamMapIds()` and similar functions use batch lookups to avoid N+1 queries during bulk operations
+- **Audit Trail:** All major operations (assignment, generation, schedule creation) create `assessmentAudit` entries for traceability
+- **ExcelJS Export:** `exportStudentData()` uses ExcelJS to generate formatted XLSX files for download without a temp file
