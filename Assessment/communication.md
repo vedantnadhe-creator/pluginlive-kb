@@ -180,32 +180,65 @@ Scoring happens in two layers: **Node.js orchestration** and **FastAPI AI analys
 Applies weighted formula to section scores (Video 40%, Reading 20%, Audio 10%, Writing 30%).
 
 #### `updateCurrCERFlevelOfStudent()`
-**Path:** `student-node/app/models/Assessment.js` (line ~9572)
+**Path:** `student-node/app/models/Assessment.js` (line ~9641)
 
-After scoring, updates the student's CEFR level in `student_personal_profile`:
-- Calculates ability-wise breakdown (Reading, Listening, Speaking, Writing)
-- Maps section scores to CEFR levels using `mapCEFRBasedOnQuestionSetAndScore()`
-- Updates `AssessmentCEFR` (or `PracticeCEFR` for practice assessments)
-- Stores the resulting CEFR level on the assessment record
+After scoring, updates the student's CEFR progression:
+
+1. **Determines current CEFR level** from `studentPersonalProfile.AssessmentCEFR`
+2. **Fetches last two uncalculated assessments** at that CEFR level
+3. **Handles incomplete pairs** (single assessment) — creates ProgressionHistory entry, carries forward previous level
+4. **Calculates pair average** — `(finalScore1 + finalScore2) / 2`
+5. **NPS calculation** — `((CefrRankIndex × 100) + avgScore) / 6` (0–100 scale)
+6. **Level determination** using CEFR mapping rules:
+   - Diagnosis (first pair ever): `newProgressionLevel = min(assessmentLevel, calculatedLevel)`
+   - Non-diagnosis at higher level: only confirms if `suggestedCefr >= currentLevel`
+   - Non-diagnosis at same/lower level: `newProgressionLevel = assessmentLevel`
+7. **No-downgrade rule** — progression level never decreases below previous
+8. **Profile update** — `AssessmentCEFR` updated to `suggestedCefr` (drives next test assignment)
+9. **ProgressionHistory** — stores `assessmentCefr = newProgressionLevel` and `assessmentCommunicationProgressScore = NPS`
+
+**CEFR Mapping (Assessment mode)** — `newCERFmapping.js`:
+
+| Current Level | Score 0–85 | Score 86–100 |
+|---|---|---|
+| A1 | Stay A1 (0–80) | Suggest A2 (81–100) |
+| A2 | Stay A2 (0–85) | Suggest B1 (86–100) |
+| B1 | Stay B1 (0–85) | Suggest B2 (86–100) |
+| B2 | Stay B2 (0–85) | Suggest C1 (86–100) |
+| C1 | Stay C1 (0–87) | Suggest C2 (88–100) |
+| C2 | Stay C2 (all) | — |
+
+> **Key distinction:** `suggestedCefr` drives the **next test level** (written to profile). `newProgressionLevel` is the **confirmed progression** (written to ProgressionHistory). These can differ — e.g., student at A2 scores 91% → suggested=B1, progression=A2 (until confirmed at B1).
 
 ---
 
-### 6. Progression
+### 6. Progression & Dashboard Data Sources
 
 #### `fetchCommunicationProgression()`
-**Path:** `student-node/app/models/Assessment.js` (line ~8878)
+**Path:** `student-node/app/models/Assessment.js` (line ~8907)
 
 Compares the student's **last two communication assessments** to show improvement:
 - Fetches the two most recent completed assessments at the same CEFR level
 - Computes per-section and per-ability deltas (Reading, Listening, Speaking, Writing)
 - Calculates weighted writing scores across all writing sub-modules
 - Returns progression data with before/after scores and delta indicators
+- Reads confirmed CEFR from `ProgressionHistory.assessmentCefr` (not the simulative replay)
 
 **Progression data includes:**
 - CEFR level change
 - Overall score change
 - Per-ability score changes
 - Section breakdown comparison
+
+#### Dashboard Data Sources (TpoDashBoard.js)
+
+| Column | Data Source | Notes |
+|---|---|---|
+| **Progression Level** | `ProgressionHistory.assessmentCefr` | Latest non-null entry, ordered by submittedAt desc |
+| **NPS (Communication)** | `ProgressionHistory.assessmentCommunicationProgressScore` | Same source as level — ensures consistency |
+| **Assigned Difficulty** | `assessmentSet.cefrLevel` | From the specific assessment being viewed |
+
+> **Important:** Dashboard reads both level and NPS from `ProgressionHistory` (not `fetchCommunicationProgression` or `studentPersonalProfile`). This prevents desync between the displayed level and NPS score. Same pattern used for aptitude.
 
 ---
 
@@ -257,6 +290,7 @@ Compares the student's **last two communication assessments** to show improvemen
 | `assessment_assigned_students` | Per-student assignment (tracks status, scores, attempts) |
 | `communication_scores` | Individual section scores with metadata |
 | `student_personal_profile` | Stores `AssessmentCEFR` and `PracticeCEFR` per student |
+| `progression_history` | Stores confirmed CEFR level, NPS, pair data per assessment |
 | `question` / `sub_question` / `option` | Question bank structure |
 | `assessment_section` | Section definitions (Paragraph Reading, Audio Question, etc.) |
 
@@ -270,3 +304,4 @@ Compares the student's **last two communication assessments** to show improvemen
 - **Practice vs Assessment** — Practice assessments update `PracticeCEFR`; real assessments update `AssessmentCEFR`.
 - **Proctoring** — Optional face detection during assessment (snapshots sent to FastAPI for validation).
 - **Retake** — Students may retake; scores are stored separately with `isRetake` flag.
+- **suggestedCefr vs newProgressionLevel** — `suggestedCefr` drives the next test level (profile update), while `newProgressionLevel` is the confirmed progression (ProgressionHistory). Dashboard always reads from ProgressionHistory for consistency.
