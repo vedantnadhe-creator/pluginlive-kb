@@ -190,3 +190,4 @@ The assessment creation form supports "Scheduled" distribution mode:
 - **Student List Reuse** — student lists are saved separately and referenced by schedule, allowing the same list to be reused across multiple schedules
 - **Instance Tracking** — each scheduler process gets a unique `instance-{PID}-{timestamp}` ID for lock attribution and logging
 - **Comprehensive Logging** — each run prints a detailed summary with processed/skipped/failed/locked counts per schedule
+- **Late-Added Student Assignment** — when new students are added to a schedule's student list via "Add Candidate", they are automatically assigned to all previously triggered assessment maps that have >24 hours remaining before expiry (via `assignStudentsToActiveScheduleAssessments`). This ensures new students get access to active assessments without waiting for the next scheduled trigger
