@@ -4,14 +4,15 @@ This folder contains detailed documentation for each assessment type and cross-c
 
 ## Assessment Types
 
-- ✅ `communication.md` — Communication Assessment (reading, listening, speaking, writing with CEFR levels)
-- ✅ `aptitude.md` — Aptitude Assessment (quantitative, logical, critical reasoning with adaptive difficulty)
-- ✅ `rolebased.md` — Role-Based Assessment (AI-generated MCQ/subjective/video with Gemini scoring)
-- ⬜ `behaviour.md` — Behaviour Assessment
-- ✅ `custom.md` — Custom Assessment (admin-defined sections with MCQs and image support)
-- ✅ `ai-interview.md` — AI Interview Assessment (real-time adaptive interview with shortlisting)
-- ✅ `schedule.md` — Assessment Scheduling (recurring auto-assignment via cron)
-- ✅ `admin.md` — Admin Assessment Workflow (dashboard, listing, assignment, analytics, proctoring review)
+- `communication.md` -- Communication Assessment (reading, listening, speaking, writing with CEFR levels)
+- `aptitude.md` -- Aptitude Assessment (quantitative, logical, critical reasoning with adaptive difficulty)
+- `rolebased.md` -- Role-Based Assessment (AI-generated MCQ/subjective/video with Gemini scoring)
+- `behaviour.md` -- Behaviour Assessment (pending)
+- `custom.md` -- Custom Assessment (admin-defined sections with MCQs and image support)
+- `ai-interview.md` -- AI Interview Assessment (real-time adaptive interview with shortlisting)
+- `schedule.md` -- Assessment Scheduling (recurring auto-assignment via cron)
+- `admin.md` -- Admin Assessment Workflow (dashboard, listing, assignment, analytics, proctoring review)
+- `admin-frontend.md` -- Admin-React Assessment Frontend (UnifiedAssessmentTable, StudentReport, NPS, pagination, corporate clickability)
 
 ---
 
@@ -34,7 +35,7 @@ All assessment types share these core features, implemented in **`student-node/a
 
 | Function | Purpose |
 |----------|--------|
-| `saveResponse({ questionId, answer, assessment_assigned_id, timeTaken, objectKey })` | Generic response saver — detects type and delegates |
+| `saveResponse({ questionId, answer, assessment_assigned_id, timeTaken, objectKey })` | Generic response saver -- detects type and delegates |
 | `saveAptitudeResponse(...)` | Saves aptitude answers with dedup check |
 | `saveCommunicationResponse(...)` | Saves communication responses including audio/video `objectKey` |
 | `saveCommunicationTextResponse(...)` | Saves text-only communication responses (no sub-question) |
@@ -46,8 +47,8 @@ All assessment types share these core features, implemented in **`student-node/a
 
 | Function | Purpose |
 |----------|--------|
-| `submitAssessment({ response, assessment_assigned_id, full_name, totalTakenTime })` | Main submit handler — saves missing responses, marks `submitted = true`, handles retake detection. Checks `allowProctoring` flag. Routes to appropriate scoring pipeline |
-| `calculateAssessmentScore({ assessment_assigned_id })` | Score routing: detects assessment type → calls type-specific scorer (Communication/Aptitude/RoleBased/Behavior/Custom) |
+| `submitAssessment({ response, assessment_assigned_id, full_name, totalTakenTime })` | Main submit handler -- saves missing responses, marks `submitted = true`, handles retake detection. Checks `allowProctoring` flag. Routes to appropriate scoring pipeline |
+| `calculateAssessmentScore({ assessment_assigned_id })` | Score routing: detects assessment type -> calls type-specific scorer (Communication/Aptitude/RoleBased/Behavior/Custom) |
 | `calculateCustomAssessmentScore(assessment_assigned_id)` | MCQ auto-grading for custom assessments |
 | `calculateAptitudeScore(assessment_assigned_id)` | Difficulty-weighted aptitude scoring with level progression |
 | `calculateRoleBasedScore(assessment_assigned_id)` | Orchestrates MCQ + Subjective + Video scoring for role-based |
@@ -77,8 +78,8 @@ All assessment types share these core features, implemented in **`student-node/a
 
 | Function | Purpose |
 |----------|--------|
-| `getPrimaryEmail(studentId)` | Resolves student ID → email |
-| `getFullName(primaryEmail)` | Resolves email → full name |
+| `getPrimaryEmail(studentId)` | Resolves student ID -> email |
+| `getFullName(primaryEmail)` | Resolves email -> full name |
 | `getResultScreenInfo(assessmentAssignedId)` | Data for the post-assessment result screen |
 | `getActivityMap(primaryEmail, is_practice, startDate, endDate)` | Student assessment activity calendar |
 | `getScoreInfoOfStudent(primaryEmail)` | Aggregate score overview across all types |
@@ -95,13 +96,16 @@ Proctoring monitors students during assessments via periodic screen snapshots. W
 ### Architecture
 
 ```
-Frontend (captures snapshots) → OCI Storage (snapshot images)
-                                       ↓
-Cron job (every cycle) → picks 5 unprocessed snapshots
-                                       ↓
-FastAPI /proctoring/detect-faces → face detection → results saved
-                                       ↓
-When all snapshots processed → finalize isValid for proctoring log
+Frontend (captures snapshots) -> OCI Storage (snapshot images)
+                                       |
+                                       v
+Cron job (every cycle) -> picks 5 unprocessed snapshots
+                                       |
+                                       v
+FastAPI /proctoring/detect-faces -> face detection -> results saved
+                                       |
+                                       v
+When all snapshots processed -> finalize isValid for proctoring log
 ```
 
 ### FastAPI Proctoring Endpoints
@@ -111,14 +115,14 @@ When all snapshots processed → finalize isValid for proctoring log
 | Endpoint | Method | Purpose |
 |----------|--------|--------|
 | `/proctoring/detect-faces` | POST | Batch face detection from snapshot keys. Downloads images from OCI, processes concurrently (semaphore limit: 5), returns face count per snapshot. Used by cron |
-| `/proctoring/verify-device` | POST | Pre-assessment device verification. Takes 5 frames, passes if face detected in ≥ 3 frames. Uses `priority_executor` for responsiveness |
+| `/proctoring/verify-device` | POST | Pre-assessment device verification. Takes 5 frames, passes if face detected in >= 3 frames. Uses `priority_executor` for responsiveness |
 | `/proctoring/detect-audio` | POST | Audio/speech detection from base64 audio. Analyzes audio levels + speech activity + human voice verification (FFT frequency analysis, needs 3+ seconds) |
 | `/proctoring/ws/verify/{student_id}` | WebSocket | Real-time device verification. Streams frames, returns per-frame face/audio results, final aggregate on "complete" message |
 | `/proctoring/verify-frame` | POST | Single-frame face detection for HTTP-based verification |
 
 **Executor Model:**
-- `priority_executor` — used for real-time verification (device check, audio check, WebSocket, single frame) to avoid blocking
-- `background_executor` — used for batch proctoring (detect-faces) which is non-urgent
+- `priority_executor` -- used for real-time verification (device check, audio check, WebSocket, single frame) to avoid blocking
+- `background_executor` -- used for batch proctoring (detect-faces) which is non-urgent
 
 ### Node.js Proctoring Processing
 
@@ -128,7 +132,7 @@ When all snapshots processed → finalize isValid for proctoring log
 |----------|--------|
 | `storeProctoringSnapshot(data)` | Stores snapshot metadata (objectKey, timestamp). Sets `faceDetected = -1` as "unprocessed" marker |
 | `endProctoringSession(assessmentAssignedId)` | Marks the proctoring session as ended |
-| `processPendingProctoring()` | **Cron-driven batch processor** — finds up to 5 unprocessed snapshots (`faceDetected = -1`), sends to FastAPI `/detect-faces`, saves results immediately, finalizes `isValid` when all snapshots for a proctoring log are done |
+| `processPendingProctoring()` | **Cron-driven batch processor** -- finds up to 5 unprocessed snapshots (`faceDetected = -1`), sends to FastAPI `/detect-faces`, saves results immediately, finalizes `isValid` when all snapshots for a proctoring log are done |
 | `sendProctoringBatchToFastAPI(snapshots, proctoringLogId, assessmentAssignedId)` | Sends batch of snapshot keys to FastAPI, updates each snapshot's `faceDetected` count |
 | `finalizeProctoringValidation(proctoringLogId, assessmentAssignedId)` | When all snapshots processed: calculates overall `isValid` based on face detection results |
 
@@ -145,7 +149,7 @@ When all snapshots processed → finalize isValid for proctoring log
 
 | Table | Purpose |
 |-------|--------|
-| `proctoring_log` | Per-assessment proctoring session. Contains `isValid` (null → unprocessed, true/false → final result) |
+| `proctoring_log` | Per-assessment proctoring session. Contains `isValid` (null -> unprocessed, true/false -> final result) |
 | `proctoring_snapshot` | Individual snapshots with `objectKey` (OCI path), `faceDetected` (-1 = unprocessed, 0+ = face count), `timestamp` |
 
 ---
@@ -160,7 +164,7 @@ The **Assessment Scheduler** (`admin-node/script/scheduler.js`) orchestrates bac
 
 Simple worker that instantiates `AssessmentScheduler` and starts all cron jobs. Runs as a separate Node.js process.
 
-### Scheduler — `scheduler.js`
+### Scheduler -- `scheduler.js`
 
 **File:** `admin-node/script/scheduler.js`
 
@@ -174,28 +178,28 @@ Simple worker that instantiates `AssessmentScheduler` and starts all cron jobs. 
 | Question Verification | Daily at 1:00 AM | **Commented out** | Verifies unreviewed aptitude questions via LLM |
 
 **Key thresholds:**
-- `minFreshSetsThreshold = 100` — minimum unassigned communication sets before generation triggers
-- `minAptitudeQuestionsPerSubtopic = 6` — minimum fresh questions per subtopic per difficulty
-- `minTotalFreshAptitudeQuestions = 540` — minimum total unassigned aptitude questions
-- `aptitudeBatchSize = 3` — questions generated per difficulty per cron run
+- `minFreshSetsThreshold = 100` -- minimum unassigned communication sets before generation triggers
+- `minAptitudeQuestionsPerSubtopic = 6` -- minimum fresh questions per subtopic per difficulty
+- `minTotalFreshAptitudeQuestions = 540` -- minimum total unassigned aptitude questions
+- `aptitudeBatchSize = 3` -- questions generated per difficulty per cron run
 
-### Communication Assessment Generator — `generateCommunicationAssessment.js`
+### Communication Assessment Generator -- `generateCommunicationAssessment.js`
 
 **File:** `admin-node/script/generateCommunicationAssessment.js`
 
 **`AssessmentSetGenerator` class:**
-- Generates complete communication assessment sets for all CEFR levels (A1–C2)
+- Generates complete communication assessment sets for all CEFR levels (A1-C2)
 - Calls FastAPI AI endpoint to generate questions per section type
 - Validates generated questions structure
 - Stores in database within a single transaction per set
 - Features: exponential backoff on failures, generation locking (prevents concurrent generation), retry with configurable delays
 
-### Aptitude Assessment Generator — `generateAptitudeAssessment.js`
+### Aptitude Assessment Generator -- `generateAptitudeAssessment.js`
 
 **File:** `admin-node/script/generateAptitudeAssessment.js`
 
 **`AptitudeAssessmentGenerator` class:**
-- 3 aptitude types × 10 subtopics × 3 difficulties = 90 category slots
+- 3 aptitude types x 10 subtopics x 3 difficulties = 90 category slots
 - Fetches subtopics from DB per aptitude type (Critical Reasoning, Logical Reasoning, Quantitative)
 - Checks current fresh question counts per category
 - Generates only for deficient categories (targeted generation)
@@ -205,25 +209,25 @@ Simple worker that instantiates `AssessmentScheduler` and starts all cron jobs. 
 - Creates audit entries for all generation runs
 - Retry logic with configurable attempt limits
 
-### Role-Based Question Generator — `generateRoleBasedQuestions.js`
+### Role-Based Question Generator -- `generateRoleBasedQuestions.js`
 
 **File:** `admin-node/script/generateRoleBasedQuestions.js`
 
-- **Not a cron job** — called on-demand when admin assigns a role-based assessment
-- `generateRoleBasedQuestions(questionsData, assessmentInfo)` — takes AI-generated question data and stores in DB
-- `createRoleBasedAssessment(data)` — full assessment creation: creates assessment maps, sets, question mappings, student assignments in a transaction
+- **Not a cron job** -- called on-demand when admin assigns a role-based assessment
+- `generateRoleBasedQuestions(questionsData, assessmentInfo)` -- takes AI-generated question data and stores in DB
+- `createRoleBasedAssessment(data)` -- full assessment creation: creates assessment maps, sets, question mappings, student assignments in a transaction
 - Handles student creation/retrieval, institute campus mapping, date/time parsing
 
-### Question Verification Worker — `verifyWorker.js`
+### Question Verification Worker -- `verifyWorker.js`
 
 **File:** `admin-node/script/verifyWorker.js`
 
 - Fetches 5 unreviewed aptitude questions (`isReviewed = null`)
 - Uses in-memory locking to prevent concurrent verification of same questions
-- Calls `QuestionManager.verifyQuestionWithLLM(questionId)` — validates question quality via LLM
+- Calls `QuestionManager.verifyQuestionWithLLM(questionId)` -- validates question quality via LLM
 - Generates fresh JWT token for system-cron authentication
 
-### Embedding Service — `embeddingService.js`
+### Embedding Service -- `embeddingService.js`
 
 **File:** `admin-node/script/embeddingService.js`
 
@@ -232,10 +236,10 @@ Simple worker that instantiates `AssessmentScheduler` and starts all cron jobs. 
 - Detects **duplicate questions** using cosine similarity
 - Preprocesses question text (normalization for consistent embeddings)
 - Key methods:
-  - `generateEmbedding(text)` — generates vector embedding
-  - `checkQuestionSimilarity(questionText, assessmentTypeId, prisma)` — checks against existing questions in DB using pgvector
-  - `isQuestionDuplicate(...)` — boolean duplicate check
-  - `calculateTextSimilarity(text1, text2)` — direct pair comparison
+  - `generateEmbedding(text)` -- generates vector embedding
+  - `checkQuestionSimilarity(questionText, assessmentTypeId, prisma)` -- checks against existing questions in DB using pgvector
+  - `isQuestionDuplicate(...)` -- boolean duplicate check
+  - `calculateTextSimilarity(text1, text2)` -- direct pair comparison
 - Configurable similarity threshold (default stored in class)
 - Used by question generation pipeline to prevent storing duplicate questions
 
@@ -245,7 +249,7 @@ Simple worker that instantiates `AssessmentScheduler` and starts all cron jobs. 
 
 Each assessment file covers:
 - Overview & section types
-- End-to-end flow (creation → scoring → reporting)
+- End-to-end flow (creation -> scoring -> reporting)
 - File references (frontend, backend, AI engine)
 - Scoring logic & weights
 - Progression calculation

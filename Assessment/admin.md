@@ -178,11 +178,43 @@ All assignment functions follow the same pattern:
 - If `generatedQuestions` is null, calls `generateRoleBasedQuestions()` first
 - Delegates to `createRoleBasedAssessment()` in `script/generateRoleBasedQuestions.js`
 
-### `addStudentsToExistingAssessment({ assessmentInstituteMapId, assessmentCorporateMapId, bulkUploadData, entityType, email })`
+### `addStudentsToExistingAssessment({ assessmentInstituteMapId, assessmentCorporateMapId, scheduleId, bulkUploadData, entityType, email })`
 
-Adds new students to an **already-live** assessment. Handles two cases:
-- **Scheduled assessments:** Updates student list JSON in the schedule, then sends diagnosis to new students via `_sendDiagnosisToNewScheduleStudents()`
-- **One-time assessments:** Directly inserts `assessmentAssignedStudent` records using the existing assessment map and set via `_addStudentsToOneTimeAssessment()`
+Adds new students to an **already-live** assessment. Accepts `assessmentInstituteMapId` (one-time), `assessmentCorporateMapId` (corporate), or `scheduleId` (scheduled). At least one is required.
+
+**Two flows based on `is_one_time`:**
+
+#### One-Time Flow (`_addStudentsToOneTimeAssessment`)
+1. Gets `assessmentSetId` from existing assigned students
+2. Creates/resolves student records in batches of 10 (via `runWithConcurrency`)
+3. Batch inserts `assessmentAssignedStudent` records using `createMany({ skipDuplicates: true })`
+4. Sends reminder emails (non-critical — failures logged but don't fail the operation)
+
+#### Scheduled Flow (`_addStudentsToScheduledAssessment`)
+1. **Duplicate check** — batch raw SQL query checks if students already exist in any non-one-time assessment of the same type
+2. **Diagnosis first (atomic)** — sends diagnosis via `_sendDiagnosisForSchedule()` BEFORE any writes. If diagnosis fails, nothing is written (natural atomicity via ordering)
+3. **Student list update** — appends new students to `student_lists.students_data` JSON
+4. **Active map assignment** — calls `assignStudentsToActiveScheduleAssessments()` to assign students to previously triggered assessment maps with >24 hours remaining before expiry. This step is non-critical (failures logged, don't roll back student list update)
+
+### `assignStudentsToActiveScheduleAssessments({ scheduleId, newStudentsData, assessmentTypeRecord })`
+
+Assigns newly added students to **already-triggered** assessment maps for a schedule. Called automatically after adding students to a scheduled assessment.
+
+- Fetches all `assessmentInstituteMap` records for the schedule where `endTime > now + 24 hours`
+- Per map: filters out already-assigned students, gets `assessmentSetId` from existing assignments
+- Batch inserts with `createMany({ skipDuplicates: true })`
+- Returns `{ assignedCount, mapCount }`
+
+**24-hour filter rationale:** Assessments expiring within 24 hours are too close to deadline for new students to meaningfully participate.
+
+### Frontend: Add Candidate Button
+
+The "Add Candidate" button appears in the **ACTIONS column** of the main assessment table (`UnifiedAssessmentTable/index.js`), NOT in expanded schedule rows.
+
+- Clicking opens `EnhancedBulkUploadDrawer` (reused from create assessment, `mode = 'addCandidate'`)
+- Supports manual entry and Excel upload
+- Calls `POST /assessment/addStudentsToAssessment` with `assessmentInstituteMapId` (one-time) or `scheduleId` (scheduled)
+- Frontend integration in `InstituteAssessmentDashboard.js`
 
 Supports: Communication, Aptitude, Behavior, Role_Based
 
