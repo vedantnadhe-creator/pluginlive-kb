@@ -132,3 +132,12 @@ The Roles module is the core of the corporate portal. It manages the entire job 
 - **Drive management:** Create drives from role → college combinations
 - **Candidate filtering:** Rating, percentage, degree, gender, status, college
 - **Bulk download:** `bulkDownload=true` flag for candidate exports
+- **Google Form (ITI/Diploma):** Application Form via Google Forms for ITI/Diploma roles — see [`GoogleForm/README.md`](GoogleForm/README.md)
+
+---
+
+## Sub-Modules
+
+| Sub-Module | Folder | Description |
+|------------|--------|-------------|
+| Google Form | `GoogleForm/` | Application Form feature for ITI/Diploma roles — Google Forms integration, templates, per-college form creation |
