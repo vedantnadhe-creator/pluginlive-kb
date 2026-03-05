@@ -84,13 +84,11 @@ When a student takes a new assessment, their level determines the base difficult
 | Competent | Medium |
 | Advanced | Hard |
 
-### Difficulty Multipliers (for mixed-difficulty rolling averages)
+### ~~Difficulty Multipliers~~ (Removed)
 
-| Difficulty | Multiplier |
-|-----------|----------|
-| Easy | 0.85× |
-| Medium | 1.15× |
-| Hard | 1.40× |
+Previously, difficulty multipliers (Easy 0.85×, Medium 1.15×, Hard 1.40×) were applied to topic rolling averages via `calculateWeightedPercentage()`. These were **removed** because `getLevel()` already uses difficulty-specific thresholds — applying multipliers on top double-counted difficulty, causing inconsistent level assignments.
+
+Rolling averages now use raw percentages (gained/total × 100). The difficulty-specific thresholds in `getLevel()` handle difficulty adjustment.
 
 ---
 
@@ -245,12 +243,12 @@ Stores result in `aptitudeScores` table.
 
 3. **Ongoing assessments** (3rd+):
    - **Assessment mode**: Uses `getNewAssessmentLevel()` (prevents downgrades)
-   - **Practice mode**: Uses `getLevel()` (allows level changes up/down), tracks `MaxLevelOfStudent`
+   - **Practice mode**: Uses `getLevel(assessmentDifficulty, competencyScore)` with the actual assessment difficulty (allows level changes up/down), tracks `MaxLevelOfStudent`
 
 #### Topic Rolling Average
 - Keeps **last 2 scores** per topic
-- Calculates percentage for each, averages them
-- Applies difficulty multipliers for mixed-difficulty comparisons
+- Calculates raw percentage for each (gained_marks / total_marks × 100), averages them
+- No difficulty multiplier applied — `getLevel()` handles difficulty via its threshold table
 - Status thresholds: < 50% = weak, 50-74% = moderate, ≥ 75% = strong
 
 #### Competency Score
@@ -261,10 +259,12 @@ Stores result in `aptitudeScores` table.
 #### `fetchAptitudeProgression()`
 **Path:** `student-node/app/models/Assessment.js` (line ~276)
 
-Replays the entire assessment history to compute progression:
+Replays the entire assessment history to compute progression for the **detail view** (individual student progression page):
 - Fetches all submitted aptitude assessments (chronologically)
 - Simulates topic-by-topic rolling averages step by step
 - Compares target assessment vs previous to show deltas
+
+> **Note:** This method is used for the individual student progression detail view only. The **dashboard list views** (TPO student lists, pie charts) read aptitude level and NPS directly from `ProgressionHistory` records for consistency and performance. See "Dashboard Data Sources" below.
 
 ---
 
@@ -293,6 +293,40 @@ For aptitude, `calculateAssessmentScore()` routes to `calculateAptitudeScore()` 
 
 ---
 
+### 8. Backfill API
+
+#### `POST /assessment/backfill-aptitude-progression`
+**Handler:** `assessmentHandler.backfillAptitudeProgressionHistory`
+**Method:** `Assessment.backfillAptitudeProgression(batchSize)`
+
+Recalculates all aptitude progression history for every student:
+1. Finds all students with calculated aptitude assessments
+2. For each student, fetches all assessments ordered by `submittedAt`
+3. Separates into practice vs assessment chains
+4. Replays each chain: rebuilds topicInfo, rolling averages, competency scores, levels, and NPS
+5. Deletes old `ProgressionHistory` aptitude records and creates new ones
+6. Updates `AptitudeTopicProgress` with final state
+
+**Request body:** `{ "batchSize": 50 }` (optional, default 50)
+
+Use this after fixing scoring/level bugs to recalculate all historical data.
+
+---
+
+### 9. Dashboard Data Sources (TpoDashBoard.js)
+
+| Data | Source | Notes |
+|------|--------|-------|
+| **Aptitude NPS** | `ProgressionHistory.assessmentAptitudeProgressScore` | Batch query, latest per student |
+| **Aptitude Level** | `ProgressionHistory.assessmentAptitudeLevel` | Same source as NPS for consistency |
+| **Communication NPS** | `ProgressionHistory.assessmentCommunicationProgressScore` | Batch query |
+| **Communication Level** | `ProgressionHistory.assessmentCefr` (via `fetchCommunicationProgression`) | Already reads from ProgressionHistory |
+| **Pie Chart (Aptitude)** | `ProgressionHistory.assessmentAptitudeLevel` | Batch query per assessment |
+
+> **Why not `fetchAptitudeProgression` for dashboard?** That method replays history with its own independent calculation which can diverge from the stored NPS. Reading both level and NPS from the same `ProgressionHistory` record guarantees consistency.
+
+---
+
 ## Database Tables (Key)
 
 | Table | Purpose |
@@ -318,8 +352,8 @@ PDF report template: student-node\public\aptitudeReport.html
 - **Diagnosis Phase** — First 2 assessments establish the student's baseline level. No level is assigned after just 1 assessment.
 - **Adaptive Difficulty** — After diagnosis, the system auto-selects question difficulty based on the student's current level.
 - **No Downgrades** — In assessment mode (post-diagnosis), `getNewAssessmentLevel()` prevents the student from dropping levels. Practice mode allows free level movement.
-- **Rolling Average** — Per-topic proficiency uses only the last 2 assessment scores, providing a responsive measure of current ability.
-- **Competency Score** — The master metric: a weighted average of all topic rolling averages, used to determine the overall level.
-- **NPS (Net Promoter Score)** — A derived metric from level and competency score, used for aggregate reporting.
+- **Rolling Average** — Per-topic proficiency uses only the last 2 assessment scores (raw percentages, no difficulty multiplier), providing a responsive measure of current ability.
+- **Competency Score** — The master metric: a weighted average of all topic rolling averages (using `sub_sections.weight`), used to determine the overall level.
+- **NPS (Normalized Progress Score)** — Formula: `((levelIndex × 100) + competencyScore) / 4`. Ranges: Beginner 0–25, Learner 25–50, Competent 50–75, Advanced 75–100. Level and NPS are always stored together in `ProgressionHistory` for consistency.
 - **Topic Status** — Each subtopic gets a status: weak (< 50%), moderate (50–74%), strong (≥ 75%) based on rolling average.
 - **Set Rotation** — Question sets exclude previously seen questions to prevent repetition.
