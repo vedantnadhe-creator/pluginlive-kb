@@ -276,6 +276,7 @@ model jobRoleInstituteMap {
   // googleFormId          String?  @map("google_form_id")
   // googleFormUrl         String?  @map("google_form_url")
   // googleFormResponseUrl String?  @map("google_form_response_url")
+  // isEmailSent           Boolean? @default(false) @map("is_email_sent")
 }
 ```
 
@@ -286,6 +287,7 @@ model jobRoleInstituteMap {
 | `google_form_id` | `String?` | Google Form ID (from Google Forms API) |
 | `google_form_url` | `String?` | Public URL of the Google Form for this college |
 | `google_form_response_url` | `String?` | Google Sheets response URL linked to the form |
+| `is_email_sent` | `Boolean?` (default: `false`) | Flag to track if email with Google Form link has been sent to the institute |
 
 ---
 
@@ -329,10 +331,13 @@ After the existing `jobRoleInstituteMap.create()`, add Google Form creation:
    c. [NEW] If yes, call Google Forms API to create a new form
    d. [NEW] Set form title: "{Role Title} - {College Name} Application Form"
    e. [NEW] Add all mandatory + custom questions to the Google Form
-   f. [NEW] Update jobRoleInstituteMap with google_form_id and google_form_url
+   f. [NEW] Update jobRoleInstituteMap with google_form_id, google_form_url, and is_email_sent=false
 4. Each college gets a unique Google Form link
-5. TPO/College shares this link with their ITI/Diploma students
-6. Students fill the form externally (no PluginLive login needed)
+5. [NEW] Email sending feature: Send email to TPO/College with Google Form link
+   a. Update is_email_sent=true after successful email delivery
+   b. Use is_email_sent flag to prevent duplicate emails
+6. TPO/College shares this link with their ITI/Diploma students
+7. Students fill the form externally (no PluginLive login needed)
 ```
 
 ### Frontend Publish Flow
@@ -378,7 +383,8 @@ model jobRoles {
 ALTER TABLE corporate.job_role_institute_map
 ADD COLUMN google_form_id VARCHAR(255) DEFAULT NULL,
 ADD COLUMN google_form_url TEXT DEFAULT NULL,
-ADD COLUMN google_form_response_url TEXT DEFAULT NULL;
+ADD COLUMN google_form_response_url TEXT DEFAULT NULL,
+ADD COLUMN is_email_sent BOOLEAN DEFAULT FALSE;
 ```
 
 **Prisma Schema:**
@@ -388,6 +394,7 @@ model jobRoleInstituteMap {
   googleFormId          String?  @map("google_form_id")
   googleFormUrl         String?  @map("google_form_url")
   googleFormResponseUrl String?  @map("google_form_response_url")
+  isEmailSent           Boolean? @default(false) @map("is_email_sent")
 }
 ```
 
