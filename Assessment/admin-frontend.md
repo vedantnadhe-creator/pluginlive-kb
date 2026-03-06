@@ -221,6 +221,50 @@ This provides an image avatar with letter fallback when no logo URL is available
 
 ---
 
+## Passing Year Race Condition (yearLoaded Pattern)
+
+Both `InstituteAssessmentDashboard.js` (admin-react) and `Assessment/index.js` (institute-react) use a `yearLoaded` state gate to prevent API calls before the passing year is fetched and set.
+
+**Problem:** React 17 does NOT batch setState in async callbacks. Without guards, effects fire with `selectedYear=''`, fetching all years' data and mixing results.
+
+**Pattern:**
+```javascript
+const [selectedYear, setSelectedYear] = useState('')
+const [yearLoaded, setYearLoaded] = useState(false)
+
+// 1. fetchYearList sets selectedYear AND yearLoaded (no selectedYear in useCallback deps)
+const fetchYearList = useCallback(async () => {
+  const years = await fetchYears()
+  setSelectedYear(defaultYear)  // set BEFORE yearLoaded
+  setYearLoaded(true)           // gate opens
+}, [instituteCampusId])          // NO selectedYear in deps
+
+// 2. Reset on institute change
+useEffect(() => {
+  setYearLoaded(false)
+  fetchYearList()
+}, [instituteCampusId])
+
+// 3. ALL API-calling effects AND callbacks guard on BOTH yearLoaded AND selectedYear
+useEffect(() => {
+  if (instituteId && yearLoaded && selectedYear) { fetchData() }
+}, [instituteId, selectedYear, yearLoaded, fetchData])
+
+// 4. Callbacks also guard internally (belt-and-suspenders for React 17)
+const fetchData = useCallback(async () => {
+  if (!instituteId || !selectedYear) return  // internal guard
+  // ... API call with passingYear: selectedYear
+}, [instituteId, selectedYear])
+```
+
+**Key rules:**
+- `fetchYearList` must NOT have `selectedYear` in its useCallback deps (causes infinite loop)
+- `setYearLoaded(true)` must be in the `finally` block (after `setSelectedYear`)
+- Every effect and callback that uses `selectedYear` must guard on both `yearLoaded` AND `selectedYear`
+- Internal guards inside callbacks prevent calls with empty year even if effects fire unexpectedly
+
+---
+
 ## Key Design Patterns
 
 - **Unified Table**: `UnifiedAssessmentTable` handles both institute and corporate records by checking for entity-specific field names
@@ -229,3 +273,4 @@ This provides an image avatar with letter fallback when no logo URL is available
 - **Redux + Connect**: Module uses `connect()` pattern with `actions.js`, `reducers.js`, `selectors.js`
 - **Styled Components**: Shared styles in `Style/style.js` (CustomStyledTable, SearchSection, etc.)
 - **Server-Side Sorting**: NPS and other column sorts send `sortBy` to API; backend sorts all records before pagination
+- **yearLoaded Gate**: See "Passing Year Race Condition" section above

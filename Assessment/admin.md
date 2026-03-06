@@ -350,6 +350,24 @@ Admins can save reusable student lists, referenced by schedules.
 
 ---
 
+## TPO Dashboard Sent Count — Diagnosis Inclusion
+
+**File:** `student-node/app/models/TpoDashBoard.js`
+
+The TPO dashboard's "sent" count uses `_getAssessmentMapsUpToCurrent()` to determine which assessment maps to count for a given assessment position.
+
+**`_getAssessmentMapsUpToCurrent({ assessmentInstituteMapId, instituteId, assessmentTypeId })`:**
+- Fetches all non-one-time maps for the institute+type, ordered by `startTime`
+- Includes all maps up to and including the current assessment's position
+- Also includes diagnosis/standalone maps (where `scheduleId` is null) that appear AFTER the current position
+- This ensures students added to an existing assessment via diagnosis get counted in "sent"
+
+**Why diagnosis maps appear after current position:** When students are added to an existing scheduled assessment, `_sendDiagnosisForSchedule()` creates diagnosis maps with `startTime = today` (which may be after the current assessment's `startTime`) and without a `scheduleId`.
+
+**CEFR/Aptitude pie chart filter fix:** The candidate list pie chart filters (CEFR level, aptitude level) only return students who have actually attempted the assessment. The filter checks `assignedIdMap[email]` with a truthy check (not just `|| {}`) so students without attempt data are excluded.
+
+---
+
 ## Key Design Patterns
 
 - **Entity Duality:** Almost every function supports both `entityType = "college"` (→ `assessment_institute_map`) and `entityType = "corporate"` (→ `assessment_corporate_map`) with separate query branches
