@@ -151,3 +151,25 @@ The Assessment module provides the TPO-facing dashboard for managing and trackin
 - **Entity type:** Supports `college` entity type for institute context
 - **Cascading filters:** Domain → Degree → Department → Specialisation → Year of Passing
 - **Multiple API layers:** Uses `adminRequest`, `studentRequest`, `instRequest`, `corporateRequest`, `authRequest`
+
+---
+
+## Year Filtering & Race Condition Guards
+
+All assessment listing APIs (`fetchActiveAssessments`, `fetchCompletedAssessments`, `fetchActiveAssessmentCount`, `fetchAssessmentCompletedCount`) pass `passingYear` and `instituteId` to ensure data is scoped to the selected year.
+
+**Stale request guard:** `fetchActiveAssessments` uses a request counter (`_activeAssessmentsRequestId`) to prevent race conditions when the year changes rapidly. If a newer request is dispatched before the previous one returns, the stale response is discarded.
+
+```javascript
+let _activeAssessmentsRequestId = 0
+export const fetchActiveAssessments = (params = {}) => async (dispatch, getState) => {
+    if (!params.passingYear) return []  // Skip if no year selected
+    const requestId = ++_activeAssessmentsRequestId
+    // ... after API response:
+    if (requestId !== _activeAssessmentsRequestId) return []  // Discard stale
+}
+```
+
+The `handleMenuClick` useEffect in `index.js` includes `selectedYear` in its dependency array to re-fetch when year changes.
+
+> **Backend:** When `passingYear` is null/empty, the schedule list API (`StudentListInfo.getschedulesInfo`) returns ALL schedules without year filtering, which can cause data mixing between years.

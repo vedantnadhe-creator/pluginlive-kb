@@ -9,7 +9,7 @@
 **Module Root:** `admin-react/src/modules/Assessment/`
 
 | File | Purpose |
-|------|---------||
+|------|---------|
 | `index.js` | Main Assessment page -- tabs for institutes/corporates, routes to dashboards, handles assessment/diagnosis click routing |
 | `actions.js` | Redux action creators for fetching institutes, corporates, assessments, student data |
 | `reducers.js` | Redux reducer for assessment state |
@@ -19,7 +19,7 @@
 ### Partials
 
 | File | Purpose |
-|------|---------||
+|------|---------|
 | `Partials/ActiveCollegeList/index.js` | Institute list with AntdAvatar, search, pagination. Clicking opens InstituteAssessmentDashboard |
 | `Partials/ActiveCollegeList/InstituteAssessmentDashboard.js` | Per-institute assessment dashboard -- info cards, UnifiedAssessmentTable, Add Candidate drawer |
 | `Partials/ActiveCollegeList/InstituteAssessmentDetails.js` | Charts + cascading filters for a specific institute assessment |
@@ -35,7 +35,7 @@
 ### Shared Components
 
 | Component | File | Purpose |
-|-----------|------|---------||
+|-----------|------|---------|
 | `AssessmentProgressBar` | `components/AssessmentProgressBar.js` | Progress bar showing sent vs taken counts (active assessments) |
 | `CompletedAssessmentProgressBar` | `components/CompletedAssessmentProgressBar.js` | Progress bar for completed assessments |
 | `InfoCardsUpdate` | `components/InfoCardsUpdate/cardDetails.js` | Dashboard info cards (total candidates, sent, taken, expired) |
@@ -52,7 +52,7 @@ The core assessment listing table used by both institute and corporate dashboard
 ### Props
 
 | Prop | Type | Purpose |
-|------|------|---------||
+|------|------|---------|
 | `activeAssessments` | Array | Currently active assessments |
 | `completedAssessments` | Array | Completed assessments |
 | `loading` | Boolean | Spinner state |
@@ -68,7 +68,7 @@ The core assessment listing table used by both institute and corporate dashboard
 The table handles both institute and corporate assessment records with different field names:
 
 | Field | Institute Record | Corporate Record |
-|-------|-----------------|-----------------||
+|-------|-----------------|------------------|
 | Map ID | `latestAssessmentInstituteMapId` | `latestAssessmentCorporateMapId` |
 | Assessment ID | `assessmentInstituteMapId` | `assessmentCorporateMapId` |
 | Name | `scheduleName` | `name` |
@@ -96,7 +96,7 @@ The table handles both institute and corporate assessment records with different
 ### Props
 
 | Prop | Type | Purpose |
-|------|------|---------||
+|------|------|---------|
 | `visible` | Boolean | Drawer visibility |
 | `student` | Object | Student data with scores |
 | `isDiagnosis` | Boolean | Whether this is a diagnosis report |
@@ -155,7 +155,19 @@ NPS (Net Promoter Score) columns are displayed in `TpoStudentListTable`:
 | COMM. NPS | `communicationNPS` | `student-node/app/models/TpoDashBoard.js` |
 | APT. NPS | `aptitudeNPS` | `student-node/app/models/TpoDashBoard.js` |
 
-Both columns are sortable. Backend sorting is server-side (sorts ALL students before pagination, not just current page).
+Both columns are sortable. Backend sorting is server-side (sorts ALL students before pagination, not just current page). Any sort field except 'name' triggers global processing — all matching students are sorted before pagination.
+
+## Assessment Student List Columns
+
+When viewing a specific assessment's student list (`CandidateList`), the backend (`getStudentListForAssessment` in `TpoDashBoard.js`) returns these key fields:
+
+| Column | Field | Source | Notes |
+|--------|-------|--------|-------|
+| **Progression Level** | `currentLevel` / `currentLevelDisplay` | `ProgressionHistory.assessmentCefr` or `assessmentAptitudeLevel` | Scoped by `assessmentAssignedId` — shows level for THIS assessment, not latest. A2 record preferred, fallback to A1 |
+| **Assigned Level** | `assignedLevel` | Communication: previous `ProgressionHistory.suggestedCefr` or `assessmentSet.cefrLevel`. Aptitude: `assessmentSet.difficulty` | For non-diagnosis communication, uses `suggestedCefr` from previous A2 progression record to reflect what actually drove the test set assignment |
+| **NPS** | `communicationNPS` / `aptitudeNPS` | `ProgressionHistory` scores | Same scoping as progression level |
+| **Status** | `status` | `assessmentAssignedStudent.status` | Pending, Attempted, Completed |
+| **Proctoring** | `proctoring` | `proctoringLog.isValid` | Good/Bad based on face detection |
 
 ### Backend (student-node)
 

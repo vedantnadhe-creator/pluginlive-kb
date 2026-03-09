@@ -35,7 +35,7 @@ Questions are distributed across subtopics based on **weights** defined in the `
 ### Difficulty Points
 
 | Difficulty | Points (correct) | Negative Marking (wrong) |
-|-----------|------------------|--------------------------||
+|-----------|------------------|--------------------------|
 | Easy | +1 | −0.25 |
 | Medium | +2 | −0.50 |
 | Hard | +3 | −0.75 |
@@ -225,25 +225,37 @@ Stores result in `aptitudeScores` table.
 ### 5. Level Update & Progression
 
 #### `updateAptitudeProgression()`
-**Path:** `student-node/app/models/Assessment.js` (line ~10900)
+**Path:** `student-node/app/models/Assessment.js` (line ~11080)
 
-**The progression system has three phases:**
+**The progression system uses `diagnosis_number` to track phase:**
 
-1. **Diagnosis #1** (first assessment):
-   - Creates `aptitudeTopicProgress` record with initial topic data
-   - No level assigned yet
+| `diagnosis_number` | Phase | Description |
+|---------------------|-------|-------------|
+| 1 | Diagnosis #1 | First assessment — initial topic data, no level yet |
+| 2 | Diagnosis #2 | Second assessment — pair complete, first level assigned |
+| 3 | Post-diagnosis | All subsequent assessments |
 
-2. **Diagnosis #2** (second assessment):
+**Phase details:**
+
+1. **Diagnosis #1** (`diagnosis_number = 1`):
+   - Creates `aptitudeTopicProgress` record with initial topic data from this assessment
+   - No level assigned yet — stored as null
+   - Creates ProgressionHistory with `isSecondInPair = false`
+
+2. **Diagnosis #2** (`diagnosis_number = 2`):
    - Calculates rolling average per topic (last 2 attempts)
    - Calculates weighted **competency score** across all topics
    - Determines level via `getLevel(difficulty, competencyScore)`
-   - Calculates **Aptitude NPS** (net promoter score)
+   - Calculates **Aptitude NPS**: `((levelIndex × 100) + competencyScore) / 4`
    - Sets `AssessmentLevelOfStudent`, `LevelOfStudent`, and `MaxLevelOfStudent`
-   - Backfills progression history for both assessments
+   - Backfills ProgressionHistory for **both** assessments (A1 and A2)
 
-3. **Ongoing assessments** (3rd+):
-   - **Assessment mode**: Uses `getNewAssessmentLevel()` (prevents downgrades)
-   - **Practice mode**: Uses `getLevel(assessmentDifficulty, competencyScore)` with the actual assessment difficulty (allows level changes up/down), tracks `MaxLevelOfStudent`
+3. **Ongoing assessments** (`diagnosis_number = 3`):
+   - **Assessment mode**: Uses `getNewAssessmentLevel()` — only allows upgrades (no-downgrade)
+   - **Practice mode**: Uses `getLevel(assessmentDifficulty, competencyScore)` with the actual assessment difficulty — allows level changes up/down, tracks `MaxLevelOfStudent`
+   - Creates ProgressionHistory with `isSecondInPair = true` (every post-diagnosis assessment completes a "pair" immediately using topic rolling averages)
+
+**Key difference from Communication:** Aptitude uses **topic-level rolling averages** (pairs of 2 topic scores) rather than assessment-level pairs. Every post-diagnosis assessment immediately produces a level update because the rolling averages already incorporate the pair logic at the topic level.
 
 #### Topic Rolling Average
 - Keeps **last 2 scores** per topic
@@ -255,6 +267,19 @@ Stores result in `aptitudeScores` table.
 - Weighted average of all topic rolling averages
 - Weights come from `sub_sections.weight` table
 - Formula: `Σ(topic_rolling_avg × topic_weight) / Σ(topic_weight) × 100`
+
+**ProgressionHistory fields stored (aptitude):**
+
+| Field | Description |
+|-------|-------------|
+| `assessmentAptitudeLevel` | Confirmed aptitude level |
+| `assessmentAptitudeProgressScore` | NPS score |
+| `aptitudeDifficulty` | Assessment difficulty (Easy/Medium/Hard) |
+| `aptitudeLevelAtTime` | Student's level at the time |
+| `aptitudeCompetencyScore` | Weighted competency score |
+| `aptitudeFinalScore` | Individual assessment score |
+| `isSecondInPair` | `true` for A2 (pair complete) |
+| `isPractice` | Practice vs assessment mode |
 
 #### `fetchAptitudeProgression()`
 **Path:** `student-node/app/models/Assessment.js` (line ~276)
@@ -317,13 +342,16 @@ Use this after fixing scoring/level bugs to recalculate all historical data.
 
 | Data | Source | Notes |
 |------|--------|-------|
-| **Aptitude NPS** | `ProgressionHistory.assessmentAptitudeProgressScore` | Batch query, latest per student |
-| **Aptitude Level** | `ProgressionHistory.assessmentAptitudeLevel` | Same source as NPS for consistency |
-| **Communication NPS** | `ProgressionHistory.assessmentCommunicationProgressScore` | Batch query |
-| **Communication Level** | `ProgressionHistory.assessmentCefr` (via `fetchCommunicationProgression`) | Already reads from ProgressionHistory |
-| **Pie Chart (Aptitude)** | `ProgressionHistory.assessmentAptitudeLevel` | Batch query per assessment |
+| **Aptitude NPS** | `ProgressionHistory.assessmentAptitudeProgressScore` | Scoped by `assessmentAssignedId` for per-assessment views |
+| **Aptitude Level** | `ProgressionHistory.assessmentAptitudeLevel` | A2 record preferred, fallback to A1. Same source as NPS for consistency |
+| **Assigned Difficulty** | `assessmentSet.difficulty` | From the specific assessment being viewed |
+| **Pie Chart (Aptitude)** | `ProgressionHistory.assessmentAptitudeLevel` | Batch query per assessment, scoped by assignedId |
 
 > **Why not `fetchAptitudeProgression` for dashboard?** That method replays history with its own independent calculation which can diverge from the stored NPS. Reading both level and NPS from the same `ProgressionHistory` record guarantees consistency.
+
+#### Progression Query Scoping
+
+Per-assessment views (`getStudentListForAssessment`) scope progression queries by `assessmentAssignedId` — ensuring the level shown is for that specific assessment, not the student's latest level. Total candidate views (`getStudentListForTpoDashboard`) use latest-by-email.
 
 ---
 

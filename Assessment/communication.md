@@ -180,22 +180,42 @@ Scoring happens in two layers: **Node.js orchestration** and **FastAPI AI analys
 Applies weighted formula to section scores (Video 40%, Reading 20%, Audio 10%, Writing 30%).
 
 #### `updateCurrCERFlevelOfStudent()`
-**Path:** `student-node/app/models/Assessment.js` (line ~9641)
+**Path:** `student-node/app/models/Assessment.js` (line ~9731)
 
-After scoring, updates the student's CEFR progression:
+After scoring, updates the student's CEFR progression using a **rolling window of pairs** (2 assessments at the same CEFR level).
 
-1. **Determines current CEFR level** from `studentPersonalProfile.AssessmentCEFR`
-2. **Fetches last two uncalculated assessments** at that CEFR level
-3. **Handles incomplete pairs** (single assessment) — creates ProgressionHistory entry, carries forward previous level
-4. **Calculates pair average** — `(finalScore1 + finalScore2) / 2`
-5. **NPS calculation** — `((CefrRankIndex × 100) + avgScore) / 6` (0–100 scale)
-6. **Level determination** using CEFR mapping rules:
-   - Diagnosis (first pair ever): `newProgressionLevel = min(assessmentLevel, calculatedLevel)`
-   - Non-diagnosis at higher level: only confirms if `suggestedCefr >= currentLevel`
-   - Non-diagnosis at same/lower level: `newProgressionLevel = assessmentLevel`
-7. **No-downgrade rule** — progression level never decreases below previous
-8. **Profile update** — `AssessmentCEFR` updated to `suggestedCefr` (drives next test assignment)
-9. **ProgressionHistory** — stores `assessmentCefr = newProgressionLevel` and `assessmentCommunicationProgressScore = NPS`
+**Step-by-step process:**
+
+1. **Get current CEFR level** from `studentPersonalProfile.AssessmentCEFR`
+2. **Fetch last two uncalculated assessments** at that CEFR level (ordered by `submittedAt`)
+3. **Single assessment (A1 of pair):**
+   - Creates ProgressionHistory with `isSecondInPair = false`
+   - Carries forward previous progression level, no NPS change
+   - Marks `isCalculated = true` on this assessment only
+4. **Pair complete (A1 + A2):**
+   - Calculates pair average: `(finalScore1 + finalScore2) / 2`
+   - NPS formula: `((CefrRankIndex × 100) + avgScore) / 6` (0–100 scale)
+   - Applies **4 progression rules** (see below)
+   - Creates ProgressionHistory for A2 with `isSecondInPair = true` and `suggestedCefr`
+   - Updates `studentPersonalProfile.AssessmentCEFR` to `suggestedCefr`
+
+**The 4 Progression Rules:**
+
+| # | Condition | Result |
+|---|-----------|--------|
+| 1 | **Diagnosis** (first pair ever) | `newProgressionLevel = min(assessmentLevel, calculatedLevel)` — prevents inflated start |
+| 2 | **Non-diagnosis, same level** as previous | `newProgressionLevel = assessmentLevel` — stay at current level |
+| 3 | **Non-diagnosis, first pair at NEW level** | Confirm only if `suggestedCefr >= currentProgressionLevel` — must prove competence at new level |
+| 4 | **No-downgrade rule** (all cases) | `newProgressionLevel = max(newLevel, previousProgressionLevel)` — level never drops |
+
+**`suggestedCefr` calculation:**
+- Raw suggested level comes from `getNewCERFlevel(assessmentLevel, avgScore)` mapping
+- No-downgrade applied: `suggestedCefr = max(calculatedNewLevel, previousProgressionLevel)`
+- Written to profile as `AssessmentCEFR` — drives next test set assignment
+
+**Rolling Window Pair Marking:**
+- Same CEFR level as previous pair → only the A1 assessment resets the pair counter
+- CEFR level changed since previous pair → both A1 and A2 are marked (fresh pair at new level)
 
 **CEFR Mapping (Assessment mode)** — `newCERFmapping.js`:
 
@@ -208,7 +228,22 @@ After scoring, updates the student's CEFR progression:
 | C1 | Stay C1 (0–87) | Suggest C2 (88–100) |
 | C2 | Stay C2 (all) | — |
 
-> **Key distinction:** `suggestedCefr` drives the **next test level** (written to profile). `newProgressionLevel` is the **confirmed progression** (written to ProgressionHistory). These can differ — e.g., student at A2 scores 91% → suggested=B1, progression=A2 (until confirmed at B1).
+> **Key distinction:** `suggestedCefr` drives the **next test level** (written to profile). `assessmentCefr` is the **confirmed progression level** (written to ProgressionHistory). These can differ — e.g., student at A2 scores 91% → suggested=B1, progression=A2 (until confirmed at B1 level with a pair there).
+
+**ProgressionHistory fields stored per record:**
+
+| Field | Description |
+|-------|-------------|
+| `assessmentCefr` | Confirmed progression level (source of truth for "current level") |
+| `suggestedCefr` | Level that drives next test assignment (only on A2 records) |
+| `assessmentCefrAtTime` | Student's CEFR at the time of this assessment |
+| `assessmentCommunicationProgressScore` | NPS score |
+| `isSecondInPair` | `true` for A2 (pair complete), `false` for A1 |
+| `pairNumber` | Pair counter |
+| `pairAverageScore` | Average of the two assessments in the pair |
+| `finalScore` | Individual assessment score |
+| `isDiagnosis` | Whether this was a diagnosis assessment |
+| `isPractice` | Practice vs assessment mode |
 
 ---
 
@@ -234,11 +269,19 @@ Compares the student's **last two communication assessments** to show improvemen
 
 | Column | Data Source | Notes |
 |---|---|---|
-| **Progression Level** | `ProgressionHistory.assessmentCefr` | Latest non-null entry, ordered by submittedAt desc |
+| **Progression Level** | `ProgressionHistory.assessmentCefr` | Scoped by `assessmentAssignedId` for per-assessment views; A2 record preferred, fallback to A1 |
 | **NPS (Communication)** | `ProgressionHistory.assessmentCommunicationProgressScore` | Same source as level — ensures consistency |
-| **Assigned Difficulty** | `assessmentSet.cefrLevel` | From the specific assessment being viewed |
+| **Assigned Level** | Previous `ProgressionHistory.suggestedCefr` or `assessmentSet.cefrLevel` | For non-diagnosis: uses `suggestedCefr` from previous assessment's A2 record (what actually drove the test set assignment). Falls back to `assessmentSet.cefrLevel` for diagnosis or when no previous record exists |
 
-> **Important:** Dashboard reads both level and NPS from `ProgressionHistory` (not `fetchCommunicationProgression` or `studentPersonalProfile`). This prevents desync between the displayed level and NPS score. Same pattern used for aptitude.
+> **Important:** Dashboard reads progression level from `ProgressionHistory` scoped by `assessmentAssignedId` (not latest-by-email), ensuring each assessment view shows the correct level for that specific assessment. The `assignedLevel` uses the previous assessment's `suggestedCefr` because the actual CEFR set may differ from `assessmentSet.cefrLevel` due to adaptive reassignment.
+
+#### Progression Query Scoping
+
+When viewing a **specific assessment's** student list (`getStudentListForAssessment`), progression queries are scoped by `assessmentAssignedId` to show the level achieved on that particular assessment — not the student's latest level across all assessments.
+
+When viewing the **total candidate list** (`getStudentListForTpoDashboard`), queries use `primaryEmail` with `orderBy: submittedAt desc` to show the student's most recent level.
+
+This distinction prevents confusion when viewing historical assessments where a student's level was different than their current level.
 
 ---
 

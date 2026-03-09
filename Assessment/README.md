@@ -62,7 +62,7 @@ All assessment types share these core features, implemented in **`student-node/a
 | `generateAptitudePDFReport(...)` | Aptitude report with topic-level scores and progression |
 | `generateBehaviorPDFReport(...)` | Behavior assessment report |
 | `generateRoleBasedReport(...)` | Role-based report with skill scores and AI feedback |
-| `getAssessmentReport({ assessment_assigned_id })` | Fetches structured report data (for frontend display, not PDF) |
+| `getAssessmentReport({ assessment_assigned_id })` | Fetches structured report data (for frontend display, not PDF). Returns `assessmentSetCefrLevel` using previous `suggestedCefr` for non-diagnosis, `assessmentSet.cefrLevel` for diagnosis |
 
 ### Progression & Levels
 
