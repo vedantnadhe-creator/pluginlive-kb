@@ -211,20 +211,35 @@ After scoring, updates the student's CEFR progression using a **rolling window o
    - Updates the A1 record's `suggestedCefr = carriedSuggestedCefr` (carry-forward)
    - Calculates pair average: `(finalScore1 + finalScore2) / 2`
    - NPS formula: `((CefrRankIndex × 100) + avgScore) / 6` (0–100 scale)
-   - Applies **4 progression rules** (see below)
+   - Applies **progression rules** (see below)
    - Creates ProgressionHistory for A2 with `isSecondInPair = true` and **newly derived `suggestedCefr`**
    - Updates `studentPersonalProfile.AssessmentCEFR` to `suggestedCefr`
 
 > **suggestedCefr Carry-Forward Rule:** `suggestedCefr` is only _derived_ when A2 (second-in-pair) completes. For A1 records and incomplete pairs, `suggestedCefr` carries forward from the previous pair's A2 value. This ensures `suggestedCefr` is **never null** except for the very first assessment (which has no previous pair). This is critical because `suggestedCefr` is used for assignment-level determination — a null value would cause fallback to stale data.
 
-**The 4 Progression Rules:**
+**Progression Rules:**
 
 | # | Condition | Result |
 |---|-----------|--------|
 | 1 | **Diagnosis** (first pair ever) | `newProgressionLevel = min(assessmentLevel, calculatedLevel)` — prevents inflated start |
-| 2 | **Non-diagnosis, same level** as previous | `newProgressionLevel = assessmentLevel` — stay at current level |
-| 3 | **Non-diagnosis, first pair at NEW level** | Confirm only if `suggestedCefr >= currentProgressionLevel` — must prove competence at new level |
-| 4 | **No-downgrade rule** (all cases) | `newProgressionLevel = max(newLevel, previousProgressionLevel)` — level never drops |
+| 2 | **Non-diagnosis, non-practice** — high score (suggestedCefr moves up) | `newProgressionLevel = currentAssessmentLevel` — confirmed at current level |
+| 3 | **Non-diagnosis, non-practice** — low score (suggestedCefr stays same) | `newProgressionLevel = currentAssessmentLevel - 1` (A1 floor) — not yet confirmed |
+| 4 | **C2 special case** — score ≥ 86 | `newProgressionLevel = C2` — can't go higher, confirmed at ceiling |
+| 5 | **No-downgrade rule** (all cases) | `newProgressionLevel = max(newLevel, previousProgressionLevel)` — level never drops |
+| 6 | **Practice** | `newProgressionLevel = assessmentLevel` — unrestricted |
+
+**Progression mapping table** (non-diagnosis, non-practice):
+
+| Current Level | Low Score | Progression | High Score | Progression |
+|---|---|---|---|---|
+| A1 | 0–80 | A1 | 81–100 | A1 |
+| A2 | 0–85 | A1 | 86–100 | A2 |
+| B1 | 0–85 | A2 | 86–100 | B1 |
+| B2 | 0–85 | B1 | 86–100 | B2 |
+| C1 | 0–87 | B2 | 88–100 | C1 |
+| C2 | 0–85 | C1 | 86–100 | C2 |
+
+> **Key insight:** Progression level is always one level below the student's current assessment level until they score high enough for suggestedCefr to move up. At that point, progression confirms at the current level. Once confirmed, no-downgrade ensures it never drops back.
 
 **`suggestedCefr` calculation:**
 - Raw suggested level comes from `getNewCERFlevel(assessmentLevel, avgScore)` mapping
