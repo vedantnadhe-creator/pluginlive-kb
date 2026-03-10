@@ -39,12 +39,14 @@ Final Score = (Video Response × 0.40)
             + (Audio Question × 0.10)
             + (Writing Sections × 0.30)
 
-Writing Score = sum of present writing sections × (0.30 / 4) each
+Writing Score = sum of present writing section scores / 4
 Writing Sections = Question Based Response, Sentence Completion,
-                   Sentence Build, Dictation, Email Writing
+                   Sentence Build, Dictation OR Email Writing
 ```
 
-> Not all writing sections may be present in every assessment. Score is calculated only from sections that exist.
+> An assessment has either Dictation or Email Writing (controlled by `IsEmailWriting` flag), plus up to 3 other writing sections. The divisor is always **4** (hardcoded), not the count of present sections. This ensures consistent scoring across PDF report, dashboard, and `getAssessmentReport`.
+
+**Score consistency rule:** All display surfaces (PDF report `generateCommunicationReport`, dashboard `getStudentListForAssessment`, detail view `getAssessmentReport`) must use stored `communicationScores.score` values directly and divide writing sum by 4. Do NOT recalculate section scores from metadata — use the stored score.
 
 ---
 
