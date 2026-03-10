@@ -84,17 +84,25 @@ flowchart TD
 
 **Key steps:**
 1. Fetches students via `getAssessmentAssignedParticipants()` (from bulk upload or institute data)
-2. Gets each student's current **AssessmentCEFR** level from `student_personal_profile`
-3. Determines CEFR level per student:
-   - First-time students → use the admin-selected CEFR level
-   - Returning students → use their current assessment CEFR level (adaptive)
-4. Generates question sets via `generateCommunicationQuestions()` which calls FastAPI `/communication/generate_questions`
-5. Creates DB records:
+2. **Determines CEFR level per student using `suggestedCefr` from `progression_history`:**
+   - Queries `progression_history` for the latest `suggested_cefr` (non-null) per student email, filtered by `is_practice = false`
+   - Uses raw SQL with `DISTINCT ON (LOWER(primary_email))` ordered by `submitted_at DESC`
+   - First-time students (no progression record) → use the admin-selected CEFR level
+   - Returning students → use `suggestedCefr` from their latest progression record
+3. Generates question sets via `generateCommunicationQuestions()` which calls FastAPI `/communication/generate_questions`
+4. Creates DB records:
    - `assessmentInstituteMap` — links assessment to institute
    - `assessmentSet` — stores generated questions with CEFR level
    - `assessmentAssignedStudent` — one per student, linked to an assessment set
-6. Handles **set rotation** — tracks which sets have been assigned to avoid repetition
-7. Creates students in the system if they don't exist yet (auto-registration)
+5. Handles **set rotation** — tracks which sets have been assigned to avoid repetition
+6. Creates students in the system if they don't exist yet (auto-registration)
+
+#### Practice Assignment — `assignPracticeAssessmentCommunication()`
+**Path:** `admin-node/app/models/Assessment.js`
+
+Same flow as above but queries `progression_history` with `is_practice = true` for the latest `suggested_cefr`. Falls back to `practice_cefr` from `student_personal_profile` if no progression record exists.
+
+> **Important:** Both practice and non-practice assignment use `suggestedCefr` from `progression_history` (not from `student_personal_profile`) to determine the CEFR level for question generation. This ensures the assigned level always reflects the latest progression-derived recommendation.
 
 ---
 
@@ -126,8 +134,11 @@ flowchart TD
 
 **Key logic:**
 1. Receives `assessment_set_id` and `assessment_assigned_id`
-2. **CEFR level matching** — checks if the assigned set's CEFR matches the student's current `AssessmentCEFR`
+2. **CEFR level correction at delivery time** (institute assessments only):
+   - Queries `progression_history` for the student's latest `suggestedCefr` (non-null), using the `isPractice` flag from the assignment
+   - If the student has prior progression records, checks whether the assigned set's CEFR matches `suggestedCefr`
    - If mismatch → queries for all active sets at the correct CEFR level, randomly picks one, updates the assignment
+   - This handles the case where a student's level changed between assignment and delivery
 3. Fetches questions with sub-questions and options from the database
 4. Organizes questions by section type (Paragraph Reading, Audio Question, Video Response, etc.)
 5. Returns structured JSON for the frontend to render
@@ -182,22 +193,27 @@ Applies weighted formula to section scores (Video 40%, Reading 20%, Audio 10%, W
 #### `updateCurrCERFlevelOfStudent()`
 **Path:** `student-node/app/models/Assessment.js` (line ~9731)
 
-After scoring, updates the student's CEFR progression using a **rolling window of pairs** (2 assessments at the same CEFR level).
+After scoring, updates the student's CEFR progression using a **rolling window of pairs** (2 assessments at the same CEFR level). This function is `await`ed (not fire-and-forget) because the cron job can retry failed calculations.
 
 **Step-by-step process:**
 
 1. **Get current CEFR level** from `studentPersonalProfile.AssessmentCEFR`
-2. **Fetch last two uncalculated assessments** at that CEFR level (ordered by `submittedAt`)
-3. **Single assessment (A1 of pair):**
+2. **Fetch latest progression record** to get `carriedSuggestedCefr` (the previous suggestedCefr to carry forward)
+3. **Fetch last two uncalculated assessments** at that CEFR level (ordered by `submittedAt`)
+4. **Single assessment (A1 of pair):**
    - Creates ProgressionHistory with `isSecondInPair = false`
+   - **Sets `suggestedCefr = carriedSuggestedCefr`** (carry-forward from previous pair's A2 record)
    - Carries forward previous progression level, no NPS change
    - Marks `isCalculated = true` on this assessment only
-4. **Pair complete (A1 + A2):**
+5. **Pair complete (A1 + A2):**
+   - Updates the A1 record's `suggestedCefr = carriedSuggestedCefr` (carry-forward)
    - Calculates pair average: `(finalScore1 + finalScore2) / 2`
    - NPS formula: `((CefrRankIndex × 100) + avgScore) / 6` (0–100 scale)
    - Applies **4 progression rules** (see below)
-   - Creates ProgressionHistory for A2 with `isSecondInPair = true` and `suggestedCefr`
+   - Creates ProgressionHistory for A2 with `isSecondInPair = true` and **newly derived `suggestedCefr`**
    - Updates `studentPersonalProfile.AssessmentCEFR` to `suggestedCefr`
+
+> **suggestedCefr Carry-Forward Rule:** `suggestedCefr` is only _derived_ when A2 (second-in-pair) completes. For A1 records and incomplete pairs, `suggestedCefr` carries forward from the previous pair's A2 value. This ensures `suggestedCefr` is **never null** except for the very first assessment (which has no previous pair). This is critical because `suggestedCefr` is used for assignment-level determination — a null value would cause fallback to stale data.
 
 **The 4 Progression Rules:**
 
@@ -235,7 +251,7 @@ After scoring, updates the student's CEFR progression using a **rolling window o
 | Field | Description |
 |-------|-------------|
 | `assessmentCefr` | Confirmed progression level (source of truth for "current level") |
-| `suggestedCefr` | Level that drives next test assignment (only on A2 records) |
+| `suggestedCefr` | Level that drives next test assignment. **Derived** on A2 records; **carried forward** on A1 records from previous pair's A2. Only null on the very first assessment. |
 | `assessmentCefrAtTime` | Student's CEFR at the time of this assessment |
 | `assessmentCommunicationProgressScore` | NPS score |
 | `isSecondInPair` | `true` for A2 (pair complete), `false` for A1 |
@@ -271,9 +287,9 @@ Compares the student's **last two communication assessments** to show improvemen
 |---|---|---|
 | **Progression Level** | `ProgressionHistory.assessmentCefr` | Scoped by `assessmentAssignedId` for per-assessment views; A2 record preferred, fallback to A1 |
 | **NPS (Communication)** | `ProgressionHistory.assessmentCommunicationProgressScore` | Same source as level — ensures consistency |
-| **Assigned Level** | Previous `ProgressionHistory.suggestedCefr` or `assessmentSet.cefrLevel` | For non-diagnosis: uses `suggestedCefr` from previous assessment's A2 record (what actually drove the test set assignment). Falls back to `assessmentSet.cefrLevel` for diagnosis or when no previous record exists |
+| **Assigned Level** | Previous `ProgressionHistory.suggestedCefr` (non-null, before current assessment) | Queries `progressionHistory` directly for the latest record with non-null `suggestedCefr` where `submittedAt < currentAssessment.submittedAt` and `assessmentAssignedId != currentAssessmentId`. Falls back to `assessmentSet.cefrLevel` only for diagnosis (first-ever assessment). |
 
-> **Important:** Dashboard reads progression level from `ProgressionHistory` scoped by `assessmentAssignedId` (not latest-by-email), ensuring each assessment view shows the correct level for that specific assessment. The `assignedLevel` uses the previous assessment's `suggestedCefr` because the actual CEFR set may differ from `assessmentSet.cefrLevel` due to adaptive reassignment.
+> **Important:** Dashboard reads progression level from `ProgressionHistory` scoped by `assessmentAssignedId` (not latest-by-email), ensuring each assessment view shows the correct level for that specific assessment. The `assignedLevel` queries `progressionHistory` for the latest non-null `suggestedCefr` before the current assessment — this is the value that actually drove the test set assignment. Do NOT use `assessmentSet.cefrLevel` as fallback for non-diagnosis assessments, because the set's CEFR can become stale when the student's level changes between assignment and delivery.
 
 #### Progression Query Scoping
 
@@ -304,7 +320,33 @@ This distinction prevents confusion when viewing historical assessments where a 
 
 ---
 
-### 8. PDF Report
+### 8. Backfill API
+
+#### `POST /assessment/backfill-all-student-progression`
+**Handler:** `assessmentHandler.backfillAllStudentProgression`
+**Method:** `CommunicationCalculations.backfillAllStudentProgression()`
+
+Recalculates all communication progression history for every student:
+1. Finds all students with calculated communication assessments
+2. For each student, fetches all assessments ordered by `submittedAt`
+3. Separates into practice vs assessment chains via `processProgressionChain()`
+4. Replays each chain: rebuilds rolling window pairs, NPS, progression levels, and suggestedCefr
+5. Deletes old `ProgressionHistory` communication records and creates new ones
+6. Updates `studentPersonalProfile.AssessmentCEFR` (or `PracticeCEFR`) with final state
+
+**suggestedCefr carry-forward in backfill:**
+- Tracks `effectiveCefrLevel` across the chain (starts null for 1st assessment)
+- A1 records: `suggestedCefr = effectiveCefrLevel` (carried forward from previous pair)
+- A2 records: `suggestedCefr = newlyDerivedSuggestedCefr` (fresh calculation)
+- After each pair completes, `effectiveCefrLevel` updates to the new `suggestedCefr`
+
+**Request body:** `{}` (no parameters needed)
+
+Use this after fixing progression/scoring bugs to recalculate all historical data.
+
+---
+
+### 9. PDF Report
 
 #### Template — `communicationReport.html`
 **Path:** `student-node/public/communicationReport.html`
@@ -348,3 +390,5 @@ This distinction prevents confusion when viewing historical assessments where a 
 - **Proctoring** — Optional face detection during assessment (snapshots sent to FastAPI for validation).
 - **Retake** — Students may retake; scores are stored separately with `isRetake` flag.
 - **suggestedCefr vs newProgressionLevel** — `suggestedCefr` drives the next test level (profile update), while `newProgressionLevel` is the confirmed progression (ProgressionHistory). Dashboard always reads from ProgressionHistory for consistency.
+- **suggestedCefr carry-forward** — `suggestedCefr` is only derived when A2 completes a pair. A1 records carry forward the previous pair's `suggestedCefr`. This ensures `suggestedCefr` is never null except for the very first assessment. Both the live function (`updateCurrCERFlevelOfStudent`) and the backfill API (`backfillAllStudentProgression`) implement this rule.
+- **Reliability model** — `updateCurrCERFlevelOfStudent` is `await`ed (not fire-and-forget). If it fails, the cron job will retry the entire score calculation including progression. This is safe because communication scoring is cron-driven with retry logic (up to 3 non-transient retries, 10 transient retries).

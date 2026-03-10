@@ -35,7 +35,7 @@ Questions are distributed across subtopics based on **weights** defined in the `
 ### Difficulty Points
 
 | Difficulty | Points (correct) | Negative Marking (wrong) |
-|-----------|------------------|--------------------------|
+|-----------|------------------|---------------------------|
 | Easy | +1 | −0.25 |
 | Medium | +2 | −0.50 |
 | Hard | +3 | −0.75 |
@@ -219,6 +219,10 @@ Dynamically generates a new 30-question set at the required difficulty:
    - **Topics** (subtopics): per-topic totals with difficulty breakdown and time spent
 
 Stores result in `aptitudeScores` table.
+
+**Transaction model:** Score calculation and `updateAptitudeProgression()` run inside a single Prisma `$transaction` (timeout: 30s). This is critical because aptitude scores are calculated on-the-fly after submission (not via cron), so there is **no retry mechanism** — if progression fails, the student's level won't update. The transaction ensures atomicity: either both scoring and progression succeed, or neither does.
+
+> **Key difference from Communication:** Communication progression is `await`ed but outside a transaction. If it fails, the cron job retries the entire calculation. Aptitude has no such safety net, hence the transactional approach.
 
 ---
 
