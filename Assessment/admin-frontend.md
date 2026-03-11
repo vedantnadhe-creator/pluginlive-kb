@@ -312,6 +312,65 @@ r.totalScore ?? r.totalAvgScore ?? r.roleBasedScores?.overallScore ?? r.customAs
 
 ---
 
+## Assessment Heading Display
+
+Both `admin-react/InstituteAssessmentDetails.js` and `institute-react/AssessmentDetails/index.js` construct the page heading differently for standard vs non-standard assessment types:
+
+```javascript
+{(assessment.isOneTime || assessment.isStandalone || !isStandardType)
+  ? (assessment.scheduleName && assessment.scheduleName !== 'N/A'
+      ? assessment.scheduleName : assessment.name || 'Assessment')
+  : `${assessment.scheduleName}-schedule-${assessment.scheduleNumber || 1}`}
+```
+
+- **Standard types** (Communication/Aptitude): Shows `{scheduleName}-schedule-{scheduleNumber}` format
+- **Non-standard types** (Role_Based, Custom, etc.): Shows assessment name directly (no schedule suffix)
+- **One-time assessments**: Shows assessment name directly
+- **Fallback chain**: `scheduleName` -> `name` -> `'Assessment'`
+
+---
+
+## Subscription Filtering on Institute/Corporate Lists
+
+The Assessment module's institute and corporate lists only show **subscribed** entities.
+
+### ActiveCollegeList (`Partials/ActiveCollegeList/index.js`)
+```javascript
+const params = { pageLimit, pageNo: page, subscription: true }
+const response = await elasticSearchRequest.get('/institutes', { params })
+```
+
+### ActiveCorporateList (`Partials/ActiveCorporateList/index.js`)
+```javascript
+const params = { pageLimit, currentPage: page, subscription: true }
+const response = await elasticSearchRequest.get('/corporates/list', { params })
+```
+
+**Note:** Institute uses `pageNo`, Corporate uses `currentPage` as the pagination parameter name.
+
+Both use `elasticSearchRequest` (elasticsearch API) with `subscription: true` to filter to subscribed entities only. This matches how the Institute and Corporate modules handle subscription filtering.
+
+### Assessment-Specific Admin-Node Endpoints
+These existing endpoints also filter by subscription:
+- `GET /assessment/getSubscribedInstitutes` — fetches institutes with assessment subscription
+- `GET /assessment/getSubscribedAssessmentByInstitute` — assessments for a specific subscribed institute
+- `GET /assessment/getSubscribedAssessmentByCorporate` — assessments for a specific subscribed corporate
+- `GET /assessment/getSubscribedCorporateCompaniesByCity` — corporates filtered by city
+
+---
+
+## ExpandableContent — Diagnosis Row Guard
+
+**File:** `UnifiedAssessmentTable/ExpandableContent.js`
+
+Diagnosis rows in expandable assessment schedule content are **only shown for Communication and Aptitude** types:
+```javascript
+const hasDiagnosis = ['communication', 'aptitude'].includes(normalizedType)
+```
+Other assessment types (Role_Based, Custom, etc.) skip the diagnosis row entirely since they don't use the scheduling/diagnosis infrastructure.
+
+---
+
 ## Key Design Patterns
 
 - **Unified Table**: `UnifiedAssessmentTable` handles both institute and corporate records by checking for entity-specific field names

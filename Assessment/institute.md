@@ -87,6 +87,7 @@ Same as TPO method but for corporate assessments. Already had all score types fr
   - Charts/graphs: only shown for standard types
   - Assigned difficulty column: only shown for standard types
   - Progression level column: only shown for standard types
+  - Page heading: standard types show `{scheduleName}-schedule-{scheduleNumber}`, non-standard types show assessment name directly
 
 ### CandidateList (`CandidateList/index.js`)
 
