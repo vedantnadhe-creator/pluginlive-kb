@@ -9,7 +9,7 @@
 **Module Root:** `admin-react/src/modules/Assessment/`
 
 | File | Purpose |
-|------|---------|
+|------|----------|
 | `index.js` | Main Assessment page -- tabs for institutes/corporates, routes to dashboards, handles assessment/diagnosis click routing |
 | `actions.js` | Redux action creators for fetching institutes, corporates, assessments, student data |
 | `reducers.js` | Redux reducer for assessment state |
@@ -19,7 +19,7 @@
 ### Partials
 
 | File | Purpose |
-|------|---------|
+|------|----------|
 | `Partials/ActiveCollegeList/index.js` | Institute list with AntdAvatar, search, pagination. Clicking opens InstituteAssessmentDashboard |
 | `Partials/ActiveCollegeList/InstituteAssessmentDashboard.js` | Per-institute assessment dashboard -- info cards, UnifiedAssessmentTable, Add Candidate drawer |
 | `Partials/ActiveCollegeList/InstituteAssessmentDetails.js` | Charts + cascading filters for a specific institute assessment |
@@ -35,7 +35,7 @@
 ### Shared Components
 
 | Component | File | Purpose |
-|-----------|------|---------|
+|-----------|------|----------|
 | `AssessmentProgressBar` | `components/AssessmentProgressBar.js` | Progress bar showing sent vs taken counts (active assessments) |
 | `CompletedAssessmentProgressBar` | `components/CompletedAssessmentProgressBar.js` | Progress bar for completed assessments |
 | `InfoCardsUpdate` | `components/InfoCardsUpdate/cardDetails.js` | Dashboard info cards (total candidates, sent, taken, expired) |
@@ -52,7 +52,7 @@ The core assessment listing table used by both institute and corporate dashboard
 ### Props
 
 | Prop | Type | Purpose |
-|------|------|---------|
+|------|------|----------|
 | `activeAssessments` | Array | Currently active assessments |
 | `completedAssessments` | Array | Completed assessments |
 | `loading` | Boolean | Spinner state |
@@ -68,7 +68,7 @@ The core assessment listing table used by both institute and corporate dashboard
 The table handles both institute and corporate assessment records with different field names:
 
 | Field | Institute Record | Corporate Record |
-|-------|-----------------|------------------|
+|-------|-----------------|-------------------|
 | Map ID | `latestAssessmentInstituteMapId` | `latestAssessmentCorporateMapId` |
 | Assessment ID | `assessmentInstituteMapId` | `assessmentCorporateMapId` |
 | Name | `scheduleName` | `name` |
@@ -96,7 +96,7 @@ The table handles both institute and corporate assessment records with different
 ### Props
 
 | Prop | Type | Purpose |
-|------|------|---------|
+|------|------|----------|
 | `visible` | Boolean | Drawer visibility |
 | `student` | Object | Student data with scores |
 | `isDiagnosis` | Boolean | Whether this is a diagnosis report |
@@ -127,8 +127,11 @@ The `getScore(newKey, oldKey)` helper checks `sectionScores` first, falling back
 
 ### Assessment Type Detection
 
-- **Communication**: Default when not aptitude
+- **Communication**: Default when not aptitude, role-based, or custom
 - **Aptitude**: Detected if `student.aptitudeScores` exists OR `sectionScores` contains keys like `critical`, `quantitative`, `logical`
+- **Role_Based**: Detected if `student.roleBasedScores` exists OR `student.assessmentType` contains `role_based`/`rolebased`
+- **Custom_Assessment**: Detected if `student.customAssessmentScores` exists OR `student.assessmentType` contains `custom`
+- **Behavior**: Detected if `student.behaviorScores` exists OR `student.assessmentType` contains `behavior`
 
 ### Aptitude Score Cards
 
@@ -277,10 +280,43 @@ const fetchData = useCallback(async () => {
 
 ---
 
+## CandidateList — Dynamic Columns for Non-Standard Types
+
+Both `admin-react` and `institute-react` `CandidateList/index.js` dynamically generate table columns for assessment types beyond Communication/Aptitude:
+
+### Column Extraction
+- **Behavior / Role_Based**: Extracts column keys from `sectionScores` OR `roleBasedScores` across all student rows. Excludes `overallScore` key.
+- **Custom_Assessment**: Uses fixed columns: `Gained Marks`, `Total Marks`, `Percentage`.
+- Column values render from multiple sources: `r.sectionScores?.[key] ?? r.roleBasedScores?.[key]`
+
+### Total Score Column
+Falls back across multiple sources:
+```javascript
+r.totalScore ?? r.totalAvgScore ?? r.roleBasedScores?.overallScore ?? r.customAssessmentScores?.percentage
+```
+
+### Charts / Graphs
+- **Only shown for Communication and Aptitude** assessment types
+- `admin-react/InstituteAssessmentDetails.js`: guards `<AssessmentCharts>` with `['communication', 'aptitude'].includes(assessmentType)`
+- `institute-react/AssessmentDetails/index.js`: uses `isStandardType` flag (same check)
+
+### Assigned Difficulty & Progression Level
+- **Only shown for Communication and Aptitude** assessment types
+- For Role_Based, Custom, Behavior, AI_Interview, etc. these columns are hidden in the table
+- Controlled by `isStandardType` check in CandidateList column definitions
+
+### Data Sources
+- **Communication/Aptitude**: student-node `specific-assessment-student-list` API → returns `sectionScores`, `totalScore`
+- **Other types (Role_Based, Custom, Behavior)**: admin-node `getAssessmentDetails` API → returns `roleBasedScores`, `customAssessmentScores`, `behaviorScores`
+- Admin-node returns different field names than student-node (e.g., `roleBasedScores: { mcqScore, subjectiveScore, videoScore, overallScore }` vs `sectionScores: { mcq, subjective, video }`)
+
+---
+
 ## Key Design Patterns
 
 - **Unified Table**: `UnifiedAssessmentTable` handles both institute and corporate records by checking for entity-specific field names
 - **Dual Score Format**: Student reports support both `sectionScores` (new) and flat score fields (old) for backward compatibility
+- **Multi-Type Score Sources**: CandidateList checks `sectionScores`, `roleBasedScores`, and `customAssessmentScores` for compatibility across both APIs
 - **AntdAvatar Pattern**: Both institute and corporate lists use the same avatar component with letter fallback
 - **Redux + Connect**: Module uses `connect()` pattern with `actions.js`, `reducers.js`, `selectors.js`
 - **Styled Components**: Shared styles in `Style/style.js` (CustomStyledTable, SearchSection, etc.)

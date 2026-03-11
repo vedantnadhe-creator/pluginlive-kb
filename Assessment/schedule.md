@@ -8,7 +8,7 @@
 
 | Property | Value |
 |---|---|
-| **Supported Types** | Communication, Aptitude |
+| **Supported Types** | Communication, Aptitude (only these two use schedules) |
 | **Frequency** | Admin-defined date list (specific dates in `YYYY-MM-DD`) |
 | **Cron Interval** | Every 30 minutes |
 | **Concurrency** | Database-level locking (`FOR UPDATE SKIP LOCKED`) |

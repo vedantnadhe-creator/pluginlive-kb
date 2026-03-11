@@ -13,12 +13,13 @@ This folder contains detailed documentation for each assessment type and cross-c
 - `schedule.md` -- Assessment Scheduling (recurring auto-assignment via cron)
 - `admin.md` -- Admin Assessment Workflow (dashboard, listing, assignment, analytics, proctoring review)
 - `admin-frontend.md` -- Admin-React Assessment Frontend (UnifiedAssessmentTable, StudentReport, NPS, pagination, corporate clickability)
+- `institute.md` -- Institute Assessment (TPO view, two-API architecture, StudentListInfo schedules, score format differences, PDF browser pool)
 
 ---
 
 ## Common Assessment Features
 
-All assessment types share these core features, implemented in **`student-node/app/models/Assessment.js`** (13,350 lines, 109 methods).
+All assessment types share these core features, implemented in **`student-node/app/models/Assessment.js`** (~14,100 lines, 109 methods).
 
 ### Student-Facing Lifecycle
 
@@ -62,6 +63,7 @@ All assessment types share these core features, implemented in **`student-node/a
 | `generateAptitudePDFReport(...)` | Aptitude report with topic-level scores and progression |
 | `generateBehaviorPDFReport(...)` | Behavior assessment report |
 | `generateRoleBasedReport(...)` | Role-based report with skill scores and AI feedback |
+| `getSharedBrowser()` | Shared Puppeteer browser pool — reuses a single Chromium instance across all PDF generations instead of launching a new browser per report. All report methods use `page = browser.newPage()` + `page.close()` |
 | `getAssessmentReport({ assessment_assigned_id })` | Fetches structured report data (for frontend display, not PDF). Returns `assessmentSetCefrLevel` using previous `suggestedCefr` for non-diagnosis, `assessmentSet.cefrLevel` for diagnosis |
 
 ### Progression & Levels
