@@ -132,7 +132,7 @@ Same flow as above but queries `progression_history` with `is_practice = true` f
 ### 3. Question Delivery (Student Backend)
 
 #### `getCommunicationAssessmentQuestions()`
-**Path:** `student-node/app/models/Assessment.js` (line ~2274)
+**Path:** `student-node/app/models/Assessment.js` (line ~2262)
 
 **Key logic:**
 1. Receives `assessment_set_id` and `assessment_assigned_id`
@@ -188,12 +188,12 @@ Scoring happens in two layers: **Node.js orchestration** and **FastAPI AI analys
 ### 5. Final Score & CEFR Update
 
 #### `CalculateFinalScore()`
-**Path:** `student-node/app/models/Assessment.js` (line ~9385)
+**Path:** `student-node/app/models/Assessment.js` (line ~9557)
 
 Applies weighted formula to section scores (Video 40%, Reading 20%, Audio 10%, Writing 30%).
 
 #### `updateCurrCERFlevelOfStudent()`
-**Path:** `student-node/app/models/Assessment.js` (line ~9731)
+**Path:** `student-node/app/models/Assessment.js` (line ~9784)
 
 After scoring, updates the student's CEFR progression using a **rolling window of pairs** (2 assessments at the same CEFR level). This function is `await`ed (not fire-and-forget) because the cron job can retry failed calculations.
 
@@ -283,7 +283,7 @@ After scoring, updates the student's CEFR progression using a **rolling window o
 ### 6. Progression & Dashboard Data Sources
 
 #### `fetchCommunicationProgression()`
-**Path:** `student-node/app/models/Assessment.js` (line ~8907)
+**Path:** `student-node/app/models/Assessment.js` (line ~9050)
 
 Compares the student's **last two communication assessments** to show improvement:
 - Fetches the two most recent completed assessments at the same CEFR level
@@ -339,8 +339,8 @@ This distinction prevents confusion when viewing historical assessments where a 
 
 ### 8. Backfill API
 
-#### `POST /assessment/backfill-all-student-progression`
-**Handler:** `assessmentHandler.backfillAllStudentProgression`
+#### `POST /assessment/backfill-progression`
+**Handler:** `assessmentHandler.backfillProgressionHistory`
 **Method:** `CommunicationCalculations.backfillAllStudentProgression()`
 
 Recalculates all communication progression history for every student:
@@ -369,7 +369,7 @@ Use this after fixing progression/scoring bugs to recalculate all historical dat
 **Path:** `student-node/public/communicationReport.html`
 
 #### Generator — `generateCommunicationReport()`
-**Path:** `student-node/app/models/Assessment.js` (line ~7369)
+**Path:** `student-node/app/models/Assessment.js` (line ~7533)
 
 - Uses **Handlebars** template engine to render HTML
 - Converts HTML to PDF using Puppeteer
