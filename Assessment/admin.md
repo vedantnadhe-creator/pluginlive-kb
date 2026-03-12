@@ -108,7 +108,8 @@ Returns a buffer for download.
 
 | Function | Purpose |
 |----------|--------|
-| `getSubscribedInstitutes({ pageNo, pageLimit, searchBy, order, sort, type_name, isSubscribed, isTrial, states, cities })` | Lists institutes with subscriptions. Paginated, filterable by geography and subscription type |
+| `getSubscribedInstitutes({ pageNo, pageLimit, searchBy, order, sort, type_name, isSubscribed, isTrial, states, cities })` | Lists institutes with subscriptions. Deduplicated by `institute_id` using GROUP BY (not subscription_id). Returns aggregated tokens: `SUM(tokens_used)`, `SUM(token_limit)`, `MIN(start_date)`, `MAX(end_date)`. Uses `COUNT(DISTINCT institute_id)` for pagination counts. Also returns `institute_campus_id` for frontend navigation |
+| `getSubscribedCorporates(...)` | Lists corporates with subscriptions. Deduplicated by `corporate_id` using GROUP BY (same pattern as institutes). Uses `COUNT(DISTINCT corporate_id)` for pagination counts |
 | `getSubscriptionRenewalInstitutes(...)` | Lists institutes whose subscriptions are expiring soon |
 | `getSubscribedInstitutesStates()` | All distinct states of subscribed institutes (for filter dropdown) |
 | `getSubscribedInstitutesCities({ state })` | Cities within a state for subscribed institutes |
@@ -187,8 +188,9 @@ Adds new students to an **already-live** assessment. Accepts `assessmentInstitut
 #### One-Time Flow (`_addStudentsToOneTimeAssessment`)
 1. Gets `assessmentSetId` from existing assigned students
 2. Creates/resolves student records in batches of 10 (via `runWithConcurrency`)
-3. Batch inserts `assessmentAssignedStudent` records using `createMany({ skipDuplicates: true })`
-4. Sends reminder emails (non-critical — failures logged but don't fail the operation)
+3. **`degreeStreamMap` requirement:** student-node's `POST /students` API requires `degreeStreamMap: { degreeId, streamId }` as a **separate top-level body field** (not just inside `currentCourse`). The validation at `common.js:471-528` checks `req.body.degreeStreamMap?.degreeId && req.body.degreeStreamMap?.streamId` and returns 400 if both are missing. The `_addStudentsToOneTimeAssessment` method resolves degree/stream IDs with case-insensitive property access (handles both `DegreeId`/`degreeId` patterns from bulk upload data) and sets `userData.degreeStreamMap` before calling `StudentService.createPublicStudent()`.
+4. Batch inserts `assessmentAssignedStudent` records using `createMany({ skipDuplicates: true })`
+5. Sends reminder emails (non-critical — failures logged but don't fail the operation)
 
 #### Scheduled Flow (`_addStudentsToScheduledAssessment`)
 1. **Duplicate check** — batch raw SQL query checks if students already exist in any non-one-time assessment of the same type
@@ -213,8 +215,15 @@ The "Add Candidate" button appears in the **ACTIONS column** of the main assessm
 
 - Clicking opens `EnhancedBulkUploadDrawer` (reused from create assessment, `mode = 'addCandidate'`)
 - Supports manual entry and Excel upload
-- Calls `POST /assessment/addStudentsToAssessment` with `assessmentInstituteMapId` (one-time) or `scheduleId` (scheduled)
+- Calls `POST /assessment/addStudentsToAssessment`
 - Frontend integration in `InstituteAssessmentDashboard.js`
+
+**Three assessment routing paths (institute side):**
+- **Standalone/One-time** (`isStandalone || isOneTime || assessmentInstituteMapId`): Passes `assessmentInstituteMapId` in payload
+- **Scheduled** (`scheduleId`): Passes `scheduleId` in payload
+- **Corporate**: Always passes `assessmentCorporateMapId` directly
+
+The Add Candidate button in `UnifiedAssessmentTable` detects standalone/one-time records and passes `assessmentInstituteMapId` (not `scheduleId`) to the parent's `onAddCandidate` handler.
 
 Supports: Communication, Aptitude, Behavior, Role_Based
 

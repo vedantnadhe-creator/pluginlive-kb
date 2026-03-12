@@ -9,7 +9,7 @@
 **Module Root:** `admin-react/src/modules/Assessment/`
 
 | File | Purpose |
-|------|----------|
+|------|---------|
 | `index.js` | Main Assessment page -- tabs for institutes/corporates, routes to dashboards, handles assessment/diagnosis click routing |
 | `actions.js` | Redux action creators for fetching institutes, corporates, assessments, student data |
 | `reducers.js` | Redux reducer for assessment state |
@@ -19,7 +19,7 @@
 ### Partials
 
 | File | Purpose |
-|------|----------|
+|------|---------|
 | `Partials/ActiveCollegeList/index.js` | Institute list with AntdAvatar, search, pagination. Clicking opens InstituteAssessmentDashboard |
 | `Partials/ActiveCollegeList/InstituteAssessmentDashboard.js` | Per-institute assessment dashboard -- info cards, UnifiedAssessmentTable, Add Candidate drawer |
 | `Partials/ActiveCollegeList/InstituteAssessmentDetails.js` | Charts + cascading filters for a specific institute assessment |
@@ -35,7 +35,7 @@
 ### Shared Components
 
 | Component | File | Purpose |
-|-----------|------|----------|
+|-----------|------|---------|
 | `AssessmentProgressBar` | `components/AssessmentProgressBar.js` | Progress bar showing sent vs taken counts (active assessments) |
 | `CompletedAssessmentProgressBar` | `components/CompletedAssessmentProgressBar.js` | Progress bar for completed assessments |
 | `InfoCardsUpdate` | `components/InfoCardsUpdate/cardDetails.js` | Dashboard info cards (total candidates, sent, taken, expired) |
@@ -52,7 +52,7 @@ The core assessment listing table used by both institute and corporate dashboard
 ### Props
 
 | Prop | Type | Purpose |
-|------|------|----------|
+|------|------|---------|
 | `activeAssessments` | Array | Currently active assessments |
 | `completedAssessments` | Array | Completed assessments |
 | `loading` | Boolean | Spinner state |
@@ -68,7 +68,7 @@ The core assessment listing table used by both institute and corporate dashboard
 The table handles both institute and corporate assessment records with different field names:
 
 | Field | Institute Record | Corporate Record |
-|-------|-----------------|-------------------|
+|-------|-----------------|------------------|
 | Map ID | `latestAssessmentInstituteMapId` | `latestAssessmentCorporateMapId` |
 | Assessment ID | `assessmentInstituteMapId` | `assessmentCorporateMapId` |
 | Name | `scheduleName` | `name` |
@@ -96,7 +96,7 @@ The table handles both institute and corporate assessment records with different
 ### Props
 
 | Prop | Type | Purpose |
-|------|------|----------|
+|------|------|---------|
 | `visible` | Boolean | Drawer visibility |
 | `student` | Object | Student data with scores |
 | `isDiagnosis` | Boolean | Whether this is a diagnosis report |
@@ -335,27 +335,41 @@ Both `admin-react/InstituteAssessmentDetails.js` and `institute-react/Assessment
 The Assessment module's institute and corporate lists only show **subscribed** entities.
 
 ### ActiveCollegeList (`Partials/ActiveCollegeList/index.js`)
+
+Uses admin-node API (NOT ElasticSearch):
 ```javascript
-const params = { pageLimit, pageNo: page, subscription: true }
-const response = await elasticSearchRequest.get('/institutes', { params })
+const params = { pageNo: page, pageLimit, searchBy, order, sort, type_name, isSubscribed, isTrial, states, cities }
+const response = await axios.get(`${baseUrl}/assessment/getSubscribedInstitutes`, { params })
 ```
+
+**ID mapping:** The response maps to `instituteCampus` array with `id` field set to `institute_campus_id || institute_id` — this `id` is required for the dashboard's API calls to fire correctly.
+
+**Pagination with search:** Uses `data.currentCount` (filtered count) for pagination total, falling back to `data.count` (unfiltered total). This ensures "Showing X of Y" reflects search results, not total count.
 
 ### ActiveCorporateList (`Partials/ActiveCorporateList/index.js`)
+
+Uses admin-node API:
 ```javascript
-const params = { pageLimit, currentPage: page, subscription: true }
-const response = await elasticSearchRequest.get('/corporates/list', { params })
+const response = await axios.get(`${baseUrl}/assessment/getSubscribedCorporates`, { params })
 ```
 
-**Note:** Institute uses `pageNo`, Corporate uses `currentPage` as the pagination parameter name.
-
-Both use `elasticSearchRequest` (elasticsearch API) with `subscription: true` to filter to subscribed entities only. This matches how the Institute and Corporate modules handle subscription filtering.
-
-### Assessment-Specific Admin-Node Endpoints
-These existing endpoints also filter by subscription:
-- `GET /assessment/getSubscribedInstitutes` — fetches institutes with assessment subscription
+### Admin-Node Subscription Endpoints
+- `GET /assessment/getSubscribedInstitutes` — fetches institutes with assessment subscriptions (deduplicated by `institute_id`)
+- `GET /assessment/getSubscribedCorporates` — fetches corporates with assessment subscriptions (deduplicated by `corporate_id`)
 - `GET /assessment/getSubscribedAssessmentByInstitute` — assessments for a specific subscribed institute
 - `GET /assessment/getSubscribedAssessmentByCorporate` — assessments for a specific subscribed corporate
-- `GET /assessment/getSubscribedCorporateCompaniesByCity` — corporates filtered by city
+
+### Institute ID vs Institute Campus ID
+
+**Critical distinction:** The admin API returns both `institute_id` and `institute_campus_id`. These serve different purposes:
+- `institute_id` — used for API calls to fetch assessments (`getSubscribedAssessmentByInstitute`, `getschedulesInfo`)
+- `institute_campus_id` — used as the `id` in `instituteCampus` array for dashboard navigation
+
+In `InstituteAssessmentDashboard.js`, ID extraction follows this pattern:
+```javascript
+const instituteId = institute?.institute_id || institute?.id          // For API calls
+const instituteCampusId = institute?.instituteCampus?.[0]?.id || institute?.id  // For dashboard display
+```
 
 ---
 

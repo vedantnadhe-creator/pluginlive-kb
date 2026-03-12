@@ -25,6 +25,15 @@ This split exists because Communication and Aptitude are "standard" types with s
 
 Fetches all assessment schedules and standalone assessments for the institute dashboard.
 
+**Pagination:** Applied at **application level** after combining all three assessment source types. The SQL query for scheduled assessments does NOT use LIMIT/OFFSET — all results are fetched, combined with one-time and standalone assessments, sorted by `created_at DESC`, then sliced for the requested page. This is necessary because one-time and standalone assessments come from separate query branches and cannot be paginated at SQL level together with scheduled assessments.
+
+```javascript
+// After combining all results:
+const finalTotalCount = result.length;
+const totalPagesFinal = Math.ceil(finalTotalCount / pageSize);
+const paginatedResult = result.slice(offset, offset + pageSize);
+```
+
 **Key logic in Step 4 SQL query:**
 ```sql
 WHERE aim.schedule_id = ANY($1::uuid[])           -- scheduled assessments
