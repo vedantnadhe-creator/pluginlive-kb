@@ -40,6 +40,37 @@ WHERE aim.schedule_id = ANY($1::uuid[])           -- scheduled assessments
 - **Diagnosis**: Communication/Aptitude with `schedule_id = NULL` and `is_one_time = false` — these are auto-created diagnosis assessments that belong to schedules
 - **Standalone other types**: Role_Based, Custom, Behavior, AI_Interview, etc. with `schedule_id = NULL` and `is_one_time = false` — these are NOT diagnosis; they never have schedules. Shown as individual rows.
 
+### Diagnosis Count Query (Step 5 — `diagnosisCompleted` / `totalDiagnosisTaken`)
+
+Counts how many students completed diagnosis (submitted >= 2 assessments of the same type for the institute).
+
+**Critical:** The query MUST use `INNER JOIN` on `assessment_institute_map` and filter by `aim.institute_id` to prevent corporate assessments from leaking into the count. Corporate assessments have `assessment_institute_map_id = NULL`, so a `LEFT JOIN` with `aim.is_one_time IS NULL` would match them (NULL evaluates to true).
+
+```sql
+SELECT aas.primary_email, COUNT(*) as submitted_count
+FROM assessment.assessment_assigned_students aas
+JOIN assessment.assessment_sets aset ON aas.assessment_set_id = aset.assessment_set_id
+JOIN assessment.assessment_institute_map aim ON aas.assessment_institute_map_id = aim.assessment_institute_map_id
+WHERE aas.primary_email = ANY($1::text[])
+  AND aset.assessment_type_id = $2::uuid
+  AND aas.submitted = true
+  AND aim.institute_id = $3::text
+  AND (aim.is_one_time IS NULL OR aim.is_one_time = false)
+GROUP BY aas.primary_email
+```
+
+**Bug fixed (2026-03-12):** Previously used `LEFT JOIN` without `institute_id` filter — corporate assessment submissions were counted toward institute diagnosis totals.
+
+### TPO Student List: Communication/Aptitude Taken/Sent
+
+**File:** `student-node/app/models/TpoDashBoard.js` — `getStudentListForTpoDashboard()`
+
+The per-student communication/aptitude taken/sent counts shown in the "Total Candidates" list are correctly isolated. All four queries (commSent, commTaken, aptSent, aptTaken) filter by:
+```javascript
+assessmentInstituteMap: { instituteId: instituteId, isOneTime: false }
+```
+This ensures corporate assessments are excluded.
+
 ### `getCorporateAssessmentStudents(instituteId, assessmentMapId, ...)`
 
 Fetches student list for a specific assessment (used by corporate view). Includes scores for all types.
