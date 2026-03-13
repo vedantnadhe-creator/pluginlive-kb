@@ -76,7 +76,7 @@ Assignment flow:
 9. Creates `assessmentSet` → `assessmentQuestionMap` (maps selected questions to set)
 10. Creates `customConfigSetMap` (links config to set)
 11. Creates `assessmentAssignedStudent` records with `assessmentSetId`
-12. Processes students in batches of 10
+12. Processes students in **dynamic batches** (see Batch Size Logic below)
 
 **`getCustomAssessmentReport({ assessmentAssignedId })`**
 - Generates PDF report using Handlebars template and Puppeteer
@@ -88,6 +88,60 @@ Assignment flow:
 - `buildSectionConfigMap(assessmentConfig)` — transforms config array into `Map<sectionId, config>`
 - `chunkArray(items, size)` — splits array into chunks for batch processing
 - `pickRandomSubset(items, limit)` — Fisher-Yates shuffle + slice for random selection
+
+---
+
+### Batch Size Logic (Dynamic)
+
+The batch size determines how many students share the same question set. It is **dynamically calculated** as 10% of total students (minimum 1):
+
+```js
+const BATCH_SIZE = Math.max(1, Math.ceil(normalizedStudents.length * 0.10));
+```
+
+| Total Students | Batch Size | Unique Sets | Max % Sharing Same Set |
+|---------------|-----------|-------------|------------------------|
+| 100 | 10 | 10 | 10% |
+| 50 | 5 | 10 | 10% |
+| 28 | 3 | 10 (last batch has 1) | ~10.7% |
+| 10 | 1 | 10 | 10% |
+| 5 | 1 | 5 | 20% (minimum 1 per batch) |
+| 1 | 1 | 1 | 100% |
+
+**Key rules:**
+- `Math.ceil` rounds up — ensures no more than ~10% share a set
+- `Math.max(1, ...)` ensures at least 1 student per batch (no empty batches)
+- Last batch may have fewer students than `BATCH_SIZE` (handled naturally by `chunkArray`)
+- Each batch gets a **unique randomly-selected question set** per section
+
+---
+
+### Question Order Shuffling (Client-Side)
+
+Even when students share the same question set (same batch), **question order is randomized per student** on the frontend using Fisher-Yates shuffle:
+
+**File:** `Assessment-React/src/modules/Assessments/Partials/customassmt/assessment.js`
+
+```js
+function shuffleArray(array) {
+  const shuffled = [...array]
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]]
+  }
+  return shuffled
+}
+
+const sections = useMemo(() => {
+  const raw = questions?.sections || []
+  return raw.map(section => ({
+    ...section,
+    questions: shuffleArray(section.questions || []),
+  }))
+}, [questions])
+```
+
+**Effect:** Questions within each section are shuffled when the assessment component mounts. Two students with the same `assessmentSetId` will see the same questions but in a **different random order**.
 
 ---
 
@@ -108,13 +162,14 @@ Assignment flow:
 |------|--------|
 | `index.js` | Entry point — assessment name/deadline display, ConfigCheck (camera/mic), BiometricCheck, fullscreen + start |
 | `instruction.js` | Instructions page with fullscreen request |
-| `assessment.js` | **Main assessment UI** — fullscreen MCQ interface with collapsible sidebar, section-based navigation, per-section timer, markdown rendering, image support, tab-switch violation detection (max 3 warnings → auto-submit) |
+| `assessment.js` | **Main assessment UI** — fullscreen MCQ interface with collapsible sidebar, section-based navigation, per-section timer, markdown rendering, image support, tab-switch violation detection (max 3 warnings → auto-submit), **client-side question shuffle** |
 | `completion.js` | Thank-you page — exits fullscreen, shows "result being processed" message, Next button reloads page |
 | `styles.js` | Shared styled-components |
 
 **Key behaviors in `assessment.js`:**
 - Section-based layout — questions grouped by custom section in sidebar
 - Per-section time tracking
+- **Question order shuffled per student** via Fisher-Yates on component mount
 - Question status indicators (answered/skipped/current/unanswered)
 - Image rendering for question images and option images (presigned URLs)
 - Anti-cheat: fullscreen enforcement, tab-switch detection (MAX_TAB_SWITCH_WARNINGS = 3)
@@ -198,7 +253,9 @@ Report logic in `getCustomAssessmentReport()` in `admin-node/app/models/customAs
 
 - **Fully Admin-Controlled** — unlike other assessment types, the admin creates all questions manually. No AI generation.
 - **Section-Based** — each section has independent marks, time limit, and question count. Sections are presented sequentially.
-- **Random Subset** — if a section has more questions than `numQuestions`, a random subset is selected per student via Fisher-Yates shuffle.
+- **Random Subset** — if a section has more questions than `numQuestions`, a random subset is selected per student batch via Fisher-Yates shuffle.
+- **Dynamic Batch Size** — batch size is 10% of total students (min 1). Ensures no more than ~10% of students share the exact same question set.
+- **Client-Side Question Shuffle** — even within the same batch, each student sees questions in a different random order (Fisher-Yates on component mount).
 - **Image Support** — questions and options can have images stored in OCI Object Storage, delivered via presigned URLs.
 - **Auto-Registration** — students are automatically created if they don't exist when assigned via `createStudentsIfNeeded()`.
 - **Simple Scoring** — no difficulty weighting, no negative marking, no levels, no progression tracking.
