@@ -1,0 +1,47 @@
+{
+  "main": {
+    "id": "main",
+    "type": "split",
+    "children": [
+      {
+        "id": "leaf",
+        "type": "leaf",
+        "state": {
+          "type": "markdown",
+          "state": {
+            "file": "Home.md",
+            "mode": "preview"
+          }
+        }
+      }
+    ]
+  },
+  "left": {
+    "id": "left",
+    "type": "split",
+    "children": [
+      {
+        "id": "file-explorer",
+        "type": "leaf",
+        "state": {
+          "type": "file-explorer"
+        }
+      }
+    ],
+    "collapsed": false
+  },
+  "right": {
+    "id": "right",
+    "type": "split",
+    "children": [
+      {
+        "id": "backlink",
+        "type": "leaf",
+        "state": {
+          "type": "backlink"
+        }
+      }
+    ],
+    "collapsed": false
+  }
+}

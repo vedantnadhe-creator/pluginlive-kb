@@ -1,0 +1,9 @@
+{
+  "id": "obsidian-git",
+  "name": "Git",
+  "version": "2.27.0",
+  "description": "Integrate Git version control with automatic backup and more.",
+  "author": "Vinzent03",
+  "authorUrl": "https://github.com/Vinzent03",
+  "isDesktopOnly": false
+}
