@@ -14,6 +14,5 @@ When working on a feature, check the relevant file here **before asking the user
 - `Assessment/admin.md` — admin panel, assessment management, TPO/corporate flows
 - `Assessment/admin-frontend.md` — admin-react Assessment module (UnifiedAssessmentTable, StudentReport, subscription filtering, heading display)
 - `Assessment/institute.md` — institute TPO view, two-API architecture, score format differences, PDF browser pool
-- `Obsidian.md` — Obsidian knowledge base tool: setup, pricing, plugins, team collaboration, vault structure
 
 Read only what's relevant to the current task. Do not read all files upfront.
