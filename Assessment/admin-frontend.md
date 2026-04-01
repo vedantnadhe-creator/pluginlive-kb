@@ -9,7 +9,7 @@
 **Module Root:** `admin-react/src/modules/Assessment/`
 
 | File | Purpose |
-|------|---------|
+|------|--------|
 | `index.js` | Main Assessment page -- tabs for institutes/corporates, routes to dashboards, handles assessment/diagnosis click routing |
 | `actions.js` | Redux action creators for fetching institutes, corporates, assessments, student data |
 | `reducers.js` | Redux reducer for assessment state |
@@ -19,7 +19,7 @@
 ### Partials
 
 | File | Purpose |
-|------|---------|
+|------|--------|
 | `Partials/ActiveCollegeList/index.js` | Institute list with AntdAvatar, search, pagination. Clicking opens InstituteAssessmentDashboard |
 | `Partials/ActiveCollegeList/InstituteAssessmentDashboard.js` | Per-institute assessment dashboard -- info cards, UnifiedAssessmentTable, Add Candidate drawer |
 | `Partials/ActiveCollegeList/InstituteAssessmentDetails.js` | Charts + cascading filters for a specific institute assessment |
@@ -35,7 +35,7 @@
 ### Shared Components
 
 | Component | File | Purpose |
-|-----------|------|---------|
+|-----------|------|--------|
 | `AssessmentProgressBar` | `components/AssessmentProgressBar.js` | Progress bar showing sent vs taken counts (active assessments) |
 | `CompletedAssessmentProgressBar` | `components/CompletedAssessmentProgressBar.js` | Progress bar for completed assessments |
 | `InfoCardsUpdate` | `components/InfoCardsUpdate/cardDetails.js` | Dashboard info cards (total candidates, sent, taken, expired) |
@@ -52,7 +52,7 @@ The core assessment listing table used by both institute and corporate dashboard
 ### Props
 
 | Prop | Type | Purpose |
-|------|------|---------|
+|------|------|--------|
 | `activeAssessments` | Array | Currently active assessments |
 | `completedAssessments` | Array | Completed assessments |
 | `loading` | Boolean | Spinner state |
@@ -96,7 +96,7 @@ The table handles both institute and corporate assessment records with different
 ### Props
 
 | Prop | Type | Purpose |
-|------|------|---------|
+|------|------|--------|
 | `visible` | Boolean | Drawer visibility |
 | `student` | Object | Student data with scores |
 | `isDiagnosis` | Boolean | Whether this is a diagnosis report |

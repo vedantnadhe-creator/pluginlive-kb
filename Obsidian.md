@@ -71,7 +71,7 @@ Our existing `pluginlive-kb` repo is already Markdown files. **Migration is esse
 ## Pricing (as of March 2026)
 
 | Plan | Cost | What You Get |
-|------|------|--------------|
+|------|------|---------------|
 | **Personal** | **Free** | All features, plugins, themes — personal & commercial use |
 | **Sync** | $4/mo (annual) or $5/mo | End-to-end encrypted sync across devices |
 | **Publish** | $8/mo (annual) or $10/mo | Turn notes into a public website / wiki |
