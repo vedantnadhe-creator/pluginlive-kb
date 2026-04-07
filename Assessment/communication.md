@@ -11,7 +11,8 @@
 | **Assessment Type** | `Communication` |
 | **CEFR Levels** | A1, A2, B1, B2, C1, C2 |
 | **Domains** | Universal (default), or industry-specific |
-| **Scoring Engine** | FastAPI AI Engine (Gemini/Groq + Azure Speech SDK) |
+| **Scoring Engine** | FastAPI AI Engine (Gemini/Groq + Azure Speech SDK + Deepgram + Sarvam AI) |
+| **Speaking Language** | English (default), Hindi, Hinglish, Tamil, Telugu, Kannada, Malayalam, Bengali, Marathi, Gujarati, Punjabi, Odia, Assamese, Urdu |
 | **Report Format** | PDF (HTML-based via Handlebars) |
 
 ---
@@ -22,7 +23,7 @@
 |---|---------|---------------|----------------|
 | 1 | **Paragraph Reading** | Reading | Azure Speech SDK (pronunciation, fluency, completeness, prosody) + MCQ accuracy |
 | 2 | **Audio Question** | Listening | MCQ-based (correct/total) |
-| 3 | **Video Response** | Speaking | FastAPI AI analysis of recorded video (grammar, content, fluency) |
+| 3 | **Video Response** | Speaking | English → Deepgram transcription + AI analysis; Non-English → Sarvam AI transcription + Gemini evaluation |
 | 4 | **Question Based Response** | Speaking/Writing | AI evaluation of image description text (grammar, phrasing, vocabulary, coherence) |
 | 5 | **Email Writing** | Writing | AI evaluation (phrasing, voice/tone, format, grammar, spelling) |
 | 6 | **Dictation** | Writing | Text comparison (word accuracy, character accuracy, punctuation, capitalization) |
@@ -76,10 +77,16 @@ flowchart TD
 #### Frontend — `AssessmentSelect.js`
 **Path:** `admin-react/src/modules/Assessment/Partials/CreateAssessment/AssessmentSelect.js`
 
-- Admin selects **assessment type** = `Communication`
-- Configures: name, start/end date & time, CEFR level, domain, proctoring, student list
+- Admin selects **assessment type** = `Communication` (Hinglish type merged into Communication)
+- Configures: name, start/end date & time, CEFR level, proctoring, student list
+- **Speaking Evaluation Language** (corporate only): English (default), Hindi, Hinglish, Tamil, Telugu, Kannada, Malayalam, Bengali, Marathi, Gujarati, Punjabi, Odia, Assamese, Urdu
+- **Topic** (optional): Free-text topic (e.g., "Customer Care", "BFSI"). When provided, questions are generated on-the-fly for that topic.
+- **Generate Questions button**: Only shown when a topic is entered. Admin must generate and preview questions before saving.
+- **Section toggles**: Admin can enable/disable individual sections (Paragraph Reading, Audio Question, Video Response, Writing modules)
 - Supports **one-time** or **scheduled** (daily/weekly/monthly/custom) distribution
 - Dispatches `assignCommunicationAssessment` action to backend
+
+> **Hinglish merger:** The separate `Hinglish` assessment type in the admin UI has been removed. All Hinglish functionality is now under `Communication` with `responseLanguage` set to the appropriate language. The backend accepts both `Communication` and `Hinglish` type names for backward compatibility.
 
 #### Backend — `Assessment.js` → `assignCommunicationAssessment()`
 **Path:** `admin-node/app/models/Assessment.js` (line ~4519)
@@ -166,16 +173,34 @@ Scoring happens in two layers: **Node.js orchestration** and **FastAPI AI analys
 | `calculateSentenceBuildScore()` | Local scoring — normalizes and compares word order against correct answer. |
 | `storeCommunicationScores()` | Stores all section scores in `communicationScores` table. Handles retakes (dedup). |
 
-#### AI Scoring Engine — `communication.py`
-**Path:** `fastapi-ai-engine/routers/communication.py`
+#### AI Scoring Engine — `communication.py` + `hinglish.py`
+**Paths:** `fastapi-ai-engine/routers/communication.py`, `fastapi-ai-engine/routers/hinglish.py`
 
-| Endpoint | Purpose |
-|----------|--------|
-| `generate_questions` | Generates question sets using Gemini/Groq AI based on CEFR level and domain |
-| `calculate_paragraph_reading_audio_score` | Uses **Azure Speech SDK** for pronunciation assessment — measures accuracy, completeness, fluency, prosody |
-| `calculate_question_based_response_score` | AI evaluation of image description — grammar, phrasing, spelling, vocabulary, coherence |
-| `calculate_email_writing_score` | AI evaluation of email — phrasing, voice/tone, format, grammar, spelling |
-| `calculate_dictation_score_endpoint` | Compares user text vs reference — word accuracy, character accuracy, punctuation, capitalization |
+| Endpoint | Router | Purpose |
+|----------|--------|--------|
+| `generate_questions` | communication | Generates question sets using Gemini AI based on CEFR level and domain |
+| `generate-questions` | hinglish | Generates topic-based question sets (used for both English and non-English when topic/sections specified) |
+| `calculate_paragraph_reading_audio_score` | communication | Uses **Azure Speech SDK** for pronunciation assessment — measures accuracy, completeness, fluency, prosody |
+| `calculate-video-question-score` | communication | Uses **Deepgram** for English video response scoring |
+| `calculate-video-response-score` | hinglish | Uses **Sarvam AI** transcription + **Gemini** evaluation for non-English video response scoring |
+| `calculate_question_based_response_score` | communication | AI evaluation of image description — grammar, phrasing, spelling, vocabulary, coherence |
+| `calculate_email_writing_score` | communication | AI evaluation of email — phrasing, voice/tone, format, grammar, spelling |
+| `calculate_dictation_score_endpoint` | communication | Compares user text vs reference — word accuracy, character accuracy, punctuation, capitalization |
+
+**STT Routing (Speech-to-Text):**
+
+| Section | STT Engine | Reason |
+|---------|-----------|--------|
+| **Paragraph Reading** | Azure Speech SDK (always) | Pronunciation assessment requires word-level accuracy/fluency/prosody analysis. The paragraph text is always in English regardless of `responseLanguage`. |
+| **Video Response (English)** | Deepgram (nova-2) | English transcription + AI grammar/fluency/topic analysis |
+| **Video Response (non-English)** | Sarvam AI batch transcription + Gemini evaluation | Sarvam supports Hindi, Hinglish, Tamil, Telugu, etc. Gemini evaluates content_relevance (30%), fluency (25%), vocabulary (20%), grammar_flexibility (15%), clarity (10%). |
+
+> **Important:** Sarvam/Gemini returns scores on a 0-1 scale (e.g., 0.92 for 92%). The normalization in `CommunicationCalculations.js` must keep scores on the 0-1 scale (matching Deepgram) — do NOT multiply by 100 in normalization. The `* 100` for display happens downstream in `storeCommunicationScores()` where `videoResponseScore.total_score * 100` converts to percentage.
+
+**Audio file handling:**
+- Oracle Object Storage may return wrong `Content-Type` for `.webm` files (e.g., `audio/mpeg` instead of `audio/webm`)
+- `communication.py` prefers **URL file extension** over Content-Type header to determine the correct audio format
+- Supported extensions: `.webm`, `.mp3`, `.wav`, `.ogg`, `.mp4`, `.m4a`
 
 **Speech scoring weights (Paragraph Reading):**
 - Pronunciation (accuracy): 25%
@@ -192,30 +217,64 @@ Scoring happens in two layers: **Node.js orchestration** and **FastAPI AI analys
 
 Applies weighted formula to section scores (Video 40%, Reading 20%, Audio 10%, Writing 30%).
 
-#### `updateCurrCERFlevelOfStudent()`
-**Path:** `student-node/app/models/Assessment.js` (line ~9784)
+#### `updateCurrCERFlevelOfStudent()` — Mini-Backfill Architecture
+**Path:** `student-node/app/models/Assessment.js` (line ~9876)
 
-After scoring, updates the student's CEFR progression using a **rolling window of pairs** (2 assessments at the same CEFR level). This function is `await`ed (not fire-and-forget) because the cron job can retry failed calculations.
+After scoring, updates the student's CEFR progression using a **rolling window of pairs**. Uses a **mini-backfill** approach: instead of fetching only the last 2 assessments, it recovers chain state from the DB and processes ALL pending (`is_calc=false`) assessments in a backfill-style loop. This makes the live function algorithmically identical to the backfill and self-healing — if prior invocations failed, subsequent calls automatically catch up.
 
-**Step-by-step process:**
+This function is `await`ed (not fire-and-forget) because the cron job can retry failed calculations.
 
-1. **Get current CEFR level** from `studentPersonalProfile.AssessmentCEFR`
-2. **Fetch latest progression record** to get `carriedSuggestedCefr` (the previous suggestedCefr to carry forward)
-3. **Fetch last two uncalculated assessments** at that CEFR level (ordered by `submittedAt`)
-4. **Single assessment (A1 of pair):**
-   - Creates ProgressionHistory with `isSecondInPair = false`
-   - **Sets `suggestedCefr = carriedSuggestedCefr`** (carry-forward from previous pair's A2 record)
-   - Carries forward previous progression level, no NPS change
-   - Marks `isCalculated = true` on this assessment only
-5. **Pair complete (A1 + A2):**
-   - Updates the A1 record's `suggestedCefr = carriedSuggestedCefr` (carry-forward)
-   - Calculates pair average: `(finalScore1 + finalScore2) / 2`
-   - NPS formula: `((CefrRankIndex × 100) + avgScore) / 6` (0–100 scale)
-   - Applies **progression rules** (see below)
-   - Creates ProgressionHistory for A2 with `isSecondInPair = true` and **newly derived `suggestedCefr`**
-   - Updates `studentPersonalProfile.AssessmentCEFR` to `suggestedCefr`
+**Rolling window model:**
 
-> **suggestedCefr Carry-Forward Rule:** `suggestedCefr` is only _derived_ when A2 (second-in-pair) completes. For A1 records and incomplete pairs, `suggestedCefr` carries forward from the previous pair's A2 value. This ensures `suggestedCefr` is **never null** except for the very first assessment (which has no previous pair). This is critical because `suggestedCefr` is used for assignment-level determination — a null value would cause fallback to stale data.
+```
+Assessments:  1    2    3    4    5    6
+              └─pair─┘
+                   └─pair─┘
+                        └─pair─┘
+                             └─pair─┘
+                                  └─pair─┘
+```
+
+Pairs overlap: (1,2), (2,3), (3,4), etc. When a pair completes and level **stays same**, the newer assessment (A2) is reused as A1 of the next pair. When level **changes**, both are consumed and the next pair starts fresh.
+
+**Step-by-step process (mini-backfill):**
+
+1. **QUERY 1 — Recover chain state** from the latest completed A2 (`isSecondInPair: true`, ordered `submittedAt DESC`):
+   - `previousProgressionLevel` = A2's `assessmentCefr` (or `practiceCefr`)
+   - `effectiveCefrLevel` = A2's `suggestedCefr` — drives what CEFR level to use for pending assessments
+   - `latestNPS` = A2's NPS score — used for carry-forward on fresh starts
+   - `pairCount` = A2's `pairNumber`
+2. **QUERY 2 — Fetch ALL pending assessments** — `is_calc = false` AND `scoresCalculated = true` AND `status = COMPLETED`, ordered `submittedAt ASC`. Only 2 queries total (optimized — does NOT fetch all historical assessments).
+3. **Identify reused A2** — if the latest A2's `assessmentAssignedId` exists in the pending list, it was reused from the rolling window. Set it as `unresolvedAssessment` (A1 of next pair) and process remaining assessments after it.
+4. **Process chain in a loop** (matching backfill's `processProgressionChain` exactly):
+   - **A1 path** (no unresolved, or level mismatch): Save incomplete pair with carry-forward values and bridge NPS (see below). Set as new `unresolvedAssessment`.
+   - **A2 path** (unresolved exists at same level): Complete pair via `$transaction` (atomic A1 + A2 upsert), THEN mark `is_calc`. Apply progression rules, update chain state, continue loop.
+5. **Profile update** — once at end, using final `suggestedCefr` from the last completed pair.
+
+**Execution order guarantee (data integrity):**
+- Progression history is written FIRST via Prisma `$transaction([upsert A1, upsert A2])`
+- `is_calc = true` is marked AFTER the transaction succeeds
+- This prevents the old bug where `is_calc` was marked before history was written, leaving orphaned assessments with no progression record
+
+**Bridge NPS — 3-path logic on A1 records:**
+
+When an assessment enters the A1 path (incomplete pair), NPS is determined by one of three paths:
+
+| Path | Condition | NPS Value |
+|------|-----------|----------|
+| **PATH 1: Bridge** | `unresolvedAssessment` exists AND its level differs from current | Average of individual NPS at each level: `avg(NPS(oldLevel, oldScore), NPS(newLevel, newScore))` |
+| **PATH 2: Carry** | No `unresolvedAssessment` AND `previousProgressionLevel` exists (fresh start after clean break) | `latestNPS` from previous pair's A2 |
+| **PATH 3: First-ever** | No `unresolvedAssessment` AND no `previousProgressionLevel` | `null` |
+
+> **Bridge NPS detail (PATH 1):** When a student's effective CEFR changes between two assessments that can't pair (level mismatch), the system calculates individual NPS at each level separately, then averages them. This matches the backfill's behavior exactly. Example: unresolved A1 at A2 level scored 75, new assessment at B1 level scored 80 → `bridgeNPS = avg(NPS("A2", 75), NPS("B1", 80))`.
+
+> **Rolling window correctness:** The OLDER assessment (A1) is always consumed (`is_calc=true`), the NEWER one (A2) stays for reuse. This ensures pairs chain as (1,2), (2,3), (3,4). If the newer were consumed instead, the older would become a "zombie anchor" that perpetually pairs with every new assessment.
+
+> **Self-healing recovery:** If multiple assessments are pending (e.g., due to prior failures), a single invocation processes them all in chronological order, creating multiple pairs if possible. For example, 3 pending assessments at the same level produce 2 rolling pairs in one call.
+
+> **suggestedCefr Carry-Forward Rule:** `suggestedCefr` is only _derived_ when A2 (second-in-pair) completes. For A1 records and incomplete pairs, `suggestedCefr` carries forward `effectiveCefrLevel` from the previous pair's A2. This ensures `suggestedCefr` is **never null** except for the very first assessment (which has no previous pair). This is critical because `suggestedCefr` is used for assignment-level determination — a null value would cause fallback to stale data.
+
+> **assessmentCefr Carry-Forward Rule:** `assessmentCefr` (confirmed progression level) is only _derived_ when A2 completes a pair. For A1 records, `assessmentCefr` carries forward `previousProgressionLevel` from the latest completed A2 record. Only null on the very first assessment.
 
 **Progression Rules:**
 
@@ -246,9 +305,10 @@ After scoring, updates the student's CEFR progression using a **rolling window o
 - No-downgrade applied: `suggestedCefr = max(calculatedNewLevel, previousProgressionLevel)`
 - Written to profile as `AssessmentCEFR` — drives next test set assignment
 
-**Rolling Window Pair Marking:**
-- Same CEFR level as previous pair → only the A1 assessment resets the pair counter
-- CEFR level changed since previous pair → both A1 and A2 are marked (fresh pair at new level)
+**Rolling Window Pair Marking (`is_calc` flag on `assessmentAssignedStudent`):**
+- **Level same:** Mark assessment2 (older/A1) `is_calc = true` (consumed). Assessment1 (newer/A2) stays `is_calc = false` → reused as A1 of next pair. Produces chain: (1,2), (2,3), (3,4)...
+- **Level changed:** Mark **both** `is_calc = true` (clean break). Next assessment starts a fresh pair at the new level.
+- The mini-backfill queries all `is_calc = false` assessments (ordered `submittedAt ASC`) and identifies the reused A2 by matching the latest A2 progression history's `assessmentAssignedId` against the pending list.
 
 **CEFR Mapping (Assessment mode)** — `newCERFmapping.js`:
 
@@ -270,7 +330,7 @@ After scoring, updates the student's CEFR progression using a **rolling window o
 | `assessmentCefr` | Confirmed progression level (source of truth for "current level") |
 | `suggestedCefr` | Level that drives next test assignment. **Derived** on A2 records; **carried forward** on A1 records from previous pair's A2. Only null on the very first assessment. |
 | `assessmentCefrAtTime` | Student's CEFR at the time of this assessment |
-| `assessmentCommunicationProgressScore` | NPS score |
+| `assessmentCommunicationProgressScore` | NPS score. On A2 records: rolling NPS from pair average. On A1 records: bridge NPS (PATH 1), carried NPS (PATH 2), or null (PATH 3 — first-ever). |
 | `isSecondInPair` | `true` for A2 (pair complete), `false` for A1 |
 | `pairNumber` | Pair counter |
 | `pairAverageScore` | Average of the two assessments in the pair |
@@ -345,17 +405,29 @@ This distinction prevents confusion when viewing historical assessments where a 
 
 Recalculates all communication progression history for every student:
 1. Finds all students with calculated communication assessments
-2. For each student, fetches all assessments ordered by `submittedAt`
+2. For each student, fetches all assessments ordered by `submittedAt ASC` (chronological)
 3. Separates into practice vs assessment chains via `processProgressionChain()`
 4. Replays each chain: rebuilds rolling window pairs, NPS, progression levels, and suggestedCefr
-5. Deletes old `ProgressionHistory` communication records and creates new ones
-6. Updates `studentPersonalProfile.AssessmentCEFR` (or `PracticeCEFR`) with final state
+5. Upserts `ProgressionHistory` records by `assessmentAssignedId`
+6. **Sets `is_calc = true`** on consumed assessments (older/A1 always; newer/A2 only if level changed) — ensures the live function doesn't re-pair already-processed assessments
+7. Updates `studentPersonalProfile.AssessmentCEFR` (or `PracticeCEFR`) with final state
+
+**Rolling window in backfill (`processProgressionChain`):**
+- Tracks `unresolvedAssessment` (the pending A1) across the chain
+- When a pair completes and level stays same: `unresolvedAssessment = currentAssessment` (newer becomes A1 of next pair)
+- When level changes: `unresolvedAssessment = null` (clean break)
+- This produces the correct chain: (1,2), (2,3), (3,4)... matching the live function
 
 **suggestedCefr carry-forward in backfill:**
 - Tracks `effectiveCefrLevel` across the chain (starts null for 1st assessment)
 - A1 records: `suggestedCefr = effectiveCefrLevel` (carried forward from previous pair)
 - A2 records: `suggestedCefr = newlyDerivedSuggestedCefr` (fresh calculation)
 - After each pair completes, `effectiveCefrLevel` updates to the new `suggestedCefr`
+
+**`is_calc` marking in backfill:**
+- After pair completes: always marks `unresolvedAssessment` (older/A1) as `is_calc = true`
+- If level changed: also marks `currentAssessment` (newer/A2) as `is_calc = true`
+- This keeps backfill and live function in sync — prevents live function from re-pairing backfilled assessments
 
 **Request body:** `{}` (no parameters needed)
 
@@ -406,6 +478,10 @@ Use this after fixing progression/scoring bugs to recalculate all historical dat
 - **Practice vs Assessment** — Practice assessments update `PracticeCEFR`; real assessments update `AssessmentCEFR`.
 - **Proctoring** — Optional face detection during assessment (snapshots sent to FastAPI for validation).
 - **Retake** — Students may retake; scores are stored separately with `isRetake` flag.
-- **suggestedCefr vs newProgressionLevel** — `suggestedCefr` drives the next test level (profile update), while `newProgressionLevel` is the confirmed progression (ProgressionHistory). Dashboard always reads from ProgressionHistory for consistency.
-- **suggestedCefr carry-forward** — `suggestedCefr` is only derived when A2 completes a pair. A1 records carry forward the previous pair's `suggestedCefr`. This ensures `suggestedCefr` is never null except for the very first assessment. Both the live function (`updateCurrCERFlevelOfStudent`) and the backfill API (`backfillAllStudentProgression`) implement this rule.
-- **Reliability model** — `updateCurrCERFlevelOfStudent` is `await`ed (not fire-and-forget). If it fails, the cron job will retry the entire score calculation including progression. This is safe because communication scoring is cron-driven with retry logic (up to 3 non-transient retries, 10 transient retries).
+- **suggestedCefr vs assessmentCefr (newProgressionLevel)** — `suggestedCefr` drives the **next test level** (written to profile as `AssessmentCEFR`). `assessmentCefr` is the **confirmed progression level** (written to ProgressionHistory, read by dashboard). These can differ — e.g., student at A2 scores 91% → `suggestedCefr=B1` (next test at B1), `assessmentCefr=A2` (confirmed at A2, until they prove themselves at B1 with a pair there). Both are only _derived_ on A2 records; A1 records carry forward from the previous A2.
+- **Rolling window pair model** — Pairs overlap: (1,2), (2,3), (3,4), etc. The **older** assessment (A1) is consumed (`is_calc = true`), the **newer** (A2) stays for reuse as A1 of the next pair. When level changes, both are consumed (clean break). The `latestProgression` query uses `isSecondInPair: true` to find the previous pair's A2 record for carry-forward — this correctly handles the rolling window case where the reused assessment still has its A2 data in the DB at query time.
+- **Backfill sets `is_calc`** — The backfill API marks consumed assessments as `is_calc = true`, matching the live function's behavior. This prevents the live function from re-pairing already-processed assessments after a backfill.
+- **Mini-backfill architecture** — The live function (`updateCurrCERFlevelOfStudent`) uses a mini-backfill approach: recovers chain state from the latest A2 progression record, fetches all pending `is_calc=false` assessments, and processes them in a backfill-style loop. This makes it self-healing — if prior invocations failed, subsequent calls automatically catch up by processing all pending assessments. Algorithmically identical to the full backfill's `processProgressionChain`.
+- **Bridge NPS** — When a student's effective CEFR level changes between two assessments that can't pair (level mismatch in the rolling window), NPS is calculated individually at each level and averaged: `bridgeNPS = avg(NPS(oldLevel, oldScore), NPS(newLevel, newScore))`. This is stored on A1 records (PATH 1). Fresh starts after clean breaks carry the previous NPS (PATH 2). First-ever assessments have null NPS (PATH 3).
+- **Atomic writes** — Progression history for both A1 and A2 of a pair is written in a single Prisma `$transaction`. `is_calc` is marked AFTER the transaction succeeds. This prevents orphaned assessments (consumed but no history) which was the root cause of the null CEFR production bug fixed in April 2026.
+- **Reliability model** — `updateCurrCERFlevelOfStudent` is `await`ed (not fire-and-forget). If it fails, the cron job will retry the entire score calculation including progression. This is safe because communication scoring is cron-driven with retry logic (up to 3 non-transient retries, 10 transient retries). The mini-backfill architecture adds an additional safety layer: even if a retry only processes the latest assessment, it picks up any previously failed assessments too.
