@@ -14,5 +14,15 @@ When working on a feature, check the relevant file here **before asking the user
 - `Assessment/admin.md` — admin panel, assessment management, TPO/corporate flows
 - `Assessment/admin-frontend.md` — admin-react Assessment module (UnifiedAssessmentTable, StudentReport, subscription filtering, heading display)
 - `Assessment/institute.md` — institute TPO view, two-API architecture, score format differences, PDF browser pool
+- `Obsidian.md` — Obsidian knowledge base tool: setup, pricing, plugins, team collaboration, vault structure
+
+**Infrastructure & DevOps:**
+- `Infrastructure/README.md` — server access overview (Dev, UAT, Prod)
+- `Infrastructure/servers.md` — all servers, ports, services, systemd units
+- `Infrastructure/mcp-servers.md` — all MCP integrations (browser-agent, GitHub, Slack, Linear, Notion, WhatsApp, S3, Postgres, etc.)
+- `Infrastructure/skills.md` — all Claude Code skills catalog (~30 skills)
+- `Infrastructure/deployment.md` — deployment guide (Dev → UAT → Prod, Docker, OCI, K8s)
+- `Infrastructure/form-data-normalization.md` — Form Data Normalization service (Python/FastAPI, Google Drive ingestion, LLM normalization, entity matching, port 5013)
+- `Infrastructure/pg-vector-search.md` — PG Vector Search / Entity Normalizer service (Python/FastAPI, multi-signal RRF ranking, pgvector, port 8002)
 
 Read only what's relevant to the current task. Do not read all files upfront.
