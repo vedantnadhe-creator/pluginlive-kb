@@ -317,3 +317,7 @@ This is unlike Communication or Role-Based rounds which expand into multiple sub
 ### Gotcha (Fixed)
 
 Prior to this dispatch branch, `AI_Interview` matched none of the dispatcher's type checks (`behavi`/`aptitude`/`role`/`custom`) and fell through to the Communication else-branch — so AI Interview rounds rendered the 6 Communication sub-topic headers (Verbal/Reading/Listening/Writing/Total/CEFR) sourced from an empty `communication_scores` table. The dispatcher now has an explicit `AI_Interview` branch and the corp-ATS overlay's `STATIC_SUB_TOPIC_SCHEMA` includes `aiInterview: ["overallScore"]`.
+
+### Round Score Filter
+
+The Drive Role's Round Score / Passing Score filter (`GET /corporates/drive/:driveId/role/:roleId/score/list?stage=<round>`) is built from `job_role_student_map.parameters_score` joined against the role's interview workflow. Because AI Interview scores live in `assessment.ai_interview_scores` (not in `job_role_student_map`), the old behavior left `parameters_score` empty for AI Interview rounds and the filter panel rendered "No Data Found". The handler now seeds a topic entry from `getCellSubTopicSchema` whenever the round is mapped to an assessment but has no sheet-derived sub-topics — so the filter row always reflects `["overallScore"]` for AI Interview cells.
