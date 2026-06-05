@@ -17,7 +17,10 @@
 | **Scoring** | AI-evaluated per-response: Technical Accuracy (40%), Depth (25%), Communication (20%), Problem Solving (15%) |
 | **Shortlisting** | Automated: `strong_hire`, `hire`, `maybe`, `no_hire` |
 | **Follow-ups** | AI generates probing follow-up questions when responses need deeper exploration |
-| **Input Modality** | Text (audio/video support via `responseObjectKey` for future STT integration) |
+| **Modality** | **Voice conversation** — AI speaks each question (TTS), candidate replies by voice (STT). Text transcripts are stored alongside. |
+| **TTS (interviewer voice)** | **ElevenLabs Flash v2.5** (`eleven_flash_v2_5`) — voice **Payal** (Indian female, Hindi/Indian-English, conversational; voice ID `CpLFIATEbkaZdJr01erZ`). Falls back to **Deepgram Aura-2 `aura-2-thalia-en`** (US English female) if the ElevenLabs key/call fails. Overridable via `ELEVENLABS_VOICE_ID` / `ELEVENLABS_MODEL_ID` env vars on the FastAPI container. |
+| **STT (candidate voice)** | **Deepgram `nova-3`** — REST upload (`POST /ai-interview/stt`) plus a WebSocket bridge (`/ai-interview/stt-stream`) that proxies live mic audio to Deepgram and forwards interim + final transcripts back to the browser. |
+| **VAD** | Browser-side voice-activity detection auto-submits the answer after ~1.8 s of silence (`Assessment-React/.../AIInterview/interview.js`). |
 
 ---
 
@@ -80,13 +83,14 @@ Unlike static assessments, AI Interview is a **conversation** — questions are 
 
 | Endpoint | Purpose |
 |----------|--------|
-| `POST /ai-interview/generate-questions` | Generate initial question set from role/skills/seniority/JD |
-| `POST /ai-interview/generate-next-question` | Generate adaptive next question based on conversation history |
-| `POST /ai-interview/evaluate-response` | Evaluate a candidate response with weighted scoring |
-| `POST /ai-interview/generate-follow-up` | Generate follow-up question probing weak areas |
-| `POST /ai-interview/generate-report` | Generate comprehensive interview report with recommendation |
+| `POST /ai-interview/suggest-parameters` | Suggest skills / topics / seniority defaults from a job role |
+| `POST /ai-interview/generate-question` | Generate next adaptive question (initial + follow-ups handled in one path, based on conversation history) |
+| `POST /ai-interview/score-turn` | Score a single candidate turn (used during the interview for adaptive routing) |
+| `POST /ai-interview/score-final` | Generate the final report — overall + category scores + recommendation |
 | `POST /ai-interview/parse-resume` | Extract structured data from resume text |
-| `POST /ai-interview/parse-jd` | Extract structured requirements from job description |
+| `POST /ai-interview/tts` | **Text-to-speech** — ElevenLabs Payal (Flash v2.5); auto-falls-back to Deepgram Aura-2 (`aura-2-thalia-en`). Body: `{ text, voice? }`. Returns audio bytes (mp3). |
+| `POST /ai-interview/stt` | **Speech-to-text (REST)** — upload an audio file, Deepgram `nova-3` returns the transcript. |
+| `WS   /ai-interview/stt-stream` | **Live STT bridge** — proxies browser mic frames to Deepgram `nova-3` live transcription, forwards interim + final transcripts back over the socket. |
 
 **Key payloads:**
 
@@ -126,9 +130,22 @@ candidateName: Optional[str]
 
 **AI Model Strategy:**
 - Primary: Gemini 2.5 Pro via `genai.Client`
+- Fast path: Gemini 2.5 Flash (`GEMINI_FAST_MODEL`) for question gen + score-turn (latency-sensitive paths)
 - Fallback: Groq Llama 3.3 70B (`llama-3.3-70b-versatile`)
 - Temperature: 0.3 (for consistency)
 - PostHog tracking on all endpoints
+
+**Voice Stack (TTS + STT):**
+
+| Concern | Provider | Model / Voice | Env Var |
+|---|---|---|---|
+| TTS primary | ElevenLabs | `eleven_flash_v2_5` + voice **Payal** (`CpLFIATEbkaZdJr01erZ`, Indian female, hi/Indian-English, conversational) | `ELEVENLABS_API_KEY`, `ELEVENLABS_VOICE_ID`, `ELEVENLABS_MODEL_ID` |
+| TTS fallback | Deepgram | `aura-2-thalia-en` (US English female) — used if `ELEVENLABS_API_KEY` is missing or the ElevenLabs call errors | `DEEPGRAM_API_KEY` |
+| STT (file + live) | Deepgram | `nova-3` (REST `/stt` + WebSocket `/stt-stream`) | `DEEPGRAM_API_KEY` |
+
+The `/tts` endpoint also accepts an optional `voice` body param — values starting with `aura` route to Deepgram; anything else is treated as an ElevenLabs voice ID. The Assessment-React frontend currently sends `voice: 'aura-2-thalia-en'`, which the backend treats as "use the ElevenLabs default" (Payal) whenever the ElevenLabs key is present, and only literally uses Thalia when ElevenLabs is unavailable.
+
+Source-code defaults in `routers/ai_interview.py` are `EXAVITQu4vr4xnSDxMaL` (Sarah / US English) for the voice ID and `eleven_flash_v2_5` for the model — these are only effective when the env vars are not set. All deployed environments (DEV today) override the voice to Payal via `.env`.
 
 ---
 
@@ -297,6 +314,7 @@ psql -h <host> -U <user> -d <assessment_db> -f migrations/add_ai_interview_table
 - **Resume + JD Context** — Optional endpoints to parse resume and JD text into structured data for more personalized question generation.
 - **Multi-Round Types** — Questions can be of type `technical`, `behavioral`, `situational`, or `case_study`, configured per assessment.
 - **LLM Fallback** — Gemini 2.5 Pro is primary. If it fails, Groq Llama 3.3 70B is used as fallback. If both fail, 503 is returned.
+- **Voice (Payal — Indian female, conversational)** — The AI interviewer speaks via ElevenLabs Flash v2.5 with the **Payal** voice (Hindi/Indian-English, casual tone), matched to the Indian candidate base. Deepgram Aura-2 Thalia (US English) is the failover. STT is Deepgram `nova-3` for both REST and live WebSocket modes. Browser VAD auto-submits the answer after ~1.8 s of silence.
 - **PostHog Analytics** — All question generation, evaluation, and report events are tracked in PostHog for monitoring and analytics.
 - **Standard Assignment Flow** — Uses the existing `AssessmentSet` → `AssessmentInstituteMap`/`AssessmentCorporateMap` → `AssessmentAssignedStudent` pipeline, same as Communication, Aptitude, and Role-Based assessments.
 
