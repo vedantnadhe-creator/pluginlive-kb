@@ -299,3 +299,21 @@ psql -h <host> -U <user> -d <assessment_db> -f migrations/add_ai_interview_table
 - **LLM Fallback** — Gemini 2.5 Pro is primary. If it fails, Groq Llama 3.3 70B is used as fallback. If both fail, 503 is returned.
 - **PostHog Analytics** — All question generation, evaluation, and report events are tracked in PostHog for monitoring and analytics.
 - **Standard Assignment Flow** — Uses the existing `AssessmentSet` → `AssessmentInstituteMap`/`AssessmentCorporateMap` → `AssessmentAssignedStudent` pipeline, same as Communication, Aptitude, and Role-Based assessments.
+
+---
+
+## Corporate ATS Candidate List Surfacing
+
+When an `AI_Interview` assessment is mapped to a (drive, role, round) cell via the cell-assessment mapping (`assessment_corporate_map.mapped_to`), the corp-ATS candidate list (`POST /corporates/drive/:driveId/role/:roleId/candidate/list`) renders **one column per round**: **Overall Score** (a single 0–100 number).
+
+This is unlike Communication or Role-Based rounds which expand into multiple sub-topic columns (Verbal/Reading/Listening/Writing/Total/CEFR for Communication; MCQ/Subjective/Video/Coding/Overall for Role-Based).
+
+### Score Path
+
+- `admin-node` `Assessment.getStudentAssessmentScores()` dispatches on `assessment_type.type_name`. The AI Interview branch reads the latest `assessment.ai_interview_scores.overall_score` (joined via `ai_interview_sessions.assessment_assigned_id`) and returns `aiInterviewScores: { overallScore }`.
+- `corporate-node` `helpers/evaluationAssessmentOverlay.js` overlays that value into `parameters_score[round].overallScore` and seeds `topics[round].subTopic = ["overallScore"]` so the corp-ATS FE renders exactly one column titled "Overall Score" under the round.
+- The FE (`corporate-react` `IndividualDriveTable`) treats `overallScore` as the round's overall sub-topic and suppresses the duplicate round-average column.
+
+### Gotcha (Fixed)
+
+Prior to this dispatch branch, `AI_Interview` matched none of the dispatcher's type checks (`behavi`/`aptitude`/`role`/`custom`) and fell through to the Communication else-branch — so AI Interview rounds rendered the 6 Communication sub-topic headers (Verbal/Reading/Listening/Writing/Total/CEFR) sourced from an empty `communication_scores` table. The dispatcher now has an explicit `AI_Interview` branch and the corp-ATS overlay's `STATIC_SUB_TOPIC_SCHEMA` includes `aiInterview: ["overallScore"]`.
