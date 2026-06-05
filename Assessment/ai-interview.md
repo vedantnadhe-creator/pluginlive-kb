@@ -339,3 +339,17 @@ Prior to this dispatch branch, `AI_Interview` matched none of the dispatcher's t
 ### Round Score Filter
 
 The Drive Role's Round Score / Passing Score filter (`GET /corporates/drive/:driveId/role/:roleId/score/list?stage=<round>`) is built from `job_role_student_map.parameters_score` joined against the role's interview workflow. Because AI Interview scores live in `assessment.ai_interview_scores` (not in `job_role_student_map`), the old behavior left `parameters_score` empty for AI Interview rounds and the filter panel rendered "No Data Found". The handler now seeds a topic entry from `getCellSubTopicSchema` whenever the round is mapped to an assessment but has no sheet-derived sub-topics — so the filter row always reflects `["overallScore"]` for AI Interview cells.
+
+The corp-react Drive Role page also fetches `score/list` in a dedicated `useEffect` (separate from the long `fetchOptions` chain) so a transient failure in one of the other ~11 filter endpoints can't keep the Round Score panel empty.
+
+### Applying the Round Score Filter
+
+Applying the filter (e.g. `Assessment >= 50`) flows through `POST /corporates/drive/:driveId/role/:roleId/candidate/list` with `body.scores = [{ topic: { name: "Assessment", score: 50 } }]`. The default SQL filter compares against `jrsm.average_rounds_score` / `jrsm.parameters_score`, which are NULL for assessment-mapped rounds (AI Interview is the canonical case), so the query returned zero rows.
+
+`interviewHandler.getCandidateListForHR` now pre-resolves each assessment-mapped score entry via `resolveAssessmentScoreFilter` (in `helpers/evaluationAssessmentOverlay.js`):
+
+1. For each entry whose round is mapped to an assessment, call admin-node `getCellAssessments` + `getCellScoresBundle` for every candidate email on the role.
+2. Apply the threshold (`selection: >= score`, `rejection: <= score`) using the bucket's headline key (`overallScore` → `overallPercentage` → `totalScore`).
+3. Intersect the matched-email sets across every assessment-mapped score entry.
+4. Translate the surviving emails to `corporate.job_role_student_map.student_id` via `student.student_personal_profile`.
+5. Strip those entries from `body.scores` and pass `assessmentScoreStudentIds` to `DriveRoleCandidateMap.getCandForHR`, which adds `AND jrsm.student_id IN (...)` to both the count and data queries (`AND FALSE` when the intersection is empty so count + data agree).
