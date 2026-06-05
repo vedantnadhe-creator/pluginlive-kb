@@ -1,6 +1,6 @@
 # AI Interview Assessment
 
-> AI Interview is a **real-time, adaptive interview** assessment type where an AI interviewer dynamically generates questions based on the candidate's previous answers, resume context, and job description. It supports multiple interview round types (technical, behavioral, situational, case study) and provides automated shortlisting with hire/no-hire recommendations.
+> AI Interview is a **real-time, voice-based, adaptive interview** assessment type. The candidate speaks; the AI interviewer (Gemini) listens via Deepgram, responds via ElevenLabs TTS, and adapts each next question based on what the candidate just said. The interview is anchored to the role + job description — the candidate's resume is *not* used to bias questions or scoring. Final scoring runs asynchronously via the existing score cron and produces a single Fit Score (0–100) + verdict.
 
 ---
 
@@ -10,62 +10,145 @@
 |---|---|
 | **Assessment Type** | `AI_Interview` |
 | **Domain** | `AI_Interview` (short form: `AI_INT`) |
-| **Total Duration** | Configurable (default: 60 minutes) |
-| **Question Count** | Configurable (default: 5–15 questions) |
-| **Question Types** | Technical, Behavioral, Situational, Case Study |
-| **Question Generation** | AI-powered, adaptive (Gemini 2.5 Pro + Groq Llama 3.3 70B fallback) |
-| **Scoring** | AI-evaluated per-response: Technical Accuracy (40%), Depth (25%), Communication (20%), Problem Solving (15%) |
-| **Shortlisting** | Automated: `strong_hire`, `hire`, `maybe`, `no_hire` |
-| **Follow-ups** | AI generates probing follow-up questions when responses need deeper exploration |
-| **Input Modality** | Text (audio/video support via `responseObjectKey` for future STT integration) |
+| **Total Duration** | Configurable per assignment; default **20 minutes** (1200 s). Pulled from `ai_interview_config.interview_duration` and shown on the instructions screen via `GET /ai-interview/config-info/:assignmentId`. |
+| **Question Cap** | `MAX_TOTAL_QUESTIONS = 8` total turns **including the warmup intro** (1 intro + up to 7 substantive). |
+| **Per-parameter Cap** | `QUESTIONS_PER_PARAM = 2`. Orchestrator round-robins the lowest-count parameter first so every parameter gets at least one probe before any gets two. |
+| **Question Generation** | Gemini **2.5-flash** (no thinking), prompt anchored to role + JD, resume explicitly ignored. |
+| **Per-turn Signal Scoring** | Gemini **2.5-flash**, fire-and-forget after each answer. |
+| **Final Scoring** | Gemini **3.5-flash** (gemini-2.5-pro available as fallback), run by the score cron behind a semaphore on the background thread-pool. |
+| **STT** | Deepgram Nova-3 streaming over WebSocket. `language=hi` covers Hinglish (English script + Hindi words). |
+| **TTS** | ElevenLabs Flash v2.5, voice ID `CpLFIATEbkaZdJr01erZ` (Payal — Indian-accented). |
+| **Languages** | English, Hinglish, Hindi, Tamil, Telugu, Kannada, Malayalam, Bengali, Gujarati, Marathi, Punjabi, Urdu. |
+| **Input Modality** | Voice only on the candidate side. `responseObjectKey` reserved for future audio archival. |
+| **Verdicts** | `Strong Fit`, `Fit`, `Borderline`, `Not Fit` — score-anchored on both backend (`score-final` guardrail) and frontend (`effectiveVerdict()` defensive clamp). |
 
 ---
 
 ## Assessment Structure
 
-Unlike static assessments, AI Interview is a **conversation** — questions are generated one-at-a-time based on the candidate's performance in prior turns.
+The interview is a **conversation**. Questions are generated one-at-a-time, parameter-driven, and the AI adapts to the candidate's previous answer. The pacing is:
 
-| Phase | Description |
-|-------|-------------|
-| **Initial Questions** | 3–5 questions generated from job role, skills, seniority, and JD |
-| **Adaptive Questions** | Next questions adapt based on evaluation scores — harder if candidate performs well, easier if struggling |
-| **Follow-ups** | When a response needs probing, a follow-up question targets the weak area |
-| **Completion** | After all questions answered (or time expires), a comprehensive report is generated |
+1. **Warmup intro** (hardcoded, not LLM-generated): *"Hi! Welcome to the interview for the &lt;role&gt; role. Before we dive in, could you give me a brief introduction…"*
+2. **Parameter probes**: orchestrator picks `nextParameter` = the param with the lowest probe count so far. Each parameter gets up to `QUESTIONS_PER_PARAM = 2` questions before the loop moves on.
+3. **Wrap-up**: triggered when any of these hits:
+   - `all_parameters_covered` — every param hit its quota
+   - `question_cap_reached` — `MAX_TOTAL_QUESTIONS = 8` total turns answered
+   - `time_up` — `interviewDuration` exceeded
+   - `candidate_unwilling` — `REFUSAL_LIMIT = 2` consecutive trailing refusals
+   - `candidate_initiated` — explicit End Interview click
 
-### Scoring per Response
+### Per-parameter Rating (0–5)
 
-| Criterion | Weight | Description |
-|-----------|--------|-------------|
-| Technical Accuracy | 40% | Correctness of concepts, methods, facts |
-| Depth of Knowledge | 25% | Level of detail, nuance, edge-case awareness |
-| Communication Clarity | 20% | Structure, articulation, explanation quality |
-| Problem Solving | 15% | Analytical approach, reasoning, alternatives |
+| Rating | Label | Meaning |
+|---|---|---|
+| 5 | Excellent | Clear, multi-example mastery for the seniority. |
+| 4 | Strong | Solid evidence with minor gaps. |
+| 3 | Adequate | Meets the bar for the seniority. |
+| 2 | Concern | Gaps worth probing in round 2. |
+| 1 | Weak | Real deficiency, but the candidate engaged with the question. |
+| **0** | **No Response** | Silence, refusal, song lyrics, gibberish, off-topic content, or one-word non-answers. Contributes **0** to the weighted average (the 20-point arithmetic floor of rating=1 does NOT apply). |
 
-### Final Recommendation
+### Overall Score Formula
 
-| Recommendation | Criteria |
-|----------------|----------|
-| `strong_hire` | Overall score ≥ 85 with high confidence |
-| `hire` | Overall score ≥ 70 |
-| `maybe` | Overall score 50–69, mixed signals |
-| `no_hire` | Overall score < 50 or critical gaps |
+```
+overall_score = Σ ((rating_i / 5) × 100 × weight_i) / Σ weight_i
+```
+
+* Then a **completion penalty** if `completion_pct < 80%`: `overall_score × (completion_pct/100)`.
+* **Non-engagement caps** (override the formula): >50% non-engagement turns → `overall_score ≤ 10`; 25–50% → `≤ 25`. Verdict forced to Not Fit.
+* **Defensive word-count cap** in code after the LLM responds: if ≥50% of substantive answers are ≤ 3 words → cap at 10; if ≥25% short OR average <8 words → cap at 25.
+
+### Verdict Bands & Guardrails
+
+The verdict is **score-anchored** on the backend (and clamped again on the frontend as defense in depth):
+
+| Score | Allowed verdict |
+|---|---|
+| < 35 | Not Fit |
+| 35 – 49 | Borderline |
+| 50 – 79 | Fit |
+| 80 + | Strong Fit |
+
+Rule is "tighten never upgrade" — if the LLM was stricter than the score (e.g. flagged cheating with Not Fit on a 65), that's preserved. An unknown/missing verdict gets clamped to the ceiling.
+
+### Scoring Eligibility Gate
+
+In `completeSession`, **before** the cron is allowed to score, the interview has to clear:
+
+* `totalAnswered ≥ min(4, totalExpected)`
+* `totalAnswered ≥ ceil(totalExpected × 0.5)`
+
+Here `totalAnswered` counts every interaction with a `candidate_response` **including the intro**, and `totalExpected = min(MAX_TOTAL_QUESTIONS, params × QUESTIONS_PER_PARAM + 1)`. Sub-threshold sessions are flagged `sessionMetadata.interviewIncomplete = true` — no score row is created, no fit score is shown, and every report surface (candidate done page, admin StudentReport, admin AIInterviewReport, candidate Reports tab) renders an amber **Interview Not Completed** banner instead of a fabricated score.
 
 ---
 
 ## End-to-End Flow
 
-1. **Admin assigns AI Interview**: Specifies job role, skills, seniority, industry domain, optional JD, interview duration, follow-up enabled
-2. Backend creates `AIInterviewConfig` linked to `AssessmentSet`, assigns students via standard flow
-3. Initial questions generated via FastAPI `/ai-interview/generate-questions`
-4. **Student starts interview**: Creates `AIInterviewSession`, marks assignment as INPROGRESS
-5. Student receives first question, submits text response
-6. Response evaluated via FastAPI `/ai-interview/evaluate-response` → scores + feedback stored in `AIInterviewInteraction`
-7. If evaluation says `needsFollowUp`, a follow-up question is generated via `/ai-interview/generate-follow-up`
-8. Otherwise, next adaptive question generated via `/ai-interview/generate-next-question` based on full conversation history
-9. Loop continues until all questions answered or time runs out
-10. **Student completes interview**: Final report generated via `/ai-interview/generate-report`
-11. `AIInterviewScore` record created with overall + category scores + recommendation
-12. Assignment status updated to COMPLETED
+```
+ADMIN                                CANDIDATE                              SCORING
+─────                                ─────────                              ───────
+configure config + params            view instructions page                 cron picks up
+   │                                   │                                       scores_calculated=false
+   ▼                                   ▼                                       ▼
+POST /ai-interview/save-definition   GET /ai-interview/config-info           runScoringForAssignment
+                                       │ (duration, resumePolicy)               │
+                                     biometric → resume? → ready                ▼
+                                       │                                     POST /ai-interview/score-final
+                                     POST /ai-interview/session/start          (Gemini 3.5-flash,
+                                       │                                        background executor +
+                                       ▼                                        scoring_semaphore)
+                                     loop:                                      │
+                                       speak()  ──── ElevenLabs Flash v2.5      ▼
+                                       record() ──── Deepgram Nova-3 WS      INSERT ai_interview_scores
+                                       Done answering  ──►                      │
+                                         POST /ai-interview/session/turn        ▼
+                                       (next question or complete=true)      UPDATE scores_calculated=true
+                                       │
+                                       ▼
+                                     POST /ai-interview/session/complete
+                                       │
+                                       ▼  (status=COMPLETED, submitted=true,
+                                          scores_calculated=false unless
+                                          interviewIncomplete=true)
+```
+
+`completeSession` returns in **< 500 ms** — no inline LLM call. The candidate sees the done screen with a "you'll get results in a few minutes" message + Back to Home button. The per-minute score cron (`calculatePendingAssessmentScores`) does the actual scoring via the new `ai_interview` branch in `Assessment.calculateAssessmentScore`.
+
+---
+
+## Live Conversation Pipeline
+
+| Layer | Detail |
+|---|---|
+| **Mic capture** | `getUserMedia({audio:true})`. `MediaRecorder` runs in parallel as a fallback so a dropped WebSocket never strands a turn. |
+| **Streaming STT** | Browser AudioWorklet pushes 16 kHz PCM frames to FastAPI's `/ai-interview/stt-stream` WebSocket; FastAPI proxies to Deepgram Nova-3 with `utterance_end_ms=1200` + `endpointing=300`. After Deepgram `finish()`, FastAPI sleeps **0.8 s** to drain pending `is_final` callbacks so the last sentence never drops off the transcript. |
+| **VAD** | AudioWorklet emits RMS every ~150 ms. Used purely for the "you're speaking" UI cue — **silence auto-submit was removed**. The candidate must click `Done answering`. |
+| **No-speech watchdog** | 10 s after the mic opens with zero audio → auto-advance with `[No response]` marker so a broken mic doesn't stall the interview. |
+| **Auto-mic** | 350 ms after the AI's TTS audio fires `onended`, `startRecord()` runs automatically. Mic-open path is **non-blocking**: get the media stream + start MediaRecorder + `setRecording(true)` synchronously (sub-1 s on screen); WS + AudioWorklet attach in the background with a 3 s open timeout. |
+| **TTS streaming + subtitle** | `speak()` increments a `speakSeqRef` so two concurrent calls can't overlap audio. The question text reveals **word-by-word** in sync with the audio: `<audio>.duration` divides total → per-token interval (clamped 50–180 ms), with a `setTimeout(250 ms)` fallback if metadata never fires. Blinking caret while the AI is still speaking. |
+| **End Interview** | `finalize()` bumps `speakSeqRef`, calls `stopCurrentAudio()`, sets `stepRef.current = STEP_DONE` synchronously, and dispatches `completeSession` through `finalizeFnRef` so the mount-time `setInterval` (timer-end path) hits the *latest* closure with a real `sessionId`. Belt-and-suspenders: `completeSession()` also accepts `assessmentAssignedId` as a fallback lookup if `sessionId` ever goes stale on the client. |
+
+---
+
+## Candidate UI
+
+* **Instructions screen** — duration + resume policy fetched from `/ai-interview/config-info/:id`. Resume step is **completely hidden** when policy = `not_required`. Single primary CTA, label-flips based on state ("Continue" / "Skip and continue" / "Continue with resume"). Note pill flips amber (Required) vs indigo (Optional).
+* **Live screen** — old "Zoom-style" UI was removed. Simple layout: TopBar (timer + 3-dot End Interview menu), Question card with `AvatarRing` (blue gradient + pulse while AI is speaking, green gradient + listenPulse while listening), streaming subtitle text, Response card with the `Done answering` button. Bottom-right **self-view camera PIP** (200×150 desktop, 120×90 mobile, light-themed) runs independently of the mic capture so it survives between turns.
+* **Done screen** — green check + "Your interview is complete", info pill: *"our system is scoring your responses in the background. You'll receive your evaluation in a few minutes. You can safely close this window."* Session reference shown. **Back to Home** button always rendered. The "Scoring in progress" spinner and the "X of Y questions answered" count were both removed — candidates don't get told how many questions are in the bank.
+
+---
+
+## Reports
+
+* **Candidate (Assessment-React)**
+  * Reports tab: `getAssessmentReport` now has an `else if (type === "ai_interview")` branch that loads the latest session + score row and emits a flat report into `formattedData`. `AIInterviewReportCard` honours `report.interviewIncomplete` and shows the Interview Not Completed banner instead of a fake "not yet scored" state.
+  * Completed list: `View Report` button hidden for corporate-assigned rows (existing `!isCorporate` guard). **Institute candidates do see the button** for AI Interview rows.
+* **Admin (admin-react)**
+  * `StudentReport` modal: dedicated Candidate header card (resolved via `student.full_name` from `studentPersonalProfile.student_id` → student) plus score block. `effectiveVerdict()` clamps the badge so a score=0 can never read as Borderline.
+  * `AIInterviewReport` standalone view: same name resolution, same defensive verdict clamp.
+* **PDF**
+  * Server-side via `students/assessments/generatePDFReport`. Filename is `<First>_<Last>_report.pdf` derived from `studentData.name` returned by `generateAIInterviewReport`. The HTML template uses `{{candidateName}}` in `<title>` and the header card.
+  * Cross-schema name lookup joins `assessment.assessment_assigned_students` → `student.student_personal_profile` → `student.students` (the personal profile carries only address/parents fields, not the name — that's on `students`).
 
 ---
 
@@ -74,228 +157,126 @@ Unlike static assessments, AI Interview is a **conversation** — questions are 
 ### 1. AI Engine (FastAPI)
 
 #### Router — `ai_interview.py`
-**Path:** `fastapi-ai-engine/routers/ai_interview.py`
 
-**Endpoints:**
+| Endpoint | Verb | Purpose | Notes |
+|---|---|---|---|
+| `/ai-interview/suggest-parameters` | POST | Generate role-fit evaluation parameters | priority executor, gemini-2.5-flash |
+| `/ai-interview/generate-question` | POST | Next adaptive question | priority executor, gemini-2.5-flash, resume **not** in prompt |
+| `/ai-interview/score-turn` | POST | Per-turn signal extraction | priority executor, gemini-2.5-flash, fire-and-forget from student-node |
+| `/ai-interview/score-final` | POST | Full transcript → fit score + verdict + narrative | **background executor + scoring_semaphore**, gemini-3.5-flash, resume **not** in prompt |
+| `/ai-interview/stt` | POST | Batch STT (fallback for WS failure) | Deepgram Nova-3, `language=hi` covers Hinglish |
+| `/ai-interview/stt-stream` | WS | Live streaming STT | 0.8 s post-`finish()` drain so the last sentence isn't lost |
+| `/ai-interview/tts` | POST | ElevenLabs Flash v2.5 audio bytes | Payal voice |
+| `/ai-interview/parse-resume` | POST | PDF/DOCX/TXT → text (still used by candidate upload; text is captured but NOT passed to the scorer's prompt) |
 
-| Endpoint | Purpose |
-|----------|--------|
-| `POST /ai-interview/generate-questions` | Generate initial question set from role/skills/seniority/JD |
-| `POST /ai-interview/generate-next-question` | Generate adaptive next question based on conversation history |
-| `POST /ai-interview/evaluate-response` | Evaluate a candidate response with weighted scoring |
-| `POST /ai-interview/generate-follow-up` | Generate follow-up question probing weak areas |
-| `POST /ai-interview/generate-report` | Generate comprehensive interview report with recommendation |
-| `POST /ai-interview/parse-resume` | Extract structured data from resume text |
-| `POST /ai-interview/parse-jd` | Extract structured requirements from job description |
+The blocking Gemini SDK calls are wrapped in `_gemini_json_priority()` and `_gemini_json_background()`, which offload to `priority_executor` (8 workers, shared with proctoring `verify-frame`) and `background_executor` (4 workers, behind `MAX_CONCURRENT_SCORING = 1`) respectively. Live interview LLM calls therefore never queue behind a slow score-final run.
 
-**Key payloads:**
+### 2. Admin Backend (admin-node)
 
-`GenerateQuestionsRequest`:
-```python
-jobRole: str
-skills: List[str]
-seniority: str
-jobDescription: Optional[str]
-domain: Optional[str]
-numberOfQuestions: Optional[int] = 5
-questionTypes: Optional[List[str]]  # technical, behavioral, situational, case_study
-```
+#### Handler — `aiInterviewHandler.js`
 
-`EvaluateResponseRequest`:
-```python
-question: str
-answer: str
-questionType: Optional[str] = "technical"
-jobRole: Optional[str]
-skills: Optional[List[str]]
-seniority: Optional[str]
-domain: Optional[str]
-expectedTopics: Optional[List[str]]
-```
+* `getDefinition`, `saveDefinition`, `assignToStudents`
+* `getReportByAssignment` — returns `candidateName`, `candidateEmail`, `interviewIncomplete`, score block
 
-`GenerateReportRequest`:
-```python
-jobRole: str
-skills: List[str]
-seniority: str
-domain: Optional[str]
-jobDescription: Optional[str]
-conversationHistory: List[Dict]  # [{question, answer, evaluation}, ...]
-candidateName: Optional[str]
-```
+#### Routes
 
-**AI Model Strategy:**
-- Primary: Gemini 2.5 Pro via `genai.Client`
-- Fallback: Groq Llama 3.3 70B (`llama-3.3-70b-versatile`)
-- Temperature: 0.3 (for consistency)
-- PostHog tracking on all endpoints
+* `GET    /ai-interview/get-definition/:assessmentSetId`
+* `POST   /ai-interview/save-definition`
+* `POST   /ai-interview/suggest-parameters`
+* `POST   /ai-interview/assign-to-students`
+* `GET    /ai-interview/report-by-assignment/:assessmentAssignedId`
+
+### 3. Student Backend (student-node)
+
+#### Handler — `aiInterviewHandler.js`
+
+* `startSession`, `submitTurn`, `completeSession` (queues for cron), `getReport`
+* `getConfigInfo` — read-only metadata for the instructions screen (duration, role, seniority, resumePolicy, parameterCount)
+* `runScoringForAssignment` — cron-callable scorer (loads latest session + transcript + params, calls `score-final`, persists `ai_interview_scores`, flips `scores_calculated=true` via raw SQL `markCalculated()` helper)
+
+#### Routes
+
+* `POST  /ai-interview/session/start`
+* `POST  /ai-interview/session/turn`
+* `POST  /ai-interview/session/complete`
+* `GET   /ai-interview/report/:sessionId`
+* `GET   /ai-interview/config-info/:assessmentAssignedId`
+
+#### Cron wiring
+
+* `Assessment.calculateAssessmentScore` has an `ai_interview` branch that delegates to `aiInterviewHandler.runScoringForAssignment`. The existing per-minute `calculatePendingAssessmentScores` cron picks up `scores_calculated=false` rows the same way it does Communication / Aptitude / Behavior / Role-Based.
+* `updateDropoutStatusCron`: AI Interview type ID `5f738875-ea18-40f4-9a92-9bccdd732c46` gets a **60-min cutoff** (same as Aptitude) instead of the default 22. The UPDATE re-checks `status='INPROGRESS' AND submitted=false` in its WHERE so a concurrent `completeSession` can never be clobbered back to DROPOUT (race-safe).
 
 ---
 
-### 2. Admin Backend
+## Proctoring
 
-#### Model — `AIInterview.js`
-**Path:** `admin-node/app/models/AIInterview.js`
+`students/assessments/proctoring/uploadImage` was 400'ing intermittently in PROD with *"assessmentAssignedId is required"*. The handler used `await req.file()` then read `data.fields`, but `fastify-multipart` only populates `data.fields` with parts parsed **before** the file boundary. On PROD's k8s ingress the upload was chunked enough that the trailing text parts hadn't been parsed yet when we read fields.
 
-**`assignAIInterviewAssessment()`**
-Parameters: `entityId, entityType, name, startTime, endTime, bulkUploadData, interviewConfig, allowProctoring`
+Fixed two ways:
 
-In a transaction:
-1. Finds `AI_Interview` assessment type (must exist — run migration first)
-2. Finds or creates `AI_Interview` assessment domain
-3. Calls FastAPI to generate initial questions
-4. Creates `AssessmentSet` with `roleName` and `seniority`
-5. Creates `AIInterviewConfig` with job role, skills, seniority, domain, JD, duration, follow-up settings
-6. Creates assessment sections and stores generated questions
-7. Creates `AssessmentInstituteMap` or `AssessmentCorporateMap`
-8. Assigns each student via `AssessmentAssignedStudent`
-
-**`startInterviewSession(assessmentAssignedId)`**
-- Gets assignment with config
-- Creates `AIInterviewSession` (status: IN_PROGRESS)
-- Updates assignment status to INPROGRESS
-- Returns session ID and initial screening questions
-
-**`submitInterviewAnswer({ sessionId, questionId, candidateResponse, responseObjectKey })`**
-- Creates `AIInterviewInteraction` record
-- Sends to FastAPI for evaluation with conversation context
-- Updates interaction with scores
-- Generates follow-up if `needsFollowUp` is true
-
-**`completeInterview(sessionId)`**
-- Gets all interactions
-- Calls FastAPI `/ai-interview/generate-report`
-- Creates `AIInterviewScore` record
-- Updates session to COMPLETED, assignment to COMPLETED
-
-**`getInterviewProgress(assessmentAssignedId)`**
-- Returns session status, question count, answered count, scores
-
-#### FastAPIService methods
-**Path:** `admin-node/app/service/FastAPIService.js`
-
-| Method | FastAPI Endpoint |
-|--------|------------------|
-| `generateAIInterviewQuestions()` | `POST /ai-interview/generate-questions` |
-| `evaluateAIInterviewResponse()` | `POST /ai-interview/evaluate-response` |
-| `generateFollowUpQuestion()` | `POST /ai-interview/generate-follow-up` |
-| `generateInterviewReport()` | `POST /ai-interview/generate-report` |
-
-#### Routes
-**Path:** `admin-node/app/routes/aiInterview.js`
-
-| Method | Path | Handler |
-|--------|------|--------|
-| `POST` | `/ai-interview/assign` | `assignAIInterview` |
-| `GET` | `/ai-interview/progress/:assessmentAssignedId` | `getAIInterviewProgress` |
-| `GET` | `/ai-interview/results/:assessmentAssignedId` | `getAIInterviewResults` |
-| `GET` | `/ai-interview/analytics/:assessmentMapId` | `getAIInterviewAnalytics` |
-| `GET` | `/ai-interview/config/:assessmentSetId` | `getAIInterviewConfig` |
-
----
-
-### 3. Student Backend
-
-#### Model — `AIInterview.js`
-**Path:** `student-node/app/models/AIInterview.js`
-
-| Method | Purpose |
-|--------|--------|
-| `startInterview({ assessmentAssignedId })` | Create session, get initial questions from FastAPI, create interaction records |
-| `submitAnswer({ sessionId, interactionId, candidateResponse, responseObjectKey })` | Evaluate response, generate follow-up if needed |
-| `getNextQuestion({ sessionId })` | Get adaptive next question based on conversation history |
-| `completeInterview({ sessionId })` | Generate final report, create score record, mark complete |
-| `getInterviewStatus({ assessmentAssignedId })` | Get session progress |
-| `getInterviewResult({ assessmentAssignedId })` | Get full completed interview data |
-
-#### Routes
-**Path:** `student-node/app/routes/aiInterview.js`
-
-| Method | Path | Handler |
-|--------|------|--------|
-| `POST` | `/ai-interview/start` | `startInterview` |
-| `POST` | `/ai-interview/submit-answer` | `submitAnswer` |
-| `POST` | `/ai-interview/next-question` | `getNextQuestion` |
-| `POST` | `/ai-interview/complete` | `completeInterview` |
-| `GET` | `/ai-interview/status/:assessmentAssignedId` | `getInterviewStatus` |
-| `GET` | `/ai-interview/result/:assessmentAssignedId` | `getInterviewResult` |
+* **Backend** — switched the handler to drain `req.parts()` as an async iterator. The file is buffered via `part.toBuffer()` so iteration continues past it and we still pick up the trailing text parts. Order-independent.
+* **Frontend** — `Assessment-React` now appends text fields (`assessmentAssignedId`, `studentId`) **before** the image blob in every proctoring upload call site (`RoleBasedassmt`, `AIInterview/interview.js`; the other types were already in this order).
 
 ---
 
 ## Database Tables
 
-| Table | Purpose |
-|-------|--------|
-| `ai_interview_config` | Per-assessment-set interview configuration: job role, skills, seniority, duration, AI model, evaluation criteria |
-| `ai_interview_sessions` | Per-student session: status (PENDING/IN_PROGRESS/COMPLETED), start/end times, duration, metadata |
-| `ai_interview_interactions` | Per-question interaction log: question text, response, score, AI evaluation, follow-up tracking |
-| `ai_interview_scores` | Final scores: overall, technical, behavioral, communication, problem-solving, recommendation, strengths, weaknesses |
-
-### Schema Relationships
-
 ```
-AssessmentSet
-  └─ AIInterviewConfig (1:1)
+ai_interview_config
+  ├─ assessment_set_id   (FK)
+  ├─ job_role, job_description, seniority, industry_domain, region
+  ├─ interview_duration  (seconds, default 1200)
+  ├─ resume_policy       (enum: mandatory | optional | not_required)
+  ├─ conversation_rubric (JSONB)
+  ├─ evaluation_parameters (JSONB — array of {id, name, description, weight, min_pass_rating})
+  └─ stage_config        (JSONB — language, responder_language, probing_style, difficulty_curve)
 
-AssessmentAssignedStudent
-  └─ AIInterviewSession (1:many)
-       ├─ AIInterviewInteraction (1:many)
-       └─ AIInterviewScore (1:many)
+ai_interview_sessions
+  ├─ id                          (UUID, FK from interactions + scores)
+  ├─ assessment_assigned_id      (FK)
+  ├─ status                      (IN_PROGRESS | COMPLETED)
+  ├─ current_stage               (current parameter id)
+  ├─ started_at, completed_at, total_duration
+  └─ session_metadata            (JSONB — counts, completionReason, interviewIncomplete, totalAnswered, totalExpected, configId, resumeProvided)
+
+ai_interview_interactions
+  ├─ session_id                  (FK)
+  ├─ question_type               ("introduction" or a parameter id)
+  ├─ stage_name, stage_order
+  ├─ question_text, question_metadata (JSONB — reasoning, isFollowup, isWarmup)
+  ├─ candidate_response          (text — Deepgram transcript)
+  ├─ ai_evaluation               (JSONB — per-turn signals from score-turn)
+  └─ asked_at, answered_at, evaluated_at
+
+ai_interview_scores
+  ├─ session_id, assessment_assigned_id (FKs)
+  ├─ overall_score               (0–100)
+  ├─ ai_recommendation           (verdict)
+  ├─ executive_summary, recommendation_text
+  ├─ strengths, weaknesses       (JSONB arrays of {claim, quote, [impact]})
+  ├─ parameter_scores            (JSONB array of {id, name, rating, rating_label, analysis, supporting_quote, not_assessed})
+  ├─ section_scores              (JSONB — reserved)
+  └─ detailed_feedback
 ```
-
-### Key Fields
-
-**AIInterviewConfig:**
-- `job_role`, `seniority`, `skills[]`, `industry_domain`
-- `job_description` (full JD text for context)
-- `interview_duration` (minutes, default 60)
-- `enable_follow_up` (boolean, default true)
-- `ai_model` (e.g., "gemini-2.5-pro")
-- `evaluation_criteria` (JSONB for custom weight overrides)
-
-**AIInterviewInteraction:**
-- `question_type`: TECHNICAL, BEHAVIORAL, SITUATIONAL, CASE_STUDY
-- `score`: 0–100 overall weighted score per response
-- `ai_evaluation`: JSONB containing `{ technicalAccuracy, depthOfKnowledge, communicationClarity, problemSolving, strengths, areasForImprovement, needsFollowUp }`
-- `is_follow_up`: boolean, true if this was a follow-up question
-- `parent_interaction_id`: links follow-up to original question
-
-**AIInterviewScore:**
-- `overall_score`: 0–100 weighted final score
-- `technical_score`, `behavioral_score`, `communication_score`, `problem_solving_score`: 0–100 category scores
-- `ai_recommendation`: `strong_hire` | `hire` | `maybe` | `no_hire`
-- `strengths`, `weaknesses`: JSONB arrays
-- `detailed_feedback`: comprehensive text analysis
 
 ---
 
 ## Migration
 
-**SQL migration file:** `admin-node/migrations/add_ai_interview_tables.sql`
+The initial migration is bundled at S3 (`pl-uat-public-docs/ai-interview/`). The orchestrator + scoring + cron-handoff changes are pure code; no schema additions required after the initial migration. Subsequent additions live in `DB-Scripts` under `AI Interview/` if any.
 
-Creates:
-1. Seeds `AI_Interview` assessment type and domain
-2. `ai_interview_config` table (FK → `assessment_sets`)
-3. `ai_interview_sessions` table (FK → `assessment_assigned_students`)
-4. `ai_interview_interactions` table (FK → `ai_interview_sessions`)
-5. `ai_interview_scores` table (FK → `ai_interview_sessions`)
-6. All indexes on foreign keys and frequently queried columns
+The `AI_Interview` type row in `assessment.assessment_type` must exist on each env (DEV + UAT have it; PROD requires the seed before first use).
 
-Run against the assessment database:
-```bash
-psql -h <host> -U <user> -d <assessment_db> -f migrations/add_ai_interview_tables.sql
-```
+Reference assessment-type ID: `5f738875-ea18-40f4-9a92-9bccdd732c46` (same on DEV and UAT).
 
 ---
 
 ## Key Concepts
 
-- **Adaptive Questioning** — Each question adapts to the candidate's prior performance. Strong answers → harder questions. Weak answers → adjusted difficulty or deeper probing.
-- **Follow-up Intelligence** — When a response is evaluated as needing deeper exploration (`needsFollowUp: true`), a targeted follow-up is generated probing the specific weak area.
-- **Weighted Scoring** — Every response is scored on 4 dimensions (Technical 40%, Depth 25%, Communication 20%, Problem Solving 15%), not just right/wrong.
-- **Automated Shortlisting** — Final report includes a `recommendation` field (`strong_hire`/`hire`/`maybe`/`no_hire`) based on overall performance, enabling automated candidate filtering.
-- **Resume + JD Context** — Optional endpoints to parse resume and JD text into structured data for more personalized question generation.
-- **Multi-Round Types** — Questions can be of type `technical`, `behavioral`, `situational`, or `case_study`, configured per assessment.
-- **LLM Fallback** — Gemini 2.5 Pro is primary. If it fails, Groq Llama 3.3 70B is used as fallback. If both fail, 503 is returned.
-- **PostHog Analytics** — All question generation, evaluation, and report events are tracked in PostHog for monitoring and analytics.
-- **Standard Assignment Flow** — Uses the existing `AssessmentSet` → `AssessmentInstituteMap`/`AssessmentCorporateMap` → `AssessmentAssignedStudent` pipeline, same as Communication, Aptitude, and Role-Based assessments.
+* **Adaptive, not scripted.** Every next question depends on what the candidate just said. No pre-built question bank.
+* **Role-anchored scoring.** Resume text is *not* in the question or scoring prompts — the AI evaluates against the role + JD only. The resume upload UI still exists (admin controls visibility via `resumePolicy`) but the captured text never reaches an LLM prompt.
+* **Async by default.** `completeSession` returns immediately; the score cron does the heavy LLM call off the candidate's request path. This is why the priority/background executor split on FastAPI matters — a slow score-final can never starve a live interview turn.
+* **0-star floor.** A non-engagement turn (song lyrics, refusal, gibberish, one-word non-answer) scores 0 on the relevant parameter and contributes 0 to the weighted average. Combined with the verdict ceiling and the non-engagement cap, a candidate who didn't actually participate cannot land above ~10/100.
+* **Recruiter-first reports.** Corporate-assigned candidates don't see a download button — the report is internal. Institute candidates *do* see their report.
+* **Stale-closure dispatcher pattern.** The mount-time `setInterval` (elapsed timer) and the fullscreen-violation `setTimeout` both call `finalize()` via `finalizeFnRef`, which a no-deps `useEffect` rebinds every render. Same pattern for VAD auto-submit via `submitTurnFnRef`. Without this, a timer that fires before the second render would hit a `finalize()` whose closure read `sessionId = null` and the row would stay stuck in INPROGRESS.
