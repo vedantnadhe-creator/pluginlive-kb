@@ -79,6 +79,10 @@ The Roles module is the core of the corporate portal. It manages the entire job 
 | `getAppliedCollegesList` | `/institutes/instituteCampus/corporate/{corpId}/jobrole/{roleId}/list` | GET | Colleges that applied/received a role with filters: city, tier, ranking, candidate count, drive status |
 | `getInstituteCampusDetails` | `/institutes/instituteCampus/{id}` | GET | Single institute campus details |
 | `getRoleCityData` | `/institutes/corporate/{corpId}/jobRole/{jobId}/instituteLocation/list` | GET | Location list for a role's institutes |
+| `getRoleLinks` | `/corporates/jobs/{jobId}/role-links` | GET | Role Links page: per-college rows (Tally form URL, POC details, `isEmailSent`, form status) with search/state/city/tier/hasPoc/emailSent/formStatus filters |
+| `updateRoleLinksEmailSent` | `/corporates/jobs/{jobId}/role-links/email-sent` | PUT | Mark colleges as emailed — sets `isEmailSent=true` on `JobRoleInstituteMap` for the given `instituteCampusIds` |
+| `sendRoleEmail` | `/gmail/sendRoleEmail` (user-management-node) | POST | Role Links "Send Email": per-college personalized Gmail send; on success the backend itself calls `role-links/email-sent` to flip `isEmailSent` |
+| `regenerateTallyForm` | `/corporates/jobs/{jobId}/institute/{instituteCampusId}/regenerate-form` | POST | Re-create a single college's Tally form when the original creation failed |
 
 ### Candidate Management
 
@@ -124,6 +128,8 @@ The Roles module is the core of the corporate portal. It manages the entire job 
 
 - **Full role lifecycle:** Draft → Create → Publish → Active → Close
 - **Institute publishing:** Select institutes by location, tier, specialisation
+- **TPO notification on publish:** After a successful publish (Select Colleges drawer), the portal auto-sends the role to each eligible college's POCs — email (`/notification/bulkEmail`, `RoleDetailsToTPOTemplate`) + WhatsApp (`/notification/bulkWhatsapp`, `corporate_role_share_tpo` template). A college is eligible when it has a Tally form URL, at least one POC, and `isEmailSent` is not already true. These sends are **fire-and-forget (not awaited)** so they never block the publish flow.
+- **Email-sent status:** After the auto-notify, the portal calls `role-links/email-sent` (also fire-and-forget) to set `isEmailSent=true` for the colleges that actually had a POC email. The **Role Links page** shows this status and lets recruiters re-send manually via "Send Email" (the `/gmail/sendRoleEmail` path, which marks `isEmailSent` on its own). Colleges with POCs but no email address are not flagged.
 - **ElasticSearch integration:** Degree, skill, and qualification searches
 - **ES sync on mutations:** `student_crud_skill` and `skill_master` synced after role create/update
 - **ATS pipeline:** Applicant tracking with round-based candidate management
