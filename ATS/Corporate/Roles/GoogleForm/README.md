@@ -249,6 +249,18 @@ The application form template (mandatory + custom questions) needs to be stored 
 - `CHECKBOXES`
 - `DROPDOWN`
 - `DATE`
+- `MONTH_YEAR`
+- `FILE_UPLOAD`
+
+### Candidate Export — Form Responses column group
+
+When exporting the candidate list (`POST /students/role/{roleId}/corporate/{corporateId}/candidates/{downloadType}/export` with `downloadList: ["Form Responses"]`, downloadType = `xlsx` / `csv` / `googlesheet`), the **Form Responses** column group is built from the role's `application_form_template` (mandatory + custom questions, in that order). Each question's `question` text becomes a sub-header column.
+
+The values come from `student.student_role_mapping.response_data` (JSONB), with `TallyResponse` as a fallback. `response_data` is an object keyed by the **question text** (e.g. `{"First Name": "Shanmuga", "10th - Year": 2020, ...}`).
+
+Handler: `student-node/app/handlers/companymasterHandler.js` — `exportCandidateList` and `exportCandidateListByRole`.
+
+**Gotcha — whitespace-key mismatch (fixed 2026-06-08):** the saved `response_data` keys are whitespace-collapsed at submission time, but the template `question` text can contain double spaces / trailing spaces. An exact-key lookup then misses and the column exports **blank** even though its header shows (commonly hit the last custom question, e.g. a `MONTH_YEAR` field). Fix: values are now matched by a **whitespace-normalized, case-insensitive key** (`normalizeFormKey()` — collapses internal whitespace, trims, lowercases), with exact match still tried first. Applies to both object-shaped and array-shaped `response_data`.
 
 ### Tally Form URL — New Columns on `job_role_institute_map` Table
 
