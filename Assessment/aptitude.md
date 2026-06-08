@@ -237,7 +237,12 @@ counted the answers as unattempted → **0 / under-counted marks** (e.g. Christ 
    - **Categories** (sections): per-section totals with difficulty breakdown
    - **Topics** (subtopics): per-topic totals with difficulty breakdown and time spent
 
-Stores result in `aptitudeScores` table.
+Stores result in `aptitudeScores` table via **upsert keyed on the unique
+`assessment_assigned_id`** — exactly one score row per assignment. (The old
+find-then-create "retake" branch could write a second row, which is why duplicate
+aptitude_scores rows accumulated; cleaned up + a `UNIQUE(assessment_assigned_id)`
+index now backstops it — DB-Scripts `Aptitude Set Regeneration Race Fix/002`. The
+unique index must exist before the upsert code deploys, or `INSERT .. ON CONFLICT` errors.)
 
 **Integrity guard (R4).** Before scoring, it checks that the student's real
 (non-SKIPPED) answers are all contained in the assigned set. If the assigned set
