@@ -30,6 +30,7 @@ The Drives module manages placement drives — the scheduled evaluation events w
 | `ViewDrive/AddInterviewerDrawer/` | Interviewer | Add interviewer to drive |
 | `ViewDriveRole/` | Drive role view | Role-specific drive view |
 | `ViewDriveRole/IndividualDriveTable/` | Individual table | Per-candidate drive table |
+| `ViewDriveRole/IndividualDriveTable/SelectAssessmentDrawer/` | Assessment mapping | Map an assessment to selected candidates in a round |
 | `ViewDriveRole/GroupDiscussionTable/` | GD table | Group discussion table |
 | `ViewDriveRole/BulkActionDrawer/` | Bulk actions | Bulk status updates |
 | `ViewDriveRole/Header/` | Header | Drive role page header |
@@ -62,3 +63,4 @@ The Drives module manages placement drives — the scheduled evaluation events w
 - **Group discussion:** Dedicated GD round management
 - **Conflict resolution:** Resolve scheduling conflicts across drives
 - **Candidate downloads:** Export candidate data from drives
+- **Select Assessment:** In `IndividualDriveTable`, the `+ Select Assessment` button (rendered by `TableStatusIcon`) opens `SelectAssessmentDrawer` to map an assessment onto the selected candidates. The button and drawer are available on **every evaluation round** where the stage is not `all_candidates` or `offer` — i.e. Assessment, Group Discussion, Interview, etc. (Previously the drawer only mounted for `selectedRoundType.type === 'ASSESMENT'`, so the button did nothing on GD/Interview rounds — fixed so the drawer mounts wherever the button is shown.)
