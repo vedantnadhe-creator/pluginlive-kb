@@ -255,7 +255,14 @@ assessments. Detects victims via `distinct_real_answers > scored attempted`, fin
 best-matching set, and (when `dryRun:false`) re-points + deletes the old score +
 recalculates. `dryRun:true` (default) previews only; non-resolvable cases (current set
 already complete) are returned as `needs_review` and left untouched. Body:
-`{ dryRun?:bool=true, assessment_assigned_ids?:string[], limit?:int=200 }`.
+`{ dryRun?:bool=true, assessment_assigned_ids?:string[], limit?:int=200, includeRescore?:bool=false }`.
+With `includeRescore:true`, rows whose set already contains all answers but whose stored score
+under-counted (the duplicate-answer bug below) are re-scored in place (no re-point) → status `rescored`.
+
+**Duplicate-answer dedup.** `student_answers` can hold multiple rows per question (re-answer /
+re-submit). Scoring previously used `.find()` (first match), which could pick a `SKIPPED` duplicate and
+count a genuinely-answered question as unattempted (off-by-1..3 under-count). Scoring now builds a
+per-question map preferring a non-`SKIPPED` (and latest `submittedAt`) row before counting.
 
 **Index:** `assessment.student_answers(assessment_assigned_id)` backs the per-attempt
 answer lookups (scoring, guard, backfill) — see DB-Scripts `Aptitude Set Regeneration
