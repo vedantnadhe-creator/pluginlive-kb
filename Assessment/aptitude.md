@@ -202,6 +202,25 @@ Dynamically generates a new 30-question set at the required difficulty:
 - Creates new `assessmentSet` and `assessmentQuestionMap` records
 - Updates the student's `assessmentAssignedStudent` record to point to the new set
 
+**Concurrency guard (set-regeneration race fix).** This runs on the re-callable
+question-fetch path, so a duplicate/overlapping fetch (double-click Start, reload,
+React re-invoke) could previously regenerate **twice** — both calls read the same
+seed set and each created its own random set, with last-write-wins on
+`assessment_set_id`. The student then answered set #1 while the assignment pointed
+at set #2 (different random questions, 0 overlap). Because `student_answers` is keyed
+only by `question_id` (no `set_id`), scoring read the wrong set's questions and
+counted the answers as unattempted → **0 / under-counted marks** (e.g. Christ Univ:
+21 fully-zeroed + partial cases like 29 answered / 3 counted). Now hardened:
+- **R1:** the create+update runs under a per-attempt advisory lock
+  `pg_advisory_xact_lock(42, hashtext(assessment_assigned_id))`; after acquiring it the
+  code re-reads state and **reuses** the existing set if the required-difficulty set
+  already exists, or the student has `submitted`, or any `student_answers` exist.
+  Result: exactly one set per attempt.
+- **R2:** `getAptitudeAssessmentQuestions()` skips regeneration entirely once answers
+  exist for the attempt.
+- **Frontend:** `Assessment-React` de-duplicates `fetchAssessmentQuestions` per
+  `assessment_assigned_id` (in-flight request reuse) so duplicate fetches collapse to one.
+
 ---
 
 ### 4. Score Calculation
@@ -219,6 +238,28 @@ Dynamically generates a new 30-question set at the required difficulty:
    - **Topics** (subtopics): per-topic totals with difficulty breakdown and time spent
 
 Stores result in `aptitudeScores` table.
+
+**Integrity guard (R4).** Before scoring, it checks that the student's real
+(non-SKIPPED) answers are all contained in the assigned set. If the assigned set
+contains fewer of them than another set does (set-regeneration race — disjoint OR
+partial), it auto-resolves: re-points `assessment_set_id` to the set whose
+`assessment_question_map` actually matches the answers (must be *strictly better* and
+contain *all* of them) and re-scores. If fully disjoint and no matching set is found
+it returns `integrity_mismatch` (never persists a false 0); partial-with-no-better-set
+scores on the overlap and warns. This both prevents new bad scores and self-heals on
+any re-score.
+
+**Backfill endpoint.** `POST /students/assessments/aptitude/backfill-set-mismatch`
+(`aptitudeBackfillHandler.backfillAptitudeSetMismatch`) recovers already-affected
+assessments. Detects victims via `distinct_real_answers > scored attempted`, finds the
+best-matching set, and (when `dryRun:false`) re-points + deletes the old score +
+recalculates. `dryRun:true` (default) previews only; non-resolvable cases (current set
+already complete) are returned as `needs_review` and left untouched. Body:
+`{ dryRun?:bool=true, assessment_assigned_ids?:string[], limit?:int=200 }`.
+
+**Index:** `assessment.student_answers(assessment_assigned_id)` backs the per-attempt
+answer lookups (scoring, guard, backfill) — see DB-Scripts `Aptitude Set Regeneration
+Race Fix/001`.
 
 **Transaction model:** Score calculation and `updateAptitudeProgression()` run inside a single Prisma `$transaction` (timeout: 30s). This is critical because aptitude scores are calculated on-the-fly after submission (not via cron), so there is **no retry mechanism** — if progression fails, the student's level won't update. The transaction ensures atomicity: either both scoring and progression succeed, or neither does.
 
