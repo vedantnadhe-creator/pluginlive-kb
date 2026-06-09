@@ -28,7 +28,7 @@ Google Drive / API → Ingest raw data → LLM normalization → Entity matching
 | Component | Role |
 |-----------|------|
 | **FastAPI app** (`api/main.py`) | REST API, CORS, lifespan hooks |
-| **Normalization worker** | Background loop: fetches pending rows → OpenAI → entity matcher → writes normalized data |
+| **Normalization worker** | Background loop: **atomically claims** pending rows → OpenAI → entity matcher → writes normalized data. Safe to run across multiple replicas (see Concurrency below) |
 | **Assessment worker** | Syncs assessment scores from assessment DB |
 | **Form metadata worker** | Fetches Google Forms metadata |
 | **Export worker** | Async CSV/Excel generation for large exports |
@@ -45,7 +45,43 @@ Google Drive / API → Ingest raw data → LLM normalization → Entity matching
 | `services/normalization_matcher.py` | ~3,750 | Fuzzy matching (rapidFuzz) + AI entity resolution against master data |
 | `services/candidate_service.py` | ~1,500 | Search & filtering — 20+ filter combinations, full-text search |
 | `services/normalization_prompt.py` | ~1,600 | System prompt engineering for field extraction (structured JSON output) |
-| `workers/normalization_worker.py` | ~6,500 | Main worker: batch fetch → OpenAI → entity match → insert normalized → log |
+| `workers/normalization_worker.py` | ~6,500 | Main worker: atomic claim → OpenAI → entity match → insert normalized → log |
+
+---
+
+## Concurrency — claiming candidates (race-safe across replicas)
+
+PROD runs **2 corporate-node + 3 FastAPI replicas**, so multiple worker/producer loops can hit the queue at once. Candidates are claimed from `candidates_raw_data` with a **single atomic statement** so the same person is never normalized twice.
+
+**`db_service.claim_pending_for_normalization(batch_size, sheet_id?, exclude_sheet_id?)`** — the only correct way to pick up work:
+
+```sql
+WITH claimed AS (
+    UPDATE candidates_raw_data
+    SET normalization_status = 'in_progress', processing_started_at = NOW()
+    WHERE id IN (
+        SELECT id FROM candidates_raw_data
+        WHERE normalization_status = 'pending'
+           OR (normalization_status = 'in_progress'
+               AND processing_started_at < NOW() - INTERVAL '15 minutes')  -- stale reclaim
+        ORDER BY id ASC
+        LIMIT :batch
+        FOR UPDATE SKIP LOCKED
+    )
+    RETURNING *
+)
+SELECT claimed.*, s.source_file, s.source_sheet, s.source_sheet_id, s.source_form_id
+FROM claimed LEFT JOIN ingested_sheets s ON s.id = claimed.sheet_id
+ORDER BY claimed.id ASC;
+```
+
+Select + mark happen in one transaction, so `RETURNING` hands each row to **exactly one** worker. Callers: `normalization_worker.run_once`, `run_once_sheet_wise`, and `Kafka/kafka_producer.run_once`.
+
+**Why not the old way:** the previous flow used `fetch_pending_for_normalization()` (a `SELECT ... FOR UPDATE SKIP LOCKED` inside a `begin()` block that **committed and released the locks** as soon as it returned) followed by a separate `mark_in_progress()` UPDATE. Between those two transactions the rows were still `pending`, so a second replica re-read and re-normalized the same candidate. `SKIP LOCKED` only dedupes while the transaction is held open — committing first defeated it. `fetch_pending_for_normalization` / `mark_in_progress` still exist but must **not** be used to pick up work.
+
+**Idempotency safety net:** `mark_completed` / `mark_skipped` only write when the row is still `normalization_status = 'in_progress'` (`... WHERE id = :id AND normalization_status = 'in_progress'`), so a stale-reclaim overlap can't double-write a result.
+
+**No schema change** — uses existing `normalization_status`, `processing_started_at`, `normalized_at` columns.
 
 ---
 
