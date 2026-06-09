@@ -49,6 +49,24 @@ WHERE aim.schedule_id = ANY($1::uuid[])           -- scheduled assessments
 - **Diagnosis**: Communication/Aptitude with `schedule_id = NULL` and `is_one_time = false` — these are auto-created diagnosis assessments that belong to schedules
 - **Standalone other types**: Role_Based, Custom, Behavior, AI_Interview, etc. with `schedule_id = NULL` and `is_one_time = false` — these are NOT diagnosis; they never have schedules. Shown as individual rows.
 
+### Status computation (Ongoing / Expired / Upcoming)
+
+Status is **computed at request time** against `now = new Date()` — it is NOT stored in any DB column. There are **two distinct levels**, computed independently:
+
+1. **Parent schedule row** (the top-level "Communication"/"Aptitude" row) — uses `assessment_schedules.schedule_start_date` / `schedule_end_date`:
+   - `now < start_date` → `Upcoming`
+   - no `end_date`, or `now <= end_date` → `Ongoing`
+   - `now > end_date` → `Expired - Lapsed` (if `taken < sent`) or `Expired - Completed`
+
+2. **Per-run sub-rows** (`assessmentDetails[]` — the expandable "Schedule 1", "Schedule 2", … weekly runs) — uses each run's own `assessment_institute_map.start_time` / `end_time` (NOT the parent schedule dates):
+   - `now < start_time` → `Upcoming`
+   - `now > end_time` → `Expired - Lapsed` / `Expired - Completed`; `expiredCount` = assigned students who never submitted/attempted
+   - otherwise → `Ongoing`
+
+A `WEEKLY` schedule normally has a parent that runs for months (e.g. `30 May 2026 → 30 Apr 2027`, correctly `Ongoing`) while individual weekly runs (e.g. `30 May → 7 Jun`, `6 Jun → 8 Jun`) have already lapsed. The two levels are expected to differ.
+
+**Bug fixed (2026-06-09):** Per-run sub-rows in `assessmentDetails` hardcoded `status: "Ongoing"` and `expiredCount: 0` — they never compared the run's own `end_time` to `now`. Lapsed weekly runs (seen on Christ University, Lavasa Communication: Schedule 1 ending 7 Jun, Schedule 2 ending 8 Jun) showed "Ongoing" next to the run name even though the row's right-side badge (frontend-derived from `endTime`) correctly read "Expired". `StudentListInfo.js` now computes each run's status/`expiredCount` from `start_time`/`end_time`, matching the one-time and standalone code paths. DB data was correct; this was purely an API display bug.
+
 ### Diagnosis Count Query (Step 5 — `diagnosisCompleted` / `totalDiagnosisTaken`)
 
 Counts how many students completed diagnosis (submitted >= 2 assessments of the same type for the institute).
