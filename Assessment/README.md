@@ -14,6 +14,7 @@ This folder contains detailed documentation for each assessment type and cross-c
 - `admin.md` -- Admin Assessment Workflow (dashboard, listing, assignment, analytics, proctoring review)
 - `admin-frontend.md` -- Admin-React Assessment Frontend (UnifiedAssessmentTable, StudentReport, NPS, pagination, corporate clickability)
 - `institute.md` -- Institute Assessment (TPO view, two-API architecture, StudentListInfo schedules, score format differences, PDF browser pool)
+- `ios-device-support.md` -- iOS / iPad / macOS Safari support (device capability tiers, LITE proctoring on iPhone, mp4/AAC audio, Safari listening/review audio, AI-interview TTS unlock + STT resample, BiometricCheck audio-only mic, video playsInline)
 
 ---
 
