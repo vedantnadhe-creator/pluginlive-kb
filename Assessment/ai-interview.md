@@ -305,6 +305,22 @@ psql -h <host> -U <user> -d <assessment_db> -f migrations/add_ai_interview_table
 
 ---
 
+## Frontend (Assessment-React)
+
+The candidate-facing AI Interview UI lives in `Assessment-React/src/modules/Assessments/Partials/AIInterview/`:
+
+- **`InviteStart.js`** — OTP-based invite start screen. A candidate opening an AI Interview invite link enters the OTP to authenticate and start the session (the invite API in `aiInterviewInviteAPI.js` calls auth + student services).
+- **`interview.js`** — the live voice interview surface (TTS playback, mic capture, browser VAD auto-submit after ~1.8 s of silence).
+- **Completion redirect** — when the interview finishes, the candidate is redirected to `/assessment` (the assessment home), not left on the interview screen.
+
+### Frontend Build Gotcha — `process.env` must use member access (Fixed)
+
+Assessment-React is **webpack 5** and inlines env vars via `EnvironmentPlugin`. Env vars are only inlined for **explicit member-access** expressions like `process.env.API_URL`. Writing whole-object destructuring — `const { API_URL, STD_API_URL } = process.env` — combined with `X || fallback` usage can leave a **dangling bare `process.env`** statement in the production bundle. Webpack 5 does not polyfill `process`, so at module-eval the app throws **`ReferenceError: process is not defined`**, the SPA never mounts, and you get a **blank white screen on every route** (the build still succeeds — it's a runtime crash).
+
+This bit `aiInterviewInviteAPI.js` and blanked the whole app on DEV and again on UAT (2026-06-10). **Rule:** in this repo, read env vars as `const API_URL = process.env.API_URL` (member access), never destructure `process.env`. Diagnose by grepping the built bundle for a non-member `process.env` token; the runtime `pageerror` is `process is not defined`.
+
+---
+
 ## Key Concepts
 
 - **Adaptive Questioning** — Each question adapts to the candidate's prior performance. Strong answers → harder questions. Weak answers → adjusted difficulty or deeper probing.
