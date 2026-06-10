@@ -287,9 +287,10 @@ const fetchData = useCallback(async () => {
 Both `admin-react` and `institute-react` `CandidateList/index.js` dynamically generate table columns for assessment types beyond Communication/Aptitude:
 
 ### Column Extraction
-- **Behavior / Role_Based**: Extracts column keys from `sectionScores` OR `roleBasedScores` across all student rows. Excludes `overallScore` key.
+- **Role_Based**: Columns are the sections **SELECTED at creation** (per-section question count > 0), not a fixed MCQ/Subjective/Video/Coding set. The backend returns this list as `assessmentInfo.roleBasedSections` (`[{ key, label, sectionName }]`, canonical order MCQ → Subjective → Video → Coding); a section configured with 0 questions never gets a column, and a selected section **always** shows a column — even before scores are calculated (renders `-`). Shared resolver `src/modules/Assessment/Partials/roleBasedColumns.js` (`resolveRoleBasedSectionColumns`) is used by both `StudentsTable` and `CandidateList`; it falls back to the role-based score keys present on the rows (ignoring `overallScore` and the `videoDetailedScores`/`videoTotalQuestions` metadata keys) when the API list is absent.
+- **Behavior**: still fully dynamic — extracts competency column keys from `sectionScores`/`roleBasedScores` across all rows (excludes `overallScore`).
 - **Custom_Assessment**: Uses fixed columns: `Gained Marks`, `Total Marks`, `Percentage`.
-- Column values render from multiple sources: `r.sectionScores?.[key] ?? r.roleBasedScores?.[key]`
+- Role-based values render from `r.roleBasedScores?.[key]` (number → shown, `null` → `-`).
 
 ### Total Score Column
 Falls back across multiple sources:
