@@ -7,6 +7,8 @@
 
 The Students module allows TPO users to manage the student database for their institute campus. It supports full CRUD operations, bulk upload, blacklisting, opt-out approvals, notifications (email, WhatsApp, in-app), and student metrics.
 
+> **Field requirement (current):** When adding or editing a student, **only First Name and Email are mandatory**. **Last Name is optional** — the Add/Edit Student drawer (`StudentDetails`) no longer marks it with `*` or rejects an empty value (the last-name validator now allows blanks and only blocks digits when a value is given). Bulk upload (`/students/bulkcreate` in student-node) does **not** require the "Last Name" column either; rows with a blank last name are accepted and the student's `fullName` is built null-safely. The backing `student.last_name` column is nullable (`String?`).
+
 ---
 
 ## UI Components

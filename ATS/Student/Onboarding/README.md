@@ -16,6 +16,8 @@
 
 The Onboarding module manages the complete student activation and registration flow. It handles account activation (OTP verification, password creation), student data collection (personal info, education, skills, work experience), file uploads, not-interested opt-out, and initial notification setup. This is the largest student module (~813 lines in actions.js) with extensive master data lookups.
 
+> **Field requirement (current):** In the Personal Info step, **Last Name is optional** (no `*`, no `required` rule) — this applies to both the new (`PersonalInfoNew`) and legacy (`PersonalInfo`) onboarding forms, as well as **Manage Profile** and the **My Resume** personal-info drawer in student-react. The student-node profile/onboarding schemas already treat `lastName` as optional and `student.last_name` is nullable (`String?`); no Last Name is required to complete onboarding or save the profile.
+
 ---
 
 ## UI Components

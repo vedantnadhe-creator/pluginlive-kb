@@ -2,6 +2,8 @@
 
 > Documents the admin-react Assessment module (`src/modules/Assessment/`), covering institute and corporate assessment management, student reports, NPS scoring, and the unified assessment table.
 
+> **Add Candidate field requirement (current):** In the "Add Candidates Manually" / bulk-upload drawers (`CreateAssessment/Drawers/EnhancedBulkUploadDrawer.js` and `BulkUploadDrawer.js`), **only First Name and Email are mandatory — Last Name is optional**. The `*` on Last Name is removed, the "Add Candidate" button is no longer disabled on a blank last name, the submit-time guard doesn't require it, and the Excel-file row parser no longer drops rows that have a blank last name. Backend: `admin-node` `Assessment.saveStudentList`/`updateStudentList` no longer list `lastName` in `requiredFields` and trim it null-safely.
+
 ---
 
 ## File Reference
