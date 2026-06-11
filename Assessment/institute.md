@@ -67,6 +67,12 @@ A `WEEKLY` schedule normally has a parent that runs for months (e.g. `30 May 202
 
 **Bug fixed (2026-06-09):** Per-run sub-rows in `assessmentDetails` hardcoded `status: "Ongoing"` and `expiredCount: 0` — they never compared the run's own `end_time` to `now`. Lapsed weekly runs (seen on Christ University, Lavasa Communication: Schedule 1 ending 7 Jun, Schedule 2 ending 8 Jun) showed "Ongoing" next to the run name even though the row's right-side badge (frontend-derived from `endTime`) correctly read "Expired". `StudentListInfo.js` now computes each run's status/`expiredCount` from `start_time`/`end_time`, matching the one-time and standalone code paths. DB data was correct; this was purely an API display bug.
 
+### Gotcha: `students_data` column type differs by environment (json vs jsonb)
+
+`assessment.student_lists.students_data` is **`jsonb` on DEV** but **`json` on UAT and PROD**. The `passingYear` filter in `getschedulesInfo` runs an `EXISTS (SELECT 1 FROM jsonb_array_elements(sl_filter.students_data::jsonb) ...)` subquery. Without the `::jsonb` cast, `jsonb_array_elements(json)` raises Postgres `42883` (`function ... does not exist`) and the **entire endpoint 500s** — but only when a `passingYear` filter is applied (no filter → subquery skipped → no error). This passed on DEV (jsonb) and broke on UAT/PROD (json).
+
+**Bug fixed (2026-06-09):** added the `::jsonb` cast so the query works regardless of the column's declared type. Any new SQL touching `students_data` with `jsonb_*` functions MUST cast `::jsonb`. Long-term cleanup: align the column type across environments (UAT/PROD → `jsonb`).
+
 ### Per-student assessment status label (TpoDashBoard.js)
 
 The per-student status column maps the DB `AssessmentStatus` enum (`PENDING`, `INPROGRESS`,
