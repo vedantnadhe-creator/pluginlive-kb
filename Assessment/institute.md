@@ -67,6 +67,20 @@ A `WEEKLY` schedule normally has a parent that runs for months (e.g. `30 May 202
 
 **Bug fixed (2026-06-09):** Per-run sub-rows in `assessmentDetails` hardcoded `status: "Ongoing"` and `expiredCount: 0` — they never compared the run's own `end_time` to `now`. Lapsed weekly runs (seen on Christ University, Lavasa Communication: Schedule 1 ending 7 Jun, Schedule 2 ending 8 Jun) showed "Ongoing" next to the run name even though the row's right-side badge (frontend-derived from `endTime`) correctly read "Expired". `StudentListInfo.js` now computes each run's status/`expiredCount` from `start_time`/`end_time`, matching the one-time and standalone code paths. DB data was correct; this was purely an API display bug.
 
+### Per-student assessment status label (TpoDashBoard.js)
+
+The per-student status column maps the DB `AssessmentStatus` enum (`PENDING`, `INPROGRESS`,
+`COMPLETED`, `DROPOUT`) to display labels: **Completed / In Progress / Dropout / Pending**.
+`submitted && scoresCalculated` is treated as the source of truth for **Completed** (in case the
+enum lags). The `statusFilter` input still uses the raw enum values, so it's unaffected.
+
+**Bug fixed (2026-06-11):** the mapper previously derived `"Attempted"` from the `attempted` flag —
+which mislabeled `DROPOUT` rows (and could even hide a real Completed row when a student had both a
+completed and a dropped assignment for the same assessment). There is **no "Attempted" status**.
+Both mappers (`getStudentListForAssessment` ~L2588 and `getStudentListForCorporateAssessment` ~L3138)
+now map the enum directly. Note: after diagnosis the schedule legitimately assigns **2 assessments**
+(2 institute-maps under one schedule), so a student can have one `COMPLETED` + one `DROPOUT` row.
+
 ### Diagnosis Count Query (Step 5 — `diagnosisCompleted` / `totalDiagnosisTaken`)
 
 Counts how many students completed diagnosis (submitted >= 2 assessments of the same type for the institute).
