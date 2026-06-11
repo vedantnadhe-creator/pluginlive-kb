@@ -172,6 +172,17 @@ Same as TPO method but for corporate assessments. Already had all score types fr
 - Dynamic column extraction for Role_Based/Behavior: scans all student rows for keys in `sectionScores` OR `roleBasedScores`
 - Total Score column: `r.totalScore ?? r.totalAvgScore ?? r.roleBasedScores?.overallScore ?? r.customAssessmentScores?.percentage`
 - Assigned Difficulty and Progression Level hidden for non-standard types
+- **Status column** renders `student.status` directly (label, not the DB enum): green for `Completed`/`Attempted`, orange for `In Progress`, blue for `Sent`, red otherwise.
+- **"Assmts. taken / sent" column** renders the `skipCount` string (`"taken/sent"`) verbatim; it also accepts explicit `assessmentsTaken`/`assessmentsSent`. Despite the legacy field name `skipCount`, this column shows **taken/total**, not skips. Same contract in admin-react's CandidateList.
+
+### admin-node `getAssessmentDetails` per-candidate fields (Role_Based / Custom / Behavior list)
+
+The non-standard-type candidate list is served by **admin-node `Assessment.getAssessmentDetails`** (`/assessment/getAssessmentDetails`, `formatStudent`). Two fields the frontend depends on:
+
+- `status` — **display label** mapped from the DB `assessment_assigned_students.status` enum: `COMPLETED→Completed`, `INPROGRESS→In Progress`, `DROPOUT→Dropout`, `PENDING→Pending`, with a `submitted`/`attempted` fallback for legacy rows where the enum is NULL.
+- `skipCount` / `assessmentsTaken` / `assessmentsSent` — `taken = COUNT(submitted OR attempted)`, `sent = COUNT(*)` per email for the map. `skipCount` is the `"taken/sent"` string the column renders.
+
+**Bug fixed (2026-06-11):** `formatStudent` previously never set a `status` field (so the frontend Status column rendered blank/red even for COMPLETED submissions), and `skipCount` was computed as **skipped/total** (`attempted=false AND end_time<NOW()`) — so a completed attempt showed `0/1` under the "taken/sent" column. Seen on UAT for `testing-br-3` (Role_Based): a submitted/COMPLETED candidate displayed blank status + `0/1`. Now status is mapped and the count is taken/total. Backend-only fix; no consumer reads `skipCount` as skips.
 
 ### StudentReport (`StudentReport/index.js`)
 
