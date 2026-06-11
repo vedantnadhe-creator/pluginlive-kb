@@ -309,7 +309,7 @@ psql -h <host> -U <user> -d <assessment_db> -f migrations/add_ai_interview_table
 
 The candidate-facing AI Interview UI lives in `Assessment-React/src/modules/Assessments/Partials/AIInterview/`:
 
-- **`InviteStart.js`** — OTP-based invite start screen. A candidate opening an AI Interview invite link enters the OTP to authenticate and start the session (the invite API in `aiInterviewInviteAPI.js` calls auth + student services).
+- **`InviteStart.js`** — OTP-based invite start screen. A candidate opening an AI Interview invite link enters the OTP to authenticate and start the session (the invite API in `aiInterviewInviteAPI.js` calls auth + student services). Since 2026-06-11 this same screen also handles **all other corporate assessment types** under the generalized OTP-invite flow — see [otp-invite.md](otp-invite.md).
 - **`interview.js`** — the live voice interview surface (TTS playback, mic capture, browser VAD auto-submit after ~1.8 s of silence).
 - **Completion redirect** — when the interview finishes, the candidate is redirected to `/assessment` (the assessment home), not left on the interview screen.
 
