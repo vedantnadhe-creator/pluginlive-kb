@@ -23,6 +23,36 @@ Google Drive / API → Ingest raw data → LLM normalization → Entity matching
 
 ---
 
+## Real-Time Ingest via Google Drive Webhook (UAT — LIVE)
+
+As of **2026-06-11**, UAT ingests in **real time** through a Google Drive push-notification (`changes.watch`) webhook — no waiting for the daily cron. End-to-end latency is seconds (ingest) + a few seconds (AI normalization).
+
+**Flow:** file added/edited in the watched Drive folder → Google POSTs (empty ping) to the webhook → `DriveChangeService.process_and_log_changes()` lists changes since the saved `drive_state.start_page_token` → for each changed spreadsheet calls `ingest_file()` (rows → `candidates_raw_data`, status `pending`) → `worker` normalizes. The POST handler (`api/drive_webhook.py`) returns `200` immediately and does the work in a background task; an `asyncio.Lock` prevents concurrent double-processing.
+
+**Service account (changed):** UAT uses the **`pluginalex`** SA `pluginliveservice@pluginalex.iam.gserviceaccount.com` (the same `auth_creds.json` that student/corporate/institute-node use for Google Sheet export), **not** the old `data-eng-dev-486917` SA. The Drive folder is shared with this SA.
+
+**Webhook URL (no more ngrok on UAT):** `https://data-normalization.uat.pluginlive.com/webhooks/google-drive` — a permanent Let's Encrypt subdomain (nginx `data-normalization.conf` → `localhost:5013`). ngrok is **local-dev only**; its `*.ngrok-free.dev` domains are pre-verified with Google, custom domains are not (see below).
+
+**Domain verification (one-time prerequisite):** Google rejects `changes.watch` unless the webhook's domain is verified **in the project that owns the SA** — here `pluginalex`. `pluginlive.com` is verified in Search Console + added under **Cloud Console → Domain verification (project `pluginalex`)**, which covers all subdomains (UAT + future PROD). Change the SA → re-verify under the new SA's project.
+
+**Channel lifecycle:** watch channels expire after **7 days**. The `cron` process auto-renews (`ensure_webhook_active` hourly, `weekly_webhook_renewal` Sun 1 AM). Channel/token state lives in the single `drive_state` row (`id='drive'`: `start_page_token` + `webhook_data` JSONB). When switching SA, reset `start_page_token` to NULL so the new SA seeds a fresh change-feed.
+
+**Incremental dedup (important):** ingest is per-sheet incremental — `ingest_spreadsheet_file` skips a sheet when `last_row_number <= already_processed` (`ingested_sheets.last_processed_row`, keyed on `source_sheet_id`=Drive file_id + sheet name). Re-saving a sheet with the same rows inserts nothing; **only rows beyond the last processed row ingest.** Not a bug — prevents duplicates. To test, add a *new* row.
+
+### UAT runtime topology — 3 sibling containers
+
+The Docker image's CMD only runs the API. The worker and scheduler run as **separate containers from the same `datanormalization:api` image** (overriding CMD), all `--restart always --env-file .env`:
+
+| Container | Command | Role |
+|-----------|---------|------|
+| `datanormalization` | (image CMD) `uvicorn api.main:app … :5013` | API + **webhook receiver** (`-p 5013:5013`) |
+| `datanormalization-worker` | `python main.py worker` | AI normalization loop |
+| `datanormalization-cron` | `python main.py cron` | APScheduler (renewal, daily ingest, status) |
+
+⚠️ **`deploy.sh` only builds/runs `datanormalization`** — it does *not* recreate the `-worker`/`-cron` siblings, and rebuilding the image does not restart them. After any redeploy, recreate the two siblings manually (or add them to `deploy.sh`). Code + SA key are **baked into the image** (`COPY . /app`), so config/key changes require an image rebuild, not just an `.env` edit.
+
+---
+
 ## Architecture
 
 | Component | Role |
@@ -32,7 +62,7 @@ Google Drive / API → Ingest raw data → LLM normalization → Entity matching
 | **Assessment worker** | Syncs assessment scores from assessment DB |
 | **Form metadata worker** | Fetches Google Forms metadata |
 | **Export worker** | Async CSV/Excel generation for large exports |
-| **Scheduler** (APScheduler) | Daily ingest (1 AM), webhook health (15 min), webhook renewal (Sun 1 AM) |
+| **Scheduler** (APScheduler) | Daily ingest (1 AM, now a safety-net backfill behind the webhook), webhook health check (**hourly**, `CronTrigger(hour="*/1")`), webhook renewal (Sun 1 AM), status report (every 5 min), log cleanup (2 AM) |
 
 ---
 
@@ -130,7 +160,8 @@ Select + mark happen in one transaction, so `RETURNING` hands each row to **exac
 
 | Method | Endpoint | Purpose |
 |--------|----------|--------|
-| POST | `/webhooks/google-drive` | Receive Drive file change notifications |
+| GET | `/webhooks/google-drive` | Health check (`{"status":"ok"}`) |
+| POST | `/webhooks/google-drive` | Receive Drive file change notifications (real-time ingest trigger) |
 
 ### Ingest UI (HTML)
 
@@ -159,7 +190,7 @@ Note: on `CandidateMetrics` the Ingest button was commented out by the Apr-2026 
 
 | Table | Purpose |
 |-------|--------|
-| `ingested_sheets` | Track Excel/Form sources (source_sheet_id, source_file, form_status) |
+| `ingested_sheets` | Track Excel/Form sources (source_sheet_id, source_file, last_processed_row, form_status) |
 | `candidates_raw_data` | Raw ingested data (JSONB), normalization status, timestamps |
 | `candidates` | Normalized records (name, email, mobile, gender, DOB, assessment_scores JSONB) |
 | `candidate_job_details` | Role-specific data (role, cv_url, normalized_data JSONB, cv_data JSONB) |
@@ -167,7 +198,7 @@ Note: on `CandidateMetrics` the Ingest button was commented out by the Apr-2026 
 | `normalization_logs` | Audit trail (old_data, new_data, normalized_keys) |
 | `validation_logs` | Field validation results |
 | `drive_webhook_log` | Drive change events |
-| `drive_state` | Webhook state (start_page_token, webhook_data JSONB) |
+| `drive_state` | Single row `id='drive'` — webhook state (`start_page_token`, `webhook_data` JSONB) |
 | `ingested_forms` | Google Forms metadata |
 | `export_jobs` | Async download jobs (status, file_path) |
 
@@ -179,7 +210,7 @@ Note: on `CandidateMetrics` the Ingest button was commented out by the Apr-2026 
 
 | Service | Purpose |
 |---------|--------|
-| **Google Drive API** | List/download Excel files, webhook registration |
+| **Google Drive API** | List/download Excel files, webhook (`changes.watch`) registration |
 | **Google Forms API** | Fetch form metadata |
 | **OpenAI API** (GPT-4o-mini) | Field normalization, entity matching |
 | **Gemini API** (3.0 Flash) | Fallback AI normalization |
@@ -197,9 +228,9 @@ Note: on `CandidateMetrics` the Ingest button was commented out by the Apr-2026 
 | `POSTGRES_ASSESSMENT_SCORE_URL` | Assessment DB connection |
 | `OPENAI_API_KEY` / `OPENAI_MODEL` | OpenAI config (default: gpt-4o-mini) |
 | `GEMINI_API_KEY` / `GEMINI_MODEL` | Gemini fallback |
-| `GOOGLE_SERVICE_ACCOUNT_FILE` | Service account JSON path |
-| `GOOGLE_DRIVE_FOLDER_ID` | Drive folder to monitor |
-| `GOOGLE_DRIVE_WEBHOOK_URL` | Webhook receiver URL (ngrok in dev) |
+| `GOOGLE_SERVICE_ACCOUNT_FILE` | Service account JSON path. **UAT: `./auth_creds.json`** (pluginalex SA `pluginliveservice@pluginalex.iam.gserviceaccount.com`) |
+| `GOOGLE_DRIVE_FOLDER_ID` | Drive folder to monitor (`1OJ2sGcz85VmGk2fHkg3XALW5nX5M06Ug`) |
+| `GOOGLE_DRIVE_WEBHOOK_URL` | Webhook receiver URL. **UAT: `https://data-normalization.uat.pluginlive.com/webhooks/google-drive`** (Let's Encrypt; ngrok is local-dev only) |
 | `PDF_PARSER_URL` / `PDF_PARSER_AUTH_KEY` | Resume parser endpoint |
 | `ENTITY_NORMALIZER_API_URL` | PG Vector Search endpoint |
 | `API_SECRET_KEY` | Auth key for `/api/api-ingest` endpoints |
@@ -210,11 +241,15 @@ Note: on `CandidateMetrics` the Ingest button was commented out by the Apr-2026 
 ## Docker & Deployment
 
 ```bash
-# Build
-docker build -t form-data-normalization .
+# Build (UAT image tag)
+docker build --build-arg ENVIRONMENT=uat -t datanormalization:api .
 
-# Run
-docker run -p 5013:5013 --env-file .env form-data-normalization
+# API + webhook receiver
+docker run -itd --name datanormalization --restart always --env-file .env -p 5013:5013 datanormalization:api
+# Normalization worker (sibling container)
+docker run -itd --name datanormalization-worker --restart always --env-file .env datanormalization:api python main.py worker
+# Scheduler (sibling container)
+docker run -itd --name datanormalization-cron --restart always --env-file .env datanormalization:api python main.py cron
 ```
 
 **CLI modes** (via `main.py`):
