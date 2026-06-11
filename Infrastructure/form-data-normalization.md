@@ -140,6 +140,17 @@ Select + mark happen in one transaction, so `RETURNING` hands each row to **exac
 | POST | `/ingest/start` | Start manual ingestion |
 | GET | `/ingest/stream/{run_id}` | Stream logs (SSE) |
 
+### Admin-React UI Triggers
+
+The `POST /api/candidates/ingest` + `GET /api/candidates/ingest/status` (poll every 3s until `status.running === false`) endpoints are exposed via an **Ingest** button on two admin-react screens (both call them through `utils/candidateRequest`, base URL `REACT_APP_API_URL`):
+
+| Screen | Component | Ingest button | Normalize button |
+|--------|-----------|---------------|------------------|
+| Mismatched Candidates List | `modules/CandidateMetrics/index.js` | **Enabled** | Hidden (commented) |
+| Candidates Raw / list screen | `modules/CandidatesRaw/index.js` | Enabled | — |
+
+Note: on `CandidateMetrics` the Ingest button was commented out by the Apr-2026 Google-Drive ingestion redesign (commit `06bc28f0`) and re-enabled later — the `handleIngest`/`handleNormalize` handlers were never removed, only the JSX was toggled. The **Normalize Data** button there remains commented out.
+
 ---
 
 ## Database Schema
