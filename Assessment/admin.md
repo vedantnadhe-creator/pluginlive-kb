@@ -63,19 +63,24 @@ Same parameters and return structure as `getActiveAssessments`. Separate interna
 
 ---
 
-### `getAssessmentDetails({ assessmentInstituteMapID, entityType, filters, pageNo, pageLimit, searchQuery })`
+### `getAssessmentDetails({ assessmentInstituteMapID, entityType, filters, pageNo, pageLimit, searchQuery, paginate })`
 
 The most complex admin function — fetches the **student-level details** for a specific assessment.
 
-**Purpose:** Powers the assessment detail/drill-down page, showing each assigned student with full status, scores, and profile info.
+**Purpose:** Powers the assessment detail/drill-down page, showing each assigned student with full status, scores, and profile info. Used for **all non-scheduled types** (Role_Based, Custom, Behavior, AI_Interview, technical, and one-time communication/aptitude) on both admin-react and institute-react.
 
 **Filters available:**
-- `degree`, `department`, `specialization` — education filters
+- `degree`, `department`, `specialization` — education filters. **Matched case-insensitively** (`UPPER(COALESCE(cc.degree, ep.degree)) IN (...)`): the option lists from `getDomain`/`getDegree`/`getDepartment`/`getSpecialization` come back UPPER-cased, while stored course data is mixed-case, so a plain `IN` matched nothing.
+- `status` — array of `COMPLETED` / `INPROGRESS` / `PENDING` / `DROPOUT`. Applied in SQL (mirrors the displayed-status derivation: raw `aas.status` enum first, then `submitted`/`attempted` fallback for legacy rows) so paginated counts stay correct.
 - `CEFR` — filter by assigned CEFR level (communication)
 - `aptitude_level` — filter by student aptitude level
 - `assessment_intitude_map_id` — sub-map filter
 - `consistency.assessment_type` + `consistency.level` — filter by attendance pattern (`highConsistency >= 80%`, `moderateConsistency 60–80%`, `inconsistent < 60%`)
 - `searchQuery` — searches name, email, phone
+
+**Pagination is opt-in (`paginate=true`).** Without it the endpoint returns **every** matching row (all status buckets fully populated) — required by callers that bucket the result client-side (institute-react's status tabs) and by the Excel export. With `paginate=true` (admin-react's `CandidateList` via `fetchStudentsByStatus`) the `sent` bucket is `OFFSET/LIMIT`-paginated and `pagination.totalCount` reflects the filtered total. NOTE: pagination gates on `pageLimit` presence, not truthiness — the old `(pageNo && pageLimit)` check wrongly skipped pagination on page 1 (`pageNo=0`) and returned all rows, which surfaced as "Showing 10 of 10" with no pager on a 15-student assessment.
+
+The per-student `status` field ("Completed" / "In Progress" / "Pending" / "Dropout") is always returned, so the admin-react Status **column** populates for every type (previously empty for one-time/role-based).
 
 **Per-student data returned:**
 - Basic: name, email, phone, degree, department, specialization, photo
@@ -95,10 +100,12 @@ The most complex admin function — fetches the **student-level details** for a 
 
 ---
 
-### `exportStudentData({ assessmentInstituteMapID, entityType })`
+### `exportStudentData({ assessmentInstituteMapID, entityType, status, searchQuery, filters })`
 
 Generates an **Excel (.xlsx) export** of all student data for a given assessment using ExcelJS.
 Returns a buffer for download.
+
+**Reflects the on-screen CandidateList filters.** It calls `getAssessmentDetails` **without** `paginate` (so all matching rows are exported, not just the visible page) and forwards `filters` (degree/department/specialization/status, JSON string) + `searchQuery`. `status` selects which bucket to export — the frontends pass `'sent'` (the full list) for non-scheduled types so the export matches the table; status/degree/dept/spec filtering is applied in SQL by `getAssessmentDetails`. (Previously it ignored all filters and exported only the `completed` bucket.)
 
 **Supports:** College and Corporate
 
