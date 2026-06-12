@@ -23,17 +23,27 @@ Google Drive / API → Ingest raw data → LLM normalization → Entity matching
 
 ---
 
-## Real-Time Ingest via Google Drive Webhook (UAT — LIVE)
+## Real-Time Ingest via Google Drive Webhook (UAT + PROD — LIVE)
 
-As of **2026-06-11**, UAT ingests in **real time** through a Google Drive push-notification (`changes.watch`) webhook — no waiting for the daily cron. End-to-end latency is seconds (ingest) + a few seconds (AI normalization).
+As of **2026-06-11 (UAT)** and **2026-06-12 (PROD)**, both environments ingest in **real time** through a Google Drive push-notification (`changes.watch`) webhook — no waiting for the daily cron. End-to-end latency is seconds (ingest) + a few seconds (AI normalization).
 
 **Flow:** file added/edited in the watched Drive folder → Google POSTs (empty ping) to the webhook → `DriveChangeService.process_and_log_changes()` lists changes since the saved `drive_state.start_page_token` → for each changed spreadsheet calls `ingest_file()` (rows → `candidates_raw_data`, status `pending`) → `worker` normalizes. The POST handler (`api/drive_webhook.py`) returns `200` immediately and does the work in a background task; an `asyncio.Lock` prevents concurrent double-processing.
 
-**Service account (changed):** UAT uses the **`pluginalex`** SA `pluginliveservice@pluginalex.iam.gserviceaccount.com` (the same `auth_creds.json` that student/corporate/institute-node use for Google Sheet export), **not** the old `data-eng-dev-486917` SA. The Drive folder is shared with this SA.
+**Service account (changed):** Both UAT and PROD use the **`pluginalex`** SA `pluginliveservice@pluginalex.iam.gserviceaccount.com` (the same `auth_creds.json` that student/corporate/institute-node use for Google Sheet export), **not** the old `data-eng-dev-486917` SA. The Drive folders are shared with this SA. On **PROD** the key is mounted from k8s Secret `data-normalization-sa` at `/app/secrets/auth_creds.json` (NOT baked in the image); on **UAT** it sits in the repo as `./auth_creds.json` and is baked into `datanormalization:api`.
 
-**Webhook URL (no more ngrok on UAT):** `https://data-normalization.uat.pluginlive.com/webhooks/google-drive` — a permanent Let's Encrypt subdomain (nginx `data-normalization.conf` → `localhost:5013`). ngrok is **local-dev only**; its `*.ngrok-free.dev` domains are pre-verified with Google, custom domains are not (see below).
+**Webhook URLs (no more ngrok anywhere):**
+- UAT: `https://data-normalization.uat.pluginlive.com/webhooks/google-drive` (nginx `data-normalization.conf` → `localhost:5013`, Let's Encrypt).
+- PROD: `https://data-normalization.prod.pluginlive.com/webhooks/google-drive` (k8s Ingress `data-normalization-prod-ingress` in ns `api` → Service `form-data-normalization:80` → pod `:5013`, TLS secret `data-normalization-tls`, ingress IP `152.67.29.77`).
 
-**Domain verification (one-time prerequisite):** Google rejects `changes.watch` unless the webhook's domain is verified **in the project that owns the SA** — here `pluginalex`. `pluginlive.com` is verified in Search Console + added under **Cloud Console → Domain verification (project `pluginalex`)**, which covers all subdomains (UAT + future PROD). Change the SA → re-verify under the new SA's project.
+ngrok is **local-dev only**; its `*.ngrok-free.dev` domains are pre-verified with Google, custom domains are not (see below).
+
+**⚠️ Folder-scope filter (critical, since UAT+PROD share the SA):** Google Drive's change feed is **per-service-account, global**, not per-folder. Without filtering, the UAT webhook ingests files modified in the PROD folder and vice versa — this actually happened during the rollout (UAT picked up 1010 PROD rows; PROD picked up 3 UAT rows). The fix is in `services/drive_change_service.py`: every change is checked against `settings.GOOGLE_DRIVE_FOLDER_ID` (using `file.parents` from the Drive API) and dropped if it's not in this env's folder. **Daily ingest (`ingest_parallel`) was already folder-scoped; only the webhook path leaked.** If you ever share an SA across environments again, this filter is what keeps them separate. Code lives on `Development` (`bb5c848`), `UAT` (`68f5f59`), `release-v1.33-hotfix-1` (`f61f581`).
+
+**Drive folders (separate per env):**
+- UAT: `1OJ2sGcz85VmGk2fHkg3XALW5nX5M06Ug`
+- PROD: `1vnv0vCwqPnAU_I3afaW7zRn3ge8QLNtG`
+
+**Domain verification (one-time prerequisite):** Google rejects `changes.watch` unless the webhook's domain is verified **in the project that owns the SA** — here `pluginalex`. `pluginlive.com` is verified in Search Console + added under **Cloud Console → Domain verification (project `pluginalex`)**, which covers all subdomains (UAT + PROD). Change the SA → re-verify under the new SA's project.
 
 **Channel lifecycle:** watch channels expire after **7 days**. The `cron` process auto-renews (`ensure_webhook_active` hourly, `weekly_webhook_renewal` Sun 1 AM). Channel/token state lives in the single `drive_state` row (`id='drive'`: `start_page_token` + `webhook_data` JSONB). When switching SA, reset `start_page_token` to NULL so the new SA seeds a fresh change-feed.
 
@@ -50,6 +60,21 @@ The Docker image's CMD only runs the API. The worker and scheduler run as **sepa
 | `datanormalization-cron` | `python main.py cron` | APScheduler (renewal, daily ingest, status) |
 
 ⚠️ **`deploy.sh` only builds/runs `datanormalization`** — it does *not* recreate the `-worker`/`-cron` siblings, and rebuilding the image does not restart them. After any redeploy, recreate the two siblings manually (or add them to `deploy.sh`). Code + SA key are **baked into the image** (`COPY . /app`), so config/key changes require an image rebuild, not just an `.env` edit.
+
+### PROD runtime topology — 3 Deployments in ns `api`
+
+| Deployment | Args | Role |
+|-----------|------|------|
+| `form-data-normalization` | (image CMD) `uvicorn api.main:app … :5013` | API + **webhook receiver** (Service `:80` → `:5013`, Ingress `data-normalization-prod-ingress`) |
+| `form-data-normalization-worker` | `python main.py worker` | AI normalization loop (scalable; atomic claim is race-safe) |
+| `form-data-normalization-cron` | `python main.py cron` | APScheduler — **must stay at 1 replica** (two schedulers = duplicate watch registrations) |
+
+All three reference the same image (`bom.ocir.io/bmv2bqg5gpcd/form-data-normalization:<date>-<branch>`) and mount the pluginalex SA from Secret `data-normalization-sa` at `/app/secrets/auth_creds.json`. Image pull secret: `oracleregistry`. Inline env on each container (these **override** the baked `/app/.env`):
+- `GOOGLE_SERVICE_ACCOUNT_FILE=/app/secrets/auth_creds.json`
+- `GOOGLE_DRIVE_WEBHOOK_URL=https://data-normalization.prod.pluginlive.com/webhooks/google-drive`
+- `ENVIRONMENT=production`
+
+Deploy via `deploy.sh` (option `17`) which builds + pushes the image and does `kubectl set image deployment/form-data-normalization …`. ⚠️ `deploy.sh` only rolls the **API** deployment — you must also `kubectl set image deployment/form-data-normalization-worker` and `…-cron` (same image tag) to roll the siblings. The first time these were created (2026-06-12) the worker/cron manifests had to be applied manually; consider adding them to `deploy.sh` or a manifest repo.
 
 ---
 
@@ -202,7 +227,7 @@ Note: on `CandidateMetrics` the Ingest button was commented out by the Apr-2026 
 | `ingested_forms` | Google Forms metadata |
 | `export_jobs` | Async download jobs (status, file_path) |
 
-**Relationships:** `candidates_raw_data` → `ingested_sheets` (many-to-one), `candidates` → `candidates_raw_data` (1:1), `candidate_job_details` → `candidates` (many-to-one)
+**Relationships:** `candidates_raw_data` → `ingested_sheets` (many-to-one), `candidates` → `candidates_raw_data` (1:1), `candidate_job_details` → `candidates` (many-to-one). NB: the only DB-enforced FKs into `ingested_sheets` are from `candidates_raw_data.sheet_id`, `candidates.sheet_id`, `ingested_forms.sheet_id`. The `candidates.raw_data_id` and `candidate_job_details.candidate_id` columns are NOT FK-enforced — cleanup scripts must delete them manually in order.
 
 ---
 
@@ -228,9 +253,9 @@ Note: on `CandidateMetrics` the Ingest button was commented out by the Apr-2026 
 | `POSTGRES_ASSESSMENT_SCORE_URL` | Assessment DB connection |
 | `OPENAI_API_KEY` / `OPENAI_MODEL` | OpenAI config (default: gpt-4o-mini) |
 | `GEMINI_API_KEY` / `GEMINI_MODEL` | Gemini fallback |
-| `GOOGLE_SERVICE_ACCOUNT_FILE` | Service account JSON path. **UAT: `./auth_creds.json`** (pluginalex SA `pluginliveservice@pluginalex.iam.gserviceaccount.com`) |
-| `GOOGLE_DRIVE_FOLDER_ID` | Drive folder to monitor (`1OJ2sGcz85VmGk2fHkg3XALW5nX5M06Ug`) |
-| `GOOGLE_DRIVE_WEBHOOK_URL` | Webhook receiver URL. **UAT: `https://data-normalization.uat.pluginlive.com/webhooks/google-drive`** (Let's Encrypt; ngrok is local-dev only) |
+| `GOOGLE_SERVICE_ACCOUNT_FILE` | Service account JSON path. **UAT: `./auth_creds.json`** (baked); **PROD: `/app/secrets/auth_creds.json`** (k8s Secret `data-normalization-sa`). Both = pluginalex SA `pluginliveservice@pluginalex.iam.gserviceaccount.com`. |
+| `GOOGLE_DRIVE_FOLDER_ID` | Drive folder to monitor. **UAT: `1OJ2sGcz85VmGk2fHkg3XALW5nX5M06Ug`** · **PROD: `1vnv0vCwqPnAU_I3afaW7zRn3ge8QLNtG`** |
+| `GOOGLE_DRIVE_WEBHOOK_URL` | Webhook receiver URL. **UAT: `https://data-normalization.uat.pluginlive.com/webhooks/google-drive`** · **PROD: `https://data-normalization.prod.pluginlive.com/webhooks/google-drive`** (both Let's Encrypt; ngrok is local-dev only) |
 | `PDF_PARSER_URL` / `PDF_PARSER_AUTH_KEY` | Resume parser endpoint |
 | `ENTITY_NORMALIZER_API_URL` | PG Vector Search endpoint |
 | `API_SECRET_KEY` | Auth key for `/api/api-ingest` endpoints |
@@ -250,6 +275,14 @@ docker run -itd --name datanormalization --restart always --env-file .env -p 501
 docker run -itd --name datanormalization-worker --restart always --env-file .env datanormalization:api python main.py worker
 # Scheduler (sibling container)
 docker run -itd --name datanormalization-cron --restart always --env-file .env datanormalization:api python main.py cron
+```
+
+```bash
+# PROD (k8s) — after deploy.sh builds & pushes the image, also roll the siblings:
+TAG=bom.ocir.io/bmv2bqg5gpcd/form-data-normalization:<date>-<branch>
+kubectl -n api set image deployment/form-data-normalization        form-data-normalization=$TAG
+kubectl -n api set image deployment/form-data-normalization-worker form-data-normalization-worker=$TAG
+kubectl -n api set image deployment/form-data-normalization-cron   form-data-normalization-cron=$TAG
 ```
 
 **CLI modes** (via `main.py`):
