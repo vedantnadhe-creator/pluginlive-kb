@@ -49,6 +49,16 @@ WHERE aim.schedule_id = ANY($1::uuid[])           -- scheduled assessments
 - **Diagnosis**: Communication/Aptitude with `schedule_id = NULL` and `is_one_time = false` — these are auto-created diagnosis assessments that belong to schedules
 - **Standalone other types**: Role_Based, Custom, Behavior, AI_Interview, etc. with `schedule_id = NULL` and `is_one_time = false` — these are NOT diagnosis; they never have schedules. Shown as individual rows.
 
+### Filter-option dropdowns (degree / department / specialization)
+
+The detail-page filter dropdowns are populated by student-node `getDomain` / `getDegree` / `getDepartment` / `getSpecialization` → `TpoDashBoard._getFilteredStudentCourseData`. These accept **`assessmentId`** (the assessment_institute_map id) OR `scheduleId`; for non-scheduled / one-time assessments the frontend passes `assessmentId`, so no `scheduleId` is required.
+
+**Source fix (2026-06-12):** the options query must read **`COALESCE(current_course, education_profile)`** — the same source the student-list table uses. Previously it read **only `current_course`** and `return students.map(s => s.currentCourse).filter(Boolean)`, which **dropped every student lacking a `current_course` row**, so assessments whose course data lives only in `education_profile` showed an empty **"No data"** degree/department dropdown even though the table displayed degrees. It now fetches both relations, coalesces field-by-field (current_course preferred), and applies the passing-year window across **both** sources. Returned option values are UPPER-cased — `getAssessmentDetails` matches them case-insensitively (see `Assessment/admin.md`).
+
+### Performance: assessment indexes (`tpo_dashboard_indexes.sql`)
+
+`getschedulesInfo`, `getAssessmentDetails`, and `getStudentListForTpoAssessment` all filter `assessment.assessment_assigned_students` by `assessment_institute_map_id` (20k+ rows on DEV, more on PROD). The canonical migration `DB-Scripts/tpodashboard optimizations/tpo_dashboard_indexes.sql` adds the supporting indexes — notably `idx_aas_aim_practice (assessment_institute_map_id, is_practice)` (its leading column serves the map-id-only lookups) and `idx_aim_institute_id`. **Applied to DEV + UAT (2026-06-12); PROD pending.** All are `CREATE INDEX CONCURRENTLY IF NOT EXISTS` (safe/idempotent, no table lock). The admin-react list page also caches the `getschedulesInfo` response for ~12s and persists its filters across in-app navigation, so returning from an assessment doesn't refire the query.
+
 ### Status computation (Ongoing / Expired / Upcoming)
 
 Status is **computed at request time** against `now = new Date()` — it is NOT stored in any DB column. There are **two distinct levels**, computed independently:
@@ -174,6 +184,7 @@ Same as TPO method but for corporate assessments. Already had all score types fr
 - Assigned Difficulty and Progression Level hidden for non-standard types
 - **Status column** renders `student.status` directly (label, not the DB enum): green for `Completed`/`Attempted`, orange for `In Progress`, blue for `Sent`, red otherwise.
 - **"Assmts. taken / sent" column** renders the `skipCount` string (`"taken/sent"`) verbatim; it also accepts explicit `assessmentsTaken`/`assessmentsSent`. Despite the legacy field name `skipCount`, this column shows **taken/total**, not skips. Same contract in admin-react's CandidateList.
+- **Status filter / tabs (non-standard types):** institute-react keeps a **status-tab** UX (All / Pending / In Progress / Dropped Off / Completed) driven by `currentActiveStatus` + `onStatusChange`, bucketing the full `getAssessmentDetails` result **client-side** — so it does NOT pass `paginate`. (admin-react instead uses a server-side status-filter popover with `paginate=true`; see `Assessment/admin-frontend.md`.) The status-filter popover checkbox double-toggle (row `onClick` + `Checkbox onChange` both firing) was fixed here too. Export reflects the active status tab + degree/dept/spec/search filters.
 
 ### admin-node `getAssessmentDetails` per-candidate fields (Role_Based / Custom / Behavior list)
 
