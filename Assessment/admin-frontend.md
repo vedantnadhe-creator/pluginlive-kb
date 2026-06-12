@@ -34,6 +34,19 @@
 | `Partials/ActiveCorporateList/CorporateAssessmentDashboard.js` | Per-corporate assessment dashboard -- reuses UnifiedAssessmentTable |
 | `Partials/StudentReport/index.js` | Student report drawer -- shows scores, personal details, download report |
 
+### Assessment detail & list behavior (updated 2026-06-12)
+
+`InstituteAssessmentDetails.js` powers the per-assessment detail page for **every** assessment type. Two data paths:
+- **Scheduled** communication/aptitude → `fetchSpecificAssessmentStudentList` (student-node).
+- **Everything else** (one-time, Role_Based, Custom, Behavior, technical, AI_Interview) → `fetchStudentsByStatus` → admin-node `getAssessmentDetails`. This call now passes the CandidateList filters (degree/department/specialization + `status`) and `paginate: true`, so the detail shows the **Status column + Degree/Department/Specialization/Status filters for all types** (CEFR/Aptitude/Consistency remain communication/aptitude-only). Server pagination via `pagination.totalCount` fixes the old "Showing 10 of 10" on a 15-student assessment (all students reachable + pager restored).
+- **Export** (`CandidateList` → `exportStudentData`) reflects the active degree/dept/spec/status/search filters and exports the full filtered list (status `'sent'`), not just the visible page.
+
+`CandidateList` status-filter popover: the checkbox previously toggled twice (row `onClick` + `Checkbox onChange` both fired) so only the **label** click registered; fixed with `onClick={e => e.stopPropagation()}` on the checkbox.
+
+`InstituteAssessmentDashboard.js` (the institute's assessment list): the assessment-type filter, passing year, and column filters now **persist across in-app navigation** (module-level store, reset on full page reload), and the `getschedulesInfo` response is **cached ~12s** keyed by the request params — returning from an assessment within that window restores the list without refiring the request. Mutations (Add Candidate, schedule update) force-refresh and clear the cache.
+
+> **institute-react parity:** the same fixes are mirrored there, except its other-type detail keeps its existing **status-tab** UX (All/Pending/In Progress/Dropped Off/Completed) instead of the status-filter popover; it therefore does **not** send `paginate` (it buckets the full result client-side).
+
 ### Shared Components
 
 | Component | File | Purpose |
