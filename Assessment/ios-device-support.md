@@ -67,6 +67,23 @@ No format change is needed: OCI presigned MP3 URLs honour HTTP Range (`206`) and
 
 ---
 
+## Background / foreground recovery (iPhone tab & app switch)
+
+When the candidate leaves the assessment (switches Safari tabs or apps) on iPhone, iOS **suspends all media capture at the OS level** — the proctoring camera stream dies and any in-progress video-response `MediaRecorder` is cut. Two recovery behaviours were added across the three video runtimes (`Communicationassmt`, `Hinglishassmt`, `RoleBasedassmt` `assessment.js`):
+
+- **Proctoring camera re-acquire (green light).** Proctoring keeps **one persistent `getUserMedia` stream** (`captureRef`, reused every 20 s) so the camera light stays on for the whole assessment. After backgrounding, that stream is dead, and the 20 s interval won't re-acquire because `captureRef` is still non-null. The `visibilitychange` handler nulls `captureRef` on return, **but iOS rejects a gesture-less `getUserMedia` re-acquire**, so the camera stayed off. Fix: re-acquire **inside the "Resume Assessment" tap** of the re-entry modal (`resumeProctoringAfterReentry()` in Communication/Hinglish; inlined in Role-based `handleReturnLite`) — a real user gesture iOS honours. It drops the dead stream and calls `captureImage()` **synchronously in the tap** (no `setTimeout`, so `getUserMedia` stays bound to the gesture) → green light returns, snapshots resume. The gesture-less visibility re-acquire is left as best-effort.
+- **Video-response recording interruption.** A take cut by backgrounding can't be resumed (bytes are gone). The `visibilitychange:hidden` handler flags `interruptedRecordingRef` while a recording is live; on return the orphaned recorder is stopped and its `onstop` **discards the partial/corrupt take** — no upload, no attempt burned — resetting to the ready-to-record state. The re-entry warning already tells the candidate they left, so after dismissing it they get a live preview and **record again**. Refs added: `recordingRef`/`activeRecorderRef`/`interruptedRecordingRef` (Communication, Hinglish) and `videoRecordingRef`/`activeVideoRecorderRef`/`interruptedVideoRef` (Role-based, keyed per questionId). Normal submit / auto-submit flush paths are unaffected (they run the original save+upload branch).
+
+All scoped to iPhone (`!shouldEnforceFullscreen()`); desktop/iPad untouched.
+
+---
+
+## Activate-link login redirect (student-react)
+
+The "view assessment" email link lands on `student-react` `Onboarding/Components/ActivateAccount/index.js`. It previously defaulted unknown state to the **set-password** page, so on iPhone (where iOS Mail's in-app browser / ITP can drop the `getStudentData` request) a returning user who already set a password was wrongly sent to set-password instead of login. Fixed: `currentState >= 1` (onboarded) → **redirect to login**; only `0/-1` (brand-new) → set-password; and a 6 s safety net **defaults unknown state to login, never set-password**.
+
+---
+
 ## Known follow-ups (not yet shipped)
 
 - **AI-interview final scoring (all platforms):** `fastapi-ai-engine/routers/ai_interview.py` `score-final` calls a non-existent model id (`gemini-3.5-flash`) with no fallback → 502. Should be `GEMINI_MODEL` (`gemini-2.5-pro`).
