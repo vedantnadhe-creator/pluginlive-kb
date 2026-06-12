@@ -356,7 +356,19 @@ The candidate-facing AI Interview UI lives in `Assessment-React/src/modules/Asse
 
 - **`InviteStart.js`** — OTP-based invite start screen. A candidate opening an AI Interview invite link enters the OTP to authenticate and start the session (the invite API in `aiInterviewInviteAPI.js` calls auth + student services). Since 2026-06-11 this same screen also handles **all other corporate assessment types** under the generalized OTP-invite flow — see [otp-invite.md](otp-invite.md).
 - **`interview.js`** — the live voice interview surface (TTS playback, mic capture, browser VAD auto-submit after ~1.8 s of silence).
+- **`instruction.js`** — welcome / readiness / **resume** pre-start screens shown before the live interview.
+- **`resumeUpload.js`** — shared, unit-tested handler for the pre-start resume upload (see gotcha below).
 - **Completion redirect** — when the interview finishes, the candidate is redirected to `/assessment` (the assessment home), not left on the interview screen.
+
+### Candidate resume upload (pre-start)
+
+On the instructions screen the candidate optionally attaches a resume (PDF/DOCX/TXT, ≤6 MB). The file is **POSTed directly to FastAPI** `${REACT_APP_FASTAPI_URL}/ai-interview/parse-resume` as multipart (`file` field) — it does **not** go through student-node and is **not** stored in S3. FastAPI extracts plain text (PyMuPDF for PDF, python-docx for DOCX) and returns `{ text, chars, truncated, filename }`. The text is held in component state and passed as `resumeText` to `POST /ai-interview/session/start` (and on each `session/turn`), giving the interviewer resume context. The endpoint requires **no auth** (`_verify` is disabled), so a missing invite JWT does not block it. Field config (`resume_policy`: `mandatory` / `optional` / `not_required`) comes from `ai_interview_config` and is surfaced via `config-info`.
+
+### Frontend Gotcha — resume upload silently did nothing (Fixed 2026-06-12)
+
+The pre-start upload stacked **two upload mechanisms**: an antd `<Upload.Dragger beforeUpload>` *wrapping* a nested `<label htmlFor>` + hidden `<input>` whose `onClick` did `e.preventDefault()` then a manual `input.click()`. The two fought each other — the label's default activation was cancelled and the programmatic click was swallowed inside the Dragger — so the **file dialog often never opened and the `parse-resume` request was never sent**. Symptom: "users can't upload a resume" while the FastAPI endpoint, CORS, and the baked-in URL are all healthy (the tell: **zero** `parse-resume` requests in the server logs).
+
+**Fix:** collapse to a single path — antd's `Upload.Dragger` opens the dialog on click **and** handles drag-and-drop, both feeding one shared `handleResumeFile()` in `resumeUpload.js`; `beforeUpload` returns `false` so antd never auto-uploads. `ResumeDrop` changed from `<label>` to `<div>` (no input to pair with). Diagnose recurrences by checking whether any `parse-resume` request reaches FastAPI at all — if not, it's the client, not the server.
 
 ### Frontend Build Gotcha — `process.env` must use member access (Fixed)
 
