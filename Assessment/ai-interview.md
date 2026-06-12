@@ -282,6 +282,29 @@ deletes `ai_interview_scores` cleanly.
 (`scores_calculated=false, is_processing=false, calculation_error=false,
 calculation_attempts=0`) — the cron re-picks it within ~1 minute.
 
+#### Gotcha — report/UI showed the email instead of the candidate name (fixed 2026-06-12)
+
+Root cause of the **same** missing-profile problem: `assignAIInterviewAssessment()`
+(`admin-node/app/models/Assessment.js`) **skipped student-account creation** — by design it
+was "OTP-invite-only, no portal accounts". But every name lookup (the report header in both
+`getReport` / `getReportByAssignment`, and the admin StudentReport modal + client-side PDF)
+joins `student_personal_profile → students` by `primary_email`. With no profile row, the name
+resolved to empty and the UI fell back to the **raw email** — so the report showed
+`email — email` where `name — email` belongs.
+
+**Fix (the right one, not a display patch):** AI-interview assignment now creates a student
+profile for each **new** candidate exactly like the other corporate/college assessment types
+(Aptitude / Communication / Role-Based all call `studentService.createPublicStudent`), using
+the `first_name`/`last_name` already present in `bulkUploadData`. It passes
+`assessment_data.skipActivationEmail=true` so the account is created **silently** — the
+candidate's only email is still the OTP invite. Payload lives in the pure, unit-tested helper
+`admin-node/app/helpers/aiInterviewStudentPayload.js`. No change to the report code — the name
+now resolves naturally from the profile.
+
+Forward-looking only: candidates assigned **before** this fix still lack a profile (no upload
+names are stored to backfill from). If names are missing from the upload, the profile is
+created without them (same as other types) and the report shows the email until a name exists.
+
 ---
 
 ## Database Tables
