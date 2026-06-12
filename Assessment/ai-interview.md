@@ -237,6 +237,51 @@ In a transaction:
 | `GET` | `/ai-interview/status/:assessmentAssignedId` | `getInterviewStatus` |
 | `GET` | `/ai-interview/result/:assessmentAssignedId` | `getInterviewResult` |
 
+#### Final Scoring Pipeline (production truth)
+
+Final scoring does **not** run on the candidate's request path. It is driven by the
+generic assessment-scoring cron, the same one used for aptitude/communication:
+
+1. `aiInterviewHandler.completeSession()` (`student-node/app/handlers/aiInterviewHandler.js`)
+   marks the session `COMPLETED`, sets the assignment `submitted=true`, and flips
+   `scores_calculated=false` (only if there is enough signal — see thresholds below).
+2. `script/calculatePendingAssessmentCron.js` runs **every minute**, picks **one** pending
+   assignment (`attempted=true, submitted=true, scores_calculated=false, is_processing=false`),
+   atomically locks it (`is_processing=true`), and calls
+   `Assessment.calculateAssessmentScore({ assessment_assigned_id })`.
+3. For `assessmentType === "ai_interview"`, that delegates to
+   `aiInterviewHandler.runScoringForAssignment()`, which calls FastAPI
+   `POST /ai-interview/score-final` (Gemini `gemini-2.5-pro`) and persists one
+   `ai_interview_scores` row (`overall_score`, `ai_recommendation`, `parameter_scores`,
+   `strengths`, `weaknesses`, `executive_summary`, `recommendation_text`).
+4. On success the cron sets `scores_calculated=true`. On error it increments
+   `calculation_attempts`; after the max it sets `calculation_error=true` and **stops
+   retrying** (so the row silently disappears from the cron's pickup query).
+
+**Scoring thresholds** (in `aiInterviewHandler.js`): `MIN_ANSWERS_FOR_SCORING = 4` and a
+**50% coverage** floor of expected questions. Interviews below this are marked
+`scores_calculated=true` with **no score row** (legitimately skipped as incomplete — not an error).
+
+#### Gotcha — corporate candidates with no student profile (fixed 2026-06-12)
+
+`Assessment.calculateAssessmentScore()` called `getFullName(primaryEmail)`
+**unconditionally before** the assessment-type branch. `getFullName()` reads the student
+micro-service profile and **throws `"Student not found"`** when none exists. AI-interview
+candidates are **corporate applicants invited by email** (e.g. `name+alias@…`) who often have
+no student profile in that DB — so scoring threw before ever reaching the `ai_interview`
+branch (which never uses `full_name`). The cron classified it as non-transient, retried 3×,
+then set `calculation_error=true` — leaving completed interviews permanently unscored.
+
+**Fix:** compute `assessmentType` first, then make `getFullName()` non-fatal for
+`ai_interview`/`ai-interview` (the original throw is preserved for every other type). Also
+added an `ai_interview` case to `resetForRecalculation` (it previously fell through to the
+communication-scores fallback and timed out the Prisma transaction), so manual recalc now
+deletes `ai_interview_scores` cleanly.
+
+**To re-score a stuck interview:** clear the flags on `assessment_assigned_students`
+(`scores_calculated=false, is_processing=false, calculation_error=false,
+calculation_attempts=0`) — the cron re-picks it within ~1 minute.
+
 ---
 
 ## Database Tables
