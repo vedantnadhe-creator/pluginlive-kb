@@ -41,6 +41,10 @@ iOS Safari's `MediaRecorder` only supports **`audio/mp4` (AAC)** and **throws on
 
 No format change is needed: OCI presigned MP3 URLs honour HTTP Range (`206`) and Safari plays `audio/mpeg` natively. (Note: many DEV question-audio binaries are missing from the bucket — a separate data-sync issue, not a code bug.)
 
+### Slow-network playback resilience (all browsers)
+
+The listening (`AudioPlayer`) and dictation (`WaveformPlayer`) components now handle slow/stalled downloads instead of appearing frozen: `preload="auto"` (clip starts downloading on mount), a **"Loading audio…"** hint + 12 s slow-connection guard (`onWaiting`/`onStalled`), and an inline **"Retry audio"** button on error/play-rejection. Retry calls `<audio>.load()`, which re-fetches **only that one audio object** via its presigned URL (no question/state refetch). Retry never burns the 2-play limit (the play count only increments on playback end). PROD audit confirmed all listening files are present and valid — the "can't hear it" reports are delivery/UX on slow links, not missing files.
+
 ---
 
 ## AI Interview specifics (iPhone)
@@ -63,7 +67,7 @@ No format change is needed: OCI presigned MP3 URLs honour HTTP Range (`206`) and
 ## Video replay & playback
 
 - Recorded-answer replay `<video>` elements (Communication, Hinglish, Role-based) and BiometricCheck now set **`playsInline`** (+ `webkit-playsinline`); without it iOS refuses inline playback, so candidates "couldn't replay" their recorded video. Live previews already had it.
-- Listening audio uses `preload="metadata"`; iOS shows `0:00` until the first user tap (no preload) — expected, not a bug.
+- Listening audio uses `preload="auto"` with a Retry control (see slow-network section above).
 
 ---
 
@@ -80,7 +84,11 @@ All scoped to iPhone (`!shouldEnforceFullscreen()`); desktop/iPad untouched.
 
 ## Activate-link login redirect (student-react)
 
-The "view assessment" email link lands on `student-react` `Onboarding/Components/ActivateAccount/index.js`. It previously defaulted unknown state to the **set-password** page, so on iPhone (where iOS Mail's in-app browser / ITP can drop the `getStudentData` request) a returning user who already set a password was wrongly sent to set-password instead of login. Fixed: `currentState >= 1` (onboarded) → **redirect to login**; only `0/-1` (brand-new) → set-password; and a 6 s safety net **defaults unknown state to login, never set-password**.
+The "view assessment" email link lands on `student-react` `Onboarding/Components/ActivateAccount/index.js`. Routing keys off `studentDetails.currentState` (returned as a real number by the **public** `GET /students/:studentId` — no auth, no response schema, so not string-coerced): `currentState >= 1` (onboarded) → **redirect to login**; only `0 / -1` (brand-new) → **set-password** page.
+
+A 6 s safety net redirects to **login** if the `getStudentData` fetch never resolves (seen on iPhone — iOS Mail's in-app browser / ITP can drop the request); it never defaults to set-password, so a returning user is not wrongly sent to set-password.
+
+**Gotcha (fixed):** that safety-net `useEffect` was originally keyed on `[]`, so its `setTimeout` closed over the **first-render** `stateKnown === false` permanently. After the fetch resolved for a brand-new user, the stale timer still fired ~6 s later and **bounced new students to login** instead of letting them set a password. Fix: key the effect on `[stateKnown]` (early-return + cleanup once data loads) so the timer only fires when the fetch genuinely never resolves. `getStudentData` also swallows fetch errors silently, so a real failure looks identical to a slow load — both fall to the safety net.
 
 ---
 
