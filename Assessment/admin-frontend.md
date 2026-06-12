@@ -411,3 +411,17 @@ Other assessment types (Role_Based, Custom, etc.) skip the diagnosis row entirel
 - **Styled Components**: Shared styles in `Style/style.js` (CustomStyledTable, SearchSection, etc.)
 - **Server-Side Sorting**: NPS and other column sorts send `sortBy` to API; backend sorts all records before pagination
 - **yearLoaded Gate**: See "Passing Year Race Condition" section above
+
+---
+
+## Corporate Assessment Dashboard (`Partials/ActiveCorporateList/CorporateAssessmentDashboard.js`)
+
+This is a **separate stack** from the institute candidate list — it does NOT use admin-node `getAssessmentDetails`. Its candidate list is fetched from **student-node** `POST /students/assessments/corporate/student-list/:corporateId` (`getStudentListForCorporateAssessment` in `TpoDashBoard.js`), and it builds its own table columns inline.
+
+- **Role-based columns**: the table shows a column per section **selected at creation** (question count > 0), keyed by the lowercase section name (`mcq question` / `subjective question` / `video response` / `coding question`). The endpoint returns `roleBasedSections` (`[{ key, label }]`) via the helper `app/helpers/roleBasedCorporateSections.js` (`selectedCorporateRoleBasedSections`, from `assessment_config.question_config`; fallback to sections present in `role_based_scores`). The frontend renders those columns (fallback: row `sectionScores` keys) so they show — including **Coding** — even before scoring (`-`). Per-row scores live on `r.sectionScores` (only populated when scored), NOT `roleBasedScores` (that's the institute/admin-node shape).
+- **Status filter**: a multi-select (Completed / In Progress / Pending / Dropout) sends `statusFilter` (array) in the POST body; student-node filters server-side by the assignment `status` enum (NULL → submitted/attempted fallback) **before pagination** (helper `app/helpers/corporateStatusFilter.js`).
+- **Export**: reuses admin-node `GET /assessment/exportStudentData?entityType=corporate` (the same Excel builder as institute, so it includes the role-based section columns incl. Coding). One selected status exports that bucket; otherwise exports all (`status=sent`).
+
+## AssessmentNavBar — visibility for expired schedules
+
+`Partials/ActiveCollegeList/components/AssessmentNavBar.js` is the switcher that lets you move between the assessments in a schedule (Diagnosis + each run) from the detail view, gated by `navList.length > 1` in `InstituteAssessmentDetails.js`. Its internal `isItemVisible` filter hides only **`Upcoming`** runs and shows ongoing/completed/**expired** runs (`Expired - Completed` / `Expired - Lapsed`). It previously allowed only `completed`/`ongoing`, which hid the entire bar once a schedule's runs had expired (all runs filtered out → only Diagnosis left → `visibleItems.length <= 1` → renders `null`). Backend run statuses come from institute-node `StudentListInfo.js` (`Upcoming` / `Ongoing` / `Expired - Lapsed` / `Expired - Completed`).
