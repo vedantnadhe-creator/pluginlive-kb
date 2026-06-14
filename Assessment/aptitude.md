@@ -230,6 +230,30 @@ counted the answers as unattempted → **0 / under-counted marks** (e.g. Christ 
 - **Frontend:** `Assessment-React` de-duplicates `fetchAssessmentQuestions` per
   `assessment_assigned_id` (in-flight request reuse) so duplicate fetches collapse to one.
 
+**Performance hardening (2026-06-14) — stop the regenerate-storm DB saturation.**
+A buggy/looping client (e.g. a bulk/load-test account polling `getAssessmentQuestions`
+hundreds of times) used to make *every* call re-run the full per-question selection
+(~30 `ORDER BY RANDOM() LIMIT 1` queries, each with a correlated
+`NOT IN (… LOWER(primary_email) …)` scan over `assessment_assigned_students`), pinning
+all DB connections and making save-answer / start / submit take 20–55s platform-wide.
+The regen also couldn't commit under that load (`Unable to start a transaction`), so the
+set difficulty never updated and the loop never ended. Three fixes:
+- **Early idempotency short-circuit:** `generateSingleStudentAssessmentSet()` now re-reads
+  the assignment FIRST (before any selection) and returns immediately — reusing the set —
+  if the set already matches the required difficulty, the student has answers, or it's
+  submitted. Repeat calls become a cheap two-PK-lookup no-op, so a looping client can no
+  longer trigger repeated selection. (The in-tx advisory lock still guards the first-time
+  concurrent-create race.)
+- **Removed the per-question `NOT IN (… LOWER(primary_email) …)` subquery.** The student's
+  already-seen questions are computed once (`excludeQuestionIds`) and excluded via the
+  `!= ALL($3)` array — the prior code computed that set once *and ignored it*, then
+  re-derived it on each of the 30 picks.
+- **Indexes** (DB-Scripts `Aptitude Set Regeneration Race Fix/003`): `section_question_map(sub_section_id)`,
+  `assessment_question_map(question_id)`, `assessment_assigned_students(LOWER(primary_email))`.
+  ⚠️ The `LOWER(primary_email)` functional index existed on DEV (`idx_aas_email_lower_practice`)
+  but was **missing on PROD** — schema drift that made PROD's selection far slower than DEV.
+  Apply with `CREATE INDEX CONCURRENTLY` (outside a transaction).
+
 ---
 
 ### 4. Score Calculation
