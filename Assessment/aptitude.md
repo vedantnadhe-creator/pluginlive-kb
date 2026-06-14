@@ -216,6 +216,15 @@ counted the answers as unattempted → **0 / under-counted marks** (e.g. Christ 
   code re-reads state and **reuses** the existing set if the required-difficulty set
   already exists, or the student has `submitted`, or any `student_answers` exist.
   Result: exactly one set per attempt.
+  - ⚠️ **Gotcha:** `pg_advisory_xact_lock()` returns SQL type `void`. It **must** be
+    invoked with `prisma.$executeRaw` (which does not deserialize a result set), **not**
+    `prisma.$queryRaw`. With `$queryRaw`, Prisma 4.16.2 throws `P2010 — Failed to
+    deserialize column of type 'void'`, which is the **first** statement in the
+    generation transaction, so it aborts before any set is created. The whole
+    `getAssessmentQuestions` call returns an error, the assignment never flips to
+    `INPROGRESS`, and the student is stuck on **"Preparing your assessment…"**. This
+    shipped broken on `release-v1.33-hotfix-1` (image `2026-06-08…`) and was fixed
+    `2026-06-14` by switching `$queryRaw` → `$executeRaw` on that line.
 - **R2:** `getAptitudeAssessmentQuestions()` skips regeneration entirely once answers
   exist for the attempt.
 - **Frontend:** `Assessment-React` de-duplicates `fetchAssessmentQuestions` per
