@@ -381,7 +381,7 @@ The candidate-facing AI Interview UI lives in `Assessment-React/src/modules/Asse
 - **`interview.js`** — the live voice interview surface (TTS playback, mic capture, browser VAD auto-submit after ~1.8 s of silence).
 - **`instruction.js`** — welcome / readiness / **resume** pre-start screens shown before the live interview.
 - **`resumeUpload.js`** — shared, unit-tested handler for the pre-start resume upload (see gotcha below).
-- **Completion redirect** — when the interview finishes, the candidate is redirected to `/assessment` (the assessment home), not left on the interview screen.
+- **Completion is terminal (no redirect, since 2026-06-15)** — when the interview finishes the candidate stays on the Thank-You screen ("You can now close this window"). The old "Back to Home" button cleared the scoped invite JWT and navigated to `/assessment`; once the JWT was gone `AuthRouter` fell through to `AuthPage`, which auto-fires `window.open(AUTH_URL)` — so finishing bounced invite candidates to the portal login page. The button (and all completion-screen navigation) was removed. Re-login after submitting now hits the "already submitted" gate in `InviteStart` (see [otp-invite.md](otp-invite.md)), backed server-side by a 409 from `startSession`.
 
 ### Candidate resume upload (pre-start)
 

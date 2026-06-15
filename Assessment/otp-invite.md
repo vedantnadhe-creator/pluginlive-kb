@@ -46,9 +46,16 @@ The invite URL is built from `process.env.ASSESSMENT_FE_BASE_URL` (admin-node he
 1. Candidate opens `assessment.<env>.pluginlive.com/assessment/start/<token>`.
 2. Assessment-React `InviteStart` component prompts for email → calls UMS `/public/assessment-otp/send` → 6-digit OTP delivered.
 3. Candidate enters OTP → `/public/assessment-otp/verify` → UMS mints a scoped JWT carrying `assessment_assigned_id`, `assessment_type`, `email`, short TTL.
-4. `student-node` `/ai-interview/invite/resolve` (generic despite the legacy path name) reads the corporate map + assessment row, returns the **real assessment name** and the type-specific runner config.
+4. `student-node` `/ai-interview/invite/resolve` (generic despite the legacy path name) reads the corporate map + assessment row, returns the **real assessment name**, the type-specific runner config, and the assignment's **`status` + `submitted`** (added 2026-06-15 — see "already-submitted gate" below).
 5. Assessment-React `InviteAssessmentRunner` dispatches to the matching `*assmt` partial (Communication, Aptitude, Hinglish, Role-Based, Behaviour, Custom, AIInterview). The runner title shows the real assessment name (not "AI Interview").
-6. On completion, the candidate lands on `/assessment` (home) so any other assigned assessments are visible — the OTP `sessionStorage` is cleared on this hard redirect.
+6. On completion, the candidate **stays on the terminal Thank-You screen** ("You can now close this window"). There is **no post-completion redirect** — the OTP `sessionStorage` is left intact. (Previously a "Back to Home" button cleared the scoped JWT and hard-redirected to `/assessment`; with the JWT gone `AuthRouter` fell through to `AuthPage`, which auto-fires `window.open(AUTH_URL)` on mount — so finishing an invite interview bounced the candidate to the portal login page. Fixed 2026-06-15 by removing the button.)
+
+### Already-submitted gate (re-login no longer reopens a finished interview)
+
+A candidate who re-opens their invite link (or re-verifies OTP) after submitting must **not** be put back into the interview. As of 2026-06-15:
+- `resolveInvite` returns `status` (`PENDING`/`INPROGRESS`/`COMPLETED`/`DROPOUT`) and `submitted` from `assessment.assessment_assigned_students`.
+- `InviteStart` checks these on mount: when `status === 'COMPLETED'` (or `submitted === true`) it renders an **"Interview already submitted"** screen instead of the email/OTP wall.
+- Server-side backstop: `student-node` `startSession` returns **409** if the assignment is already `COMPLETED`/`submitted` (a fresh `AIInterviewSession` is never created). `INPROGRESS` resumes are unaffected.
 
 ## Backend touchpoints
 
@@ -57,8 +64,8 @@ The invite URL is built from `process.env.ASSESSMENT_FE_BASE_URL` (admin-node he
 | `admin-react` | Checkbox in Assessment Assignment form; `isOtpInvite` carried through `filterAssessmentData` (the function used to strip it). |
 | `admin-node` | `assignAssessmentSchema` accepts `isOtpInvite` (was stripping it via the Fastify body schema); `assign*Assessment` methods set it on the corporate map and gate email branches via `isCorporateOtpInvite`. Invite URL built from `ASSESSMENT_FE_BASE_URL` env var. |
 | `user-management-node` | Renamed handler/model/routes; backward-compatible aliases retained; scoped JWT carries `assessment_type`. |
-| `student-node` | `resolveInvite` reads the real campaign name from the corporate/institute map and **no longer hard-codes `"AI Interview"`** for the title — that was the early bug where Communication invites displayed as "AI Interview". |
-| `Assessment-React` | `InviteStart` is generic; `InviteAssessmentRunner` dispatches by `assessment_type`; the OTP input is a fixed-width 48 px box grid (the earlier overflow bug); demo OTP code hint removed; "Back to Home" hard-redirects to `/assessment`. The invite axios layer (`aiInterviewInviteAPI.js`) **reuses the shared `utils/authRequest` + `utils/studentRequest` instances** — see the env gotcha below. |
+| `student-node` | `resolveInvite` reads the real campaign name from the corporate/institute map and **no longer hard-codes `"AI Interview"`** for the title — that was the early bug where Communication invites displayed as "AI Interview". Also returns `status` + `submitted` so the FE can gate an already-submitted invite, and `startSession` rejects a completed assignment with 409 (both 2026-06-15). |
+| `Assessment-React` | `InviteStart` is generic; `InviteAssessmentRunner` dispatches by `assessment_type`; the OTP input is a fixed-width 48 px box grid (the earlier overflow bug); demo OTP code hint removed. `InviteStart` gates `status==='COMPLETED'` to an "already submitted" screen. **AI-interview completion is terminal — no "Back to Home" / redirect** (removing it fixed the bounce-to-auth, 2026-06-15). The invite axios layer (`aiInterviewInviteAPI.js`) **reuses the shared `utils/authRequest` + `utils/studentRequest` instances** — see the env gotcha below. |
 
 ## Environments
 
