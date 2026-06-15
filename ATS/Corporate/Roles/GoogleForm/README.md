@@ -262,6 +262,10 @@ Handler: `student-node/app/handlers/companymasterHandler.js` — `exportCandidat
 
 **Gotcha — whitespace-key mismatch (fixed 2026-06-08):** the saved `response_data` keys are whitespace-collapsed at submission time, but the template `question` text can contain double spaces / trailing spaces. An exact-key lookup then misses and the column exports **blank** even though its header shows (commonly hit the last custom question, e.g. a `MONTH_YEAR` field). Fix: values are now matched by a **whitespace-normalized, case-insensitive key** (`normalizeFormKey()` — collapses internal whitespace, trims, lowercases), with exact match still tried first. Applies to both object-shaped and array-shaped `response_data`.
 
+**Date formatting in Form Responses (fixed 2026-06-15):** date answers in `response_data` are stored as ISO strings (e.g. Date of Birth = `1982-03-30T00:00:00`) and previously exported verbatim. They are now reformatted to **`DD/MM/YYYY`** via `formatFormResponseValue()`, which only rewrites values matching the ISO date pattern (`YYYY-MM-DD` with optional time) — plain years (`2020`), marks, phone numbers, emails, etc. pass through untouched. Applies to both object- and array-shaped `response_data`. (Currently wired in `exportCandidateList`.)
+
+**Applied Date & Time column (added 2026-06-15):** the export always emits an **`Application Details`** header group with a single **`Applied Date & Time`** sub-column, formatted `DD/MM/YYYY HH:mm` (via `formatDateTimeString()`). The value is the candidate's `student_role_mapping.applied_date`, falling back to `created_at` for older rows. This column is **unconditional** — it does **not** need to be requested in the `downloadList` payload (no Corporate React change required) and renders for all download types. It is sourced by an independent `studentRoleMapping.findMany({ select: { studentId, appliedDate, createdAt } })` lookup and injected as `student["Application Details"]`; the header is registered in the `convertData()` `headersEnabled` list so it gets a column range. Implemented in `exportCandidateList`.
+
 ### Tally Form URL — New Columns on `job_role_institute_map` Table
 
 After role publish, a unique Tally Form is created per college. The form URL needs to be stored in the institute mapping.
@@ -604,7 +608,7 @@ The `isITIOrDiploma` flag is derived from the eligibility criteria `degreeType` 
 |--------|--------|--------|
 | **Trigger** | ITI or Diploma selected in Eligibility Criteria (Step 4) | To be built (frontend) |
 | **Replaces** | Qualifying Questions (Step 5) | To be built (frontend) |
-| **Template** | Predefined mandatory questions per type (ITI / Diploma) | To be built (frontend + backend) |
+| **Template** | Predefined mandatory questions per type (ITI / Diploma) | To be built (frontend) |
 | **Custom Questions** | Supported with 6 response types | To be built (frontend) |
 | **Storage (Template)** | `job_roles.application_form_template` (JSONB) | Schema change needed |
 | **Storage (URLs)** | `job_role_institute_map.tally_form_url` (per college) | Schema change needed |
