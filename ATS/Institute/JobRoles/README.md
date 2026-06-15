@@ -5,7 +5,7 @@
 
 ## Overview
 
-The Job Roles module is the primary interface for TPO users to manage and view job roles posted by corporates for their institute. It supports listing, filtering, detailed view, candidate export, role duplication, and eligibility criteria management via ElasticSearch.
+The Job Roles module is the primary interface for TPO users to manage and view job roles posted by corporates for their institute. It supports listing, filtering, detailed view, candidate export, role duplication, archiving, and eligibility criteria management via ElasticSearch.
 
 ---
 
@@ -64,6 +64,20 @@ The Job Roles module is the primary interface for TPO users to manage and view j
 | `getExportFiledData` | `/students/institutes/heading/export` | GET | Available export field headings |
 | `exportCSV` | `/corporates/instituteCampus/{id}/export/{type}` | GET | Export job roles data |
 | `duplicateRole` | `/corporates/{corpId}/jobs/{jobId}/duplicate` | POST | Duplicate an existing job role |
+| `archiveJobRole` | `/corporates/instiuteCampus/{id}/jobs/{jobId}/archive` | PATCH | Archive an institute-published role |
+| `unarchiveJobRole` | `/corporates/instiuteCampus/{id}/jobs/{jobId}/unarchive` | PATCH | Restore an archived institute-published role |
+
+---
+
+## Archive / Restore (institute-published roles)
+
+Mirrors the corporate RolePage archive flow, but scoped to **institute-published roles only** (`role_published_by === 'INSTITUTE'`). Institute-created roles have **no `corporateId`** (the corporate archive endpoint `/corporates/{corporateId}/jobs/{jobId}/archive` cannot be used for them), so dedicated institute endpoints keyed by `instituteCampusId` + `jobId` were added in **corporate-node** (`getRolesForCampus` model + `archiveInstituteJobRole`/`unarchiveInstituteJobRole` handlers).
+
+- **Storage:** reuses the **global** `job_roles.is_archived` / `archived_at` / `archived_by` columns (same column as corporate archive — no new column/table).
+- **List behaviour:** `getJobRoleList` (`POST /corporates/instiuteCampus/{id}/jobs`) accepts an `archived` flag — omitted/`false` hides archived rows (default), `true` returns only archived, `all` returns both. The list also returns `isArchived` and a derived `canArchive` per role.
+- **`canArchive` rule:** `isArchived === false && appliedCandidates === 0` — a role with applied students (`is_applied ∈ {1,-1}`) cannot be archived (button disabled with tooltip "Can't archive — students have already applied").
+- **UI:** an **Archive** tab (pseudo-category `ARCHIVED`) appended to the job-category toggle; per-row archive icon (and restore icon when archived) shown only on INSTITUTE-published roles, with antd confirm dialogs identical to corporate. Files: `PageHeader/DemoData/TableData.js`, `PageHeader/index.js`, `components/icons/ArchiveIcon.js`.
+- **Scope caveat:** because the flag is global on `job_roles`, archiving is intentionally restricted to institute-published roles to avoid hiding a corporate's role from the corporate / other institutes.
 
 ---
 
@@ -73,4 +87,5 @@ The Job Roles module is the primary interface for TPO users to manage and view j
 - **ElasticSearch integration:** Qualification search uses `elasticSearchRequest` with `systemConfig.degree_streams_specialisation`
 - **Export options:** CSV blob download or Google Sheets integration
 - **Role duplication:** Clone existing roles with `instituteCampusId`
+- **Archive/restore:** Soft-hide institute-published roles via the global `is_archived` flag; Archive tab + per-row archive/restore icons (see Archive section above)
 - **Filters:** Status, role type, evaluation schedule, domain, degree, department, year
