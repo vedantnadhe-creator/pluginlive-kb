@@ -62,6 +62,14 @@ The listening (`AudioPlayer`) and dictation (`WaveformPlayer`) components now ha
 - On iPhone, a **combined video+audio `MediaRecorder` records a silent audio track**, so the speech check failed ("not detecting speech") even when the candidate spoke. Fix: record the mic with a **dedicated audio-only `MediaRecorder` on a cloned audio track** (reliable on iOS) and send that to `/proctoring/detect-audio`, falling back to the video blob. The combined video is still used for the verification-video upload.
 - The backend decode is fine — `process_audio_upload` (ffmpeg) decodes iOS AAC/mp4 and detects audio; a silent track is the only thing that yields `audio_detected=false`.
 
+### Failure handling — verification is mandatory
+
+Verification is a **hard gate**: a candidate cannot enter the assessment until both the face and speech checks pass.
+
+- On a failed check (`verificationStatus === 'failed'`) the UI shows the error, marks the failing Face/Speech status pill with a red ✗, and renders a single **"Try Again"** button (`RotateCcw` icon) that calls `resetRecording()` — clearing the error/statuses, restoring the live camera stream, and returning to the `idle` "Tap to Record" state. The candidate loops here until they pass.
+- Only the `verified` state renders **"Start Assessment"**. There is **no Continue/bypass** on failure (the earlier single-attempt "Continue anyway" path was removed) — so there is no longer any way to start the assessment with a failed verification.
+- `STRICT_MODE = true` (in `BiometricCheck.js`) drives the strict "Verification failed. Please ensure your camera and microphone are working and try again." copy.
+
 ---
 
 ## Video replay & playback
