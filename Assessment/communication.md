@@ -192,116 +192,76 @@ Scoring happens in two layers: **Node.js orchestration** and **FastAPI AI analys
 
 Applies weighted formula to section scores (Video 40%, Reading 20%, Audio 10%, Writing 30%).
 
-#### `updateCurrCERFlevelOfStudent()`
-**Path:** `student-node/app/models/Assessment.js` (line ~9963)
+#### `updateCurrCERFlevelOfStudent()` → `replayCommunicationProgression()`
+**Path:** `student-node/app/models/Assessment.js`; pure core in `student-node/app/helpers/communicationProgression.js`
 
-After scoring, updates the student's CEFR progression using a **rolling window of pairs**. This function is `await`ed (not fire-and-forget) because the cron job can retry failed calculations.
+After scoring, the student's **entire** Communication chain (for one `is_practice` value) is recomputed deterministically and every `progression_history` row is re-upserted. The live path (`updateCurrCERFlevelOfStudent` → `replayCommunicationProgression`) and the **backfill** (`CommunicationCalculations.backfillAllStudentProgression`) call the **same pure core** (`computeCommunicationChain`), so they can never diverge. This replaced the old "rolling window of pairs" + `is_calc` machinery, which let the live and backfill paths drift apart (causing missing/stale latest CEFR in the frontend and the need for repeated manual backfills).
 
-**Rolling window model:**
+**Model — each row is derived from its assessment and its immediate predecessor:**
+- The **first two** assessments are the **diagnosis**.
+- `avg = (total_predecessor + total_current) / 2`.
+- If the current assessment's **set CEFR level equals the predecessor's**, the pair **derives** a new level; otherwise the row **carries forward** the predecessor's `progression`/`suggested` (and waits for a same-level partner).
+- There is **no `is_calc` / consume / clean-break bookkeeping** — every row simply looks back one assessment.
+
+**Level derivation (`deriveCommunicationLevels`):**
 
 ```
-Assessments:  1    2    3    4    5    6
-              └─pair─┘
-                   └─pair─┘
-                        └─pair─┘
-                             └─pair─┘
-                                  └─pair─┘
+newLevel    = getNewCERFlevel(setLevel, avg, isPractice, isDiagnosis)
+suggested   = newLevel
 ```
 
-Pairs overlap: (1,2), (2,3), (3,4), etc. When a pair completes and level **stays same**, the newer assessment (A2) is reused as A1 of the next pair. When level **changes**, both are consumed and the next pair starts fresh.
-
-**Step-by-step process:**
-
-1. **Get current CEFR level** — from latest `progressionHistory.suggestedCefr` (non-null), or fallback to assessment set level for first-timers
-2. **Fetch last two uncalculated assessments** — `is_calc = false` AND `scoresCalculated = true`, ordered `submittedAt DESC`
-3. **Query `latestProgression`** — finds the most recent `isSecondInPair = true` record (completed pair A2), which carries valid `assessmentCefr` and `suggestedCefr`. This is used for `previousProgressionLevel` and `carriedSuggestedCefr`.
-4. **Single assessment (incomplete pair):**
-   - Creates ProgressionHistory with `isSecondInPair = false`
-   - **Sets `suggestedCefr = carriedSuggestedCefr`** (carry-forward from previous pair's A2 record)
-   - **Sets `assessmentCefr = previousProgressionLevel`** (carry-forward)
-   - Does NOT mark `is_calc` — the assessment stays available for pairing
-5. **Pair complete:**
-   - `fetchLastTwo` returns `[assessment1 (newer), assessment2 (older)]` (DESC order)
-   - **assessment2 (older) = A1 of pair** — carries forward `assessmentCefr` and `suggestedCefr` from previous pair
-   - **assessment1 (newer) = A2 of pair** — gets **derived** `suggestedCefr`, `assessmentCefr` (newProgressionLevel), NPS, pairAverageScore
-   - Calculates pair average: `(finalScore1 + finalScore2) / 2`
-   - NPS formula: `((CefrRankIndex × 100) + avgScore) / 6` (0–100 scale)
-   - Applies progression rules (see below)
-   - **Marking for rolling window:**
-     - **Always** marks assessment2 (older/A1) as `is_calc = true` (consumed)
-     - If level **changed**: also marks assessment1 (newer/A2) as `is_calc = true` (clean break)
-     - If level **same**: assessment1 (newer/A2) stays `is_calc = false` → becomes A1 of next pair
-   - Updates `studentPersonalProfile.AssessmentCEFR` to `suggestedCefr`
-
-> **Rolling window correctness:** The OLDER assessment is always consumed, the NEWER one stays for reuse. This ensures pairs chain as (1,2), (2,3), (3,4). If the newer were consumed instead, the older would become a "zombie anchor" that perpetually pairs with every new assessment: (1,2), (1,3), (1,4)...
-
-> **latestProgression query:** Uses `isSecondInPair: true` filter (not ID-based exclusion) to find the previous pair's A2 record. This correctly handles the rolling window case where the current pair's A1 (assessment2) IS the previous pair's A2 — its record still has `isSecondInPair: true` in the DB at query time (before the upsert overwrites it as A1). ID-based exclusion would incorrectly skip this record.
-
-> **suggestedCefr Carry-Forward Rule:** `suggestedCefr` is only _derived_ when A2 (second-in-pair) completes. For A1 records and incomplete pairs, `suggestedCefr` carries forward from the previous pair's A2 value. This ensures `suggestedCefr` is **never null** except for the very first assessment (which has no previous pair). This is critical because `suggestedCefr` is used for assignment-level determination — a null value would cause fallback to stale data.
-
-> **assessmentCefr Carry-Forward Rule:** `assessmentCefr` (confirmed progression level) is only _derived_ when A2 completes a pair. For A1 records, `assessmentCefr` carries forward `previousProgressionLevel` from the latest completed A2 record. Only null on the very first assessment.
-
-**Progression Rules:**
-
-| # | Condition | Result |
-|---|-----------|--------|
-| 1 | **Diagnosis** (first pair ever) | `newProgressionLevel = min(assessmentLevel, calculatedLevel)` — prevents inflated start |
-| 2 | **Non-diagnosis, non-practice** — high score (suggestedCefr moves up) | `newProgressionLevel = currentAssessmentLevel` — confirmed at current level |
-| 3 | **Non-diagnosis, non-practice** — low score (suggestedCefr stays same) | `newProgressionLevel = currentAssessmentLevel - 1` (A1 floor) — not yet confirmed |
-| 4 | **C2 special case** — score ≥ 86 | `newProgressionLevel = C2` — can't go higher, confirmed at ceiling |
-| 5 | **No-downgrade rule** (all cases) | `newProgressionLevel = max(newLevel, previousProgressionLevel)` — level never drops |
-| 6 | **Practice** | `newProgressionLevel = assessmentLevel` — unrestricted |
-
-**Progression mapping table** (non-diagnosis, non-practice):
-
-| Current Level | Low Score | Progression | High Score | Progression |
-|---|---|---|---|---|
-| A1 | 0–80 | A1 | 81–100 | A1 |
-| A2 | 0–85 | A1 | 86–100 | A2 |
-| B1 | 0–85 | A2 | 86–100 | B1 |
-| B2 | 0–85 | B1 | 86–100 | B2 |
-| C1 | 0–87 | B2 | 88–100 | C1 |
-| C2 | 0–85 | C1 | 86–100 | C2 |
-
-> **Key insight:** Progression level is always one level below the student's current assessment level until they score high enough for suggestedCefr to move up. At that point, progression confirms at the current level. Once confirmed, no-downgrade ensures it never drops back.
-
-**`suggestedCefr` calculation:**
-- Raw suggested level comes from `getNewCERFlevel(assessmentLevel, avgScore)` mapping
-- No-downgrade applied: `suggestedCefr = max(calculatedNewLevel, previousProgressionLevel)`
-- Written to profile as `AssessmentCEFR` — drives next test set assignment
-
-**Rolling Window Pair Marking (`is_calc` flag on `assessmentAssignedStudent`):**
-- **Level same:** Mark assessment2 (older/A1) `is_calc = true` (consumed). Assessment1 (newer/A2) stays `is_calc = false` → reused as A1 of next pair. Produces chain: (1,2), (2,3), (3,4)...
-- **Level changed:** Mark **both** `is_calc = true` (clean break). Next assessment starts a fresh pair at the new level.
-- The `fetchLastTwoComunnicationAssessments` query filters `is_calc = false` to find the two most recent uncalculated assessments. The reused A2 (now acting as A1) is always the older of the two found.
-
-**CEFR Mapping (Assessment mode)** — `newCERFmapping.js`:
-
-| Current Level | Score 0–85 | Score 86–100 |
+| Phase | Mapping used | progression |
 |---|---|---|
-| A1 | Stay A1 (0–80) | Suggest A2 (81–100) |
-| A2 | Stay A2 (0–85) | Suggest B1 (86–100) |
-| B1 | Stay B1 (0–85) | Suggest B2 (86–100) |
-| B2 | Stay B2 (0–85) | Suggest C1 (86–100) |
-| C1 | Stay C1 (0–87) | Suggest C2 (88–100) |
-| C2 | Stay C2 (all) | — |
+| **Diagnosis** (first 2) | `cerfMapping` (detailed bands; downgrade allowed for calibration) | `= suggested`, **except** `C2 → C1` (C2 means "suggest C2 test", not a confirmed level) |
+| **Post-diagnosis** | `assessmentCefrMapping` (stay-or-up) | `= one rank below suggested` (floor A1) |
 
-> **Key distinction:** `suggestedCefr` drives the **next test level** (written to profile). `assessmentCefr` is the **confirmed progression level** (written to ProgressionHistory). These can differ — e.g., student at A2 scores 91% → suggested=B1, progression=A2 (until confirmed at B1 level with a pair there).
+- **No-downgrade** (assessment chains, post-diagnosis only): `suggested = max(suggested, prevSuggested)`, `progression = max(progression, prevProgression)`. Because `previousSuggested` is null only at the diagnosis pair, downgrade is automatically allowed there and blocked afterward.
+- **Practice chains** skip the no-downgrade clamp — practice **may drift down** to always reflect the latest mapped level.
+
+**The diagnosis→post-diagnosis seam:** diagnosis seeds `progression = suggested`; post-diagnosis wants `progression = suggested − 1`. No-downgrade absorbs the gap, so a student confirmed at e.g. A2 by diagnosis **stays** at A2 and only ever ratchets **up** when a same-level pair scores ≥86.
+
+**NPS** — one formula, anchored at each half's own confirmed level (auto-bridges on a level change):
+
+```
+NPS(row) = avg( communicationNPS(progression_predecessor, total_predecessor),
+                communicationNPS(progression_current,     total_current) )
+```
+where `communicationNPS(level, score) = (rankIndex × 100 + score) / 6` (A1=0 … C2=5). When the predecessor has no progression yet (diagnosis #1), both halves anchor at the current progression.
+
+**Worked example (set levels B1,B1,A2,A2,A2,B1,B1; non-practice):**
+
+| # | set | score | progression | suggested | note |
+|---|---|---|---|---|---|
+| 1 | B1 | 60 | null | null | diagnosis #1 (no predecessor) |
+| 2 | B1 | 78 | A2 | A2 | diagnosis #2 (cerfMapping; prog = sugg) |
+| 3 | A2 | 82 | A2 | A2 | carry (set shifted B1→A2) |
+| 4 | A2 | 80 | A2 | A2 | derive **stay** (no-downgrade holds A2) |
+| 5 | A2 | 94 | A2 | B1 | derive **move-up** (suggested↑, prog held) |
+| 6 | B1 | 78 | A2 | B1 | carry at new level |
+| 7 | B1 | 98 | B1 | B2 | derive move-up → **prog A2→B1, bridge NPS** |
+
+> **C2 ceiling:** post-diagnosis `progression = suggested − 1` caps confirmed progression at **C1** (a student tested at C2 keeps progression C1). Only the diagnosis can confirm via the cerfMapping bands.
+
+**Profile update (`_updateProfileCefr`, keyed by `primaryEmail`):** from the latest row's `suggestedCefr` — first-timer seeds `PracticeCEFR`/`AssessmentCEFR`/`MaxPracticeCEFR`; practice updates `PracticeCEFR` (+`MaxPracticeCEFR` if higher); non-practice updates `AssessmentCEFR` (drives next-test assignment). The triggering assessment's `resultingCefr` is also stamped with its suggested level.
+
+> **Key distinction:** `suggestedCefr` drives the **next test level** (profile `AssessmentCEFR`). `assessmentCefr`/`practiceCefr` is the **confirmed progression level** read by the frontend/report (`getAllAssessmentScores` reads `progression_history.assessmentCefr` per assessment and skips nulls). They differ by one rank post-diagnosis (e.g. confirmed A2, suggested B1).
 
 **ProgressionHistory fields stored per record:**
 
 | Field | Description |
 |-------|-------------|
-| `assessmentCefr` | Confirmed progression level (source of truth for "current level") |
-| `suggestedCefr` | Level that drives next test assignment. **Derived** on A2 records; **carried forward** on A1 records from previous pair's A2. Only null on the very first assessment. |
-| `assessmentCefrAtTime` | Student's CEFR at the time of this assessment |
-| `assessmentCommunicationProgressScore` | NPS score |
-| `isSecondInPair` | `true` for A2 (pair complete), `false` for A1 |
-| `pairNumber` | Pair counter |
-| `pairAverageScore` | Average of the two assessments in the pair |
+| `assessmentCefr` / `practiceCefr` | Confirmed progression level (source of truth for "current level"); one written per `isPractice` |
+| `suggestedCefr` | Next-test level; null only on the very first assessment of the chain |
+| `assessmentCefrAtTime` | Set CEFR level this assessment was taken at |
+| `assessmentCommunicationProgressScore` / `practiceCommunicationProgressScore` | NPS (0–100) |
+| `isSecondInPair` | `true` for every row that completed a pair with its predecessor; `false` only for diagnosis #1 |
+| `isDiagnosis` | `true` for the first two assessments |
+| `pairNumber` | Position in the chain (informational; no consumer reads it) |
+| `pairAverageScore` | `(total_predecessor + total_current)/2` |
 | `finalScore` | Individual assessment score |
-| `isDiagnosis` | Whether this was a diagnosis assessment |
-| `isPractice` | Practice vs assessment mode |
+| `isPractice` | Practice vs assessment chain |
+
+> **`is_calc` is no longer used** by progression. The old `fetchLastTwoComunnicationAssessments` and `markAssessmentAsCalculated` helpers are dead (no callers); the column is left intact but read by nothing in the communication flow.
 
 ---
 
@@ -368,35 +328,16 @@ This distinction prevents confusion when viewing historical assessments where a 
 **Handler:** `assessmentHandler.backfillProgressionHistory`
 **Method:** `CommunicationCalculations.backfillAllStudentProgression()`
 
-Recalculates all communication progression history for every student:
-1. Finds all students with calculated communication assessments
-2. For each student, fetches all assessments ordered by `submittedAt ASC` (chronological)
-3. Separates into practice vs assessment chains via `processProgressionChain()`
-4. Replays each chain: rebuilds rolling window pairs, NPS, progression levels, and suggestedCefr
-5. Upserts `ProgressionHistory` records by `assessmentAssignedId`
-6. **Sets `is_calc = true`** on consumed assessments (older/A1 always; newer/A2 only if level changed) — ensures the live function doesn't re-pair already-processed assessments
-7. Updates `studentPersonalProfile.AssessmentCEFR` (or `PracticeCEFR`) with final state
+Recalculates communication progression history for every student (or a filtered subset):
+1. Finds distinct students with calculated communication assessments (optionally scoped by `primaryEmails`)
+2. For each student, calls `assessmentObj.replayCommunicationProgression(email, isPractice)` for **both** `false` and `true` chains
+3. `replayCommunicationProgression` fetches the full chain, scores each assessment, runs the shared pure core (`computeCommunicationChain`), upserts every `progression_history` row, and updates the profile
 
-**Rolling window in backfill (`processProgressionChain`):**
-- Tracks `unresolvedAssessment` (the pending A1) across the chain
-- When a pair completes and level stays same: `unresolvedAssessment = currentAssessment` (newer becomes A1 of next pair)
-- When level changes: `unresolvedAssessment = null` (clean break)
-- This produces the correct chain: (1,2), (2,3), (3,4)... matching the live function
+> **Live and backfill are the same code.** The backfill no longer has its own pairing/`is_calc` logic — it routes through the identical `replayCommunicationProgression` the live path uses, so the two cannot diverge. Because the replay is a deterministic full-chain recompute (idempotent upsert per assessment), running it is safe and self-correcting; there is no `is_calc` to keep in sync.
 
-**suggestedCefr carry-forward in backfill:**
-- Tracks `effectiveCefrLevel` across the chain (starts null for 1st assessment)
-- A1 records: `suggestedCefr = effectiveCefrLevel` (carried forward from previous pair)
-- A2 records: `suggestedCefr = newlyDerivedSuggestedCefr` (fresh calculation)
-- After each pair completes, `effectiveCefrLevel` updates to the new `suggestedCefr`
+**Request body:** `{ "primaryEmails": ["a@x.com", ...] }` (optional — omit to process all students). `batchSize` optional (default 50).
 
-**`is_calc` marking in backfill:**
-- After pair completes: always marks `unresolvedAssessment` (older/A1) as `is_calc = true`
-- If level changed: also marks `currentAssessment` (newer/A2) as `is_calc = true`
-- This keeps backfill and live function in sync — prevents live function from re-pairing backfilled assessments
-
-**Request body:** `{}` (no parameters needed)
-
-Use this after fixing progression/scoring bugs to recalculate all historical data.
+Use this after fixing progression/scoring bugs to recalculate historical data, or scoped to specific students to repair them.
 
 ---
 
@@ -443,7 +384,7 @@ Use this after fixing progression/scoring bugs to recalculate all historical dat
 - **Practice vs Assessment** — Practice assessments update `PracticeCEFR`; real assessments update `AssessmentCEFR`.
 - **Proctoring** — Optional face detection during assessment (snapshots sent to FastAPI for validation).
 - **Retake** — Students may retake; scores are stored separately with `isRetake` flag.
-- **suggestedCefr vs assessmentCefr (newProgressionLevel)** — `suggestedCefr` drives the **next test level** (written to profile as `AssessmentCEFR`). `assessmentCefr` is the **confirmed progression level** (written to ProgressionHistory, read by dashboard). These can differ — e.g., student at A2 scores 91% → `suggestedCefr=B1` (next test at B1), `assessmentCefr=A2` (confirmed at A2, until they prove themselves at B1 with a pair there). Both are only _derived_ on A2 records; A1 records carry forward from the previous A2.
-- **Rolling window pair model** — Pairs overlap: (1,2), (2,3), (3,4), etc. The **older** assessment (A1) is consumed (`is_calc = true`), the **newer** (A2) stays for reuse as A1 of the next pair. When level changes, both are consumed (clean break). The `latestProgression` query uses `isSecondInPair: true` to find the previous pair's A2 record for carry-forward — this correctly handles the rolling window case where the reused assessment still has its A2 data in the DB at query time.
-- **Backfill sets `is_calc`** — The backfill API marks consumed assessments as `is_calc = true`, matching the live function's behavior. This prevents the live function from re-pairing already-processed assessments after a backfill.
-- **Reliability model** — `updateCurrCERFlevelOfStudent` is `await`ed (not fire-and-forget). If it fails, the cron job will retry the entire score calculation including progression. This is safe because communication scoring is cron-driven with retry logic (up to 3 non-transient retries, 10 transient retries).
+- **suggestedCefr vs assessmentCefr** — `suggestedCefr` drives the **next test level** (written to profile as `AssessmentCEFR`). `assessmentCefr`/`practiceCefr` is the **confirmed progression level** (written to ProgressionHistory, read by dashboard/report). Post-diagnosis they differ by one rank — e.g. confirmed A2, suggested B1 (test at B1 next; confirm B1 only when a same-level B1 pair scores ≥86).
+- **Chain-replay model** — Each progression row is derived from its assessment and its **immediate predecessor** (pair average of their scores); same set level → derive, else carry forward. The whole chain is recomputed deterministically on every run. There is **no `is_calc` rolling-window / consume logic** — the old model was removed because the live and backfill copies drifted apart.
+- **One core, two callers** — The live path (`replayCommunicationProgression`) and the backfill (`backfillAllStudentProgression`) both call the same pure `computeCommunicationChain`, so they cannot diverge. The replay is idempotent and self-correcting.
+- **Reliability model** — `updateCurrCERFlevelOfStudent` (→ `replayCommunicationProgression`) is `await`ed. If it fails, the cron job retries the entire score calculation including progression (up to 3 non-transient retries, 10 transient retries). Because the replay recomputes the full chain each time, a later successful run heals any earlier partial state.
