@@ -166,6 +166,25 @@ Scoring happens in two layers: **Node.js orchestration** and **FastAPI AI analys
 | `calculateSentenceBuildScore()` | Local scoring — normalizes and compares word order against correct answer. |
 | `storeCommunicationScores()` | Stores all section scores in `communicationScores` table. Handles retakes (dedup). |
 
+#### Speaking STT — Language Routing (`responseLanguage`)
+
+Spoken sections (chiefly **Video Response**) route to different STT engines based on the assignment's **response language**:
+
+- **English → Deepgram** (`/communication/calculate-video-question-score`).
+- **Non-English → Sarvam AI** via the `/hinglish/*` endpoints. FastAPI picks the Sarvam model per language (`fastapi-ai-engine/routers/hinglish.py::_get_sarvam_model_and_mode`): **Hinglish → `saaras:v3` + `translit`** (Roman-script output), **Hindi → `saarika:v2.5`** (native Devanagari), Assamese/Urdu → `saaras:v3`, all others → `saarika:v2.5`. A 14-language `LANGUAGE_CODE_MAP` supplies the `language_code`. So Hindi and Hinglish use **different Sarvam versions/modes**.
+
+**Language resolution (map-first, authoritative).** `responseLanguage` is resolved in `student-node/app/models/Assessment.js` — in both `getAssessmentQuestions()` and `calculateAssessmentScore()` — as:
+
+```
+corporateMap.response_language  →  instituteMap.response_language  →  English
+```
+
+- The **map** (`assessment_corporate_map` / `assessment_institute_map`) holds the language chosen for THIS assignment and is authoritative.
+- **A NULL map ⇒ English.** Institute-created Communication assignments leave the map's `response_language` NULL by design → treated as English. The code does **NOT** fall back to `assessment_sets.response_language` for merged Communication assessments, because sets are reused across languages and their `response_language` is stale (e.g. a Hinglish-tagged set). The set source is kept **only for legacy `hinglish`-TYPE assessments**, where the language still lives on the set.
+- **Prior bug (fixed):** the old code fell back to the set for *all* types, so an English answer on an institute Communication assignment sitting on a Hinglish set was mis-routed to the Hinglish STT path and scored **0**.
+
+> **Infra note:** the `/hinglish/*` FastAPI routes had no nginx `location` block on `fast-api.uat.pluginlive.com`, so they used the default 60s `proxy_read_timeout`. Sarvam **batch** STT (audio > 30s) takes ~3 min, causing a **504** that student-node swallowed and persisted as a real `0`. Fixed by adding `location /hinglish/ { proxy_read_timeout 300; … }` (PROD's k8s ingress already applies 300s via its catch-all).
+
 #### AI Scoring Engine — `communication.py`
 **Path:** `fastapi-ai-engine/routers/communication.py`
 
