@@ -100,8 +100,14 @@ A 6 s safety net redirects to **login** if the `getStudentData` fetch never reso
 
 ---
 
+## Reaching the bottom action buttons (iPhone scroll)
+
+On iPhone the assessment runs in **full-page mode** (`isFullPageMode`) with a `height:100vh` overlay. Safari's bottom toolbar can't be hidden for web apps, so the Next / Submit / Record footer sits *behind* it. The fix is two-part:
+
+- **App.js scroll-unlock CSS** (gated on `body.assessment-mobile`, added only on iPhone via `deviceTier`): for the assessment shell/scroll containers it flips `height:100vh` / `position:fixed` → `height:auto; overflow:visible; position:relative` and adds `padding-bottom: calc(104px + env(safe-area-inset-bottom))` so the footer scrolls into reach and clears the toolbar + home indicator. Class hooks `exam-shell` / `exam-scroll` / `exam-actions` are on every runtime's shell/scroll/footer.
+- **Body scroll must stay unlocked.** The scroll-unlock CSS only works if the page itself can scroll. **Communication and Hinglish** (only these two) lock it in `hideLayoutElements()` with `document.body.style.overflow='hidden'` + same on `documentElement` — an inline style that trapped the Next button on iPhone with no way to scroll to it. Fix: gate that lock on `shouldEnforceFullscreen()` so it runs only on desktop/iPad; iPhone (LITE) keeps body scroll. Aptitude / Behaviour / Custom / Role-based never locked body scroll, so they were unaffected.
+
 ## Known follow-ups (not yet shipped)
 
 - **AI-interview final scoring (all platforms):** `fastapi-ai-engine/routers/ai_interview.py` `score-final` calls a non-existent model id (`gemini-3.5-flash`) with no fallback → 502. Should be `GEMINI_MODEL` (`gemini-2.5-pro`).
 - **Code-runner sandbox:** role-based coding runs server-side on the `code-runner` container (port 9090, native subprocess, 10s timeout) — weak isolation (no per-run container / network egress block).
-- **DEV bucket audio gap:** most DEV Communication sets reference `google_audio_*.mp3` objects missing from `pl_dev_poc`; verify per set with `~/scripts/check_set_audio.js`.
