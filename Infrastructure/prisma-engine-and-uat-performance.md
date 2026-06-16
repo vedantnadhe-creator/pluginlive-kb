@@ -6,15 +6,43 @@ How the Node services run Prisma, and the root cause + fix of the 2026-06-15 UAT
 
 ## Node services using Prisma (PostgreSQL)
 
-`student-node`, `corporate-node`, `institute-node`, `admin-node` — all on
-`@prisma/client` 6.19.x against **PostgreSQL 16** on UAT
-(`140.238.245.202:5441`, db `uat_pluginlive`). History: PG13→17 cutover
-2026-06-09, then **PG17→16 downgrade 2026-06-16** (see below).
-`user-management-node` is Mongo (Prisma 4.x), unrelated.
+`student-node`, `corporate-node`, `institute-node`, `admin-node` against
+**PostgreSQL 16** on UAT (`140.238.245.202:5441`, db `uat_pluginlive`).
+History: PG13→17 cutover 2026-06-09, then **PG17→16 downgrade 2026-06-16**
+(see below). `user-management-node` is Mongo (Prisma 4.x), unrelated.
 
-Prisma 4.x is **not supported on PG17** (the reason the ORM was bumped 4.16→6.19
-during the PG17 cutover); 6.19.x runs fine on PG16 too. **Do not downgrade Prisma**
-— it would reintroduce an unsupported combo and would not fix performance.
+**Prisma client versions on UAT (as of 2026-06-16, post-rollback):**
+- `student-node` (release-v1.33-hotfix-1 baseline), `corporate-node`
+  (release-v1.33), `institute-node` (release-v1.30) → **`@prisma/client` 4.x**
+  (4.10.1 / 4.16.2 / 4.11.0 respectively).
+- `admin-node` → still **6.19.x** (was not part of the rollback).
+
+### 2026-06-16 Prisma-6.19 + perf rollback on UAT (student/corporate/institute)
+The Prisma `4.x → 6.19` migration + the perf-refactor stack (binary→library
+engine switch, `serializeRawMethods`, ARM64 engine-restart retry, async
+candidate/drive metrics, parallelized `getStudent`, dedicated read lanes,
+slow-query logging) was **reverted in place on the UAT branch** of these three
+services, returning their Prisma layer to the fast release baseline while
+**keeping all functional commits** (TPO, AI-interview, exports, OTP, CEFR
+chain-replay, Safari audio, ai-match BullMQ, etc.) so those can still promote to
+PROD without dragging the unvetted migration along.
+
+Reason: after deploying the UAT branch (Prisma 6.19) UAT was slow, and an A/B
+showed the **release branches (Prisma 4.x) ran fine on the same DB** — so the
+6.19 + perf cluster was rolled back to unblock the PROD-bound functional work.
+
+**Open tension (resolve before any PROD promotion):** the engine analysis below
+attributes the original slowness to the *binary* engine (IPC overhead) and says
+the *library* engine on 6.19.3 is fast — i.e. it argues *against* a Prisma
+downgrade. Two confounders muddy which fix actually mattered: (a) the same UAT
+window also had the **PG16 `shared_buffers` 128 MB regression** (below), a
+DB-side slowdown independent of Prisma; (b) it's unconfirmed whether the "slow"
+UAT build was running binary or library at the time. Net: the 4.x rollback is a
+pragmatic unblock for UAT/PROD promotion, not a proven refutation of the
+library-engine fix. Re-measure on PROD-like config before deciding the
+long-term Prisma target. **Rollback handle:** each repo has a git tag
+`uat-backup-prisma-2026-06-16` at the pre-revert UAT tip; `git push
+--force-with-lease origin uat-backup-prisma-2026-06-16:UAT` restores Prisma 6.19.
 
 ## Query engine: use `engineType = "library"` (NOT "binary")
 
