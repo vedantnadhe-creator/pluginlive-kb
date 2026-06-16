@@ -242,6 +242,54 @@ Note: on `CandidateMetrics` the Ingest button was commented out by the Apr-2026 
 | **Resume Parser** (`resume-parser.uat.pluginlive.com`) | PDF CV parsing |
 | **PG Vector Search** (`vector-search.dev.pluginlive.com`) | Master entity resolution |
 | **Assessment DB** | Fetch assessment scores (separate PG connection) |
+| **student-node `POST /students/create-full`** | Final push of the normalized candidate → student record. URL = `{BASE_URL}/students/create-full`, auth via `auth-key: STUDENT_API_KEY`. UAT `BASE_URL=https://api-std.uat.pluginlive.com`, PROD `https://api-stud.pluginlive.com`. |
+
+---
+
+## Push to student-node `create-full` (the "Push to API" / "Ingest" step)
+
+The **Ingest** button (Mismatched Candidates List) re-pushes a candidate through
+`CandidateService.process_single_completed_candidate(candidate_id)`. This is
+**deterministic — it does NOT re-run the LLM**: it reads the already-stored
+`candidate_job_details.normalized_data`, re-maps to the create-full schema
+(`NormalizationWorker.map_to_final_schema`), cleans currentCourse/education, then
+POSTs `mapped_data` to student-node via `NormalizationWorker.create_full_student`
+(`workers/normalization_worker.py`, `url = {BASE_URL}/students/create-full`).
+
+On failure the **full request payload is persisted** in `normalization_logs`
+(`step_name='push_to_api'`, `log_level='WARNING'`, `details.request = mapped_data`,
+`details.response`), and the candidate surfaces under **Mismatched Candidates**
+(data status `Valid`, API status `API Failed`).
+
+### Gotcha — `cumulativeType` enum rejection (FST_ERR_VALIDATION)
+
+student-node's create-full Fastify schema restricts both `currentCourse.cumulativeType`
+and `education[].cumulativeType` to the enum **`["Percentage","CGPA"]`** (schema
+`default: "Percentage"`). The normalization LLM prompt can emit values that are **not
+in this enum** — most commonly an empty string `""` (currentCourse with no captured
+grade-type), and potentially `"CGPA (decimal)"` / `"GPA"`. AJV's `default` only applies
+when the field is **absent**, NOT when it is present-but-empty, so `""` is rejected with:
+
+```
+400 FST_ERR_VALIDATION  body/currentCourse/cumulativeType must be equal to one of the allowed values
+```
+
+This blocked a large mismatched-candidate backlog (~3.6k on PROD, Jun 2026).
+
+**Guard (student-node `app/routes/student.js`, create-full `preValidation`):** an
+empty/whitespace `cumulativeType` is **deleted** so the schema default `"Percentage"`
+applies; `"percentage"`/`"cgpa"` case-variants are canonicalised; unknown non-empty
+values pass through so the validator still rejects them with the original token visible.
+Sibling guards in the same hook normalise `admin.gender`, `educationLevel`, and coerce
+marks strings.
+
+**Clearing the PROD backlog without a student-node deploy:** because the re-push is
+deterministic, either (a) sanitise `cumulativeType` in the normalization push layer
+(`create_full_student` / `map_to_final_schema`) and deploy **only**
+form-data-normalization, then click **Ingest**; or (b) zero-deploy — correct the
+cumulative-type value in `candidate_job_details.normalized_data` and click **Ingest**
+(the corrected value is re-mapped and pushed to the unchanged student-node, whose schema
+default fills any dropped field).
 
 ---
 
