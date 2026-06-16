@@ -283,13 +283,18 @@ values pass through so the validator still rejects them with the original token 
 Sibling guards in the same hook normalise `admin.gender`, `educationLevel`, and coerce
 marks strings.
 
-**Clearing the PROD backlog without a student-node deploy:** because the re-push is
-deterministic, either (a) sanitise `cumulativeType` in the normalization push layer
-(`create_full_student` / `map_to_final_schema`) and deploy **only**
-form-data-normalization, then click **Ingest**; or (b) zero-deploy — correct the
-cumulative-type value in `candidate_job_details.normalized_data` and click **Ingest**
-(the corrected value is re-mapped and pushed to the unchanged student-node, whose schema
-default fills any dropped field).
+**Producer-side guard (IMPLEMENTED, Jun 2026):** `NormalizationWorker._sanitize_payload_cumulative_types()`
+runs at the top of `create_full_student` (the single push chokepoint, so it covers
+both the worker's initial push and the dashboard re-push). It canonicalises
+`currentCourse.cumulativeType` and every `education[].cumulativeType`:
+`*cgpa*`/`*gpa*` → `CGPA`, `*percent*`/`%` → `Percentage`, and **drops anything else**
+(empty / unknown / non-string) so student-node's schema default `Percentage` applies.
+Value-agnostic — a single bad token can never block the push again. This let the PROD
+backlog clear **without touching student-node**: deployed to all 3 PROD deployments on
+`release-v1.33-hotfix-1` (image `…2026-06-16-05-02-52-release-v1.33-hotfix-1`); the
+`config/settings.py` `BASE_URL` default stays `https://api-stud.pluginlive.com` (do NOT
+merge the UAT value `api-std.uat.pluginlive.com` onto release — it would repoint PROD
+pushes at UAT). After deploy, the **Ingest** button re-pushes the mismatched candidates.
 
 ---
 
