@@ -202,6 +202,7 @@ After scoring, the student's **entire** Communication chain (for one `is_practic
 - `avg = (total_predecessor + total_current) / 2`.
 - If the current assessment's **set CEFR level equals the predecessor's**, the pair **derives** a new level; otherwise the row **carries forward** the predecessor's `progression`/`suggested` (and waits for a same-level partner).
 - There is **no `is_calc` / consume / clean-break bookkeeping** — every row simply looks back one assessment.
+- **Scores are reused, not recomputed.** `_scoreCommunicationChain` reuses each assessment's `final_score` already stored in `progression_history` and only (re)scores the assessment that triggered the replay (or any with no stored score yet). Final scores are stable, so this keeps a full-chain replay at O(N) reads + ~1 score computation. **Gotcha:** re-scoring an *old* assessment alone won't change its progression row unless that assessment is the trigger — run the backfill (scoped to the email) to force a full re-derive.
 
 **Level derivation (`deriveCommunicationLevels`):**
 
