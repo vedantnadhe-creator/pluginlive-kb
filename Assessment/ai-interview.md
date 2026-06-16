@@ -72,6 +72,20 @@ Unlike static assessments, AI Interview is a **conversation** — questions are 
 
 ---
 
+## Current Orchestration Behavior (authoritative — student-node `aiInterviewHandler.js`)
+
+The live interview is driven by `student-node` (`app/handlers/aiInterviewHandler.js`), not by per-response branching in FastAPI. Key rules as of 2026-06-16:
+
+- **Parameter-driven progression.** The admin's evaluation parameters are probed round-robin (`nextParameter` picks the least-covered one). `QUESTIONS_PER_PARAM = 2`, hard cap `MAX_TOTAL_QUESTIONS = 8`. The interview ends on: all parameters covered, time up, the 8-question cap, or trailing refusals (disengagement).
+
+- **Depth follow-ups (one per parameter).** After each answer, `submitTurn` decides whether to probe the **same** parameter again instead of moving on. It asks a single follow-up when the answer **lacks depth** — a cheap deterministic word-count heuristic (`lacksDepth`, `< 25` words, refusals excluded — no extra LLM call). Guard rails: only on a real parameter (not the intro), **never chains** (the previous turn must not itself be a follow-up → at most one follow-up per parameter), and it is skipped if spending the turn would stop an as-yet-untouched parameter from getting at least one question within the 8-question budget. When triggered, it sends `force_followup: true` to `/ai-interview/generate-question`, which mandates a follow-up that drills into the candidate's previous answer and tags the response `is_followup`.
+
+- **Per-turn scoring is off the critical path.** `score-turn` is fire-and-forget from `submitTurn` (its signals are a soft hint only) and, in FastAPI, now runs on the **background executor** (`_gemini_json_background`, behind the scoring semaphore) instead of the priority pool — so it can never contend with the live `generate-question` call. This removed a visible slowdown on the turn after the first substantive answer (the candidate's "3rd question"). Each live turn is a single Gemini call.
+
+- **Score-anchored verdict.** The fit verdict is always consistent with the numeric score: `< 35` → **Not Fit**, `< 50` → **Borderline**, `< 80` → **Fit**, `≥ 80` → **Strong Fit**. FastAPI `score-final` clamps the LLM's verdict to this ceiling, and student-node derives the verdict from the score when none is returned (`deriveVerdictFromScore`) — so a **0 score never reads as "Borderline"**, in both the report API and the PDF (`Assessment.js`).
+
+---
+
 ## File Reference
 
 ### 1. AI Engine (FastAPI)
