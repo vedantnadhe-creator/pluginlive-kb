@@ -173,15 +173,15 @@ Spoken sections (chiefly **Video Response**) route to different STT engines base
 - **English → Deepgram** (`/communication/calculate-video-question-score`).
 - **Non-English → Sarvam AI** via the `/hinglish/*` endpoints. FastAPI picks the Sarvam model per language (`fastapi-ai-engine/routers/hinglish.py::_get_sarvam_model_and_mode`): **Hinglish → `saaras:v3` + `translit`** (Roman-script output), **Hindi → `saarika:v2.5`** (native Devanagari), Assamese/Urdu → `saaras:v3`, all others → `saarika:v2.5`. A 14-language `LANGUAGE_CODE_MAP` supplies the `language_code`. So Hindi and Hinglish use **different Sarvam versions/modes**.
 
-**Language resolution (map-first, authoritative).** `responseLanguage` is resolved in `student-node/app/models/Assessment.js` — in both `getAssessmentQuestions()` and `calculateAssessmentScore()` — as:
+**Language resolution (map only).** `responseLanguage` is resolved in `student-node/app/models/Assessment.js` — in both `getAssessmentQuestions()` and `calculateAssessmentScore()` — from the **per-assignment map only**:
 
 ```
 corporateMap.response_language  →  instituteMap.response_language  →  English
 ```
 
-- The **map** (`assessment_corporate_map` / `assessment_institute_map`) holds the language chosen for THIS assignment and is authoritative. **Language selection is a corporate-side option only** — the **institute** side has no language picker, so institute Communication assignments are **always English** and their `assessment_institute_map.response_language` is **always NULL**.
-- **A NULL map ⇒ English.** The code does **NOT** fall back to `assessment_sets.response_language` for merged Communication assessments, because sets are reused across languages and their `response_language` is stale (e.g. an institute assignment may sit on a Hinglish-tagged set even though the institute never chose a language). The set source is kept **only for legacy `hinglish`-TYPE assessments**, where the language still lives on the set.
-- **Prior bug (fixed):** the old code fell back to the set for *all* types, so an English answer on an institute Communication assignment sitting on a Hinglish set was mis-routed to the Hinglish STT path and scored **0**.
+- The **map** (`assessment_corporate_map` / `assessment_institute_map`) is the single source of truth. **Language selection is a corporate-side option only** — the **institute** side has no language picker, so institute Communication assignments are **always English** and their `assessment_institute_map.response_language` is **always NULL**.
+- **A NULL map ⇒ English.** `assessment_sets.response_language` is **never consulted** (sets are reused/stale across languages — e.g. an institute assignment may sit on a Hinglish-tagged set even though the institute never chose a language). This holds for **all** types, including legacy `hinglish`-type.
+- **Prior bug (fixed):** the old code fell back to the set, so an English answer on an institute Communication assignment sitting on a Hinglish set was mis-routed to the Hinglish STT path and scored **0**.
 
 > **Infra note:** the `/hinglish/*` FastAPI routes had no nginx `location` block on `fast-api.uat.pluginlive.com`, so they used the default 60s `proxy_read_timeout`. Sarvam **batch** STT (audio > 30s) takes ~3 min, causing a **504** that student-node swallowed and persisted as a real `0`. Fixed by adding `location /hinglish/ { proxy_read_timeout 300; … }` (PROD's k8s ingress already applies 300s via its catch-all).
 
