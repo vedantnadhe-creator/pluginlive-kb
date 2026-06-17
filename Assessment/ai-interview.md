@@ -326,16 +326,26 @@ now resolves naturally from the profile.
   the candidate's only email. Candidate authenticates with the 6-digit OTP and runs the
   interview straight from the invite link — see [otp-invite.md](otp-invite.md).
 - **Institute** (`isCollege`) — **no OTP invite**. Uses the normal student-portal flow like
-  Aptitude / Communication institute assignments: the new student account is created **with the
-  standard activation email** (`skipActivationEmail: false`, now `!isCollege` in
-  `aiInterviewStudentPayload.js`), and a standard assessment-reminder email is sent via
-  `this.sendRemindersToStudents(assessment.id, "college", …)`. The reminder links to the student
-  portal (`/onboarding/activate/:studentId` or `/login`); the candidate logs in and takes the AI
+  Aptitude / Communication institute assignments, and splits emails **by new-vs-existing**
+  exactly like `assignCommunicationAssessment`:
+  - **New** candidates → only the **account-creation/activation email**, sent by
+    `createPublicStudent` (`skipActivationEmail: false`, now `!isCollege` in
+    `aiInterviewStudentPayload.js`). They do **not** also get a reminder.
+  - **Existing** candidates (already have a portal account) → only the standard
+    **assessment-reminder email** via `this.sendRemindersToStudents(assessment.id, "college",
+    existingUsers, …)`. No activation email (they're already activated).
+
+  New-vs-existing is determined by a `student_personal_profile`/`students` lookup on the
+  candidate emails (`newUsers` / `existingUsers`). The reminder links to the student portal
+  (`/onboarding/activate/:studentId` or `/login`); the candidate logs in and takes the AI
   Interview from inside the authenticated portal. The reminder send is wrapped in try/catch so a
   reminder failure never aborts the assignment.
 
-Net: corporate candidates get **one** email (OTP invite); institute candidates get the **two**
-normal portal emails (activation + reminder) and never see the OTP screen.
+Net: corporate candidates get **one** email (OTP invite); institute candidates get **one**
+portal email each — activation for new students, reminder for existing — and never see the OTP
+screen. (Earlier the institute branch wrongly sent the reminder to *all* candidates, so new
+students got a reminder instead of their activation email — fixed 2026-06-17 to match
+Communication.)
 
 Forward-looking only: candidates assigned **before** this fix still lack a profile (no upload
 names are stored to backfill from). If names are missing from the upload, the profile is
