@@ -338,7 +338,13 @@ now resolves naturally from the profile.
     `!isCorporate`). `aiInterviewStudentPayload.js` therefore populates `currentCourse` +
     `degreeStreamMap` from the upload's `degree`/`department` objects
     (`cand.degree?.degreeId || cand.degree_id`, `cand.department?.streamId || cand.stream_id`),
-    exactly like the customAssessment / communication institute flows.
+    exactly like the customAssessment / communication institute flows. **Second gotcha
+    (fixed 2026-06-17):** the institute payload must **not** set `student.currentState = 1`.
+    `current_state >= 1` marks a student as already-onboarded, so the activation email's
+    `/onboarding/activate/:studentId` link **bounced to login instead of the account-setup
+    flow**. Institute now omits `currentState` (student-node defaults `current_state` to 0 →
+    onboarding runs), matching communication/customAssessment; only the corporate OTP path
+    keeps `currentState: 1` (it never uses portal onboarding).
   - **Existing** candidates (already have a portal account) → only the standard
     **assessment-reminder email** via `this.sendRemindersToStudents(assessment.id, "college",
     existingUsers, …)`. No activation email (they're already activated).
