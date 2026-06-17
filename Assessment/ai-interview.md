@@ -330,7 +330,15 @@ now resolves naturally from the profile.
   exactly like `assignCommunicationAssessment`:
   - **New** candidates → only the **account-creation/activation email**, sent by
     `createPublicStudent` (`skipActivationEmail: false`, now `!isCollege` in
-    `aiInterviewStudentPayload.js`). They do **not** also get a reminder.
+    `aiInterviewStudentPayload.js`). They do **not** also get a reminder. **Gotcha
+    (fixed 2026-06-17):** student-node `createPublicStudent` **requires `degreeStreamMap`
+    (`degreeId` + `streamId`) for non-corporate students** — without it `POST /students`
+    returns `400 "degreeId and departmentId is required"`, the account is never created,
+    and **no activation email is ever sent** (corporate skips this — the check is gated on
+    `!isCorporate`). `aiInterviewStudentPayload.js` therefore populates `currentCourse` +
+    `degreeStreamMap` from the upload's `degree`/`department` objects
+    (`cand.degree?.degreeId || cand.degree_id`, `cand.department?.streamId || cand.stream_id`),
+    exactly like the customAssessment / communication institute flows.
   - **Existing** candidates (already have a portal account) → only the standard
     **assessment-reminder email** via `this.sendRemindersToStudents(assessment.id, "college",
     existingUsers, …)`. No activation email (they're already activated).
