@@ -117,9 +117,22 @@ prefilled the DatePicker with `moment(data.endTime)`, which parses that timestam
 date and the drift compounded each edit. Fix: prefill and change-detection use
 **`moment.utc(...)`** (`moment.utc(data.endTime)` for the picker value;
 `moment.utc(original.endTime)` in the `isSame(..., 'day')` diff) so the displayed/saved
-date matches the stored convention. **Any new code that renders these timestamps
-client-side must parse them in UTC**, not browser-local. (Server-side list displays use
-`moment(endTime)` in the UTC container, so they were never affected.)
+date matches the stored convention.
+
+**Same gotcha in the list/table display (also fixed June 2026):** the assessment
+list renders these dates **client-side**, not server-side. The `formatDate` helpers in
+`UnifiedAssessmentTable/index.js`, `UnifiedAssessmentTable/ExpandableContent.js`, and
+`CompletedAssessmentTable/index.js` used `new Date(x).toLocaleDateString('en-GB', …)`
+in the browser's IST, so `2026-06-22T23:59:59Z` displayed as **23 Jun**. Fix: pass
+`timeZone: 'UTC'` to `toLocaleDateString`. The inline `EndDateEditPopover` (in
+`ExpandableContent.js`, edits a schedule run's end date via
+`PUT /assessment/schedule/assessment-enddate`) likewise had its prefill switched to
+`moment.utc(currentEndDate)`.
+
+**Rule:** any code that renders assessment map `start_time`/`end_time` client-side must
+parse/format in **UTC** (`moment.utc(...)` or `timeZone: 'UTC'`), never browser-local.
+(Schedule `scheduleStartDate`/`scheduleEndDate` are stored at **midnight UTC**, so
+`moment(...)` doesn't roll them — `EditScheduleDrawer` is unaffected.)
 
 ---
 
