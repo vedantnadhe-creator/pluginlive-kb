@@ -104,6 +104,23 @@ The table handles both institute and corporate assessment records with different
 - `handleDiagnosisClick`: Opens diagnosis view
 - `handleAssessmentClick`: Direct assessment detail view
 
+### Edit Assessment Drawer (EditAssessmentDrawer.js) — end-date must be parsed as UTC
+
+`UnifiedAssessmentTable/EditAssessmentDrawer.js` lets an admin edit an assessment's
+name, end date, and student list (`GET`/`PUT /assessment/details`).
+
+**Timezone gotcha (fixed June 2026):** the backend stores assessment end times as
+**IST wall-clock written as UTC** (e.g. choosing 18 Jun is saved as
+`2026-06-18T23:59:59Z` — see `Assessment/admin.md` → *Timezone convention*). The drawer
+prefilled the DatePicker with `moment(data.endTime)`, which parses that timestamp in the
+**browser's IST** and rolls it to **19 Jun** (`05:29 AM`); re-saving then sent the wrong
+date and the drift compounded each edit. Fix: prefill and change-detection use
+**`moment.utc(...)`** (`moment.utc(data.endTime)` for the picker value;
+`moment.utc(original.endTime)` in the `isSame(..., 'day')` diff) so the displayed/saved
+date matches the stored convention. **Any new code that renders these timestamps
+client-side must parse them in UTC**, not browser-local. (Server-side list displays use
+`moment(endTime)` in the UTC container, so they were never affected.)
+
 ---
 
 ## Student Report Drawer (StudentReport/index.js)
