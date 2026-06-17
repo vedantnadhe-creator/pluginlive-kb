@@ -153,6 +153,37 @@ All assignment functions follow the same pattern:
 5. Create `assessmentAssignedStudent` records
 6. Send invitation emails via `StudentService`
 
+### Timezone convention for `start_time` / `end_time` (IST)
+
+The admin picks start/end **date + time in IST**. `assessment_institute_map` and
+`assessment_corporate_map` store `start_time` / `end_time` as `timestamptz`, but the
+platform does **not** store the true IST instant. The stored convention is
+**"IST wall-clock numbers written as UTC"** — e.g. an admin choosing `18:00` is stored
+as `…T18:00:00Z`, not `…T18:00:00+05:30`.
+
+This is intentional and **must stay consistent on both sides**:
+- **Write** — every assignment path builds the Date with a trailing `Z`
+  (`new Date(\`${date}T${time}:00Z\`)`). This applies to all assign flows
+  (Communication, Aptitude, Hinglish, Behavior, Role-based, Custom, diagnosis) and to
+  the edit-end-date path (`updateEditableAssessmentDetails`, stored as `…T23:59:59Z`).
+- **Read** — `student-node` `getActiveAssessments` computes `now` via `getNowForDB()`
+  = `new Date() + 5.5h`, then compares `startTime <= now` / `endTime >= now`. The +5.5h
+  cancels the wall-clock-as-UTC storage, so an assessment opens/closes at the selected
+  **IST** time.
+
+**Gotcha (fixed June 2026):** the Communication/Aptitude/Hinglish assign helpers and the
+edit-end-date path previously built the Date with `+05:30` (true IST instant). Because the
+reader still added +5.5h, those assessments **opened and expired ~5.5h early in IST**
+(disappeared from the student's active list before the selected time). Fix: store as `Z`
+so all writes match the read-side offset. No DB/schema change. Rows created *before* the
+fix remain stored as true-instant and stay ~5.5h early until re-created — editing the
+assessment's end date re-writes it under the correct convention and repairs that row.
+
+> Note: this is a fragile "store-as-UTC + read-side +5.5h" convention that assumes the Node
+> containers run in UTC and that every reader applies the +5.5h. The durable fix is
+> true-instant storage everywhere + a one-time data backfill (deferred — would require a DB
+> migration).
+
 ### `assignCommunicationAssessment(create, entityId, name, instructions, assessmentType, startTime, endTime, startDate, endDate, bulkUploadData, email, assessmentDomain, entityType, allowProctoring, cefrLevel, isOneTime)`
 
 - Selects from pool of available question sets matching `cefrLevel` and `assessmentDomain`
