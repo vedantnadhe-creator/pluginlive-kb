@@ -309,11 +309,33 @@ resolved to empty and the UI fell back to the **raw email** — so the report sh
 **Fix (the right one, not a display patch):** AI-interview assignment now creates a student
 profile for each **new** candidate exactly like the other corporate/college assessment types
 (Aptitude / Communication / Role-Based all call `studentService.createPublicStudent`), using
-the `first_name`/`last_name` already present in `bulkUploadData`. It passes
-`assessment_data.skipActivationEmail=true` so the account is created **silently** — the
-candidate's only email is still the OTP invite. Payload lives in the pure, unit-tested helper
+the `first_name`/`last_name` already present in `bulkUploadData`. `skipActivationEmail` follows
+the entity (see the invite-delivery split below). Payload lives in the pure, unit-tested helper
 `admin-node/app/helpers/aiInterviewStudentPayload.js`. No change to the report code — the name
 now resolves naturally from the profile.
+
+#### Invite delivery splits by entity type — OTP for corporate, portal for institute (2026-06-17)
+
+`assignAIInterviewAssessment()` (`admin-node/app/models/Assessment.js`) was OTP-invite-only for
+**every** AI Interview, regardless of who it was assigned to. It now branches on `isCollege`
+(derived from `entityType` ∈ `college`/`institute`/`university`):
+
+- **Corporate** (`!isCollege`) — unchanged passwordless flow. Fires the
+  `sendAssessmentInviteEmail(..., assessmentType: "AI_Interview")` OTP invite per candidate, and
+  the student account is created **silently** (`skipActivationEmail: true`) so the OTP invite is
+  the candidate's only email. Candidate authenticates with the 6-digit OTP and runs the
+  interview straight from the invite link — see [otp-invite.md](otp-invite.md).
+- **Institute** (`isCollege`) — **no OTP invite**. Uses the normal student-portal flow like
+  Aptitude / Communication institute assignments: the new student account is created **with the
+  standard activation email** (`skipActivationEmail: false`, now `!isCollege` in
+  `aiInterviewStudentPayload.js`), and a standard assessment-reminder email is sent via
+  `this.sendRemindersToStudents(assessment.id, "college", …)`. The reminder links to the student
+  portal (`/onboarding/activate/:studentId` or `/login`); the candidate logs in and takes the AI
+  Interview from inside the authenticated portal. The reminder send is wrapped in try/catch so a
+  reminder failure never aborts the assignment.
+
+Net: corporate candidates get **one** email (OTP invite); institute candidates get the **two**
+normal portal emails (activation + reminder) and never see the OTP screen.
 
 Forward-looking only: candidates assigned **before** this fix still lack a profile (no upload
 names are stored to backfill from). If names are missing from the upload, the profile is
