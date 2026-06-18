@@ -296,6 +296,33 @@ backlog clear **without touching student-node**: deployed to all 3 PROD deployme
 merge the UAT value `api-std.uat.pluginlive.com` onto release — it would repoint PROD
 pushes at UAT). After deploy, the **Ingest** button re-pushes the mismatched candidates.
 
+### Gotcha — phone number dropped when `countryCode` is empty (FIXED, Jun 2026)
+
+`create-full` maps `admin.phoneNumber` → `studentPersonalProfile.phoneNumber`
+(stored as `student.student_personal_profile.contact_number`; that column is the
+sole source for the number surfaced as `data.admin.phoneNumber` by
+`form-data-normalization`'s `GET /api/student-metrics/{student_id}`). The mapping
+lived in **five** create/update paths inside student-node
+`app/handlers/common.js`, and every one was gated on **both** fields being truthy:
+
+```js
+if (admin.countryCode && admin.phoneNumber) { … }   // OLD — buggy
+```
+
+Normalized payloads routinely send `"countryCode": ""` with a valid
+`"phoneNumber"`. `"" && "9662523190"` short-circuits to falsy, so `_.set` never
+ran and the phone was **silently dropped** — never written to Postgres. It was
+not a Postgres-vs-Mongo persistence issue; the value never reached the persisted
+object. A payload with a non-empty `countryCode` (e.g. `"+91"`) stored fine.
+
+**Fix:** a shared `formatAdminPhone(admin)` helper stores the phone **whenever
+`phoneNumber` exists**, prepends the country code only when present, and returns
+`null` otherwise. All five call sites now use it (member access, never
+`process.env`-style fallbacks). Deployed to DEV (`Development`) and UAT (`UAT`
+branch) Jun 2026; PROD pending. Historical rows created via the old guard with an
+empty `countryCode` have a `NULL` `contact_number` and need a backfill from the
+source payload.
+
 ---
 
 ## Key Environment Variables
