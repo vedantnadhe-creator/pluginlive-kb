@@ -59,20 +59,22 @@ The Docker image's CMD only runs the API. The worker and scheduler run as **sepa
 | `datanormalization-worker` | `python main.py worker` | AI normalization loop |
 | `datanormalization-cron` | `python main.py cron` | APScheduler (renewal, daily ingest, status) |
 
-⚠️ **`deploy.sh` only builds/runs `datanormalization`** — it does *not* recreate the `-worker`/`-cron` siblings, and rebuilding the image does not restart them. After any redeploy, recreate the two siblings manually (or add them to `deploy.sh`). Code + SA key are **baked into the image** (`COPY . /app`), so config/key changes require an image rebuild, not just an `.env` edit.
+⚠️ **`deploy.sh` only builds/runs `datanormalization`** — it does *not* recreate the `-worker`/`-cron` siblings, and rebuilding the image does not restart them. After any redeploy, recreate the two siblings manually (or add them to `deploy.sh`). Code + SA key are **baked into the image** (`COPY . /app`), so config/key changes require an image rebuild, not just an `.env` edit. The runtime config (batch sizes, model, normalizer URL) is read from the baked `/app/.env`, but OS env vars set via `docker run -e`/`--env-file` **override** it.
 
 ### PROD runtime topology — 3 Deployments in ns `api`
 
-| Deployment | Args | Role |
-|-----------|------|------|
-| `form-data-normalization` | (image CMD) `uvicorn api.main:app … :5013` | API + **webhook receiver** (Service `:80` → `:5013`, Ingress `data-normalization-prod-ingress`) |
-| `form-data-normalization-worker` | `python main.py worker` | AI normalization loop (scalable; atomic claim is race-safe) |
-| `form-data-normalization-cron` | `python main.py cron` | APScheduler — **must stay at 1 replica** (two schedulers = duplicate watch registrations) |
+| Deployment | Args | Role | Replicas (2026-06-19) |
+|-----------|------|------|----|
+| `form-data-normalization` | (image CMD) `uvicorn api.main:app … :5013` | API + **webhook receiver** | 1 |
+| `form-data-normalization-worker` | `python main.py worker` | AI normalization loop (scalable; atomic claim is race-safe) | **1** |
+| `form-data-normalization-cron` | `python main.py cron` | APScheduler — **must stay at 1 replica** | 1 |
 
 All three reference the same image (`bom.ocir.io/bmv2bqg5gpcd/form-data-normalization:<date>-<branch>`) and mount the pluginalex SA from Secret `data-normalization-sa` at `/app/secrets/auth_creds.json`. Image pull secret: `oracleregistry`. Inline env on each container (these **override** the baked `/app/.env`):
 - `GOOGLE_SERVICE_ACCOUNT_FILE=/app/secrets/auth_creds.json`
 - `GOOGLE_DRIVE_WEBHOOK_URL=https://data-normalization.prod.pluginlive.com/webhooks/google-drive`
 - `ENVIRONMENT=production`
+
+PROD runtime config (from baked `/app/.env`): `AI_BATCH_SIZE=100`, `API_INGEST_BATCH_SIZE=20`, `API_INGEST_POLL_INTERVAL_SECONDS=30`, `GEMINI_MODEL=gemini-3-flash-preview` (PROD has **not** yet received the gemini-2.5-flash-lite + compact-prompt optimization — that is DEV+UAT only), `ENTITY_NORMALIZER_API_URL=https://vector-search.prod.pluginlive.com/api/v1/normalize`. The matcher service `pg-vector-api-service` runs **1 replica** in ns `api`. PG `max_connections=450` (~171 in use).
 
 Deploy via `deploy.sh` (option `17`) which builds + pushes the image and does `kubectl set image deployment/form-data-normalization …`. ⚠️ `deploy.sh` only rolls the **API** deployment — you must also `kubectl set image deployment/form-data-normalization-worker` and `…-cron` (same image tag) to roll the siblings. The first time these were created (2026-06-12) the worker/cron manifests had to be applied manually; consider adding them to `deploy.sh` or a manifest repo.
 
@@ -83,7 +85,7 @@ Deploy via `deploy.sh` (option `17`) which builds + pushes the image and does `k
 | Component | Role |
 |-----------|------|
 | **FastAPI app** (`api/main.py`) | REST API, CORS, lifespan hooks |
-| **Normalization worker** | Background loop: **atomically claims** pending rows → OpenAI → entity matcher → writes normalized data. Safe to run across multiple replicas (see Concurrency below) |
+| **Normalization worker** | Background loop: **atomically claims** pending rows → LLM → entity matcher → writes normalized data. Safe to run across multiple replicas (see Concurrency below) |
 | **Assessment worker** | Syncs assessment scores from assessment DB |
 | **Form metadata worker** | Fetches Google Forms metadata |
 | **Export worker** | Async CSV/Excel generation for large exports |
@@ -96,17 +98,17 @@ Deploy via `deploy.sh` (option `17`) which builds + pushes the image and does `k
 | File | Lines | Purpose |
 |------|-------|--------|
 | `services/db_service.py` | ~5,800 | Database abstraction — raw data CRUD, batch ops, export queries, webhook state |
-| `services/normalization_service.py` | ~3,700 | LLM calls (GPT-4o-mini), batch processing, email/gender validation, CV parsing |
+| `services/normalization_service.py` | ~3,700 | LLM calls, batch processing, email/gender validation, CV parsing, retry loop |
 | `services/normalization_matcher.py` | ~3,750 | Fuzzy matching (rapidFuzz) + AI entity resolution against master data |
 | `services/candidate_service.py` | ~1,500 | Search & filtering — 20+ filter combinations, full-text search |
 | `services/normalization_prompt.py` | ~1,680 | Two system prompts: legacy `SYSTEM_PROMPT` (~15K tokens) and compact `SYSTEM_PROMPT_V2` (~1K tokens, default). Both emit the SAME flat slug-keyed JSON; V2 just shrinks the rules block. Toggle with `NORMALIZATION_COMPACT_PROMPT` |
-| `workers/normalization_worker.py` | ~6,500 | Main worker: atomic claim → OpenAI → entity match → insert normalized → log |
+| `workers/normalization_worker.py` | ~6,500 | Main worker: atomic claim → LLM → entity match (memoized) → insert normalized → `create-full` → log |
 
 ---
 
 ## Concurrency — claiming candidates (race-safe across replicas)
 
-PROD runs **2 corporate-node + 3 FastAPI replicas**, so multiple worker/producer loops can hit the queue at once. Candidates are claimed from `candidates_raw_data` with a **single atomic statement** so the same person is never normalized twice.
+Candidates are claimed from `candidates_raw_data` with a **single atomic statement** so the same person is never normalized twice, even across multiple worker replicas.
 
 **`db_service.claim_pending_for_normalization(batch_size, sheet_id?, exclude_sheet_id?)`** — the only correct way to pick up work:
 
@@ -130,13 +132,19 @@ FROM claimed LEFT JOIN ingested_sheets s ON s.id = claimed.sheet_id
 ORDER BY claimed.id ASC;
 ```
 
-Select + mark happen in one transaction, so `RETURNING` hands each row to **exactly one** worker. Callers: `normalization_worker.run_once`, `run_once_sheet_wise`, and `Kafka/kafka_producer.run_once`.
+Select + mark happen in one transaction, so `RETURNING` hands each row to **exactly one** worker. `FOR UPDATE SKIP LOCKED` means pod-2/pod-3 skip pod-1's locked rows and claim the next disjoint batch — so **scaling worker replicas needs no new lock**; it already self-distributes. The main worker `run_once` **excludes** the API-ingest sheet (`exclude_sheet_id = API_INGEST_SHEET_ID`); the API-ingest queue is drained only by the dedicated `api_ingest_worker` mode.
 
-**Why not the old way:** the previous flow used `fetch_pending_for_normalization()` (a `SELECT ... FOR UPDATE SKIP LOCKED` inside a `begin()` block that **committed and released the locks** as soon as it returned) followed by a separate `mark_in_progress()` UPDATE. Between those two transactions the rows were still `pending`, so a second replica re-read and re-normalized the same candidate. `SKIP LOCKED` only dedupes while the transaction is held open — committing first defeated it. `fetch_pending_for_normalization` / `mark_in_progress` still exist but must **not** be used to pick up work.
+**Idempotency safety net:** `mark_completed` / `mark_skipped` only write when the row is still `normalization_status = 'in_progress'`, so a stale-reclaim overlap can't double-write a result.
 
-**Idempotency safety net:** `mark_completed` / `mark_skipped` only write when the row is still `normalization_status = 'in_progress'` (`... WHERE id = :id AND normalization_status = 'in_progress'`), so a stale-reclaim overlap can't double-write a result.
+---
 
-**No schema change** — uses existing `normalization_status`, `processing_started_at`, `normalized_at` columns.
+## LLM retry / recovery (already implemented)
+
+Four layers, none added by the cost optimization:
+1. **Transport** — `_call_openai_with_retries` (3 attempts, exponential backoff `0.5·2^(n-1)`) wraps every Gemini/OpenAI call; OpenAI path never retries `insufficient_quota`.
+2. **Cache fallback** — `gemini_client.create_completion`: a stale/deleted context-cache ref (4xx) drops the cache and retries once inline; a failed cache-create is parked 5 min.
+3. **Parse/quality** — outer `for retry in range(1,4)` in `normalize()`: `json.JSONDecodeError` → sleep 0.5s, re-call (raises `ValueError` after 3); incomplete output (`_validate_normalization` finds dropped fields) → re-call; HTTP 429 → wait `2^attempt`. `_extract_json()` strips ```` ``` ```` fences + brace-matches before parsing so minor noise doesn't burn a retry.
+4. **Queue durability** — failed `normalize()` marks the row failed/skipped; stale `in_progress > 15 min` rows are reclaimed (crash recovery). **`create-full` itself has no auto-retry** — a transient student-node 5xx sends the candidate to *Mismatched Candidates* for manual re-push.
 
 ---
 
@@ -160,26 +168,14 @@ Select + mark happen in one transaction, so `RETURNING` hands each row to **exac
 | POST | `/api/candidates/normalize` | Trigger normalization worker |
 | POST | `/api/candidates/normalize-sheet/{sheet_id}` | Normalize specific sheet |
 
-### Student Metrics (`/api/students`)
-
-| Method | Endpoint | Purpose |
-|--------|----------|--------|
-| GET | `/api/students` | List with filtering |
-| GET | `/api/students/{id}` | Student details |
-| GET | `/api/students/assessment/{id}` | Assessment scores |
-| POST | `/api/students/download` | Export |
-| POST | `/api/students/download/async` | Async export job |
-| GET | `/api/students/download/status/{job_id}` | Export status |
-| GET | `/api/students/dashboard-summary` | Dashboard stats |
-
-**Filter endpoints** (all GET under `/api/students/`): `institute-campuses`, `degrees`, `departments`, `cities`, `states`, `roles`, `work-companies`, `work-designations`, `work-industries`, `passing-years`, `master-corporates`, `master-institutes`
-
 ### API Ingestion (`/api/api-ingest`) — requires `X-API-Key` header
 
 | Method | Endpoint | Purpose |
 |--------|----------|--------|
-| POST | `/api/api-ingest/ingest` | Ingest candidate via API (raw_data + cv_url) |
+| POST | `/api/api-ingest/ingest` | Ingest candidate via API (`{data, cv_url}`) → enqueues `pending`, returns `ref_id` |
 | GET | `/api/api-ingest/status/{ref_id}` | Ingestion status by reference ID |
+
+Note: `/ingest` only enqueues; the dedicated `api_ingest_worker` mode (`python main.py api_ingest_worker`) drains the API-ingest sheet (it is **not** the running `worker`, which excludes that sheet). It drains all pending on startup, then polls every `API_INGEST_POLL_INTERVAL_SECONDS`.
 
 ### Google Drive Webhooks
 
@@ -187,25 +183,6 @@ Select + mark happen in one transaction, so `RETURNING` hands each row to **exac
 |--------|----------|--------|
 | GET | `/webhooks/google-drive` | Health check (`{"status":"ok"}`) |
 | POST | `/webhooks/google-drive` | Receive Drive file change notifications (real-time ingest trigger) |
-
-### Ingest UI (HTML)
-
-| Method | Endpoint | Purpose |
-|--------|----------|--------|
-| GET | `/ingest` | Interactive ingest UI |
-| POST | `/ingest/start` | Start manual ingestion |
-| GET | `/ingest/stream/{run_id}` | Stream logs (SSE) |
-
-### Admin-React UI Triggers
-
-The `POST /api/candidates/ingest` + `GET /api/candidates/ingest/status` (poll every 3s until `status.running === false`) endpoints are exposed via an **Ingest** button on two admin-react screens (both call them through `utils/candidateRequest`, base URL `REACT_APP_API_URL`):
-
-| Screen | Component | Ingest button | Normalize button |
-|--------|-----------|---------------|------------------|
-| Mismatched Candidates List | `modules/CandidateMetrics/index.js` | **Enabled** | Hidden (commented) |
-| Candidates Raw / list screen | `modules/CandidatesRaw/index.js` | Enabled | — |
-
-Note: on `CandidateMetrics` the Ingest button was commented out by the Apr-2026 Google-Drive ingestion redesign (commit `06bc28f0`) and re-enabled later — the `handleIngest`/`handleNormalize` handlers were never removed, only the JSX was toggled. The **Normalize Data** button there remains commented out.
 
 ---
 
@@ -219,15 +196,13 @@ Note: on `CandidateMetrics` the Ingest button was commented out by the Apr-2026 
 | `candidates_raw_data` | Raw ingested data (JSONB), normalization status, timestamps |
 | `candidates` | Normalized records (name, email, mobile, gender, DOB, assessment_scores JSONB) |
 | `candidate_job_details` | Role-specific data (role, cv_url, normalized_data JSONB, cv_data JSONB) |
-| `open_ai_logs` | LLM API calls (prompt, response, token counts) |
-| `normalization_logs` | Audit trail (old_data, new_data, normalized_keys) |
+| `open_ai_logs` | LLM API calls (prompt, response, token counts) — 1 row per normalization call |
+| `normalization_logs` | Audit trail (steps incl. `*_matcher_api`, `create_full_student_*`; old/new data, timestamps) |
 | `validation_logs` | Field validation results |
 | `drive_webhook_log` | Drive change events |
 | `drive_state` | Single row `id='drive'` — webhook state (`start_page_token`, `webhook_data` JSONB) |
 | `ingested_forms` | Google Forms metadata |
 | `export_jobs` | Async download jobs (status, file_path) |
-
-**Relationships:** `candidates_raw_data` → `ingested_sheets` (many-to-one), `candidates` → `candidates_raw_data` (1:1), `candidate_job_details` → `candidates` (many-to-one). NB: the only DB-enforced FKs into `ingested_sheets` are from `candidates_raw_data.sheet_id`, `candidates.sheet_id`, `ingested_forms.sheet_id`. The `candidates.raw_data_id` and `candidate_job_details.candidate_id` columns are NOT FK-enforced — cleanup scripts must delete them manually in order.
 
 ---
 
@@ -240,9 +215,9 @@ Note: on `CandidateMetrics` the Ingest button was commented out by the Apr-2026 
 | **Gemini API** (2.5 Flash-Lite) | **Primary** field normalization (`USE_OPENAI=false`); $0.10/M in, $0.40/M out |
 | **OpenAI API** (GPT-4o-mini) | Alternate normalization + matcher AI tie-break when `USE_OPENAI=true` |
 | **Resume Parser** (`resume-parser.uat.pluginlive.com`) | PDF CV parsing |
-| **PG Vector Search** (`vector-search.dev.pluginlive.com`) | Master entity resolution |
+| **PG Vector Search / Entity Normalizer** (`vector-search.{dev,prod}.pluginlive.com`, k8s `pg-vector-api-service`) | Master entity resolution (institute/degree/city/state/country/department). **5–10s per call**; the dominant per-candidate latency. |
 | **Assessment DB** | Fetch assessment scores (separate PG connection) |
-| **student-node `POST /students/create-full`** | Final push of the normalized candidate → student record. URL = `{BASE_URL}/students/create-full`, auth via `auth-key: STUDENT_API_KEY`. UAT `BASE_URL=https://api-std.uat.pluginlive.com`, PROD `https://api-stud.pluginlive.com`. |
+| **student-node `POST /students/create-full`** | Final push of the normalized candidate → student record. URL = `{BASE_URL}/students/create-full`, auth via `auth-key: STUDENT_API_KEY`. UAT `BASE_URL=https://api-std.uat.pluginlive.com`, PROD `https://api-stud.pluginlive.com`. Responds ~0.4s. |
 
 ---
 
@@ -266,62 +241,21 @@ On failure the **full request payload is persisted** in `normalization_logs`
 student-node's create-full Fastify schema restricts both `currentCourse.cumulativeType`
 and `education[].cumulativeType` to the enum **`["Percentage","CGPA"]`** (schema
 `default: "Percentage"`). The normalization LLM prompt can emit values that are **not
-in this enum** — most commonly an empty string `""` (currentCourse with no captured
-grade-type), and potentially `"CGPA (decimal)"` / `"GPA"`. AJV's `default` only applies
-when the field is **absent**, NOT when it is present-but-empty, so `""` is rejected with:
-
-```
-400 FST_ERR_VALIDATION  body/currentCourse/cumulativeType must be equal to one of the allowed values
-```
-
-This blocked a large mismatched-candidate backlog (~3.6k on PROD, Jun 2026).
-
-**Guard (student-node `app/routes/student.js`, create-full `preValidation`):** an
-empty/whitespace `cumulativeType` is **deleted** so the schema default `"Percentage"`
-applies; `"percentage"`/`"cgpa"` case-variants are canonicalised; unknown non-empty
-values pass through so the validator still rejects them with the original token visible.
-Sibling guards in the same hook normalise `admin.gender`, `educationLevel`, and coerce
-marks strings.
-
-**Producer-side guard (IMPLEMENTED, Jun 2026):** `NormalizationWorker._sanitize_payload_cumulative_types()`
-runs at the top of `create_full_student` (the single push chokepoint, so it covers
-both the worker's initial push and the dashboard re-push). It canonicalises
-`currentCourse.cumulativeType` and every `education[].cumulativeType`:
-`*cgpa*`/`*gpa*` → `CGPA`, `*percent*`/`%` → `Percentage`, and **drops anything else**
-(empty / unknown / non-string) so student-node's schema default `Percentage` applies.
-Value-agnostic — a single bad token can never block the push again. This let the PROD
-backlog clear **without touching student-node**: deployed to all 3 PROD deployments on
-`release-v1.33-hotfix-1` (image `…2026-06-16-05-02-52-release-v1.33-hotfix-1`); the
-`config/settings.py` `BASE_URL` default stays `https://api-stud.pluginlive.com` (do NOT
-merge the UAT value `api-std.uat.pluginlive.com` onto release — it would repoint PROD
-pushes at UAT). After deploy, the **Ingest** button re-pushes the mismatched candidates.
+in this enum** — most commonly an empty string `""`. AJV's `default` only applies when
+the field is **absent**, NOT present-but-empty, so `""` is rejected with `400
+FST_ERR_VALIDATION`. **Producer-side guard:** `NormalizationWorker._sanitize_payload_cumulative_types()`
+runs at the top of `create_full_student` and canonicalises `*cgpa*`/`*gpa*` → `CGPA`,
+`*percent*`/`%` → `Percentage`, dropping anything else so the schema default applies.
+Sibling guards normalise `admin.gender`, `educationLevel`, and coerce marks strings.
 
 ### Gotcha — phone number dropped when `countryCode` is empty (FIXED, Jun 2026)
 
-`create-full` maps `admin.phoneNumber` → `studentPersonalProfile.phoneNumber`
-(stored as `student.student_personal_profile.contact_number`; that column is the
-sole source for the number surfaced as `data.admin.phoneNumber` by
-`form-data-normalization`'s `GET /api/student-metrics/{student_id}`). The mapping
-lived in **five** create/update paths inside student-node
-`app/handlers/common.js`, and every one was gated on **both** fields being truthy:
-
-```js
-if (admin.countryCode && admin.phoneNumber) { … }   // OLD — buggy
-```
-
-Normalized payloads routinely send `"countryCode": ""` with a valid
-`"phoneNumber"`. `"" && "9662523190"` short-circuits to falsy, so `_.set` never
-ran and the phone was **silently dropped** — never written to Postgres. It was
-not a Postgres-vs-Mongo persistence issue; the value never reached the persisted
-object. A payload with a non-empty `countryCode` (e.g. `"+91"`) stored fine.
-
-**Fix:** a shared `formatAdminPhone(admin)` helper stores the phone **whenever
-`phoneNumber` exists**, prepends the country code only when present, and returns
-`null` otherwise. All five call sites now use it (member access, never
-`process.env`-style fallbacks). Deployed to DEV (`Development`) and UAT (`UAT`
-branch) Jun 2026; PROD pending. Historical rows created via the old guard with an
-empty `countryCode` have a `NULL` `contact_number` and need a backfill from the
-source payload.
+`create-full` maps `admin.phoneNumber` → `studentPersonalProfile.phoneNumber`. The mapping
+in student-node `app/handlers/common.js` was gated on **both** `countryCode && phoneNumber`,
+so a payload with `"countryCode": ""` silently dropped the phone. Fixed via a shared
+`formatAdminPhone(admin)` helper that stores the phone whenever `phoneNumber` exists.
+Deployed DEV + UAT; PROD pending. Historical rows with empty countryCode have NULL
+`contact_number` and need a backfill.
 
 ---
 
@@ -332,11 +266,12 @@ source payload.
 | `POSTGRES_URL` | Main DB (with `?options=-csearch_path=candidate_ingestion_schema`) |
 | `POSTGRES_ASSESSMENT_SCORE_URL` | Assessment DB connection |
 | `OPENAI_API_KEY` / `OPENAI_MODEL` | OpenAI config (default: gpt-4o-mini) |
-| `GEMINI_API_KEY` / `GEMINI_MODEL` | Gemini config — **primary** normalization model (default `gemini-2.5-flash-lite`) |
+| `GEMINI_API_KEY` / `GEMINI_MODEL` | Gemini config — **primary** normalization model (default `gemini-2.5-flash-lite`; PROD still `gemini-3-flash-preview`) |
 | `NORMALIZATION_COMPACT_PROMPT` | Use compact `SYSTEM_PROMPT_V2` (default `true`); `false` = legacy `SYSTEM_PROMPT` |
-| `GOOGLE_SERVICE_ACCOUNT_FILE` | Service account JSON path. **UAT: `./auth_creds.json`** (baked); **PROD: `/app/secrets/auth_creds.json`** (k8s Secret `data-normalization-sa`). Both = pluginalex SA `pluginliveservice@pluginalex.iam.gserviceaccount.com`. |
-| `GOOGLE_DRIVE_FOLDER_ID` | Drive folder to monitor. **UAT: `1OJ2sGcz85VmGk2fHkg3XALW5nX5M06Ug`** · **PROD: `1vnv0vCwqPnAU_I3afaW7zRn3ge8QLNtG`** |
-| `GOOGLE_DRIVE_WEBHOOK_URL` | Webhook receiver URL. **UAT: `https://data-normalization.uat.pluginlive.com/webhooks/google-drive`** · **PROD: `https://data-normalization.prod.pluginlive.com/webhooks/google-drive`** (both Let's Encrypt; ngrok is local-dev only) |
+| `AI_BATCH_SIZE` / `API_INGEST_BATCH_SIZE` | Main-worker / api-ingest claim batch sizes (PROD 100 / 20) |
+| `GOOGLE_SERVICE_ACCOUNT_FILE` | SA JSON path. **UAT: `./auth_creds.json`** (baked); **PROD: `/app/secrets/auth_creds.json`** (Secret `data-normalization-sa`). Both = pluginalex SA. |
+| `GOOGLE_DRIVE_FOLDER_ID` | Drive folder. **UAT: `1OJ2sGcz85VmGk2fHkg3XALW5nX5M06Ug`** · **PROD: `1vnv0vCwqPnAU_I3afaW7zRn3ge8QLNtG`** |
+| `GOOGLE_DRIVE_WEBHOOK_URL` | Webhook receiver URL (UAT/PROD Let's Encrypt; ngrok local-dev only) |
 | `PDF_PARSER_URL` / `PDF_PARSER_AUTH_KEY` | Resume parser endpoint |
 | `ENTITY_NORMALIZER_API_URL` | PG Vector Search endpoint |
 | `API_SECRET_KEY` | Auth key for `/api/api-ingest` endpoints |
@@ -358,6 +293,10 @@ docker run -itd --name datanormalization-worker --restart always --env-file .env
 docker run -itd --name datanormalization-cron --restart always --env-file .env datanormalization:api python main.py cron
 ```
 
+> To change `GEMINI_MODEL` / `NORMALIZATION_COMPACT_PROMPT` etc. on UAT you must **recreate**
+> the containers with the new value (OS env overrides the baked `/app/.env`); editing `.env`
+> alone does nothing for already-running containers.
+
 ```bash
 # PROD (k8s) — after deploy.sh builds & pushes the image, also roll the siblings:
 TAG=bom.ocir.io/bmv2bqg5gpcd/form-data-normalization:<date>-<branch>
@@ -371,18 +310,8 @@ kubectl -n api set image deployment/form-data-normalization-cron   form-data-nor
 python main.py ingest              # Ingest from Google Drive
 python main.py worker              # Start normalization worker
 python main.py cron                # Start scheduler
-python main.py form_metadata_worker  # Fetch form metadata
-python main.py api_ingest_worker   # Process API ingestion queue
+python main.py api_ingest_worker   # Drain the API-ingest queue
 python main.py ingest_parallel     # Parallel multi-file ingestion
-```
-
-**Dev setup:**
-```bash
-pip install -r requirements.txt
-cp .env.example .env
-uvicorn api.main:app --reload --host 0.0.0.0 --port 8001  # API server
-python main.py worker   # Normalization worker (separate terminal)
-python main.py cron     # Scheduler (separate terminal)
 ```
 
 ---
@@ -406,8 +335,8 @@ block in `SYSTEM_PROMPT` was billed on (almost) every normalization call.
 
 **Measured (same candidate, gemini-2.5-flash-lite):** legacy 56K-char prompt ≈ 16.7K in / 500 out
 ≈ **0.19¢**; compact ≈ 4.7K in / 444 out ≈ **0.064¢** → **~69% cheaper** per normalization call.
-The entity matchers (institute/city/state/country/degree/role) are unchanged — still fuzzy +
-AI tie-break + PG Vector Search — so their cost is unaffected by this change.
+Validated end-to-end on UAT: 10 students via `/api/api-ingest/ingest`, 10/10 created, 0 failures,
+total token cost **$0.0077** ($0.000773/student).
 
 **Important env note:** all three containers (`datanormalization`, `datanormalization-worker`,
 `datanormalization-cron`) bake env via `-e`/`--env-file` at `docker run` (no env-file mount), and an
@@ -418,3 +347,32 @@ you must **recreate the containers** with the new `GEMINI_MODEL`, not just edit 
 > is slug-coupled across storage, re-read, structured logging, matchers, and mapping, so emitting the
 > nested payload would require rewriting all of those. The entire cost win lives on the input side,
 > which the compact prompt already captures.
+
+---
+
+## Matcher latency — per-candidate memoization (2026-06-19)
+
+Profiling one candidate showed the create path is **matcher-bound, not LLM-bound**:
+~68s of which the LLM is only ~5s and `create-full` is ~0.4s — the rest is **~9 sequential
+5–10s HTTP calls** to the entity-normalizer (`pg-vector-api-service`) for
+institute/degree/city/state/country/department.
+
+Several of those calls resolve **identical text**: `highest_qualification_degree` equals the
+selected level's `education_ug/pg_degree`, the highest-qual department equals the UG/PG
+department, and current/permanent city or country often coincide. The three
+`_call_*_normalizer_api` helpers in `_resolve_and_store_all_ids` were renamed to `*_impl`
+and wrapped with thin **per-candidate memoizing wrappers** keyed by
+`(entity_type, normalized_input)`. The matcher is deterministic, so identical input →
+identical output — behaviour-preserving; only redundant round-trips are skipped. Call sites
+are unchanged.
+
+**Measured (UAT, 5 candidates):** matcher API calls **~9 → 6 per candidate (~33% fewer)**;
+wall-clock ~21s → ~14s per student; 5/5 still created successfully, 0 failures.
+
+> The remaining latency is the **serial** nature of the independent lookups + the
+> 5–10s/call service latency. Bigger wins are **horizontal**: scale
+> `form-data-normalization-worker` replicas (the `FOR UPDATE SKIP LOCKED` claim already
+> hands disjoint batches to each pod) and scale `pg-vector-api-service` (currently **1
+> replica** in PROD, the real bottleneck). PROD worker is also **1 replica** today, so
+> normalization runs single-threaded. A full in-candidate concurrent (`asyncio.gather`)
+> rewrite of the matcher blocks is the next code-side step but needs dedicated test coverage.
