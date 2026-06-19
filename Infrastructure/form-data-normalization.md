@@ -6,7 +6,7 @@ tags: [service, api, python, normalization, ingestion, ai]
 # Form Data Normalization Service
 
 **Repo:** `/home/ubuntu/api/form-data-normalization`
-**Stack:** Python 3.11 · FastAPI · PostgreSQL · OpenAI (GPT-4o-mini) · Gemini 3.0 Flash
+**Stack:** Python 3.11 · FastAPI · PostgreSQL · OpenAI (GPT-4o-mini) · **Gemini 2.5 Flash-Lite** (primary normalization model)
 **Port:** 5013 (production) / 8001 (development)
 **Docker Image:** `form-data-normalization`
 
@@ -99,7 +99,7 @@ Deploy via `deploy.sh` (option `17`) which builds + pushes the image and does `k
 | `services/normalization_service.py` | ~3,700 | LLM calls (GPT-4o-mini), batch processing, email/gender validation, CV parsing |
 | `services/normalization_matcher.py` | ~3,750 | Fuzzy matching (rapidFuzz) + AI entity resolution against master data |
 | `services/candidate_service.py` | ~1,500 | Search & filtering — 20+ filter combinations, full-text search |
-| `services/normalization_prompt.py` | ~1,600 | System prompt engineering for field extraction (structured JSON output) |
+| `services/normalization_prompt.py` | ~1,680 | Two system prompts: legacy `SYSTEM_PROMPT` (~15K tokens) and compact `SYSTEM_PROMPT_V2` (~1K tokens, default). Both emit the SAME flat slug-keyed JSON; V2 just shrinks the rules block. Toggle with `NORMALIZATION_COMPACT_PROMPT` |
 | `workers/normalization_worker.py` | ~6,500 | Main worker: atomic claim → OpenAI → entity match → insert normalized → log |
 
 ---
@@ -237,8 +237,8 @@ Note: on `CandidateMetrics` the Ingest button was commented out by the Apr-2026 
 |---------|--------|
 | **Google Drive API** | List/download Excel files, webhook (`changes.watch`) registration |
 | **Google Forms API** | Fetch form metadata |
-| **OpenAI API** (GPT-4o-mini) | Field normalization, entity matching |
-| **Gemini API** (3.0 Flash) | Fallback AI normalization |
+| **Gemini API** (2.5 Flash-Lite) | **Primary** field normalization (`USE_OPENAI=false`); $0.10/M in, $0.40/M out |
+| **OpenAI API** (GPT-4o-mini) | Alternate normalization + matcher AI tie-break when `USE_OPENAI=true` |
 | **Resume Parser** (`resume-parser.uat.pluginlive.com`) | PDF CV parsing |
 | **PG Vector Search** (`vector-search.dev.pluginlive.com`) | Master entity resolution |
 | **Assessment DB** | Fetch assessment scores (separate PG connection) |
@@ -332,7 +332,8 @@ source payload.
 | `POSTGRES_URL` | Main DB (with `?options=-csearch_path=candidate_ingestion_schema`) |
 | `POSTGRES_ASSESSMENT_SCORE_URL` | Assessment DB connection |
 | `OPENAI_API_KEY` / `OPENAI_MODEL` | OpenAI config (default: gpt-4o-mini) |
-| `GEMINI_API_KEY` / `GEMINI_MODEL` | Gemini fallback |
+| `GEMINI_API_KEY` / `GEMINI_MODEL` | Gemini config — **primary** normalization model (default `gemini-2.5-flash-lite`) |
+| `NORMALIZATION_COMPACT_PROMPT` | Use compact `SYSTEM_PROMPT_V2` (default `true`); `false` = legacy `SYSTEM_PROMPT` |
 | `GOOGLE_SERVICE_ACCOUNT_FILE` | Service account JSON path. **UAT: `./auth_creds.json`** (baked); **PROD: `/app/secrets/auth_creds.json`** (k8s Secret `data-normalization-sa`). Both = pluginalex SA `pluginliveservice@pluginalex.iam.gserviceaccount.com`. |
 | `GOOGLE_DRIVE_FOLDER_ID` | Drive folder to monitor. **UAT: `1OJ2sGcz85VmGk2fHkg3XALW5nX5M06Ug`** · **PROD: `1vnv0vCwqPnAU_I3afaW7zRn3ge8QLNtG`** |
 | `GOOGLE_DRIVE_WEBHOOK_URL` | Webhook receiver URL. **UAT: `https://data-normalization.uat.pluginlive.com/webhooks/google-drive`** · **PROD: `https://data-normalization.prod.pluginlive.com/webhooks/google-drive`** (both Let's Encrypt; ngrok is local-dev only) |
@@ -383,3 +384,37 @@ uvicorn api.main:app --reload --host 0.0.0.0 --port 8001  # API server
 python main.py worker   # Normalization worker (separate terminal)
 python main.py cron     # Scheduler (separate terminal)
 ```
+
+---
+
+## Cost optimization — compact prompt + Gemini 2.5 Flash-Lite (2026-06-19)
+
+Per-candidate Gemini spend was dominated by the **input side**: the ~15.3K-token rules
+block in `SYSTEM_PROMPT` was billed on (almost) every normalization call.
+
+**Changes:**
+- **Model → `gemini-2.5-flash-lite`** ($0.10/M input, $0.40/M output), set via `GEMINI_MODEL`.
+- **`SYSTEM_PROMPT_V2`** — the rules block rewritten from ~15.3K → ~1K tokens while keeping
+  the **identical flat slug-keyed output contract** (output is still stored in `open_ai_logs` →
+  re-read via `get_normalized_data_from_candidate_job_details` → matched → mapped by
+  `map_to_final_schema`, all unchanged). Hard-won rules preserved: phone/country-code strip,
+  education-prefixed location exclusion (e.g. "UG City" → `education_ug_city`, never `current_*`),
+  highest-qualification ug/pg coercion, internship-vs-work separation, work dedup, duplicate-field
+  first-wins.
+- **Toggle:** `NORMALIZATION_COMPACT_PROMPT` (default `true`). Set `false` to fall back to the
+  legacy `SYSTEM_PROMPT` instantly without a redeploy.
+
+**Measured (same candidate, gemini-2.5-flash-lite):** legacy 56K-char prompt ≈ 16.7K in / 500 out
+≈ **0.19¢**; compact ≈ 4.7K in / 444 out ≈ **0.064¢** → **~69% cheaper** per normalization call.
+The entity matchers (institute/city/state/country/degree/role) are unchanged — still fuzzy +
+AI tie-break + PG Vector Search — so their cost is unaffected by this change.
+
+**Important env note:** all three containers (`datanormalization`, `datanormalization-worker`,
+`datanormalization-cron`) bake env via `-e`/`--env-file` at `docker run` (no env-file mount), and an
+OS env `GEMINI_MODEL` **overrides** the `.env` file and the `settings.py` default. To change the model
+you must **recreate the containers** with the new `GEMINI_MODEL`, not just edit `.env`.
+
+> A literal "LLM emits the create-full payload directly" was evaluated and deferred: the flat output
+> is slug-coupled across storage, re-read, structured logging, matchers, and mapping, so emitting the
+> nested payload would require rewriting all of those. The entire cost win lives on the input side,
+> which the compact prompt already captures.
