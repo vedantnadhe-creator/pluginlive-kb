@@ -47,7 +47,7 @@ Unlike static assessments, AI Interview is a **conversation** — questions are 
 ### Final Recommendation
 
 | Recommendation | Criteria |
-|----------------|----------|
+|---|---|
 | `strong_hire` | Overall score ≥ 85 with high confidence |
 | `hire` | Overall score ≥ 70 |
 | `maybe` | Overall score 50–69, mixed signals |
@@ -370,7 +370,7 @@ created without them (same as other types) and the report shows the email until 
 ## Database Tables
 
 | Table | Purpose |
-|-------|--------|
+|---|---|
 | `ai_interview_config` | Per-assessment-set interview configuration: job role, skills, seniority, duration, AI model, evaluation criteria |
 | `ai_interview_sessions` | Per-student session: status (PENDING/IN_PROGRESS/COMPLETED), start/end times, duration, metadata |
 | `ai_interview_interactions` | Per-question interaction log: question text, response, score, AI evaluation, follow-up tracking |
@@ -411,6 +411,30 @@ AssessmentAssignedStudent
 - `ai_recommendation`: `strong_hire` | `hire` | `maybe` | `no_hire`
 - `strengths`, `weaknesses`: JSONB arrays
 - `detailed_feedback`: comprehensive text analysis
+
+---
+
+## Data Export (Excel)
+
+The institute-admin panel supports **exporting AI Interview assessment results to Excel** via `POST /assessment/exportStudentListForAssessment/:instituteId` (handled by student-node `TpoDashBoard.exportExcelOfStudentListForAssessment`). The export **now correctly identifies AI Interview assessments** (as of 2026-06-19) and produces interview-specific columns:
+
+| Column | Type | Source |
+|---|---|---|
+| Candidate Name | String | Student name from profile |
+| Email | String | Candidate email |
+| Degree | String | Course degree |
+| Department | String | Course department |
+| Assmt. Taken On | Date | Assessment submission date (DD/MM/YYYY) |
+| Taken / Sent | String | X/Y count |
+| **Overall Score** | Integer | `ai_interview_scores.overall_score` (0–100) |
+| **[Parameter Name] (/5)** | Integer | Per-parameter rating from `ai_interview_scores.parameter_scores[*].rating` (1–5 scale) — one column per unique parameter across all candidates |
+| Proctoring | String | Good / Bad |
+
+**Key points:**
+- **Type detection:** The export resolves the assessment type from the returned data (prefers `assessmentType` on each student record) rather than relying on the request parameter, so an empty/wrong `assessmentType` input does not fallback to a Communication-style report.
+- **No suggestions:** The export includes only the overall score and parameter ratings. Analysis/recommendation text from `parameterScores[*].analysis` and `recommendation_text` are **intentionally excluded** to keep the Excel lightweight and focused on scores.
+- **Dynamic columns:** Parameter names are collected as the union across all students, preserving first-seen order. Parameter names are title-cased and space-separated in column headers (e.g. `"role_fit"` → `"Role Fit (/5)"`).
+- **Gotcha fixed (2026-06-19):** Previously, the export was missing the `aiInterviewSessions → scores` include in the assignment query, so the scoreMap never saw AI Interview data. The export would silently fall through to the Communication branch, producing Reading/Listening/Speaking/Writing columns and a `-` score. This is now fixed — assignments are queried with the session + score includes, and the scoreMap builds correctly for AI interviews.
 
 ---
 
