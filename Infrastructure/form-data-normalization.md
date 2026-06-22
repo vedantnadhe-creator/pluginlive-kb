@@ -268,6 +268,33 @@ On failure the **full request payload is persisted** in `normalization_logs`
 `details.response`), and the candidate surfaces under **Mismatched Candidates**
 (data status `Valid`, API status `API Failed`).
 
+### Behavior — Tally/normalization students are NOT linked to a college (`source` field, Jun 2026)
+
+Students ingested via a Tally form through normalization are **not registered through a
+college**, so they must not appear under one. The student roster's "under a college" filter
+is driven purely by `student.students.institute_campus_id`, so the rule is enforced at the
+producer:
+
+- `workers/normalization_worker.py` sets the create-full `student` payload to
+  **`source: "TALLY_FORM"`** and **`instituteCampusId: ""`** (it no longer resolves the
+  studied-at institute into the campus link). `instituteCampusName` / `courseId` / `education`
+  are still populated for reporting — only the membership *id* is dropped.
+- student-node persists a new column **`student.students.source`** (`text DEFAULT 'MANUAL'`,
+  Prisma `student.source`). `MANUAL` = admin/institute-created; `TALLY_FORM` = normalization
+  ingested. Accepted via `CreateFullStudentBodySchema.student.source` and written by
+  `Student.create` (it spreads the `student` object). The Prisma client is regenerated at
+  build time, so a redeploy is required when the schema changes.
+- With an empty `instituteCampusId`, the create-full handler already treats the candidate as
+  experienced/corporate (`isExpStudent = true`); the campus-gated college-metrics trigger and
+  the role-map campus simply no-op. The student still maps to the **job role** they applied to.
+
+**Identifying existing Tally students** (for backfill): `student.students.response_data IS NOT NULL`
+— that jsonb column is populated *only* on the normalization path (its keys are normalized-form
+fields like `highest_qualification_education_level`). DB-Scripts migration
+`Tally Student Source/001_add_source_column_to_students.sql`. UAT backfill (Jun 2026): 6,267
+tagged `TALLY_FORM`, 5,296 detached from a college (`institute_campus_id` → NULL, name kept);
+reversible snapshot in `student.backup_tally_campus_20260622`. PROD pending.
+
 ### Gotcha — `cumulativeType` enum rejection (FST_ERR_VALIDATION)
 
 student-node's create-full Fastify schema restricts both `currentCourse.cumulativeType`
