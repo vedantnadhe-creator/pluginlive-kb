@@ -184,6 +184,38 @@ Note: `/ingest` only enqueues; the dedicated `api_ingest_worker` mode (`python m
 | GET | `/webhooks/google-drive` | Health check (`{"status":"ok"}`) |
 | POST | `/webhooks/google-drive` | Receive Drive file change notifications (real-time ingest trigger) |
 
+### Student Metrics (`/api/student-metrics`) — candidate analytics dashboard (admin-react)
+
+Backs the admin-react Candidate Metrics dashboard. Supports the full filter set
+(gender, status, institute, degree, roles, work experience, salary, passing years…)
+plus pagination and async CSV/Excel export (`/download/async` → `export_jobs`,
+drained by the `worker` sibling).
+
+**Semantic role search (`role_search`)** — *live UAT + DEV, 2026-06-22.* A free-text
+role query (e.g. `full stack`, `fullstack`, `software developer`) returns **all**
+semantically-matching candidates in one shot, so users don't hand-pick every role
+variant. Fixes the old literal-`LIKE` gaps where `fullstack` (no space) or
+`software developer` returned no/few roles.
+
+- Param `role_search` on `GET /api/student-metrics` and the download endpoints
+  (the GET grid is wired; **async export via the `worker` sibling is not yet
+  rebuilt** — it ignores `role_search` until the worker container is refreshed).
+- How it works: `services/semantic_roles.py` embeds the query (Gemini
+  `gemini-embedding-001` @ 1536 dims, L2-normalized, `RETRIEVAL_QUERY`), pulls the
+  nearest role ids from the `ROLE_VECTOR_DB_URL` pgvector store
+  (`job_role_embeddings`, cosine, top-k + threshold), then filters students via
+  `corporate.job_role_student_map` (`is_applied=1`) — the same mapping the roles-chip
+  filter uses, so typing a role and selecting its chips return the same candidates.
+- **Fail-open**: if disabled, the store is unreachable, or the embed call fails,
+  `expand()` returns `[]` and the grid falls back to existing behavior — it can't
+  break the dashboard.
+- Vector store: dedicated `role-vec-proto` pgvector container (named volume
+  `role-vec-data`, `--restart`, published on `127.0.0.1:5460` + bridge gateway
+  `172.17.0.1:5460`). Backfill (≈30s, ~1361 distinct titles): inside the app
+  container run `python -m scripts.build_role_index`. Embeddings are a snapshot —
+  re-run after roles change. **Not auto-provisioned by deploy.sh** — the container +
+  backfill + env vars must exist on the box or the feature stays a no-op.
+
 ---
 
 ## Database Schema
@@ -276,6 +308,9 @@ Deployed DEV + UAT; PROD pending. Historical rows with empty countryCode have NU
 | `ENTITY_NORMALIZER_API_URL` | PG Vector Search endpoint |
 | `API_SECRET_KEY` | Auth key for `/api/api-ingest` endpoints |
 | `APP_ENV` | `local` / `uat` / `prod` |
+| `SEMANTIC_ROLE_SEARCH_ENABLED` | Enable the `role_search` semantic role filter (default `false`; `true` on UAT/DEV) |
+| `ROLE_VECTOR_DB_URL` | pgvector store of role-title embeddings (UAT/DEV: `postgres@172.17.0.1:5460/roleproto` — the `role-vec-proto` container via the docker bridge gateway) |
+| `ROLE_VECTOR_TOP_K` / `ROLE_VECTOR_THRESHOLD` | Expansion cap (default 50) and min cosine similarity (default 0.66) |
 
 ---
 
