@@ -165,7 +165,10 @@ This is intentional and **must stay consistent on both sides**:
 - **Write** — every assignment path builds the Date with a trailing `Z`
   (`new Date(\`${date}T${time}:00Z\`)`). This applies to all assign flows
   (Communication, Aptitude, Hinglish, Behavior, Role-based, Custom, diagnosis) and to
-  the edit-end-date path (`updateEditableAssessmentDetails`, stored as `…T23:59:59Z`).
+  the edit-end-date path (`updateEditableAssessmentDetails`). As of June 2026 the edit
+  path **honors an exact end time**: it parses an optional `hh:mm[:ss]` component from the
+  incoming `endTime` and stores `…T${time}Z`; date-only callers still default to end-of-day
+  (`…T23:59:59Z`), so older/other callers are unaffected.
 - **Read** — `student-node` `getActiveAssessments` computes `now` via `getNowForDB()`
   = `new Date() + 5.5h`, then compares `startTime <= now` / `endTime >= now`. The +5.5h
   cancels the wall-clock-as-UTC storage, so an assessment opens/closes at the selected

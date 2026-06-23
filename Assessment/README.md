@@ -33,6 +33,15 @@ All assessment types share these core features, implemented in **`student-node/a
 | `checkPracticeAccess(studentId)` | Checks if student has access to practice assessments |
 | `getAssessmentQuestions({ assessment_assigned_id })` | Routes to type-specific question fetch (Communication/Aptitude/RoleBased/Behavior/Custom) |
 
+> **Client-side end-time rendering (Assessment-React, fixed June 2026):** assessment
+> `endTime` is stored as *IST wall-clock written as UTC* (see `admin.md` → Timezone
+> convention). The student app's `Partials/AssessmentContainer/AssessmentTable.js`
+> `formatDateTime` rendered the **End Time** card with `moment(endTime).format(...)`, which
+> converts to the browser's local zone and added **+5:30** on IST machines. Fix: render with
+> **`moment.utc(endTime).format(...)`** so the card shows exactly the stored wall-clock time.
+> Same rule as admin-react: any client-side render of assessment `start_time`/`end_time`
+> must use `moment.utc(...)` / `timeZone: 'UTC'`, never browser-local.
+
 ### Response Saving
 
 | Function | Purpose |

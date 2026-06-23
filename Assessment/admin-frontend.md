@@ -107,7 +107,15 @@ The table handles both institute and corporate assessment records with different
 ### Edit Assessment Drawer (EditAssessmentDrawer.js) — end-date must be parsed as UTC
 
 `UnifiedAssessmentTable/EditAssessmentDrawer.js` lets an admin edit an assessment's
-name, end date, and student list (`GET`/`PUT /assessment/details`).
+name, end date **and time**, and student list (`GET`/`PUT /assessment/details`).
+
+**End date + time picker (June 2026):** the End field is an Ant `DatePicker` with
+`showTime` (12-hour `hh:mm A`, `format="DD/MM/YYYY hh:mm A"`) — admins can pick the exact
+end time, not just the date. On save the drawer sends the full wall-clock value
+`endDate.format('YYYY-MM-DDTHH:mm:ss')` (no timezone), and change-detection compares at
+**minute** granularity (`isSame(moment.utc(original.endTime), 'minute')`). The backend
+(`updateEditableAssessmentDetails`) parses the `hh:mm[:ss]` and stores `…T${time}Z` under
+the same IST-wall-clock-as-UTC convention; date-only payloads still default to `23:59:59Z`.
 
 **Timezone gotcha (fixed June 2026):** the backend stores assessment end times as
 **IST wall-clock written as UTC** (e.g. choosing 18 Jun is saved as
