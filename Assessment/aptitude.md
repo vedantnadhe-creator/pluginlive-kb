@@ -20,13 +20,21 @@
 
 ## Assessment Sections (3 Categories)
 
-| Section | Default Questions | Subtopics (examples) |
+| Section (PROD `section_name`) | Default Questions | Subtopics (examples) |
 |---------|------------------|----------------------|
-| **Quantitative Aptitude** | 12 | Percentages, Profit & Loss, Time & Work, Averages, etc. |
-| **Logical Reasoning** | 11 | Series, Coding-Decoding, Syllogisms, Blood Relations, etc. |
-| **Critical Reasoning** | 7 | Analogies, Statement Analysis, etc. |
+| **Quantitative** *(named "Quantitative", **not** "Quantitative Aptitude")* | 12 | Number System, Time & Work, Time/Speed/Distance, Percentages, etc. |
+| **Logical Reasoning** | 11 | Coding-Decoding, Puzzles, Seating Arrangement, Blood Relations, etc. |
+| **Critical Reasoning** | 7 | Conclusions & Inferences, Statement & Assumptions, etc. |
 
 Questions are distributed across subtopics based on **weights** defined in the `sub_sections` table.
+
+**Current PROD sub-section weights** (aptitude `assessment_type_id` = `e8c2b601-0cbb-4e12-8d93-60f47b7d6e6b`):
+
+| Section | Sub-topics (weight) |
+|---------|----------------------|
+| **Quantitative** (12) | Number System 5 · Time and Work 5 · Time, Speed & Distance 5 · Percentages 4 · Pipes and Cisterns 4 · Profit and Loss 4 · Ratio and Proportion 4 · Averages 3 · Permutations & Combinations 3 · Simple & Compound Interest 3 · Mixtures & Alligations 2 · Probability 2 |
+| **Logical Reasoning** (11) | Coding-Decoding 5 · Puzzles 5 · Seating Arrangement 5 · Blood Relations 4 · Number/Letter Series 4 · Direction Sense 3 · Syllogisms 3 · Analogy 2 · Data Sufficiency 2 · Input-Output 2 · Odd One Out 2 |
+| **Critical Reasoning** (7) | Conclusions & Inferences 5 · Statement & Assumptions 5 · Course of Action 4 · Statement & Arguments 4 · Cause & Effect 3 · Facts, Inferences & Judgements 2 · Paradox Questions 2 |
 
 ---
 
@@ -44,11 +52,23 @@ Negative marking is **optional** — controlled by the `isMinusSystem` flag set 
 
 ### Difficulty Distribution (auto-generated per level)
 
-| Student Level | Easy | Medium | Hard |
+Distribution depends on test length (30-Q / 45-min or 40-Q / 60-min). Mix: Easy 60/30/10, Medium 30/50/20, Hard 20/50/30. (`student-node/app/models/Assessment.js` ~line 3366.)
+
+**30-question set:**
+
+| Set difficulty | Easy | Medium | Hard |
 |---------------|------|--------|------|
-| Easy set | 15 | 8 | 7 |
-| Medium set | 8 | 15 | 7 |
-| Hard set | 10 | 10 | 10 |
+| Easy set | 18 | 9 | 3 |
+| Medium set | 9 | 15 | 6 |
+| Hard set | 6 | 15 | 9 |
+
+**40-question set:**
+
+| Set difficulty | Easy | Medium | Hard |
+|---------------|------|--------|------|
+| Easy set | 24 | 12 | 4 |
+| Medium set | 12 | 20 | 8 |
+| Hard set | 8 | 20 | 12 |
 
 ---
 
@@ -65,11 +85,13 @@ Levels are determined by the `getLevel()` function using the **difficulty** of t
 | **Medium** | 0–39% | Beginner |
 | **Medium** | 40–69% | Learner |
 | **Medium** | 70–89% | Competent |
-| **Medium** | 90–100% | Advanced |
+| **Medium** | 90–100% | Competent (next test → Hard) |
 | **Hard** | 0–39% | Beginner |
 | **Hard** | 40–59% | Learner |
 | **Hard** | 60–79% | Competent |
 | **Hard** | 80–100% | Advanced |
+
+> **Medium caps at Competent.** A Medium test can never assign **Advanced** — the 90–100% band stays **Competent** but routes the student's *next* test to **Hard**, so Advanced is reachable only by scoring 80–100% on a Hard test. (`difficultyMapping` in `student-node/app/config/newAptitudeLevel.js`.)
 
 > **Important:** For ongoing assessments (post-diagnosis), `getNewAssessmentLevel()` is used instead — it **prevents level downgrades**. Students can only maintain or improve their assessment level.
 
