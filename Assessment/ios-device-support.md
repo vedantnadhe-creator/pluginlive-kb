@@ -94,13 +94,13 @@ Root cause of "frozen" / byte-identical proctoring snapshots (one image repeated
 
 Two cameras at once **fails on mobile** (the codebase notes "avoids opening a second stream which fails on mobile devices"), so proctoring + recording must share **one** `video+audio` `getUserMedia` stream. The first attempt at this broke recording on UAT ("camera permission" / `NotReadableError` / lost takes): the `[stream, isFullPageMode]` cleanup effect ran `stream.getTracks().forEach(stop)` + proctor teardown on **every** `setStream`/fullscreen change, killing the shared camera mid/after recording.
 
-**Fix (Communication, validated UAT June 2026):**
+**Fix (Communication, Hinglish, Role-based — UAT June 2026):**
 - Video-response recording records the **same** live proctoring stream (`captureRef.current.srcObject`, opened `video+audio`); proctoring is **not** stopped on record-start and **not** restarted on record-stop — so snapshots keep uploading **throughout** the video answer.
-- The camera-teardown was moved **out** of the `[stream, isFullPageMode]` effect into an **unmount-only (`[]`) effect**; the per-change effect now only clears timers / restores layout. This is what stops the shared stream being killed mid-assessment.
-- Reading-section voice records a **clone** of the shared mic track (`new MediaStream([track.clone()])`) — no second mic; stopping the clone never touches proctoring.
-- **OTP / email-invite studentId:** `uploadProctorImage` falls back to `sessionStorage 'assessment_invite_assigned_id'` → `assessmentAssignedId` (mirrors AIInterview) — previously bailed with "No student ID found" in the invite flow, uploading nothing.
+- **Communication & Hinglish only:** the camera-teardown was moved **out** of the `[stream, isFullPageMode]` effect into an **unmount-only (`[]`) effect**; the per-change effect now only clears timers / restores layout. This is what stops the shared stream being killed mid-assessment. (Role-based's proctor-teardown effect was already `[]`-keyed, so no change needed there.)
+- **Communication & Hinglish only:** reading-section voice records a **clone** of the shared mic track (`new MediaStream([track.clone()])`) — no second mic; stopping the clone never touches proctoring. (Role-based has no reading-audio section.)
+- **OTP / email-invite studentId (all three):** `uploadProctorImage` falls back to `sessionStorage 'assessment_invite_assigned_id'` → `assessmentAssignedId` (mirrors AIInterview) — previously bailed with "No student ID found" in the invite flow, uploading nothing.
 
-**Status:** shipped for **Communication** (UAT). **Hinglish** and **Role-based** still use the original own-stream recording (stop-proctoring-on-record / restart-after) — recording works there but proctoring pauses during the video take; the same Communication change is pending replication + validation for them. AI-interview records audio-only (separate mic) and proctoring runs continuously already. The DOM-mounted hidden `<video>` freeze fix (above) is in **all** types regardless.
+**Status:** shipped to **UAT** for **Communication, Hinglish, and Role-based** — proctoring captures continuously through the video answer on all three. Validated end-to-end on Communication (incl. iOS); Hinglish/Role-based use the identical pattern. AI-interview records audio-only (separate mic) and proctoring runs continuously already. The DOM-mounted hidden `<video>` freeze fix (above) is in **all** types. PROD promotion pending.
 
 ### iPhone tab/app-switch re-entry
 
