@@ -287,13 +287,22 @@ producer:
 - With an empty `instituteCampusId`, the create-full handler already treats the candidate as
   experienced/corporate (`isExpStudent = true`); the campus-gated college-metrics trigger and
   the role-map campus simply no-op. The student still maps to the **job role** they applied to.
+- **Gotcha (fixed Jun 2026):** clearing the id but **keeping the campus name** is not enough on its
+  own. student-node's `createFullStudent` → `materializeMissingMasterIds` → `ensureStudentCampus`
+  used to **re-derive `instituteCampusId` from `instituteCampusName`** (via `InstituteService.saveinstitute`)
+  whenever the id was empty — silently re-linking the Tally student back to the college (even an
+  **inactive** one, which it would re-create). Fixed by skipping that backfill when
+  `student.source === 'TALLY_FORM'` (`app/handlers/common.js`). The name is still kept for reporting.
+  Without this, every new Tally candidate reappeared under its studied-at college.
 
 **Identifying existing Tally students** (for backfill): `student.students.response_data IS NOT NULL`
 — that jsonb column is populated *only* on the normalization path (its keys are normalized-form
 fields like `highest_qualification_education_level`). DB-Scripts migration
 `Tally Student Source/001_add_source_column_to_students.sql`. UAT backfill (Jun 2026): 6,267
 tagged `TALLY_FORM`, 5,296 detached from a college (`institute_campus_id` → NULL, name kept);
-reversible snapshot in `student.backup_tally_campus_20260622`. PROD pending.
+reversible snapshot in `student.backup_tally_campus_20260622`. PROD pending. **Going forward the
+canonical identifier is `source = 'TALLY_FORM'`** (response_data is the historical-only proxy);
+to catch any re-linked rows: `WHERE source='TALLY_FORM' AND institute_campus_id <> ''`.
 
 ### Gotcha — `cumulativeType` enum rejection (FST_ERR_VALIDATION)
 
