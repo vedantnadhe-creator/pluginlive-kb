@@ -531,3 +531,38 @@ wall-clock ~21s → ~14s per student; 5/5 still created successfully, 0 failures
 > replica** in PROD, the real bottleneck). PROD worker is also **1 replica** today, so
 > normalization runs single-threaded. A full in-candidate concurrent (`asyncio.gather`)
 > rewrite of the matcher blocks is the next code-side step but needs dedicated test coverage.
+
+---
+
+## Cost incident — gemini-3-flash-preview thinking runaway via LiteLLM (2026-06-24)
+
+70 candidates uploaded to UAT cost **~₹1.5k (~$18)** — ~330× expected. Root cause chain
+(diagnosed from LiteLLM `LiteLLM_SpendLogs`):
+
+1. The **ai-gateway** work routed normalization LLM calls through the LiteLLM proxy
+   (`LITELLM_PROXY_URL` + `LITELLM_VIRTUAL_KEY` set → `normalization_service._litellm=True`,
+   calls go via the OpenAI-compatible `_call_openai_sync` instead of `gemini_client`).
+2. `GEMINI_MODEL` was **reverted to `gemini-3-flash-preview`** (a *thinking* model).
+3. Via the OpenAI-compatible proxy the **native `thinkingConfig` is dropped**, so the model
+   spent its whole `max_tokens` budget on reasoning: **~13,400 output tokens/call, capped at
+   16,370** (= `GEMINI_MAX_OUTPUT_TOKENS=16384`) → **~$0.05/call**.
+4. Thinking truncated the JSON before the answer → "Invalid JSON from AI" → the **3× retry
+   loop** fired → 3× the already-expensive calls. (The earlier "fix" — *raising* max_tokens —
+   made it worse.) LiteLLM spend: `gemini-3-flash-preview` 383 calls = **$15.89**.
+
+**Fix (code, default):**
+- `settings.GEMINI_MODEL` default → **`gemini-2.5-flash`** (Development `1eb980c`, merged to UAT).
+- `settings.GEMINI_MAX_OUTPUT_TOKENS` 16384 → **8192** (JSON is ~0.5–2K tokens; caps blast radius).
+- `_call_openai_sync` sends **`reasoning_effort="disable"` for Gemini models** on the LiteLLM
+  path (UAT `5d6a8b8`). Verified against the UAT proxy: output **61→19** tokens, no error;
+  LiteLLM maps it to `thinkingBudget=0`. (gpt-4o-mini path is unaffected — guarded on `"gemini" in model`.)
+
+**Measured after fix (UAT):** model `gemini-2.5-flash`, output **~13.4K → ~1.9K avg/call** (max
+bounded 8192, no 16K cap-hits), **~$0.05 → ~$0.0058/call (~9× cheaper)**, and **0 "Invalid JSON"
+retries** — the tell-tale that thinking is now off.
+
+> **Env gotcha (again):** `GEMINI_MODEL` is set per-container via `docker run -e`; recreate the
+> 3 UAT containers with the new model — editing `.env`/code default alone won't change a running
+> container. Keep `LITELLM_PROXY_URL`/`LITELLM_VIRTUAL_KEY` so the gateway routing stays.
+> DEV (Development branch) has **no** LiteLLM routing — it uses `gemini_client` directly, which
+> already sets `thinkingConfig.thinkingBudget=0`, so DEV only needed the model switch.
