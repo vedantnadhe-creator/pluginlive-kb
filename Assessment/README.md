@@ -11,6 +11,7 @@ This folder contains detailed documentation for each assessment type and cross-c
 - `custom.md` -- Custom Assessment (admin-defined sections with MCQs and image support)
 - `ai-interview.md` -- AI Interview Assessment (real-time adaptive interview with shortlisting)
 - `schedule.md` -- Assessment Scheduling (recurring auto-assignment via cron)
+- `assignment-calculation-queue.md` -- Async assignment + calculation/progression queues (flag-gated), real-time Activity UI with Detail page + Assignment/Calculation toggle + retry. Live on DEV + UAT.
 - `admin.md` -- Admin Assessment Workflow (dashboard, listing, assignment, analytics, proctoring review)
 - `admin-frontend.md` -- Admin-React Assessment Frontend (UnifiedAssessmentTable, StudentReport, NPS, pagination, corporate clickability)
 - `institute.md` -- Institute Assessment (TPO view, two-API architecture, StudentListInfo schedules, score format differences, PDF browser pool)
