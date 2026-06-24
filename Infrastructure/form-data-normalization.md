@@ -343,6 +343,16 @@ LinkedIn-sourced candidate gets a populated work history / education without a r
 3. The candidate has a `linkedin_url` **and** no `cv_url` (CV candidates are already
    covered by the resume parser).
 
+> **Gotcha — LLM drops non-standard URL columns.** The LLM normalizer maps `"LinkedIn
+> Profile" → linkedin_url`, but real Tally forms use headers like **"Linkedin URL"** that
+> it silently drops, so `linkedin_url` never reaches `normalized_data` and the gate never
+> fires. Fixed (Jun 2026) with a deterministic, **header-agnostic** fallback
+> `find_linkedin_url_in_raw(raw_data)` (in `peopledatalabs_service.py`) that scans the raw
+> form **values** for a `linkedin.com/in|pub/...` URL, scheme-normalizes it
+> (`www.linkedin.com/in/x → https://…`), and surfaces it into `normalized_data`. Mirrors
+> the existing `cv_url` raw fallback. (The sibling `cv_url`/CV columns like "Upload CV
+> (PDF)" can be dropped by the LLM the same way — a separate known gap.)
+
 **Flow** (`services/peopledatalabs_service.py`):
 - `PeopleDataLabsService.enrich(linkedin_url=…)` → `GET /v5/person/enrich?profile=<url>&min_likelihood=6`,
   header `X-Api-Key`. Returns `{}` on disabled / no-match / 4xx-5xx (never raises). Raw
