@@ -368,6 +368,13 @@ LinkedIn-sourced candidate gets a populated work history / education without a r
 > experience entries are emitted as `work_N_*` (including the most recent). When the form
 > has no recent job, `recent_*` == `work_1_*` and `map_to_final_schema`'s sheet-entry dedup
 > (role + start + end) collapses them, so no duplicate is introduced.
+>
+> **Deploy target (important):** the hook runs in the **`datanormalization-worker`** container
+> (`python main.py worker`) on **uat.pluginlive.com** — that's what processes the ingest
+> queue. `deploy.sh` option 24 only rebuilds the API container from the wrong branch
+> (`git pull origin Development`), so deploy LinkedIn/normalization changes manually:
+> `ssh uat → git pull origin UAT → (add PDL_* to .env) → docker build -t datanormalization:api . →`
+> recreate **all three** containers (`datanormalization`, `-worker`, `-cron`).
 
 **Flow** (`services/peopledatalabs_service.py`):
 - `PeopleDataLabsService.enrich(linkedin_url=…)` → `GET /v5/person/enrich?profile=<url>&min_likelihood=6`,
