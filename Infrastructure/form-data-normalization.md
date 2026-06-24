@@ -352,6 +352,14 @@ LinkedIn-sourced candidate gets a populated work history / education without a r
 > (`www.linkedin.com/in/x → https://…`), and surfaces it into `normalized_data`. Mirrors
 > the existing `cv_url` raw fallback. (The sibling `cv_url`/CV columns like "Upload CV
 > (PDF)" can be dropped by the LLM the same way — a separate known gap.)
+>
+> **Gotcha 2 — LinkedIn URL mis-mapped into `cv_url`.** When a form has a LinkedIn URL and
+> **no** real résumé (e.g. `Upload CV (PDF) = "N/A"`), the LLM puts the only URL it sees —
+> the LinkedIn one — into the `cv_url` slug. That makes `parse_pdf` try to parse a LinkedIn
+> page as a PDF **and** fails the enrichment "no cv_url" gate (so PDL never runs). Fixed
+> (Jun 2026): right after `cv_url` is resolved, if `is_linkedin_profile_url(cv_url)` →
+> clear `cv_url` and route the value to `linkedin_url`. So a LinkedIn URL is never treated
+> as a CV.
 
 **Flow** (`services/peopledatalabs_service.py`):
 - `PeopleDataLabsService.enrich(linkedin_url=…)` → `GET /v5/person/enrich?profile=<url>&min_likelihood=6`,
