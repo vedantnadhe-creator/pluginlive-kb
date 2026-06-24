@@ -227,7 +227,7 @@ variant. Fixes the old literal-`LIKE` gaps where `fullstack` (no space) or
 | `ingested_sheets` | Track Excel/Form sources (source_sheet_id, source_file, last_processed_row, form_status) |
 | `candidates_raw_data` | Raw ingested data (JSONB), normalization status, timestamps |
 | `candidates` | Normalized records (name, email, mobile, gender, DOB, assessment_scores JSONB) |
-| `candidate_job_details` | Role-specific data (role, cv_url, normalized_data JSONB, cv_data JSONB) |
+| `candidate_job_details` | Role-specific data (role, cv_url, normalized_data JSONB, cv_data JSONB, `linkedin_data` JSONB) |
 | `open_ai_logs` | LLM API calls (prompt, response, token counts) — 1 row per normalization call |
 | `normalization_logs` | Audit trail (steps incl. `*_matcher_api`, `create_full_student_*`; old/new data, timestamps) |
 | `validation_logs` | Field validation results |
@@ -247,6 +247,7 @@ variant. Fixes the old literal-`LIKE` gaps where `fullstack` (no space) or
 | **Gemini API** (2.5 Flash-Lite) | **Primary** field normalization (`USE_OPENAI=false`); $0.10/M in, $0.40/M out |
 | **OpenAI API** (GPT-4o-mini) | Alternate normalization + matcher AI tie-break when `USE_OPENAI=true` |
 | **Resume Parser** (`resume-parser.uat.pluginlive.com`) | PDF CV parsing |
+| **PeopleDataLabs** (`api.peopledatalabs.com/v5/person/enrich`) | LinkedIn profile enrichment for experienced-role candidates (opt-in, `PDL_ENABLED`). See "LinkedIn enrichment" below. |
 | **PG Vector Search / Entity Normalizer** (`vector-search.{dev,prod}.pluginlive.com`, k8s `pg-vector-api-service`) | Master entity resolution (institute/degree/city/state/country/department). **5–10s per call**; the dominant per-candidate latency. |
 | **Assessment DB** | Fetch assessment scores (separate PG connection) |
 | **student-node `POST /students/create-full`** | Final push of the normalized candidate → student record. URL = `{BASE_URL}/students/create-full`, auth via `auth-key: STUDENT_API_KEY`. UAT `BASE_URL=https://api-std.uat.pluginlive.com`, PROD `https://api-stud.pluginlive.com`. Responds ~0.4s. |
@@ -327,6 +328,54 @@ Deployed DEV + UAT; PROD pending. Historical rows with empty countryCode have NU
 
 ---
 
+## LinkedIn enrichment via PeopleDataLabs (opt-in, UAT-LIVE Jun 2026)
+
+For candidates applying to an **experienced role** who supply a **LinkedIn URL but no CV**,
+the normalization worker enriches the profile from PeopleDataLabs (PDL) and feeds it into
+the same `create-full` `resume` payload the CV parser produces. Mirrors the CV path so a
+LinkedIn-sourced candidate gets a populated work history / education without a résumé.
+
+**Three hard gates** (all must hold, in `NormalizationWorker._process_single_candidate`):
+1. `PDL_ENABLED=true` **and** `PDL_API_KEY` set (feature OFF by default).
+2. The role is **experienced** — `DBService.is_experienced_role(role_id)` checks
+   `corporate.job_roles.job_type_levels` contains `EXPERIENCED` **or** `BOTH` (`role_id`
+   is the filename `#`-suffix = `corporate.job_roles.id`).
+3. The candidate has a `linkedin_url` **and** no `cv_url` (CV candidates are already
+   covered by the resume parser).
+
+**Flow** (`services/peopledatalabs_service.py`):
+- `PeopleDataLabsService.enrich(linkedin_url=…)` → `GET /v5/person/enrich?profile=<url>&min_likelihood=6`,
+  header `X-Api-Key`. Returns `{}` on disabled / no-match / 4xx-5xx (never raises). Raw
+  provenance-tagged profile is stored on `candidate_job_details.linkedin_data` (JSONB) via
+  the decoupled `DBService.update_candidate_job_linkedin_data` (fail-safe — wrapped in
+  try/except so a missing column never breaks ingestion).
+- `build_linkedin_resume(profile)` — **deterministic** (no LLM, PDL is already structured)
+  reshape of the PDL profile into the create-full `resume` object: `admin`, `workExperience[]`,
+  `education[]`, `currentCourse`. Fed to `map_to_final_schema` as the `cv_data` arg
+  (`cv_data or linkedin_resume or {}`).
+- `linkedin_normalized_fields(profile)` — scalar gap-fill merged into `normalized_data`
+  (only where the form left a blank): `recent_role_title`→`student.currentDesignation`,
+  `recent_company_name`→`student.currentOrganization`, `total_experience`, `work_N_*`
+  (full history, `YYYY-MM-DD` dates so `map_to_final_schema`'s dedup collapses the recent
+  role), `education_*` / `highest_qualification_*`.
+
+**Gotchas:**
+- PDL returns redacted fields (incl. all contact: `work_email`/`emails`/`phone_numbers`/
+  `mobile_phone`) as the boolean `true`/`false` — the mapper drops these, so **no email/phone
+  is ever pulled from PDL** (we already have those from the form). Current plan tier has no
+  contact-data entitlement anyway.
+- Do **not** add a nested `resume.workExperience` to `build_linkedin_resume` — the full
+  history flows through the `work_N_*` normalized keys (`YYYY-MM-DD`); supplying it under
+  `resume` too (in `MM/YYYY`) double-counts the recent job because dedup can't match the
+  differing date formats.
+- 1 PDL credit per successful match. `PDL_MIN_LIKELIHOOD=6` (PDL's precision default).
+
+**Migration:** `candidate_job_details.linkedin_data JSONB` — DB-Scripts
+`LinkedIn Enrichment (PeopleDataLabs)/001_add_linkedin_data_column.sql`. Applied UAT
+2026-06-24; PROD pending.
+
+---
+
 ## Key Environment Variables
 
 | Variable | Purpose |
@@ -341,6 +390,8 @@ Deployed DEV + UAT; PROD pending. Historical rows with empty countryCode have NU
 | `GOOGLE_DRIVE_FOLDER_ID` | Drive folder. **UAT: `1OJ2sGcz85VmGk2fHkg3XALW5nX5M06Ug`** · **PROD: `1vnv0vCwqPnAU_I3afaW7zRn3ge8QLNtG`** |
 | `GOOGLE_DRIVE_WEBHOOK_URL` | Webhook receiver URL (UAT/PROD Let's Encrypt; ngrok local-dev only) |
 | `PDF_PARSER_URL` / `PDF_PARSER_AUTH_KEY` | Resume parser endpoint |
+| `PDL_ENABLED` / `PDL_API_KEY` | PeopleDataLabs LinkedIn enrichment master switch (default `false`) + API key. **UAT: enabled Jun 2026.** See "LinkedIn enrichment". |
+| `PDL_API_BASE_URL` / `PDL_MIN_LIKELIHOOD` / `PDL_TIMEOUT_SECONDS` | PDL host (`https://api.peopledatalabs.com`), match-confidence floor (default `6`), HTTP timeout (default `30`s) |
 | `ENTITY_NORMALIZER_API_URL` | PG Vector Search endpoint |
 | `API_SECRET_KEY` | Auth key for `/api/api-ingest` endpoints |
 | `APP_ENV` | `local` / `uat` / `prod` |
