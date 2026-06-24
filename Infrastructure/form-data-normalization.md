@@ -360,6 +360,14 @@ LinkedIn-sourced candidate gets a populated work history / education without a r
 > (Jun 2026): right after `cv_url` is resolved, if `is_linkedin_profile_url(cv_url)` →
 > clear `cv_url` and route the value to `linkedin_url`. So a LinkedIn URL is never treated
 > as a CV.
+>
+> **Gotcha 3 — most-recent LinkedIn job dropped when the form has its own recent.**
+> `linkedin_normalized_fields` emits the most-recent LinkedIn job as `recent_*` and the
+> rest as `work_N_*`. If the FORM already filled `recent_*` (which wins on merge), the
+> LinkedIn current job — excluded from `work_N_*` — was lost. Fixed (Jun 2026): **all**
+> experience entries are emitted as `work_N_*` (including the most recent). When the form
+> has no recent job, `recent_*` == `work_1_*` and `map_to_final_schema`'s sheet-entry dedup
+> (role + start + end) collapses them, so no duplicate is introduced.
 
 **Flow** (`services/peopledatalabs_service.py`):
 - `PeopleDataLabsService.enrich(linkedin_url=…)` → `GET /v5/person/enrich?profile=<url>&min_likelihood=6`,
