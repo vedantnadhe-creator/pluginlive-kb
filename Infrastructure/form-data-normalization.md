@@ -244,7 +244,7 @@ variant. Fixes the old literal-`LIKE` gaps where `fullstack` (no space) or
 |---------|--------|
 | **Google Drive API** | List/download Excel files, webhook (`changes.watch`) registration |
 | **Google Forms API** | Fetch form metadata |
-| **Gemini API** (2.5 Flash-Lite) | **Primary** field normalization (`USE_OPENAI=false`); $0.10/M in, $0.40/M out |
+| **Gemini API** (2.5 Flash-Lite / 3 Flash-Preview) | **Primary** field normalization (`USE_OPENAI=false`). **Native `GeminiClient` path** — the LiteLLM-proxy routing (commit a8e4c2f) was **reverted on UAT 2026-06-24** because routing Gemini through the OpenAI-compatible proxy produced intermittent "Invalid JSON from AI" normalization failures (the proxy path doesn't enforce Gemini's native JSON mode). `LITELLM_PROXY_URL`/`LITELLM_VIRTUAL_KEY` may still be set in `.env` but are now unused by normalization. |
 | **OpenAI API** (GPT-4o-mini) | Alternate normalization + matcher AI tie-break when `USE_OPENAI=true` |
 | **Resume Parser** (`resume-parser.uat.pluginlive.com`) | PDF CV parsing |
 | **PeopleDataLabs** (`api.peopledatalabs.com/v5/person/enrich`) | LinkedIn profile enrichment for experienced-role candidates (opt-in, `PDL_ENABLED`). See "LinkedIn enrichment" below. |
