@@ -84,6 +84,14 @@ The live interview is driven by `student-node` (`app/handlers/aiInterviewHandler
 
 - **Score-anchored verdict.** The fit verdict is always consistent with the numeric score: `< 35` → **Not Fit**, `< 50` → **Borderline**, `< 80` → **Fit**, `≥ 80` → **Strong Fit**. FastAPI `score-final` clamps the LLM's verdict to this ceiling, and student-node derives the verdict from the score when none is returned (`deriveVerdictFromScore`) — so a **0 score never reads as "Borderline"**, in both the report API and the PDF (`Assessment.js`).
 
+- **Admin guidance fields (free-text, optional).** Two columns on `ai_interview_config`, set by the admin on the create form and threaded through admin-node → student-node → FastAPI:
+  - `scoring_guidance` — injected into the **score-final** prompt as an "ADMIN SCORING GUIDANCE" block (how to weight/interpret answers). Bounded: it cannot override the non-engagement / anti-cheat rules.
+  - `question_guidance` — injected into the **generate-question** prompt as an "ADMIN QUESTION GUIDANCE" block (sample questions, topics, how to ask). The model adapts samples rather than asking them verbatim; still respects role/JD/seniority.
+
+- **Resume in question generation.** The candidate's resume is sent on every `generate-question` turn and is now **used** to personalise questions (a `CANDIDATE RESUME` block, capped ~6000 chars) — anchored to role/JD. (Earlier the prompt explicitly ignored the resume; that instruction was removed.) `score-final` still does not receive the resume.
+
+- **Per-question context window.** `generate-question` is sent only the **last 3 turns** (`RECENT_TURNS_FOR_LLM = 3`), not the full history — a deliberate latency/cost tradeoff. `score-final` receives the **full** transcript.
+
 ---
 
 ## File Reference
