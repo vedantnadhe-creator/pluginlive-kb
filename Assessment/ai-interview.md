@@ -88,6 +88,8 @@ The live interview is driven by `student-node` (`app/handlers/aiInterviewHandler
   - `scoring_guidance` — injected into the **score-final** prompt as an "ADMIN SCORING GUIDANCE" block (how to weight/interpret answers). Bounded: it cannot override the non-engagement / anti-cheat rules.
   - `question_guidance` — injected into the **generate-question** prompt as an "ADMIN QUESTION GUIDANCE" block (sample questions, topics, how to ask). The model adapts samples rather than asking them verbatim; still respects role/JD/seniority.
 
+- **Narration voice (admin-selectable).** The admin picks the AI interviewer's spoken voice from a curated set of 6 ElevenLabs voices (Hindi + English, M/F) on the create form, with inline ▶ sample preview (MP3 clips on OCI). The chosen `voice_id` is stored on `ai_interview_config` and threaded admin-node → student-node (`startSession`/`getConfigInfo` return it as `voiceId`) → Assessment-React → FastAPI `/ai-interview/tts`, which uses it as the ElevenLabs `voice_id`. When null, `/tts` falls back to its env default (`ELEVENLABS_VOICE_ID`). **Gotcha (fixed 2026-06-25):** the candidate-side `tts()` previously sent a hardcoded `voice: 'aura-2-thalia-en'` (Deepgram) on every call, which silently overrode the admin's voice choice and forced the Deepgram fallback path — so ElevenLabs voice selection never reached the candidate. Now `tts(text, voiceIdRef.current)` passes the admin voice; null falls back to the backend default.
+
 - **Resume in question generation.** The candidate's resume is sent on every `generate-question` turn and is now **used** to personalise questions (a `CANDIDATE RESUME` block, capped ~6000 chars) — anchored to role/JD. (Earlier the prompt explicitly ignored the resume; that instruction was removed.) `score-final` still does not receive the resume.
 
 - **Per-question context window.** `generate-question` is sent only the **last 3 turns** (`RECENT_TURNS_FOR_LLM = 3`), not the full history — a deliberate latency/cost tradeoff. `score-final` receives the **full** transcript.
@@ -165,7 +167,7 @@ candidateName: Optional[str]
 | TTS fallback | Deepgram | `aura-2-thalia-en` (US English female) — used if `ELEVENLABS_API_KEY` is missing or the ElevenLabs call errors | `DEEPGRAM_API_KEY` |
 | STT (file + live) | Deepgram | `nova-3` (REST `/stt` + WebSocket `/stt-stream`) | `DEEPGRAM_API_KEY` |
 
-The `/tts` endpoint also accepts an optional `voice` body param — values starting with `aura` route to Deepgram; anything else is treated as an ElevenLabs voice ID. The Assessment-React frontend currently sends `voice: 'aura-2-thalia-en'`, which the backend treats as "use the ElevenLabs default" (Payal) whenever the ElevenLabs key is present, and only literally uses Thalia when ElevenLabs is unavailable.
+The `/tts` endpoint also accepts an optional `voice` body param — values starting with `aura` route to Deepgram; anything else is treated as an ElevenLabs voice ID. The Assessment-React frontend sends the admin-chosen `voice_id` from the session config (falls back to backend default when null). **Don't** hardcode an `aura-*` voice in the frontend `tts()` call — that forces the Deepgram path and silently overrides the admin's ElevenLabs voice selection (this was a bug, fixed 2026-06-25).
 
 Source-code defaults in `routers/ai_interview.py` are `EXAVITQu4vr4xnSDxMaL` (Sarah / US English) for the voice ID and `eleven_flash_v2_5` for the model — these are only effective when the env vars are not set. All deployed environments (DEV today) override the voice to Payal via `.env`.
 
@@ -405,6 +407,8 @@ AssessmentAssignedStudent
 - `enable_follow_up` (boolean, default true)
 - `ai_model` (e.g., "gemini-2.5-pro")
 - `evaluation_criteria` (JSONB for custom weight overrides)
+- `scoring_guidance`, `question_guidance` (free-text admin guidance injected into score-final / generate-question prompts — see Orchestration)
+- `voice_id` (ElevenLabs voice_id the AI narrator speaks in; admin-selectable, null → backend default)
 
 **AIInterviewInteraction:**
 - `question_type`: TECHNICAL, BEHAVIORAL, SITUATIONAL, CASE_STUDY
