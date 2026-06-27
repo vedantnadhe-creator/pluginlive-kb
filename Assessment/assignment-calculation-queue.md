@@ -80,6 +80,21 @@ Both are **flag-gated** so the old paths stay reachable for instant rollback.
   sweeper re-enqueues — no cross-service call). ATTEMPTS shows only in the Failed view
   (it's a failure-retry counter, reset to 0 on success).
 
+## Scheduler → queue (gotcha)
+
+When `ASSIGNMENT_ASYNC_ENABLED` is on, the scheduler (`AssessmentSchedulerService`)
+routes through the same dispatch and passes `{ triggerSource:'schedule_run', scheduleId }`
+as **asyncOptions**. The async slice writes `assessment_institute_map.schedule_id` only
+`if args.scheduleId` is truthy, and tags the job `schedule_run`.
+
+A positional-arg bug (fixed 2026-06-27) had the scheduler passing `asyncOptions` into the
+`isOtpInvite` slot (off by one), so `scheduleId`/`triggerSource` were dropped → scheduled
+queue assigns saved `schedule_id = NULL` on the map (lost schedule linkage) **and** the job
+tagged `manual`, **and** `isOtpInvite` became truthy (treated as OTP). Fix = pass
+`isOtpInvite=false` before `asyncOptions` in both the Communication and Aptitude scheduler
+calls. Any maps already created with NULL `schedule_id` from a scheduled run need backfill
+(match by entity + assessment_type + name → schedule).
+
 ## Schema (apply per env, idempotent)
 
 - admin-node migrations: `assignment_queue_001_jobs_and_items.sql`,
