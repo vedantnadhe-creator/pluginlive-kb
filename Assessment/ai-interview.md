@@ -102,6 +102,8 @@ The live interview is driven by `student-node` (`app/handlers/aiInterviewHandler
 
 - **Per-question context window.** `generate-question` is sent only the **last 3 turns** (`RECENT_TURNS_FOR_LLM = 3`), not the full history — a deliberate latency/cost tradeoff. `score-final` receives the **full** transcript.
 
+- **Scoring models — must exist in the LiteLLM gateway (gotcha, fixed 2026-06-27).** `routers/ai_interview.py` defines `GEMINI_MODEL = "gemini-2.5-pro"` (score-final, quality) and `GEMINI_FAST_MODEL = "gemini-2.5-flash"` (generate-question, score-turn, suggest-params — speed). Every `/ai-interview/*` LLM call must use one of these constants. **Do not hardcode a model string** — `score-final` had `model="gemini-3.5-flash"` hardcoded, a model group that does **not exist** in the LiteLLM gateway and has **no fallback group**, so litellm fell through to a direct Vertex AI attempt and 500'd on missing Google ADC creds. Symptom: AI interviews **completed but were never scored** — `assessment_assigned_students.calculation_error=true`, `calculation_attempts` maxed at 10, no `ai_interview_scores` row, blank report. question-gen/score-turn were fine because `gemini-2.5-flash` exists. Fix = use `GEMINI_MODEL`. If adding a new model, confirm it's a configured group in the gateway first. To recover a stuck row: reset `calculation_error=false, calculation_attempts=0, scores_calculated=false` and let the score cron retry (or call `aiInterviewHandler.runScoringForAssignment({assessmentAssignedId})` directly).
+
 ---
 
 ## File Reference
