@@ -428,6 +428,32 @@ For aptitude, `calculateAssessmentScore()` routes to `calculateAptitudeScore()` 
   - Topic-wise detailed analysis
   - Progression comparison (if previous assessment exists)
 
+**Proficiency-level source on the report.** The "Proficiency Level" bar is NOT
+always the adaptive progression level. The template (`public/aptitudeReport.html`)
+resolves it in priority order: `directAptitudeLevel` (corporate / one-time —
+server-computed) → `progressionAptitudeLevel` (institute, ≥2 assessments) →
+local fallback `getLevel(difficulty, overallPercentage)`. For **corporate /
+one-time** aptitude there is no progression system (no `progression_history` /
+`aptitude_topic_progress` rows), so the badge is computed directly as
+`getNewAptitudeLevel(null, difficulty, overallPercentage, is_diagnosis=true, …)`
+= `getLevel(difficulty, overallPercentage)` — i.e. purely from the overall % and
+the **set difficulty**, against the same `difficultyMapping` bands above. The
+display map is `Beginner→Beginner, Learner→Intermediate, Competent→Upper
+Intermediate, Advanced→Advanced`.
+
+> ⚠️ **Bug fixed 2026-06-29 — report always scored on the Medium scale.**
+> `generateAptitudePDFReport()` built its `assessmentSet` Prisma `select` WITHOUT
+> `difficulty`, then read `assessmentInfo.assessmentSet?.difficulty || 'medium'`.
+> Because `difficulty` was never fetched it was always `undefined`, so **every**
+> aptitude report defaulted the difficulty to `'medium'`. An **Easy** test scored
+> 78% therefore showed **"Upper Intermediate"** (medium band 70–89% = Competent)
+> instead of the correct **Beginner** (easy band 0–79%). Real example: corporate
+> candidate `tanushkadixit1@gmail.com`, easy set, 35/45 = 78% → reported Upper
+> Intermediate. Numeric score / section / topic / difficulty-breakdown tables were
+> always correct — only the proficiency badge was mis-scaled. **Fix:** add
+> `difficulty: true` to the `assessmentSet` select so the real set difficulty flows
+> into `getLevel()`. (DEV `Development`, UAT `UAT` — commit `9bca9035`.)
+
 ---
 
 ### 8. Backfill API
