@@ -147,6 +147,12 @@ The system is generic — any entity type can be added via `setup-entity`. Curre
 | `department` | `streams` | name |
 | `role` | `job_roles` | name |
 
+### Active-row filter (and the `college` exception)
+
+At `setup-entity`, the service auto-detects an `is_active`/`status` column on the source table and records it on the entity's `entity_configs` row (`active_column` / `active_value`). All four match signals then append that filter (e.g. `AND "is_active" = true`) via `_active_filter()` in `db/queries.py`, so **inactive reference rows are normally excluded** from candidate matching.
+
+**Exception — `college`:** a campus can be deactivated *after* students/candidates were already mapped to it. If the filter were applied, the campus name would match nothing → `no_match` → `instituteCampusId` saved as **null**, wiping the real mapping. So `_active_filter()` is **skipped for the `college` entity** (`_PRESERVE_INACTIVE_ENTITIES = {"college"}`): a campus name resolves to its `instituteCampusId` **regardless of `is_active`**. The `college` row in `entity_configs` still shows `active_column = is_active` (auto-detected at setup), but it is bypassed in code. All other entities keep the active-only filter.
+
 ---
 
 ## Key Modules
