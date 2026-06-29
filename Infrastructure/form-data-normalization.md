@@ -342,6 +342,35 @@ Two `create-full` behaviors changed in student-node (`app/handlers/common.js`,
     force-activated** — only newly-created ones go live.
   - The `TALLY_FORM` skip above is unchanged: Tally students still never re-link/recreate
     their studied-at college.
+- **Gotcha (fixed Jun 2026):** the existing-student update reuses `Student.update`, which
+  does **nested Prisma writes** into `student` / `currentCourse` / `resume`. The create-full
+  payload's `resume` is the **CV-parser object** (`admin`, `education[]`, `student`,
+  `currentCourse`, `studentPersonalProfile`, `workExperience`…), almost none of which are
+  columns on the `resume` model. Passing it raw makes Prisma reject the call —
+  `Unknown argument 'admin'`, and the union resolver then falls back to
+  `studentPersonalProfileUncheckedUpdateInput` and rejects the `student` relation
+  (`Failed to update`). The **create** path already guards this with a resume whitelist
+  (`ALLOWED_RESUME_FIELDS` → `objective/projects/internships/courses/training/awards/workExperience`)
+  + skill-row sanitize; the update path must do the **same** (extracted to
+  `sanitizeResumeForPersist`) and also `_.omit` non-column keys from `student`
+  (`email`/`phoneNumber`/`countryCode`/`studentId`/`journey`/…, the keys `Student.create`
+  omits). The old corporate-lead-only update path never hit this because those leads carry
+  no `resume`/`currentCourse`.
+
+### Gotcha — city/state "mismatch" = entity-normalizer (vector-search) Gemini key invalid
+
+When the normalized-data UI flags **Current City / Current State** red (and `corrCityId` /
+`corrStateId` arrive empty in the create-full payload), the cause is usually the
+**entity-normalizer** (`vector-search.{dev,uat}.pluginlive.com/api/v1/normalize`, container
+`vectorsearch`) returning **500** for `entity_type` city/state. Root cause seen Jun 2026 on
+**both DEV and UAT**: the container's `GEMINI_API_KEY` is invalid/expired
+(`google.genai ClientError: 400 API_KEY_INVALID`), and the embedding step runs first, so
+**every** `/normalize` call dies — city/state/role/department all fail to resolve. Fix is to
+**rotate the Gemini key** and recreate the `vectorsearch` container with the new env (env is
+baked at build, so recreate with `-e`). `EMBEDDING_PROVIDER=gemini` (model
+`gemini-embedding-001`, 1536-dim); the container also has `OPENAI_*` configured, but **do not
+just flip `EMBEDDING_PROVIDER` to openai** — the pgvector store is embedded in the Gemini
+vector space, so a provider switch needs a full re-embed first.
 
 ### Gotcha — `cumulativeType` enum rejection (FST_ERR_VALIDATION)
 
