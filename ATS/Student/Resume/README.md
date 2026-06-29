@@ -37,6 +37,7 @@ The Resume module is the student's comprehensive profile and resume management h
 | `getStudentResumeData` | `/students/{studentId}/resumes` | GET (Student) | Fetch student resume data |
 | `upsertStudentResume` | `/students/{studentId}/resumes/batch` | POST (Student) | Batch upsert resumes |
 | `resumeBulkDownload` | `/students/resume/bulkdownload` | POST (Student) | Bulk resume download (blob) |
+| `resumeBulkDownloadJobRoles` | `/students/resume/bulkdownload/jobRoles` | POST (Student) | Bulk resume download scoped to a job role (`roleId` required). Per-student resume resolution reads `student_role_mapping` (`isSystemResume`/`cvUrl`) |
 | `logResumeDownload` | `/students/resume/bulkdownload` | POST (Student) | Log resume download activity |
 
 ### Profile Data
@@ -79,3 +80,36 @@ After `updateStudentData`:
 - **ES sync on update:** Every student data mutation syncs skills to ElasticSearch
 - **Resume download:** Supports PDF, DOC, DOCX with correct MIME types
 - **External event tracking:** Fetches last applied event/job details for contextual display
+
+---
+
+## Resume Resolution & PDF Generation (bulk download)
+
+Both bulk-download handlers (`bulkResumeDownload`, `bulkResumeDownloadJobRoles` in
+`student-node/app/handlers/resumeDownload.js`) resolve each student's file in this
+order, then zip the results (single student streams the file directly; >5 students
+upload the zip to S3 and email a link):
+
+1. **Uploaded CV** — job-role download uses `student_role_mapping.cvUrl` when
+   `isSystemResume = false` **and** `cvUrl` is non-null. The plain bulk download
+   uses the default `UPLOADED` resume from `student_resumes`.
+2. **Stored SYSTEM resume** — a `student_resumes` row whose `file_url.url` is set.
+3. **Generate a fresh PDF** — `formatStudentData` → `formatResumeData` (`app/handlers/utils.js`)
+   → `generatePDF` (renders via `@react-pdf/renderer`, uploads to S3). Hit when no
+   uploaded/stored file exists, e.g. a SYSTEM resume with `file_url.url = null`.
+
+### Gotchas
+- **Non-array `skill_set`/`skills` crashed PDF generation.** `formatResumeData`
+  aggregated skills with `course?.skill_set?.forEach(...)`. Optional chaining only
+  guards null/undefined — resumes that store `skill_set` as a **string** (e.g. `""`,
+  the default for courses with no skills, since `updateSkillSet` skips falsy values
+  and never coerces `""` → `[]`) made `.forEach` throw
+  `"... is not a function"` → the whole request 500'd with
+  `{"message":"Something went wrong"}`. Fixed by iterating only when the value is
+  actually an array (`eachOf`/`asArray` helpers), applied to every `skill_set`/`skills`
+  loop and to the render blocks (`workExperience`/`internships`/`projects`/`courses`/`education`).
+  This is **data-shape dependent** — only resumes that fall into the generate-PDF
+  branch *and* carry a non-array resume sub-field were affected.
+- **No-resume case** now returns a clean `422 "No resume available for the selected
+  student"` for single-student requests instead of a noisy 500, matching the existing
+  guard in `bulkResumeDownload`.
