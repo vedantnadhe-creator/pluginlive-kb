@@ -25,6 +25,9 @@ Services opt in via env vars `LITELLM_PROXY_URL` + `LITELLM_VIRTUAL_KEY` (defaul
 - `fastapi-ai-engine` (Assessment: communication / hinglish / aptitude / role / AI-interview / resume-match LLM calls) — DEV + UAT.
 - `form-data-normalization` (candidate-data normalization LLM disambiguation) — DEV + UAT. NOTE: only the main `datanormalization` API container is redeployed by `auto_deploy`; the `datanormalization-worker` / `-cron` siblings run a separate image and are not yet on the gateway.
 - `pg-vector-api-service` (entity-normalizer LLM disambiguation/pincode) — code ready, gated; embeddings excluded.
+- `resume-parser` (CV parsing — the `parseResume` / `parseResumeAndUpload` Gemini calls behind `form-data-normalization`'s CV ingest) — UAT (container `resumeparser`, port 5011). Routed via a tiny google-genai-compatible shim (`USING API/gateway_client.py`) using `requests`, not the OpenAI SDK. Gateway env passed at `docker run` (`-e LITELLM_PROXY_URL=http://172.17.0.1:4000/v1 -e LITELLM_VIRTUAL_KEY=…`), not baked into the image. Manual build/run (not in `auto_deploy`): `cd ~/api/Resume_parser/"USING API" && docker build -t resumeparser:api . && docker stop/rm + docker run`.
+
+**Why this was needed (gotcha):** the consolidated Gemini key is in the `AQ.Ab8RN6K…` format. LiteLLM uses it correctly, but the raw `google.genai` SDK (`genai.Client(api_key="AQ.…")`) mis-sends it as an OAuth token → `401 UNAUTHENTICATED / ACCESS_TOKEN_TYPE_UNSUPPORTED`, which surfaced in the normalization UI as **"CV Parse Error: HTTP 500 … google.genai.errors.ClientError: 401"**. Routing the SDK calls through the gateway fixes it without needing a per-service AI-Studio (`AIza…`) key.
 
 ## Managing keys & models
 
