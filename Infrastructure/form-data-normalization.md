@@ -305,6 +305,44 @@ reversible snapshot in `student.backup_tally_campus_20260622`. PROD pending. **G
 canonical identifier is `source = 'TALLY_FORM'`** (response_data is the historical-only proxy);
 to catch any re-linked rows: `WHERE source='TALLY_FORM' AND institute_campus_id <> ''`.
 
+### Behavior — existing student is updated, not rejected; materialized masters are active (Jun 2026)
+
+Two `create-full` behaviors changed in student-node (`app/handlers/common.js`,
+`createFullStudent`):
+
+- **Existing student → data is refreshed on every call.** Previously `create-full`
+  only updated an existing student in the narrow corporate-lead case
+  (`access_level == [2]` only **and** `is_corporate == true`); any other existing
+  email either just created a job-role mapping (when `roleId` was sent) or returned
+  `400 "A student with email … already exists."`. Now **any** existing student is
+  updated via the shared `updateExistingStudentData(req, studentId, { promoteCorporate })`
+  helper — it re-applies the `admin`/profile fields, materializes missing masters,
+  then writes `student` + `studentPersonalProfile` + `education` (upsert per
+  `educationLevel`) + `currentCourse` + `resume` (the last two only when present in
+  the payload; `Student.update` does a nested *update*, so those child rows must
+  already exist). `promoteCorporate:true` keeps the old corporate-lead promotion
+  (`accessLevel [2] → [1,2]`, `isCorporate → false`); the general path passes
+  `false`. The no-`roleId` existing case now returns **`200 "Student already exists.
+  Data updated successfully."`** instead of `400`. Role-mapping logic is unchanged.
+- **Materialized masters are created ACTIVE, not pending.** `materializeMissingMasterIds`
+  (`ensureDegreeStream` / `ensureInstitute` / `ensureStudentCampus`) used to create
+  missing degree/stream/specialisation/college as **pending/inactive** (degree+stream
+  via institute-node `createDegreeForStudentsOthers` → `status 0` / `dataType "OTHERS"`;
+  college via `studentcollege` → institute `status` default `0`). create-full is
+  admin-driven, so those masters should be live immediately. This is now **opt-in** on
+  institute-node so other callers (student self-service "Others") keep the pending
+  default:
+  - `createDegreeForStudentsOthers` accepts **`activate: true`** → freshly-created
+    degree/stream/specialisation use `status 1` / `dataType "CURRENT"`.
+  - `studentcollege` schema (`createstudentInstituteSchema`) now allows
+    **`institute.status`**; create-full passes `status: 1` so the new college is active
+    (the model already spreads `institute` fields into `prisma.institute.create`).
+  - student-node sends `activate: true` (degrees) and `institute.status: 1` (colleges)
+    from `materializeMissingMasterIds` only. **Existing inactive masters are not
+    force-activated** — only newly-created ones go live.
+  - The `TALLY_FORM` skip above is unchanged: Tally students still never re-link/recreate
+    their studied-at college.
+
 ### Gotcha — `cumulativeType` enum rejection (FST_ERR_VALIDATION)
 
 student-node's create-full Fastify schema restricts both `currentCourse.cumulativeType`
