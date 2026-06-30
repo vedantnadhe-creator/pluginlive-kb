@@ -302,6 +302,20 @@ generic assessment-scoring cron, the same one used for aptitude/communication:
 **50% coverage** floor of expected questions. Interviews below this are marked
 `scores_calculated=true` with **no score row** (legitimately skipped as incomplete — not an error).
 
+- **"Why this score" rationale line under the report (2026-06-30).** Every report now includes
+  a one-or-two-line plain-English statement below the per-parameter reasons that explains
+  the numeric score and the verdict in human terms — e.g. *"Scored 57/100 — Not Fit: answers
+  were scripted and lacked real depth."* or *"Scored 82/100 — Strong Fit: clear, example-backed
+  answers across all areas."* Built into the FastAPI `score-final` schema as a mandatory
+  `score_rationale` field, with a deterministic `Scored X/100 — <verdict>.` fallback after the
+  post-guardrail logic so the report always has something to show. Storage uses the existing
+  `ai_interview_scores.detailed_feedback` column (previously an unused duplicate of
+  `executive_summary` — returned to no frontend). Rendered as a highlighted **"Why this
+  score"** card in both `admin-react` (`AIInterviewReport.js`) and `Assessment-React`
+  (`AIInterviewReportCard.js`), positioned directly under the per-parameter reasons and above
+  the recommendation block. Always populated for new interviews; pre-existing scored rows
+  retain their old text until re-scored.
+
 #### Gotcha — corporate candidates with no student profile (fixed 2026-06-12)
 
 `Assessment.calculateAssessmentScore()` called `getFullName(primaryEmail)`
