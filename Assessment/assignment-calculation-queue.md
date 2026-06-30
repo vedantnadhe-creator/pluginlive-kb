@@ -65,6 +65,36 @@ Both are **flag-gated** so the old paths stay reachable for instant rollback.
   `REDIS_URL`. Concurrency: `CALCULATION_CONCURRENCY` (4), `PROGRESSION_CONCURRENCY`
   (2), `AI_CALC_CONCURRENCY` (2).
 
+### Retry model (Model A — sweeper-driven) + the stable-jobId gotcha
+
+On a scoring failure the worker does **NOT** throw — it catches, increments
+`calculation_attempts`, releases the row to pending (or sets `calculation_error`
+once it hits the cap: 3 non-transient / 10 transient), and lets the **sweeper**
+re-enqueue. The retry is therefore driven by the sweeper re-running the worker,
+not by BullMQ's own `attempts` (which only cover hard crashes since the worker
+never throws).
+
+**Critical gotcha (fixed 2026-06-30):** re-enqueue uses a **stable jobId**
+(`calc__<id>`), and since the worker's job lands in BullMQ `completed` (it didn't
+throw) and is retained (`removeOnComplete` count), a same-jobId `add()` was a
+**silent no-op** → released-pending rows **never actually retried** (stuck at
+attempts=1, never reaching `calculation_error`, so no Retry affordance), and an
+admin/drawer recalc that only reset flags also went nowhere. Fix = **remove the
+job before re-adding** everywhere we re-enqueue:
+- **sweeper** (`script/calculatePendingAssessmentCron.js`) — `remove(jobId)` then
+  `add(jobId)` (rows it selects are `is_processing=false`, so removing is safe);
+- **drawer recalc** (`resetForRecalculation`, Communication/AI_Interview/Role_Based)
+  now re-enqueues **immediately** (remove-then-add) instead of only resetting flags
+  and waiting on the sweeper (Aptitude still recalcs inline);
+- the student-node retry handler (`calcQueueHandler`) already did remove-then-add.
+
+**Admin Retry-scoring** (admin-node `assignmentDb.retryCalc`) resets `failed` rows
+**and** stuck `pending` rows that already tried (`calculation_attempts > 0`, not
+yet scored) — earlier it only reset `calculation_error=true`, so a stuck-pending
+row couldn't be recovered. The Activity UI shows the **Retry** button for `failed`
+**or** `pending`-with-attempts>0 (was `failed`-only), and the ATTEMPTS column now
+shows in the Pending view too. DEV ✅ · UAT ✅ · PROD pending.
+
 ## Activity UI (admin-react)
 
 - **Manage Assessments → Assignment Activity** tab: a server-paginated list of all
