@@ -405,6 +405,18 @@ now resolves naturally from the profile.
   Interview from inside the authenticated portal. The reminder send is wrapped in try/catch so a
   reminder failure never aborts the assignment.
 
+  - **Gotcha — blank "From" (was "Sender") in the institute reminder, async path (fixed 2026-06-30):**
+    when `ASSIGNMENT_ASYNC_ENABLED=1`, AI_Interview assignment runs through the queue
+    (`assignAIInterviewAssessmentAsync`), not the sync `sendRemindersToStudents`. The async job's
+    `configSnapshot` carried `companyName` but **no `entityName`**, and for a college it only
+    resolved the campus **id** (`instituteCampusId`), never the campus **name**. The reminder
+    worker (`admin-node/app/queues/assignmentWorker.js`) reads `college_name: cfg.entityName`, so
+    the invite email's entity row rendered **blank**. Fix: `assignAIInterviewAssessmentAsync`
+    (`Assessment.js`) now also selects `campus_name` for college / corporate `name`, sets
+    `entityName` in the snapshot, and the worker falls back to `cfg.entityName || cfg.companyName`.
+    Same change renamed the template label `Sender:` → `From:` and dropped the dangling colon on
+    the `Assessment Details` heading (`user-management-node/src/utils/emailTemplates/assessmentRemainder.js`).
+
 Net: corporate candidates get **one** email (OTP invite); institute candidates get **one**
 portal email each — activation for new students, reminder for existing — and never see the OTP
 screen. (Earlier the institute branch wrongly sent the reminder to *all* candidates, so new
