@@ -95,6 +95,50 @@ tagged `manual`, **and** `isOtpInvite` became truthy (treated as OTP). Fix = pas
 calls. Any maps already created with NULL `schedule_id` from a scheduled run need backfill
 (match by entity + assessment_type + name → schedule).
 
+## Progression gate (scheduled assessments)
+
+Blocks a student from **starting** an institute **scheduled** assessment until the
+**previous assessment of the same type** has been fully scored **and** its
+`progression_history` row (CEFR / aptitude level) has landed. This kills a race where
+set-selection reads the latest progression to pick the next CEFR/level set, but the
+predecessor's progression hadn't been written yet → wrong-difficulty set.
+
+- **Scope:** only institute, **scheduled** (`assessment_institute_map.schedule_id != NULL`),
+  non-practice, non-one-time assessments of **Communication + Aptitude** (the only types
+  whose set is chosen from prior progression). Diagnosis (no `schedule_id`), corporate,
+  practice, one-time, and other types are never gated. Diagnoses can be taken **in any order**.
+- **Order-independent logic** (`student-node/app/helpers/progressionGate.js`): block unless
+  (1) no same-type predecessor is still mid-scoring (`submitted && !scoresCalculated &&
+  !calculationError`), (2) none permanently failed (`calculationError`), and (3) the
+  latest-submitted scored predecessor has a `progression_history` row with the field the
+  set-selector reads (`suggested_cefr` for Communication, `assessment_aptitude_level` for
+  Aptitude). For the 1st scheduled (3rd overall), the predecessor is the 2nd diagnosis.
+- **Freshness window:** only blocks while the latest same-type submission is within
+  `PROGRESSION_GATE_MAX_WAIT_MIN` (default 30m). Beyond that the chain is "settled"
+  (progression landed, or it's a permanent data gap the profile-CEFR fallback covers) →
+  never permanently lock a student.
+- **Hard gate** (`getAssessmentQuestions`, before the PENDING→INPROGRESS claim, first-start
+  only — resumes never blocked): HTTP **409** `PROGRESSION_PENDING` (transient) or
+  `PROGRESSION_FAILED` (predecessor scoring failed). **Soft flag** `progressionLocked` on
+  each `getActiveAssessments` row → Assessment-React disables **Take Assessment** with a
+  "Processing previous result" tooltip; on start, `PROGRESSION_PENDING` shows an info
+  "Almost ready" modal (vs a warning for `PROGRESSION_FAILED`).
+- **No new schema** — reuses `progression_history` existence + calc flags.
+- **Flag:** `PROGRESSION_GATE_ENABLED=1` + `PROGRESSION_GATE_TYPES=Communication,Aptitude`
+  (student-node). Off → gate inert.
+
+## Video upload-wait optimization (scoring)
+
+Communication/Hinglish video scoring used to wait **3 × 60s for every missing video** —
+including ones the student never recorded — adding ~3 min to a calc even for a reading-only
+submission. Now (`student-node/app/helpers/videoUploadWait.js`,
+`resolveAttemptedVideoUrl`): only wait when the student **attempted** the video (a
+`student_answers` row exists but its `object_key` upload is still landing → short bounded
+retry, default **3 × 10s**, env `VIDEO_UPLOAD_WAIT_RETRIES` / `VIDEO_UPLOAD_WAIT_INTERVAL_SEC`).
+A **skipped** video (no answer row) is scored 0 **immediately**. Mirrors the skip
+optimization already in `RoleBasedCalculations`. The frontend already awaits all audio/video
+uploads before calling submit, so by enqueue time attempted media is saved.
+
 ## Schema (apply per env, idempotent)
 
 - admin-node migrations: `assignment_queue_001_jobs_and_items.sql`,
@@ -108,6 +152,11 @@ calls. Any maps already created with NULL `schedule_id` from a scheduled run nee
 |---|---|---|
 | admin-node | `ASSIGNMENT_ASYNC_ENABLED=1` (or `ASSIGNMENT_ASYNC_TYPES`) | `ADMIN_FE_BASE_URL`, `REDIS_URL` |
 | student-node | `CALCULATION_ASYNC=true` | `REDIS_URL` |
+| student-node | `PROGRESSION_GATE_ENABLED=1` (gate) | `PROGRESSION_GATE_TYPES=Communication,Aptitude`, `PROGRESSION_GATE_MAX_WAIT_MIN` (30) |
+| student-node | video-wait (always on) | `VIDEO_UPLOAD_WAIT_RETRIES` (3), `VIDEO_UPLOAD_WAIT_INTERVAL_SEC` (10) |
+
+**DEV ✅ · UAT ✅** for the progression gate (flag on) and the video upload-wait
+optimization. PROD pending.
 
 Flags must live in the box `.env` / `.env.<env>` (the CI/auto_deploy bakes it), **not**
 docker `-e` — a `-e`-only flag is silently dropped on the next rebuild. **Rollback** =
