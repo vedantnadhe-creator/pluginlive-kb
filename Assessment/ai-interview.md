@@ -364,6 +364,27 @@ the entity (see the invite-delivery split below). Payload lives in the pure, uni
 `admin-node/app/helpers/aiInterviewStudentPayload.js`. No change to the report code — the name
 now resolves naturally from the profile.
 
+#### Gotcha — closing-screen greeting showed the assessment name, not the candidate (fixed 2026-07-01)
+
+The `STEP_DONE` closing screen in `Assessment-React` `AIInterview/interview.js` built its
+greeting name from `sessionStorage.getItem('assessment_invite_name')`. But that key
+legitimately holds the **assessment title** — `InviteStart.js` stores `assessmentName` there
+on purpose, and `Invite/InviteAssessmentRunner.js` reads it as "the real assessment name."
+So the farewell rendered **"Thanks for your time, &lt;Assessment Name&gt;."** (e.g. "…, Google
+Software Engineer Assessment.") instead of the candidate's first name.
+
+**Fix:** the greeting now derives from the candidate identity the backend already returns —
+`getReport` (`student-node/app/handlers/aiInterviewHandler.js`) sends `candidateName` +
+`candidateEmail` in the report payload, which `interview.js` already holds in `report`. The
+new fallback chain is: `report.candidateName` → `report.candidateEmail` → legacy
+`ai_interview_candidate_email` session key → clean nameless greeting ("Thanks for your
+time."). The backend's `"Candidate"` default is filtered out so a nameless record shows the
+no-name greeting rather than "Thanks for your time, Candidate." No backend change was needed
+— `getReport` already resolves the real name from `student_personal_profile → students`.
+
+**Rule:** `assessment_invite_name` / `INVITE_SESSION_KEYS.name` is the assessment title, never
+a person's name — don't reuse it for candidate-facing greetings.
+
 #### Invite delivery splits by entity type — OTP for corporate, portal for institute (2026-06-17)
 
 `assignAIInterviewAssessment()` (`admin-node/app/models/Assessment.js`) was OTP-invite-only for
