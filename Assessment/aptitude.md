@@ -428,18 +428,29 @@ For aptitude, `calculateAssessmentScore()` routes to `calculateAptitudeScore()` 
   - Topic-wise detailed analysis
   - Progression comparison (if previous assessment exists)
 
-**Proficiency-level source on the report.** The "Proficiency Level" bar is NOT
-always the adaptive progression level. The template (`public/aptitudeReport.html`)
-resolves it in priority order: `directAptitudeLevel` (corporate / one-time —
-server-computed) → `progressionAptitudeLevel` (institute, ≥2 assessments) →
-local fallback `getLevel(difficulty, overallPercentage)`. For **corporate /
-one-time** aptitude there is no progression system (no `progression_history` /
-`aptitude_topic_progress` rows), so the badge is computed directly as
-`getNewAptitudeLevel(null, difficulty, overallPercentage, is_diagnosis=true, …)`
-= `getLevel(difficulty, overallPercentage)` — i.e. purely from the overall % and
-the **set difficulty**, against the same `difficultyMapping` bands above. The
-display map is `Beginner→Beginner, Learner→Intermediate, Competent→Upper
-Intermediate, Advanced→Advanced`.
+**Proficiency-level visibility on the report (who sees the bar).** As of
+2026-06-29 the "Proficiency Level" bar renders **only for institute reports**:
+
+| Report entity | One-time? | Proficiency bar | Source |
+|---|---|---|---|
+| **Corporate** | — | **hidden** | — |
+| **Institute** | yes (one-time) | shown | `directProficiencyLevel` = `getLevel(setDifficulty, overallPercentage)` — from this test's difficulty + score |
+| **Institute** | no | shown (if ≥2 assessments) | `progressionAptitudeLevel` — the adaptive progression level, as usual |
+
+`directProficiencyLevel` is computed in `generateAptitudePDFReport()` only when
+`!isCorporate && isOneTime`. `isCorporate = assessmentCorporateMapId != null`;
+`isOneTime = assessmentInstituteMap.isOneTime` (corporate has no institute map, so
+`isOneTime` is institute-only). The template (`public/aptitudeReport.html`)
+resolves the displayed level in priority order: `directAptitudeLevel` (institute
+one-time) → `progressionAptitudeLevel` (institute, ≥2 assessments) → local
+fallback. Corporate hits none of these → no bar. Backend→display map:
+`Beginner→Beginner, Learner→Intermediate, Competent→Upper Intermediate,
+Advanced→Advanced`. (DEV `Development` / UAT `UAT` — commit `76dd4e8b`.)
+
+> **Note:** Corporate/one-time aptitude has no progression system (no
+> `progression_history` / `aptitude_topic_progress` rows), which is why the
+> institute-one-time badge is computed directly from difficulty + score rather
+> than read from stored progression.
 
 > ⚠️ **Bug fixed 2026-06-29 — report always scored on the Medium scale.**
 > `generateAptitudePDFReport()` built its `assessmentSet` Prisma `select` WITHOUT
