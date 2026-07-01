@@ -115,4 +115,5 @@ The Onboarding module manages the complete student activation and registration f
 - **Skill search dual path:** Skills use REST GET; other types use ElasticSearch POST
 - **ES sync:** Student data updates sync `student_crud_skill` and `skill_master`
 - **Token initialization:** After OTP verification, sets token and calls `initializeApp`
+- **OTP error messages:** `checkOtp`'s catch returns `error.response` (the axios error response), and `CheckOtpPage` renders `response?.data?.message` — so a wrong OTP shows the backend's real message (e.g. "Invalid OTP received. Please check the OTP." from user-management-node) rather than a generic axios status-code string. Fixed 2026-07-01 (previously returned `error.message`, which surfaced "Request failed with status code 401").
 - **External event tracking:** Fetches last applied event/job for contextual display
