@@ -128,6 +128,25 @@ both `.env` and `.env.uat`).
 Roles open **only** to ITI / Diploma candidates skip AI match entirely
 (vocational-only exclusion).
 
+## Known gotchas / recent issues
+
+- **Response-schema drift via gateway** (UAT, 2026-07-01): Gemini through the
+  in-cluster `http://litellm/v1` (Portkey/LiteLLM) shim **does not enforce**
+  the google-genai `response_schema`/`response_mime_type=application/json`
+  contract. `extract-criteria` and `/evaluate` may return:
+  - a JSON object matching the schema (works),
+  - a bare list of objects (`[{"criterion": "..."}]`),
+  - or a list of strings. This causes Pydantic validation errors and 500s.
+  Commit `c381b62` (deployed to DEV/UAT) disabled Gemini thinking and added
+  `_parse_json` to tolerate markdown fences/outer JSON, but it still expects
+  the top-level response to conform to the schema. A further manual coercion
+  of list responses into the expected `CriteriaExtractionResult` /
+  `EvaluationResult` shape is needed when the gateway ignores the schema.
+- **Retry loop** (resolved 2026-07-01 in corporate-node via
+  `ai_match_status='failed'` dead-letter columns): recovery no longer
+  re-enqueues candidates whose job has exhausted its 3 attempts. Manual
+  re-trigger clears the marker.
+
 ## Key files
 
 - corporate-node: `app/handlers/aiMatchHandler.js`, `app/queue/aiMatchQueue.js`,
