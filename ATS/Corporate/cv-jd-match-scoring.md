@@ -130,22 +130,23 @@ Roles open **only** to ITI / Diploma candidates skip AI match entirely
 
 ## Known gotchas / recent issues
 
-- **Response-schema drift via gateway** (UAT, 2026-07-01): Gemini through the
-  in-cluster `http://litellm/v1` (Portkey/LiteLLM) shim **does not enforce**
-  the google-genai `response_schema`/`response_mime_type=application/json`
-  contract. `extract-criteria` and `/evaluate` may return:
-  - a JSON object matching the schema (works),
-  - a bare list of objects (`[{"criterion": "..."}]`),
-  - or a list of strings. This causes Pydantic validation errors and 500s.
-  Commit `c381b62` (deployed to DEV/UAT) disabled Gemini thinking and added
-  `_parse_json` to tolerate markdown fences/outer JSON, but it still expects
-  the top-level response to conform to the schema. A further manual coercion
-  of list responses into the expected `CriteriaExtractionResult` /
-  `EvaluationResult` shape is needed when the gateway ignores the schema.
+- **Response-schema drift via gateway** (UAT, 2026-07-01, **fixed**): Gemini
+  through the in-cluster `http://litellm/v1` (Portkey/LiteLLM) shim did not
+  enforce the google-genai `response_schema`/`response_mime_type=application/json`
+  contract. `extract-criteria` and `/evaluate` returned bare lists, dicts keyed
+  by criterion id, or even invalid JSON (missing commas). Commit `c381b62`
+  (Mari Selvam) disabled thinking and added markdown/outer-JSON tolerance; a
+  follow-up patch added `_repair_jsonish` + `_coerce_to_schema` to normalize
+  lists, dict-keyed scores, `evaluated_criteria`/`criterion`/`rationale`/`evidence`
+  keys, and mixed scalar+dict responses. Deployed to DEV/UAT 2026-07-01.
 - **Retry loop** (resolved 2026-07-01 in corporate-node via
   `ai_match_status='failed'` dead-letter columns): recovery no longer
   re-enqueues candidates whose job has exhausted its 3 attempts. Manual
   re-trigger clears the marker.
+- **Pycache gotcha during hot-patches**: replacing a `.py` in a running uvicorn
+  container can leave stale `__pycache__` loaded. Validate by deleting the
+  pycache and restarting the container; production deploys via fresh image
+  avoid this.
 
 ## Key files
 
