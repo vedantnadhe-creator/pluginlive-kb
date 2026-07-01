@@ -26,7 +26,7 @@ MediaPipe **FaceLandmarker** (loaded from CDN at runtime; `baseOptions.modelAsse
 - **Adaptive snapshot burst**: on a high-signal suspicion the page densifies server CV snapshots (e.g. 20s→5s / 13s→4s) to try to catch the device on camera.
 
 ### Server CV — `fastapi-ai-engine`
-The periodic snapshot cron runs server-side CV (YOLO phone / multi-face / no-face) and emits `source:'server'` events (shown in the admin timeline with a **"Computer Vision"** tag, with a tooltip explaining server-side detection vs. in-browser signals — previously a cryptic bare **"CV"** badge). For the AI Interview, `routers/ai_interview.py` `stt-stream` surfaces Deepgram per-word timings (`speech` summary) so the client computes accurate WPM from real spoken duration.
+The periodic snapshot cron runs server-side CV (YOLO phone / multi-face / no-face) and emits `source:'server'` events. The admin timeline previously rendered a **"CV"** (then "Computer Vision") badge for these; that badge was removed entirely — the `source` field is still stored on events but no longer surfaced in the UI (only the timeline label + severity tag are shown). For the AI Interview, `routers/ai_interview.py` `stt-stream` surfaces Deepgram per-word timings (`speech` summary) so the client computes accurate WPM from real spoken duration.
 
 ### Read-aloud (speaking / video responses)
 - **AI Interview** (live WS): client computes WPM + disfluency + time-to-first-word per turn → `reading_pace_suspected` (fast + clean) and `delayed_fluent_answer` (long pause then a fast polished answer = read-while-thinking).
