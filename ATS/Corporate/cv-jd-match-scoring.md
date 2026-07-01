@@ -41,29 +41,52 @@ candidates → evaluation
   (`npm run ai-match-worker`), self-heals on crash. Idempotent — skips
   candidates that already have a score.
 - **Manual/batch:** `POST /corporates/drive/:driveId/role/:roleId/ai-match/trigger`
-  (enqueues; `?forceRefresh=true` re-scores). Status:
-  `GET .../ai-match/status` → `{ total, scored, pending, queue:{...} }`.
+  (enqueues; `?forceRefresh=true` re-scores; also resets any dead-letter marker).
+  Status: `GET .../ai-match/status` → `{ total, scored, failed, pending, queue:{...} }`
+  (`pending` excludes terminally-`failed` candidates).
 
-## Data (no schema changes)
+## Data
 
 - `corporate.job_roles.ai_match_criteria` (JSON) — cached criteria per role.
 - `corporate.job_role_student_map.ai_match_score` (JSON) — per-candidate result
   (`overall_score`, `star_rating`, `criteria_matched/total`, `criteria_scores[]`,
   `strengths[]`, `gaps[]`, `evidence_source`).
+- **Dead-letter columns on `job_role_student_map`** (migration `Corporate CV-JD
+  Match Retry Cap/001`):
+  - `ai_match_attempts` (int, default 0) — attempts made on the last job.
+  - `ai_match_status` (text) — `NULL` = pending, `'failed'` = retry budget
+    exhausted (do not auto-retry).
+  - `ai_match_last_error` (text) — last failure message (truncated 500 chars).
 - Queue + recovery lock live in **Redis**, not Postgres.
 
 ## Resilience
 
-- **Retries:** each job retries 3× with exponential backoff.
+- **Retries — capped at 3, then dead-lettered:** each job retries 3× with
+  exponential backoff (BullMQ `attempts`). When a job **exhausts its attempts**,
+  the worker's `failed` handler sets `ai_match_status='failed'` (+ `ai_match_attempts`,
+  `ai_match_last_error`) on the candidate row. This is a **hard cap** — after 3
+  attempts a candidate is **not** retried automatically again.
+- **Loop-breaker:** the recovery sweep **excludes `ai_match_status='failed'`
+  rows**. Before this, the sweep re-enqueued any `ai_match_score IS NULL`
+  candidate every 2 min, so BullMQ's 3-attempt cap reset endlessly — a
+  persistently-failing candidate (or an engine outage) looped forever and
+  hammered `fastapi-ai-engine`. Now a failure is recorded and left alone.
+- **Manual override / re-score:** an explicit trigger
+  (`triggerAiMatchForCandidates` and the `/ai-match/trigger` endpoint)
+  **resets** the marker (`ai_match_status=NULL, ai_match_attempts=0,
+  ai_match_last_error=NULL`) before enqueuing, granting a fresh retry budget.
+  So after fixing an engine issue, re-scoring a role/candidate is a deliberate
+  human action. For a bulk re-score of an outage backlog:
+  `UPDATE corporate.job_role_student_map SET ai_match_status=NULL, ai_match_attempts=0 WHERE ai_match_status='failed';`
 - **Crash-safe:** jobs live in Redis, so a corporate-node restart resumes them;
   in-flight jobs of a dead worker are reclaimed via BullMQ stalled-job recovery
   (`lockDuration` 130s > the 120s axios timeout).
 - **Recovery sweep:** every 2 min (and on worker boot) a distributed-lock sweep
   (modelled on admin-node `generationRecovery.js`) re-enqueues candidates that
-  are in evaluation, unscored, and have no live queue job. **Scoped to a recent
-  window** (`AI_MATCH_RECOVERY_WINDOW_HOURS`, default 24h) so it recovers
-  recently-lost jobs only — it does NOT backfill historical backlog. (Historical
-  backfill, if ever wanted, must be a deliberate throttled operation.)
+  are in evaluation, unscored, **not dead-lettered**, and have no live queue job.
+  **Scoped to a recent window** (`AI_MATCH_RECOVERY_WINDOW_HOURS`, default 24h) so
+  it recovers recently-lost jobs only — it does NOT backfill historical backlog.
+  (Historical backfill, if ever wanted, must be a deliberate throttled operation.)
 - **Rate limiter:** worker capped at 5 jobs/sec to protect the Gemini rate limit.
 
 ## Concurrency coupling (important)
