@@ -42,6 +42,12 @@ PGPASSWORD=<seoul-pw> psql "host=aws-1-ap-northeast-2.pooler.supabase.com port=5
 ```
 Apply new files in timestamp order, autocommit (one `psql -f` per file). `ALTER TYPE … ADD VALUE` must NOT be inside a transaction with other DDL. The Lovable migrations are largely idempotent (`CREATE … IF NOT EXISTS`, `ON CONFLICT DO …`). The PROD-box `pg_dump` is PG16 and can't dump this PG17 server — snapshot via `pg_tables` / `pg_enum` SELECTs instead of `pg_dump -Fc`. Schema grew to ~39 public tables (institutes, pricing_plans, entitlements, payments, audit_logs, ai_models_registry, ucat_deciles_2025, …).
 
+## Gotcha: Practice/Mocks stuck on "Loading questions..." (option-count filter)
+
+The seeded question bank is **~99% 6-option** questions (VR 9000×6-opt vs 66×4-opt; DM/QR/SJT similar) — UCAT VR/SJT legitimately have 5-6 options. Upstream commit `ca27067` added `hasFourValidOptions()` (`src/lib/mcq-options.ts`) requiring **exactly 4** options; it's the shared read-filter for both Practice (`getPracticeQuestions`) and Mocks. That filtered out the whole bank → fewer than `count` questions found → and commit `51a4aff` then added a **live-LLM generation-fill loop** to top up, which hangs forever (`All LLM providers failed … 429/404`) because AI generation is offline → the Practice UI sits on "Loading questions..." indefinitely.
+
+**Fix (`~/ucat-ai-prep/reapply-mcq-options.sh`, untracked, re-run after every pull before build):** relax `hasFourValidOptions` to accept **>=2 unique non-empty options with a `correct_answer` matching one option** (real UCAT shape). Safe because `scoreQuestion` (`assessment-scoring.ts`) is option-count agnostic (matches answer text, scores by index), so 6-option Qs render/score fine. Manual admin question-create stays strict via a separate zod `.length(4)` schema; question *generation* JSON-schema `minItems/maxItems` stay 4 too — only the read filter is relaxed. Verify: `grep -rho 'options.length < 2' .output/server/_ssr/mcq-options-*.mjs` present after build.
+
 ## Deploy procedure (UAT)
 
 ```
@@ -51,6 +57,7 @@ git checkout -- src .env                          # drop Gemini patch + .env so 
 git pull --ff-only origin main
 # apply any NEW supabase/migrations/*.sql to Seoul (pooler, timestamp order)
 bash reapply-gemini.sh                             # re-point AI off Lovable gateway → Gemini
+bash reapply-mcq-options.sh                        # relax 4-option read filter (else Practice/Mocks hang)
 cat > .env <<EOF ... EOF                            # force 6 Seoul vars + GEMINI_API_KEY + PORT=8090
 export PATH=/home/ubuntu/.nvm/versions/node/v20.20.2/bin:$PATH
 npm install && npm install ws --no-save && npm run build
