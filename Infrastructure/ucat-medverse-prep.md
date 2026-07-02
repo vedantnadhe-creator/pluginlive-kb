@@ -48,6 +48,10 @@ The seeded question bank is **~99% 6-option** questions (VR 9000×6-opt vs 66×4
 
 **Fix (`~/ucat-ai-prep/reapply-mcq-options.sh`, untracked, re-run after every pull before build):** relax `hasFourValidOptions` to accept **>=2 unique non-empty options with a `correct_answer` matching one option** (real UCAT shape). Safe because `scoreQuestion` (`assessment-scoring.ts`) is option-count agnostic (matches answer text, scores by index), so 6-option Qs render/score fine. Manual admin question-create stays strict via a separate zod `.length(4)` schema; question *generation* JSON-schema `minItems/maxItems` stay 4 too — only the read filter is relaxed. Verify: `grep -rho 'options.length < 2' .output/server/_ssr/mcq-options-*.mjs` present after build.
 
+**Deeper root cause (2026-07-02):** relaxing the option filter wasn't enough — the seed bank has only **52 distinct passages / 130 distinct stems across 9131 approved VR rows** (5 stems × ~1800 near-identical copies). `getPracticeQuestions` fetched with an **unordered** `LIMIT 300`, so PG returned one physical cluster (→ 1 distinct after `removeNearDuplicateQuestions`' 0.88 Jaccard collapse), still < count → still hit the LLM fill-loop → hang. Second fix (`~/ucat-ai-prep/reapply-practice-fetch.py`, untracked, run after every pull before build): (1) `.order("id")` on the bank fetch + widen window to `max(1500, count*60)` so it spans passages, and (2) **replace the live-LLM generation fill-loop with a bank-only top-up** (exact-unique pool → all valid rows) so the request always returns fast even when the bank is thin. Verified against live bank: VR count=10 → returns 10 instantly, no LLM. Reapply order: reapply-gemini.sh → reapply-mcq-options.sh → **reapply-practice-fetch.py** → force .env → build → reapply-nitro-node-shim.py → pm2 restart.
+
+**AI keys (set 2026-07-02):** `GEMINI_API_KEY` now uses the **`AQ.`-format** key (works on the OpenAI-compat `/v1beta/openai/chat/completions` path the app uses — the old `AIzaSy…` key was rejected there) and `OPENROUTER_API_KEY` is set (valid). Both live in `.env`, runtime-read (no rebuild; `pm2 restart --update-env`).
+
 ## Deploy procedure (UAT)
 
 ```
