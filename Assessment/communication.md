@@ -190,7 +190,7 @@ corporateMap.response_language  →  instituteMap.response_language  →  Englis
 
 | Endpoint | Purpose |
 |----------|--------|
-| `generate_questions` | Generates question sets using Gemini/Groq AI based on CEFR level and domain |
+| `generate_questions` | Generates question sets using Gemini/Groq AI based on CEFR level and domain. **Question Based Response** sections need an AI image: `QuestionGeneration/Communication/image_generation_google.py` generates it via **Imagen** and uploads to student-node. Image gen routes through the **LiteLLM gateway** (`gemini/imagen-4.0-fast-generate-001`, tracked) when `LITELLM_PROXY_URL`+`LITELLM_VIRTUAL_KEY` are set, else native `google.genai`. If image gen fails, the **entire** set generation aborts with *"Assessment cannot be generated right now. Image generation failed…"*. See `Infrastructure/ai-gateway.md`. |
 | `calculate_paragraph_reading_audio_score` | Uses **Azure Speech SDK** for pronunciation assessment — measures accuracy, completeness, fluency, prosody |
 | `calculate_question_based_response_score` | AI evaluation of image description — grammar, phrasing, spelling, vocabulary, coherence |
 | `calculate_email_writing_score` | AI evaluation of email — phrasing, voice/tone, format, grammar, spelling |
