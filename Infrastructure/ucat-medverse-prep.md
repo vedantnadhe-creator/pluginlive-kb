@@ -44,6 +44,8 @@ Apply new files in timestamp order, autocommit (one `psql -f` per file). `ALTER 
 
 ## Gotcha: Practice/Mocks stuck on "Loading questions..." (option-count filter)
 
+> **SUPERSEDED 2026-07-03 by upstream commit `d274961` + migrations.** Upstream rewrote all of this natively, so the four hot-patch reapply scripts below (`reapply-mcq-options-v2.sh`, `reapply-practice-fetch-v2.py`, `reapply-mocks-normalize.py`, `reapply-llm-timeouts.py`) are **retired** (moved to `~/ucat-ai-prep/.retired-scripts/`). Current state: migration `20260702193000_clean_question_bank_duplicates_and_options` **permanently trims every row to ≤4 options and dedups the bank in the DB** (deleted 17,115 dup rows: VR 9131→136, SJT 8164→170 — those sections were always only ~52 distinct passages; QR 26.8k / DM 8.3k stay rich). Upstream code replaced the hanging live-LLM fill-loop with a **parallel small-batch generator** (`mapLimit`, ≤12/≤20 per batch, 20s gateway timeout) that falls back to a **local deterministic generator** per batch — so generation never hangs and always returns. **Only two reapply scripts remain active: `reapply-gemini.sh` + `reapply-nitro-node-shim.py`.** The still-relevant operational facts (direct-Gemini registry default, OpenRouter free-tier 402, `.env`-revert-on-checkout) are in the "AI providers" note below. The rest of this section is kept for history.
+
 The seeded question bank is **~99% 6-option** questions (VR 9000×6-opt vs 66×4-opt; DM/QR/SJT similar) — UCAT VR/SJT legitimately have 5-6 options. Upstream commit `ca27067` added `hasFourValidOptions()` (`src/lib/mcq-options.ts`) requiring **exactly 4** options; it's the shared read-filter for both Practice (`getPracticeQuestions`) and Mocks. That filtered out the whole bank → fewer than `count` questions found → and commit `51a4aff` then added a **live-LLM generation-fill loop** to top up, which hangs forever (`All LLM providers failed … 429/404`) because AI generation is offline → the Practice UI sits on "Loading questions..." indefinitely.
 
 **Deeper root cause:** the seed bank has only **52 distinct passages / 130 distinct stems across 9131 approved VR rows** (5 stems × ~1800 near-identical copies). `getPracticeQuestions` fetched with an **unordered** `LIMIT 300`, so PG returned one physical cluster (→ 1 distinct after `removeNearDuplicateQuestions`' 0.88 Jaccard collapse), still < count → hit the LLM fill-loop → hang.
@@ -73,9 +75,10 @@ git checkout -- src .env                          # drop Gemini patch + .env so 
 git pull --ff-only origin main
 # apply any NEW supabase/migrations/*.sql to Seoul (pooler, timestamp order)
 bash reapply-gemini.sh                             # re-point AI off Lovable gateway → Gemini
-bash reapply-mcq-options-v2.sh                     # strict 4-option UI + deterministic 6->4 normalize
-python3 reapply-practice-fetch-v2.py               # order-by-id + bank-only top-up (else Practice hangs)
-python3 reapply-mocks-normalize.py                 # apply the same normalize to Mocks build/score/review
+# (option-normalize / practice-fetch / mocks-normalize / llm-timeout scripts RETIRED 2026-07-03 — upstream d274961 + migration 193000 do this natively)
+# After applying any new migrations that touch ai_models_registry, RE-ASSERT direct Gemini as default:
+#   disable nvidia rows; clear is_default from openrouter-routed chat/qbank rows (free-tier 402);
+#   upsert gemini gemini-2.5-flash (generativelanguage endpoint, GEMINI_API_KEY) is_default=true for qbank/chat/insights/coverage
 cat > .env <<EOF ... EOF                            # force 6 Seoul vars + GEMINI_API_KEY + OPENROUTER_API_KEY + PORT=8090
 export PATH=/home/ubuntu/.nvm/versions/node/v20.20.2/bin:$PATH
 npm install && npm install ws --no-save && npm run build
