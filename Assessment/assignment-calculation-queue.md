@@ -104,6 +104,20 @@ shows in the Pending view too. DEV ✅ · UAT ✅ · PROD pending.
   terminal): a progress header (Total / Assigned / Notified / Failed + %), a
   server-paginated per-student table (Failed / Pending / Done / All filter), and
   per-student retry (incl. edit-and-retry for data errors).
+- **Submit-and-go progress modal** (`AssignmentProgressModal.js`) — the popup shown
+  right after an async assign returns `{ jobId }` (live `assigned/total` + Continue).
+  It is **SSE-first with a REST hydrate on open**: on mount it calls
+  `getAssignmentStatus(jobId)` once for the current snapshot, then subscribes to
+  `GET /events/subscribe?topic=assessment-assignment:<jobId>` for deltas, and falls
+  back to `pollAssignmentStatus` only if the stream errors. **The hydrate is required
+  (fix 2026-07-03):** a fast/small job (e.g. 1 candidate) reaches a terminal state
+  *before* the SSE subscription lands; server SSE (`admin-node SSEService`) has **no
+  backlog/replay** and drops events published to a topic with zero subscribers, and
+  only sends a `CONNECTED` frame on connect. A cleanly-opened-but-silent stream never
+  fires `onerror`, so the poll fallback never starts — without the hydrate the modal
+  stayed stuck at **0/total** even though the job had finished (item `done`, summary
+  email sent). Large batches never showed it (assign takes long enough that subscribe
+  lands first).
 - **Assignment | Calculation toggle** on the detail page. The **Calculation** view
   shows scoring counts (Submitted / Scored / Pending / Failed) + a per-student scoring
   table with **Retry scoring** (admin-node resets the calc flags; student-node's
