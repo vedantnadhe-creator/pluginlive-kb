@@ -139,6 +139,23 @@ Roles open **only** to ITI / Diploma candidates skip AI match entirely
   follow-up patch added `_repair_jsonish` + `_coerce_to_schema` to normalize
   lists, dict-keyed scores, `evaluated_criteria`/`criterion`/`rationale`/`evidence`
   keys, and mixed scalar+dict responses. Deployed to DEV/UAT 2026-07-01.
+- **Criteria lost category/weight + garbled strengths** (DEV+UAT, 2026-07-03,
+  **fixed**): the root cause behind the drift above — `utils/portkey_gateway.py`'s
+  shim collapsed **any** `response_schema` into `response_format={"type":
+  "json_object"}` (unconstrained "return some JSON"), so Gemini stopped honouring
+  the strict Pydantic contract entirely. The `_coerce_to_schema` fallbacks kept
+  the endpoints from 500ing but only *masked* it: every criterion rendered
+  `[other]` category + `weight 5/10` (the fallback defaults), and when the model
+  omitted `strengths`/`gaps`/`match_summary` the code synthesized them from raw
+  criterion text — so the "Why to Shortlist" / Strengths panel showed dumps like
+  `c3. [other] Experience in B2B or B2C sales. (weight: 5/10) (score 5)` instead
+  of clean sentences. Fix: the shim now forwards the Pydantic schema as an OpenAI
+  `response_format={"type":"json_schema","json_schema":{...,"strict":true}}`,
+  which LiteLLM passes to Gemini as native structured output. Criteria come back
+  with real categories (`experience`/`education`/`skills`/…) and varied weights,
+  and strengths/summary are proper sentences. Non-Pydantic / mime-only callers
+  keep the old `json_object` path (backward compatible; the `_coerce_to_schema`
+  net stays as defence-in-depth). `fastapi-ai-engine` Development→UAT.
 - **Retry loop** (resolved 2026-07-01 in corporate-node via
   `ai_match_status='failed'` dead-letter columns): recovery no longer
   re-enqueues candidates whose job has exhausted its 3 attempts. Manual
