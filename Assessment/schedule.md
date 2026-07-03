@@ -113,6 +113,19 @@ Main processing loop:
    - Updates `lastRunAt = now` and releases lock
    - Prints comprehensive summary (processed/skipped/failed/locked counts)
 
+#### Soft-removed students — `is_active` flag on the roster (2026-07-03)
+
+Each student object in `assessment.student_lists.students_data` may carry an **`is_active`** boolean. It is a **soft-delete**: to stop a student from receiving *further* assessments without deleting their roster entry, scores, or history, set `is_active: false` on their object. **Absent or `true` = active; only `is_active === false` is skipped.**
+
+The guard lives at the single choke point every assignment path funnels through — **`getAssessmentAssignedParticipants`** in `admin-node/app/models/Assessment.js` (and the byte-identical `admin-node-assignq` copy) — which filters `bulkUploadData` to `is_active !== false` before turning the roster into `assessment_assigned_students` rows. So it covers the **recurring scheduler**, the initial diagnosis assign on create, and add-students. The **end-date-extension** path (`updateAssessmentEndDate`) re-assigns directly and bypasses that choke point, so it has its own `is_active === false` skip in the roster filter.
+
+- **Only assignment (write) paths filter.** All display/read paths (`getschedulesInfo`, the drill-in candidate list, scores, history) ignore the flag and show everyone — the roster keeps all students.
+- **Role_Based and AI_Interview do NOT go through `getAssessmentAssignedParticipants`** (they build participants separately), so they are unaffected by the flag.
+- Corporate and one-time/manual triggers pass freshly-uploaded students with no `is_active` field → the filter is a no-op for them.
+- On DEV the recurring cron runs inside the unified `admin` container (same image as the API); on UAT likewise. There is no separate assignq container on DEV/UAT, so deploying `admin-node` covers both the API and the cron worker.
+
+First use: PROD Naralkar Institute — 39 students soft-removed from its 2 passingYear-2026 Communication/Aptitude schedule lists (18 kept active) so future runs stop assigning them while their completed attempts/scores remain.
+
 #### Concurrency Safety
 
 - **Instance ID:** `instance-{PID}-{timestamp}` — unique per process
