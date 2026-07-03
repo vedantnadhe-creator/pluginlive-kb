@@ -136,6 +136,8 @@ Select + mark happen in one transaction, so `RETURNING` hands each row to **exac
 
 **Idempotency safety net:** `mark_completed` / `mark_skipped` only write when the row is still `normalization_status = 'in_progress'`, so a stale-reclaim overlap can't double-write a result.
 
+**Candidate-level duplicate skip (`ALLOW_DUPLICATE_CANDIDATES`):** by default the worker marks a row `normalization_status = 'skipped'` (reason `duplicate_candidate`) when `is_candidate_duplicate(email, mobile, role_id)` finds the same email/mobile already exists for that role — both the `##NO##` path and the normal path. Setting **`ALLOW_DUPLICATE_CANDIDATES=true`** (`config/settings.py`, default `False`) disables that pre-check in both paths, so duplicate submissions flow through to `insert_candidate_new` (which does **no** dedup) and land as **fresh candidate rows** instead of being skipped. `insert_candidate_new` always creates a new candidate, and the fresh `(candidate_id, role)` mapping means the downstream "duplicate role mapping" guard doesn't fire either. **Forward-only:** rows already marked `skipped` stay skipped — reset them to `pending` to re-normalize. **Current UAT state: `ALLOW_DUPLICATE_CANDIDATES=true`** (baked into `datanormalization:api` via `.env`, requested 2026-07-03 to stop dropping duplicate candidates). Empty-string env coerces to `False` via the shared `_coerce_empty_bool` validator. Flip to `false` + rebuild to restore duplicate suppression.
+
 ---
 
 ## LLM retry / recovery (already implemented)
