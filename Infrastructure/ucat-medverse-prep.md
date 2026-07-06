@@ -1,6 +1,10 @@
 # MedVerse — UCAT Prep (ucat-ai-prep)
 
-Standalone **Lovable**-built UCAT preparation web app ("MedVerse — AI-Powered UCAT Preparation Platform"). Repo `PluginLive-Technologies/ucat-ai-prep`, branch `main`. Deployed on **UAT only** at **https://ucatprep.uat.pluginlive.com**. Not part of the core PluginLive platform — it has its own Supabase backend and is **not** managed by `auto_deploy.sh`.
+Standalone **Lovable**-built UCAT preparation web app ("MedVerse — AI-Powered UCAT Preparation Platform"). Repo `PluginLive-Technologies/ucat-ai-prep`. Not part of the core PluginLive platform — it has its own Supabase backend and is **not** managed by `auto_deploy.sh`.
+
+**Environments:**
+- **UAT:** https://ucatprep.uat.pluginlive.com — pm2 `ucatprep` on the UAT box :8090, branch `main`, Supabase Seoul `yzmsyddukyujtjrrtect`. Deploy = the manual reapply ritual documented below.
+- **PROD (live 2026-07-06):** https://medverse.pluginlive.com — **K8s on the PROD cluster** (namespace `medverse`: Deployment + ClusterIP Service + Ingress via ingress-nginx LB `152.67.29.77`, TLS auto via cert-manager/letsencrypt-prod in secret `medverse-tls`). Branch `release/prod-v1`, image `bom.ocir.io/bmv2bqg5gpcd/pl-medverse:<ts>-release-prod-v1` (Dockerfile bakes ALL reapply patches — no manual steps), Supabase Tokyo `gbhrvhwymgghmvmcqtuz` (full clone of UAT data 2026-07-06), runtime env from K8s Secret `medverse-env`. DNS: Route53 A `medverse` → 152.67.29.77. PROD image builds happen on the PROD builder box (`140.245.25.134`, has OCIR push creds); build gotchas: exclude committed `.env` via `.dockerignore` (else wrong Supabase baked into client bundle), `npm install` not `npm ci` (bun.lock-only repo), reapply scripts+server-node.mjs+ws-polyfill.mjs are untracked and must be added to the build context, `server-node.mjs` binds `process.env.HOST || 0.0.0.0` in-image. Rollback: `kubectl delete ns medverse` + remove DNS record.
 
 ## Stack
 
