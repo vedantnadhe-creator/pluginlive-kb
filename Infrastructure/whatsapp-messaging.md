@@ -79,3 +79,9 @@ In PROD these live in the `auth-api-config` ConfigMap (mounted at `/app/.env` on
 ## Gotcha
 
 Do **not** "just swap `WA_PHONE_ID`" to the current WABA in a Graph-API sender — sends fail `#200`. The current number can only be sent to through MSG91 (or by moving the number's Cloud API registration onto our own Meta app, which would disconnect MSG91).
+
+### Template param values must be single-line (no `\n` / tab / 4+ spaces)
+
+WhatsApp/Meta reject any **template variable value** that contains a newline, tab, or more than 4 consecutive spaces. Via MSG91 this surfaces as a **synchronous HTTP 400** (`ERR_BAD_REQUEST`) on `POST …/whatsapp-outbound-message/bulk/` — the whole bulk call fails, not just one recipient. (This is distinct from the **async** `132000` "localizable_params (N) does not match expected (M)" placeholder-count error, which returns a `{status:"success", …"in process"}` synchronously and only fails later in the delivery report.)
+
+This bit the corporate Schedule drawer: the recruiter's multi-line **Note/Instructions** (a textarea) is sent as the last body param of `corporate_online` / `corporate_offline`, so any note with line breaks 400'd the send. Fix (`user-management-node` `app/helpers/whatsapp.js`): `buildMsg91Components` runs every param through `sanitizeParamValue` = `String(v).replace(/[\t\r\n]+/g,' ').replace(/ {4,}/g,' ').trim()`. It's the single choke point every MSG91 template send flows through, so all callers/templates are covered. Any new free-text template param is safe by default — don't re-add newlines downstream.
