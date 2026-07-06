@@ -271,6 +271,36 @@ On failure the **full request payload is persisted** in `normalization_logs`
 `details.response`), and the candidate surfaces under **Mismatched Candidates**
 (data status `Valid`, API status `API Failed`).
 
+### Behavior — candidate name mapping & single-`Name`-column fallback (Jul 2026)
+
+`map_to_final_schema` builds `admin.firstName`/`admin.lastName` from the
+`normalized_columns` mapping table, where **`first_name → admin.firstName`** and
+**`last_name → admin.lastName`**. The `full_name` slug exists but has a **NULL
+`mapping_field`** — it is deliberately not mapped into the payload.
+
+**The gap this created:** source sheets that expose a single **`Name`** column
+(e.g. assessment-result exports like *"amazon aws - …"* whose rows are
+`{Name, Email, Total Score, CEFR Level, …}`) get mapped by the LLM to
+**`full_name` only** — no `first_name`/`last_name`. Because `full_name` maps to
+nothing, `admin.firstName`/`lastName` went out **empty**, so student-node created
+the student with a **blank name** (blank `first_name`/`last_name`/`full_name` in
+`student.students`). The Candidate-Metrics UI (admin-react `CandidateMetricDetails`,
+served by this service's `/api/student-metrics/*`) renders
+`full_name || first_name+last_name || '-'`, so those students showed **no name**.
+An earlier fix (`##NO##` name fallback, commit `9f3a3d0`, 2026-05-21) covered
+**only the `##NO##` no-normalization path**, so the LLM path stayed broken.
+
+**Fix (2026-07-06, UAT `2ad2191`):** `map_to_final_schema` now backfills at the
+top — when **both** `first_name` and `last_name` are blank (no alpha chars), it
+seeds `first_name` from `normalized_data['full_name']`, else from a raw
+`Name`-like column (`name`, `full name`, `candidate name`, `student name`,
+`applicant name`, …), leaving `last_name` empty. The existing
+`first_name → admin.firstName` mapping then carries it into the payload. Guarded
+on both-blank so a valid first/last is **never** overwritten; runs on **both**
+paths. **Forward-only:** the ~349 already-created blank-name students
+(2026-02-10 → 2026-06-15) are unaffected — they need a one-off backfill from
+`candidate_job_details.normalized_data.full_name` into `student.students`.
+
 ### Behavior — Tally/normalization students are NOT linked to a college (`source` field, Jun 2026)
 
 Students ingested via a Tally form through normalization are **not registered through a
