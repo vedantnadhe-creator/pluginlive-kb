@@ -93,6 +93,17 @@ A `WEEKLY` schedule normally has a parent that runs for months (e.g. `30 May 202
 
 **Bug fixed (2026-06-16):** Per-run sub-rows bucketed students by `attempt_number === n` instead of by the weekly run's map. `assessment_assigned_students.attempt_number` is a **per-student completion ordinal** (a student's 1st/2nd/3rd completion within the schedule), NOT "which weekly run" — so a student whose first completion happened on the 3rd run carried `attempt_number = 1` and was counted under "Schedule 1". The list row "Schedule N" therefore diverged from its drill-in (which counts by `assessment_institute_map_id`). Seen on Christ University, Lavasa Communication: **Schedule 3 showed `9 taken / 82 sent` while the run's detail view listed 23** (PROD `attempt_number` of the 23 who took run 3: 7×`1`, 7×`2`, 9×`3` — only the nine `3`s landed in the row). Fix: the `assessmentDetails` loop now iterates `regularMaps` and counts each row over that map's assigned students (`assignedByMapId[nthMap...]`), so list and drill-in agree (~27 / 24 / 23). Passing-year filter preserved; the unused `attempt_number` column was dropped from the assigned-students query. Pure API count bug; DB data was correct.
 
+**Bug fixed (2026-07, `hotfix/assessment-tz-sync`):** `StudentListInfo.getCorporateAssessmentsInfo`
+computed corporate assessment status/expiry against a **raw** `NOW()` (SQL `total_expired`) and
+`new Date()` (JS status), with no `+5.5h` compensation — so corporate assessments read as
+`Ongoing`/`Upcoming` ~5.5h **past** their true IST expiry (the opposite direction from the
+early-expiry write bug, but the same root convention). `getschedulesInfo` was already correct
+(`IST_OFFSET_MS = 330*60*1000; now = Date.now()+IST_OFFSET_MS`). Fix mirrors it: SQL uses
+`NOW() + INTERVAL '5 hours 30 minutes'`, JS uses `new Date(Date.now() + IST_OFFSET_MS)`. See
+`Assessment/admin.md` → *Timezone convention*. **institute-react** display was fixed in the same
+hotfix (schedule dates render UTC in `UnifiedAssessmentTable`/`ExpandableContent`/`StudentsTable`/
+`AssessmentNavBar`/`FullStudentReport`; `CustomDateCalendarDrawer` deferred).
+
 ### Gotcha: `students_data` column type differs by environment (json vs jsonb)
 
 `assessment.student_lists.students_data` is **`jsonb` on DEV** but **`json` on UAT and PROD**. The `passingYear` filter in `getschedulesInfo` runs an `EXISTS (SELECT 1 FROM jsonb_array_elements(sl_filter.students_data::jsonb) ...)` subquery. Without the `::jsonb` cast, `jsonb_array_elements(json)` raises Postgres `42883` (`function ... does not exist`) and the **entire endpoint 500s** — but only when a `passingYear` filter is applied (no filter → subquery skipped → no error). This passed on DEV (jsonb) and broke on UAT/PROD (json).

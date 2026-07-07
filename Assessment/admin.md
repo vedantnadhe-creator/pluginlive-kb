@@ -164,23 +164,32 @@ as `…T18:00:00Z`, not `…T18:00:00+05:30`.
 This is intentional and **must stay consistent on both sides**:
 - **Write** — every assignment path builds the Date with a trailing `Z`
   (`new Date(\`${date}T${time}:00Z\`)`). This applies to all assign flows
-  (Communication, Aptitude, Hinglish, Behavior, Role-based, Custom, diagnosis) and to
-  the edit-end-date path (`updateEditableAssessmentDetails`). As of June 2026 the edit
-  path **honors an exact end time**: it parses an optional `hh:mm[:ss]` component from the
-  incoming `endTime` and stores `…T${time}Z`; date-only callers still default to end-of-day
-  (`…T23:59:59Z`), so older/other callers are unaffected.
+  (Communication, Aptitude, Hinglish, Behavior, Role-based, Custom, AI_Interview,
+  diagnosis) and to the edit-end-date path (`updateEditableAssessmentDetails`). As of
+  June 2026 the edit path **honors an exact end time**: it parses an optional `hh:mm[:ss]`
+  component from the incoming `endTime` and stores `…T${time}Z`; date-only callers still
+  default to end-of-day (`…T23:59:59Z`), so older/other callers are unaffected.
 - **Read** — `student-node` `getActiveAssessments` computes `now` via `getNowForDB()`
   = `new Date() + 5.5h`, then compares `startTime <= now` / `endTime >= now`. The +5.5h
   cancels the wall-clock-as-UTC storage, so an assessment opens/closes at the selected
-  **IST** time.
+  **IST** time. `institute-node` mirrors this: `StudentListInfo.getschedulesInfo` **and**
+  (as of July 2026) `getCorporateAssessmentsInfo` add `+5.5h` (`330 min`) before computing
+  Ongoing/Upcoming/Expired status; the admin-node back-assign window
+  (`assignStudentsToActiveScheduleAssessments`) also adds +5.5h to its `now+24h` cutoff.
 
-**Gotcha (fixed June 2026):** the Communication/Aptitude/Hinglish assign helpers and the
-edit-end-date path previously built the Date with `+05:30` (true IST instant). Because the
-reader still added +5.5h, those assessments **opened and expired ~5.5h early in IST**
-(disappeared from the student's active list before the selected time). Fix: store as `Z`
-so all writes match the read-side offset. No DB/schema change. Rows created *before* the
-fix remain stored as true-instant and stay ~5.5h early until re-created — editing the
-assessment's end date re-writes it under the correct convention and repairs that row.
+**Gotcha (Communication/Behavior/Hinglish fixed June 2026; Aptitude/Role_Based/AI_Interview
+fixed July 2026):** these assign helpers previously built the Date with `+05:30` /
+local-time `new Date(y, mo, …)` (true IST instant). Because the reader still added +5.5h,
+those assessments **opened and expired ~5.5h early in IST**. The June fix only reached
+Communication/Behavior/Hinglish (which share a `formatDateTime(date,time)` `:00Z` helper);
+**Aptitude, Role_Based and AI_Interview had no such helper and stayed buggy** — this caused
+PROD incidents (Christ University Aptitude, 29 Jun & 6 Jul 2026, expiring at 6:29 PM instead
+of 11:59 PM IST). The July 2026 `hotfix/assessment-tz-sync` routed Aptitude (sync+async),
+Role_Based (`script/generateRoleBasedQuestions.js`) and AI_Interview (sync+async) through
+the same `:00Z` helper. Fix: store as `Z` so all writes match the read-side offset. No
+DB/schema change. Rows created *before* the fix remain stored as true-instant and stay ~5.5h
+early until re-created — editing the assessment's end date, or `UPDATE … SET end_time =
+end_time + interval '5 hours 30 minutes'`, re-writes it under the correct convention.
 
 > Note: this is a fragile "store-as-UTC + read-side +5.5h" convention that assumes the Node
 > containers run in UTC and that every reader applies the +5.5h. The durable fix is

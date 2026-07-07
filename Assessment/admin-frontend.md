@@ -137,10 +137,24 @@ in the browser's IST, so `2026-06-22T23:59:59Z` displayed as **23 Jun**. Fix: pa
 `PUT /assessment/schedule/assessment-enddate`) likewise had its prefill switched to
 `moment.utc(currentEndDate)`.
 
+**More spots fixed July 2026 (`hotfix/assessment-tz-sync`):** the June pass missed several
+renderers. Now also UTC: `ActiveAssessmentTable/index.js` `formatDate`, `AssessmentNavBar.js`
+schedule-item date, and `EndDateEditPopover`'s `onOpenChange` (it re-seeded the picker with
+bare `moment(currentEndDate)`, undoing the correct `useState` init). In `StudentsTable`,
+`formatDateOnly` now renders sent/start/end in UTC, but a **new `formatEventDateOnly`** keeps
+`startedDateTime` / `droppedOffDateTime` in **browser-local** time — those are genuine event
+instants (real UTC timestamps of when the student acted), NOT the wall-clock-as-UTC schedule
+convention, so they must be shown local, not UTC. (institute-react's `StudentsTable`,
+`UnifiedAssessmentTable` index/`ExpandableContent`, `AssessmentNavBar`, `FullStudentReport`
+got the same treatment; its `CustomDateCalendarDrawer` was deferred — its calendar-cell
+compare logic needs reworking as a unit.)
+
 **Rule:** any code that renders assessment map `start_time`/`end_time` client-side must
 parse/format in **UTC** (`moment.utc(...)` or `timeZone: 'UTC'`), never browser-local.
-(Schedule `scheduleStartDate`/`scheduleEndDate` are stored at **midnight UTC**, so
-`moment(...)` doesn't roll them — `EditScheduleDrawer` is unaffected.)
+**But real event timestamps** (`assessment_started_at`, dropped-off time, `submittedAt`,
+proctoring capture times) are true UTC instants → render **local**, not UTC. (Schedule
+`scheduleStartDate`/`scheduleEndDate` are stored at **midnight UTC**, so `moment(...)`
+doesn't roll them — `EditScheduleDrawer` is unaffected.)
 
 ---
 
