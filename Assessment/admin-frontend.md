@@ -137,6 +137,19 @@ in the browser's IST, so `2026-06-22T23:59:59Z` displayed as **23 Jun**. Fix: pa
 `PUT /assessment/schedule/assessment-enddate`) likewise had its prefill switched to
 `moment.utc(currentEndDate)`.
 
+**Schedule-row end-date popover now has a time picker (July 2026, `hotfix/assessment-tz-sync`):**
+the inline `EndDateEditPopover` in `ExpandableContent.js` (the pencil next to each
+assessment run in an expanded schedule row) was previously **date-only** and its backend
+forced `23:59:59` in **server-local (IST)** time — i.e. it re-introduced the exact
+`…T18:29Z` early-expiry bug for any run whose end date was edited there. Now the picker
+uses `showTime` (12-hour `hh:mm A`, default `23:59`, `format="DD/MM/YYYY hh:mm A"`) and
+sends the full wall-clock value `newEndDate.format('YYYY-MM-DDTHH:mm:ss')`. The backend
+(`updateAssessmentEndDate`, admin-node `Assessment.js`) now parses the optional
+`hh:mm[:ss]` and stores `${date}T${time}Z` (date-only still defaults to `23:59:59`),
+matching every other assign/edit path; the schema (`updateAssessmentEndDateSchema`) was
+relaxed from `format: "date"` (which would reject a datetime) to a plain string. The
+past-date guard was swapped for a `newEnd <= startTime` check.
+
 **More spots fixed July 2026 (`hotfix/assessment-tz-sync`):** the June pass missed several
 renderers. Now also UTC: `ActiveAssessmentTable/index.js` `formatDate`, `AssessmentNavBar.js`
 schedule-item date, and `EndDateEditPopover`'s `onOpenChange` (it re-seeded the picker with

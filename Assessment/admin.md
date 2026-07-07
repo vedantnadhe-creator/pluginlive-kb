@@ -165,10 +165,14 @@ This is intentional and **must stay consistent on both sides**:
 - **Write** — every assignment path builds the Date with a trailing `Z`
   (`new Date(\`${date}T${time}:00Z\`)`). This applies to all assign flows
   (Communication, Aptitude, Hinglish, Behavior, Role-based, Custom, AI_Interview,
-  diagnosis) and to the edit-end-date path (`updateEditableAssessmentDetails`). As of
-  June 2026 the edit path **honors an exact end time**: it parses an optional `hh:mm[:ss]`
-  component from the incoming `endTime` and stores `…T${time}Z`; date-only callers still
-  default to end-of-day (`…T23:59:59Z`), so older/other callers are unaffected.
+  diagnosis) and to the edit-end-date paths (`updateEditableAssessmentDetails` and the
+  schedule-row `updateAssessmentEndDate`, `PUT /assessment/schedule/assessment-enddate`).
+  As of June 2026 the edit path **honors an exact end time**: it parses an optional
+  `hh:mm[:ss]` component from the incoming `endTime`/`newEndDate` and stores `…T${time}Z`;
+  date-only callers still default to end-of-day (`…T23:59:59Z`), so older/other callers are
+  unaffected. `updateAssessmentEndDate` got this same treatment in July 2026
+  (`hotfix/assessment-tz-sync`) — it previously did `new Date(newEndDate).setHours(23,59,59)`
+  in **server-local (IST)**, re-introducing the ~5.5h-early bug for edited schedule runs.
 - **Read** — `student-node` `getActiveAssessments` computes `now` via `getNowForDB()`
   = `new Date() + 5.5h`, then compares `startTime <= now` / `endTime >= now`. The +5.5h
   cancels the wall-clock-as-UTC storage, so an assessment opens/closes at the selected
@@ -195,6 +199,21 @@ end_time + interval '5 hours 30 minutes'`, re-writes it under the correct conven
 > containers run in UTC and that every reader applies the +5.5h. The durable fix is
 > true-instant storage everywhere + a one-time data backfill (deferred — would require a DB
 > migration).
+
+### Assessment invite/reminder email date format (July 2026)
+
+The assessment **invite** email (`assessmentStudentCorporate2` in
+`user-management-node` `src/utils/emailTemplates/inviteStudent.js`) and the
+**reminder** email (`assessmentRemainder.js`) render the `Start Date` / `End Date`
+lines. Upstream callers (admin-node broadcast handler, `customAssessment`, the
+assignment worker, direct `req.body`) each formatted these differently
+(`toLocaleDateString()`, `DD MMM YYYY, hh:mm A`, ISO, …), so the emails were
+inconsistent. A shared helper `emailTemplates/formatMailDate.js` now normalizes any
+of those shapes — parsed as **UTC** (`moment.utc`) so the wall-clock digits show
+verbatim — into **`Do MMMM, YYYY`** (e.g. `7th July, 2026`). Both templates call
+`formatMailDate(start_date)` / `formatMailDate(end_date)` at the interpolation point
+(single choke point, caller-agnostic). Non-date strings ("No end date",
+"Available now") and unparseable values pass through unchanged.
 
 ### `assignCommunicationAssessment(create, entityId, name, instructions, assessmentType, startTime, endTime, startDate, endDate, bulkUploadData, email, assessmentDomain, entityType, allowProctoring, cefrLevel, isOneTime)`
 
