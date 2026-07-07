@@ -490,7 +490,7 @@ AssessmentAssignedStudent
 **AIInterviewConfig:**
 - `job_role`, `seniority`, `skills[]`, `industry_domain`
 - `job_description` (full JD text for context)
-- `interview_duration` (minutes, default 60)
+- `interview_duration` (seconds; admin-react create-form default 900s/15min, admin-node INSERT fallback 1500s/25min if omitted). admin-react range was 15–30 min (946e9a19, 2026-06-30), **loosened back to 10–30 min (2026-07-07)** — default still 15. No backend clamp on the value; `interview_duration` is stored as-sent.
 - `enable_follow_up` (boolean, default true)
 - `ai_model` (e.g., "gemini-2.5-pro")
 - `evaluation_criteria` (JSONB for custom weight overrides)
