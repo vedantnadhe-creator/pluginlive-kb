@@ -19,7 +19,43 @@ The Students module allows TPO users to manage the student database for their in
 | `Partials/StudentsInfoTable/` | Student table | Paginated table with student details |
 | `Partials/AddNewStudentDrawer/` | Drawer | Form to add a new student |
 | `Partials/SettingsDrawer/` | Drawer | Student settings configuration |
-| `Partials/StudentsBulkUpload/` | Bulk upload | CSV-based bulk student creation |
+| `Partials/StudentsBulkUpload/` | Bulk upload | ERP-file bulk student creation (normalization-driven, see below) |
+
+---
+
+## ERP Bulk Upload (institute-side, normalization-driven)
+
+**Status:** live on DEV + UAT (2026-07-08), branch `feat/institute-erp-bulk-upload` across 5 repos. PROD pending.
+
+The old degree/department-dropdown CSV bulk-upload flow has been **replaced** (no toggle) by an ERP-file flow: the TPO uploads their college ERP export **as-is** (any columns, no fixed template) and the `form-data-normalization` engine interprets it.
+
+```
+institute-react StudentsBulkUpload drawer
+   → upload .xlsx to S3
+   → POST /institutes/instituteCampus/:instituteCampusId/erp-upload   (institute-node)
+        forwards { excelLink, instituteCampusId } to form-data-normalization,
+        tagging rows source="institute_erp" + institute_campus_id
+   → form-data-normalization worker (institute_erp branch, isolated from the
+     existing corporate/Drive normalization path by the `source` column)
+        resolves degree/stream/department scoped to the campus's own courses
+        (campus already known → no college-resolution step, unlike corporate)
+   → student-node POST /students/create-full  (institute journey)
+        upsert by email (existing student with same email → overwritten with
+        the new normalized payload), instituteCampusId stamped on every row
+        (no hardcoding — resolved from the upload's campus context)
+        canonical-or-NULL guarantee: unmapped enums/fields are stored NULL,
+        never the raw ERP string, so the student's later profile-update API
+        (which has strict validation) is never blocked by bad ERP data
+   → user-management-node createUser (sendTempPassword) → welcome email with
+     login email + auto-generated temp password
+```
+
+- **Status screen:** "Recent uploads" table in the drawer, campus-scoped, via `GET /institutes/instituteCampus/:id/erp-upload/batches` (+ `/batches/:sheetId/rows`), proxied through institute-node for tenant isolation — mirrors the admin `CandidatesRaw` status UI.
+- **Match key:** email (mandatory per row — the only true minimum column; rows without a detectable email are skipped/failed).
+- **Re-upload policy:** overwrite with the new normalized payload (ERP is source of truth).
+- **DB migration (`candidate_ingestion_schema.candidates_raw_data`):** additive, `source TEXT NOT NULL DEFAULT 'corporate'` + `institute_campus_id TEXT` + index `ix_candidates_raw_data_source_campus`. Applied on the shared DEV/UAT Postgres (`140.238.245.202:5441/uat_pluginlive` — DEV's `form-data-normalization` points at this same DB); all pre-existing rows default to `source='corporate'`, so the existing corporate/Drive normalization flow is untouched.
+- **New env vars (institute-node):** `NORMALIZATION_BE_BASE_URL`, `NORMALIZATION_API_KEY` (shared secret, X-API-Key header to form-data-normalization's ERP endpoints).
+- **New form-data-normalization endpoints:** `POST /api/institute-erp/ingest`, `GET /api/institute-erp/batches`, `GET /api/institute-erp/batches/{sheet_id}/rows`.
 
 ---
 
