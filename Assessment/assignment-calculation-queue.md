@@ -35,6 +35,30 @@ Both are **flag-gated** so the old paths stay reachable for instant rollback.
 - Uses raw `pg` (node-postgres), **not** Prisma, for worker DB writes — the Prisma
   engine panics under the workers' concurrent writes on ARM64.
 
+### Set-generation gate (prepare-set)
+- Before items fan out, `orchestrate` may dispatch **`prepare-set`** jobs (BullMQ
+  `assessment-prepare-set`, conc 8) — one per required set spec. Types whose set is
+  generated on the fly (e.g. Communication picks/creates a set via
+  `Assessment.js` `assessmentSet.findMany`) gate here; the barrier resumes
+  `orchestrate` only once every set is ready.
+- **prepare-set is upstream of the per-student loop.** A permanent generator failure
+  used to mark only the **job** `failed` and leave every item `pending` with no
+  `last_error` — so the Activity UI showed **FAILED = 0** and a blank **REASON**
+  (students looked like they were merely waiting). Fixed 2026-07-08 (admin-node
+  `assignmentWorker.js`): on exhausted `prepare-set` retries we now propagate the
+  generator error onto **every non-terminal item** (`getNonTerminalItems` →
+  `setItemStatus(id,'failed',{lastError})`) before failing the job, so the UI
+  surfaces them as **Failed with the real reason** (counts + REASON are derived from
+  item status/`last_error`).
+- **Schema-drift gotcha (accent):** the set-picker selects `assessment_sets.accent`
+  (added for the Communication Listening-audio accent feature, `VARCHAR(10) NOT NULL
+  DEFAULT 'en-IN'`). If that column is missing on an env (migration not applied there
+  while the accent-aware admin-node is deployed), `prepare-set` throws
+  `column assessment_sets.accent does not exist`, retries 5×, and the assign hangs
+  with the invisible-failure symptom above. Fix = run the
+  `Communication Listening Accent/…__assessment_sets_accent_column.sql` migration on
+  that env. Applied DEV + UAT (2026-07-08); **PROD pending**.
+
 ### Emails (admin → creator)
 - **Assignment started** — fired once at job creation (manual assigns only); gives the
   admin an immediate link to the live Activity page.
