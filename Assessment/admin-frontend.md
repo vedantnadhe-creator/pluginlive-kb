@@ -47,6 +47,17 @@
 
 > **institute-react parity:** the same fixes are mirrored there, except its other-type detail keeps its existing **status-tab** UX (All/Pending/In Progress/Dropped Off/Completed) instead of the status-filter popover; it therefore does **not** send `paginate` (it buckets the full result client-side).
 
+### Per-row "Copy Link" (manual fallback for failed email delivery)
+
+The assessment detail **StudentsTable** (Pending / In-Progress / Dropped-Off tabs for both institute and corporate) has a **Copy Link** action in the `ACTIONS` column. It copies the exact same URL that would be sent in the invite/reminder email, so admins can share it via WhatsApp/SMS when email delivery fails.
+
+| Entity type | What is copied | Backend endpoint | Candidate experience |
+|---|---|---|---|
+| **Corporate** | `assessment.<env>.pluginlive.com/assessment/start/<JWT>` | `admin-node` `GET /assessment/invite-link/:assessment_assigned_id` | Email OTP → lands on that specific assessment. Reuses the existing corporate OTP-invite flow. |
+| **Institute** | `student.<env>.pluginlive.com/onboarding/activate/<studentId>` | `user-management-node` `GET /user/invite-link?email=` | Activation page decides: set password + SMS OTP if not active, or login if already active. |
+
+Important frontend detail: `StudentsTable` rows set `record.id` to the candidate **email** for both entity types; the real `assessment_assigned_id` lives in `record.assessmentAssignedId`. The corporate path therefore uses `record.assessmentAssignedId` (with `record.id` as fallback) to avoid 404s. Implemented 2026-07-08; live on UAT.
+
 ### Shared Components
 
 | Component | File | Purpose |

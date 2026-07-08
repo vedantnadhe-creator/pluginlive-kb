@@ -39,6 +39,8 @@ When `is_otp_invite = true` the admin-node assignment handler **suppresses both*
 
 The invite-link email template lives at `user-management-node/src/utils/emailTemplates/assessmentInviteOtp.js` (renamed from the AI-interview-specific template). It carries: candidate name, assessment name (resolved live), corporate name, link to `/assessment/start/<token>`, expiry window.
 
+The same link can be copied manually from the admin assessment detail **StudentsTable** (Copy Link action) and shared via WhatsApp/SMS. This is a fallback for failed email delivery and reuses the same OTP-invite flow — the candidate still verifies email with a 6-digit OTP before entering the assessment. See `Assessment/admin-frontend.md` for the institute equivalent (activation link).
+
 The invite URL is built from `process.env.ASSESSMENT_FE_BASE_URL` (admin-node helper `app/helpers/assessmentInviteEmail.js`). Each environment **must** set this — the helper falls back to `https://assessment.dev.pluginlive.com` if unset, so a UAT or PROD container without the var silently sends candidates to DEV. UAT value: `https://assessment.uat.pluginlive.com`. PROD value: `https://assessment.pluginlive.com`.
 
 ## Candidate flow
