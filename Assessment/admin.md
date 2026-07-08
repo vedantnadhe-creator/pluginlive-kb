@@ -126,7 +126,29 @@ Returns a buffer for download.
 | `getSubscribedCorporateStates()` | States for subscribed corporates |
 | `getSubscribedCorporateCities({ state })` | Cities for subscribed corporates |
 | `getSubscribedCorporateCompaniesByCity({ city })` | Corporate companies by city |
-| `assignSubscription(entityId, assessmentTypes, entityType, subscriptionType, tokenLimit, durationDays, accessLevel, practiceDegreeSets)` | Creates or updates a subscription record. Sets `tokenLimit`, `durationDays`, `subscriptionType` (trial/subscribed), `accessLevel`, `practiceDegreeSets` |
+| `assignSubscription(entityId, assessmentTypes, entityType, subscriptionType, tokenLimit, durationDays, accessLevel, practiceDegreeSets)` | Creates or updates a subscription record. Sets per-type `tokenLimit` (via a `tokenLimits` map), `durationDays`, `subscriptionType` (trial/subscribed), `accessLevel`, `practiceDegreeSets`. **Skips the update for any type whose limit/tier is unchanged**, so editing one type's quota no longer rewrites `start_date`/`end_date` for every other subscribed type. |
+
+---
+
+## Assessment Quota Enforcement
+
+Quota is stored per entity **and per assessment type** in `assessment.subscribed_institutes` / `assessment.subscribed_corporates` (`token_limit`, `tokens_used`). `remaining = max(token_limit - tokens_used, 0)`.
+
+- **No subscription row for a type ⇒ unlimited** (all guards are a no-op).
+- **`token_limit = 0` ⇒ explicitly blocked** (0 remaining), **not** unlimited. (Previously `0` was misread as unlimited — fixed at all three enforcement sites.)
+
+**Consumption is at ATTEMPT time** — the central gate in student-node (`app/helpers/assessmentQuota.js`) decrements when a student starts a one-time or scheduled assessment. **Practice attempts are never counted.** Role_Based one-time broadcast is the bind-time exception (charged when the set is bound).
+
+**Assign-time pre-flight guard** — `admin-node/app/helpers/assessmentQuota.js` → `assertAssignQuota` throws `QUOTA_EXHAUSTED` (HTTP 400, with structured `code / remaining / required / assessmentType`) when `batchSize > remaining`. It does **not** decrement (the per-student attempt-time cap is the hard limit); it only refuses to over-assign a batch. Wired at every chokepoint, before any rows/jobs are created:
+  - `assignAssessment` (all direct types — Aptitude, Communication, Behavior, Custom, …).
+  - `assignRoleBasedAssessment` (Role_Based uses its **own** endpoint — it needs its own guard).
+  - `AssessmentSetGroupService` (Role_Based async queue, before `createJob`/enqueue).
+  - `scheduleAssessment` (schedule creation — rejects immediately instead of failing silently at night).
+  - Nightly `AssessmentSchedulerService` (re-checks at trigger time).
+
+**Frontend** — admin-react `CreateAssessment` catches the 400 and renders a **"Assessment Quota Exhausted"** popup (`Modal.error`) showing Type / Remaining / Required when `error.code === 'QUOTA_EXHAUSTED'`; a generic error popup otherwise. The Feature Access → institute screen shows one mandatory per-type limit table (Role_Based merged in).
+
+**Scheduler quota-exhausted alerts** — when the nightly scheduler hits an exhausted quota it emails the schedule creator **plus** all active rows in `assessment.quota_alert_recipients` (`email`, `is_active`) — editable in DB, no code deploy needed. The loader never throws (returns `[]` on error) so alerting can't break a run.
 
 ---
 
