@@ -30,11 +30,17 @@ The Students module allows TPO users to manage the student database for their in
 The old degree/department-dropdown CSV bulk-upload flow has been **replaced** (no toggle) by an ERP-file flow: the TPO uploads their college ERP export **as-is** (any columns, no fixed template) and the `form-data-normalization` engine interprets it.
 
 ```
-institute-react StudentsBulkUpload drawer
-   → upload .xlsx to S3
-   → POST /institutes/instituteCampus/:instituteCampusId/erp-upload   (institute-node)
-        forwards { excelLink, instituteCampusId } to form-data-normalization,
-        tagging rows source="institute_erp" + institute_campus_id
+institute-react StudentsBulkUpload drawers (two-step UX)
+   1. **Bulk Upload** drawer (title "Bulk Upload")
+      → upload .xlsx to S3
+      → POST /institutes/instituteCampus/:instituteCampusId/erp-upload   (institute-node)
+           forwards { excelLink, instituteCampusId } to form-data-normalization,
+           tagging rows source="institute_erp" + institute_campus_id
+   2. **Upload Status** drawer opens automatically after a successful submit
+      → campus-scoped "Recent uploads" table via
+         GET /institutes/instituteCampus/:id/erp-upload/batches
+         (+ /batches/:sheetId/rows), proxied through institute-node for tenant isolation
+
    → form-data-normalization worker (institute_erp branch, isolated from the
      existing corporate/Drive normalization path by the `source` column)
         resolves degree/stream/department scoped to the campus's own courses
@@ -50,7 +56,8 @@ institute-react StudentsBulkUpload drawer
      login email + auto-generated temp password
 ```
 
-- **Status screen:** "Recent uploads" table in the drawer, campus-scoped, via `GET /institutes/instituteCampus/:id/erp-upload/batches` (+ `/batches/:sheetId/rows`), proxied through institute-node for tenant isolation — mirrors the admin `CandidatesRaw` status UI.
+- **UI labels:** no "ERP" wording shown to the user; the feature is simply "Bulk Upload" with an "Upload File" section.
+- **Status screen:** "Recent uploads" table lives in a separate **Upload Status** drawer that opens automatically after a file is queued; it can also be reopened via "Upload new file" to return to the upload drawer.
 - **Match key:** email (mandatory per row — the only true minimum column; rows without a detectable email are skipped/failed).
 - **Re-upload policy:** overwrite with the new normalized payload (ERP is source of truth).
 - **DB migration (`candidate_ingestion_schema.candidates_raw_data`):** additive, `source TEXT NOT NULL DEFAULT 'corporate'` + `institute_campus_id TEXT` + index `ix_candidates_raw_data_source_campus`. Applied on the shared DEV/UAT Postgres (`140.238.245.202:5441/uat_pluginlive` — DEV's `form-data-normalization` points at this same DB); all pre-existing rows default to `source='corporate'`, so the existing corporate/Drive normalization flow is untouched.
