@@ -1,7 +1,7 @@
 # Aptitude Question Verification — Validate-and-Repair
 
 > Part of the Aptitude question pipeline (see `aptitude.md`). A verification cron audits
-> **auto-generated** aptitude questions before they are usable and **repairs defects in place**
+> **auto-generated** aptitude questions before they are usable and **repairs defects**
 > (not just accept/reject).
 
 ## Problem it solves
@@ -40,14 +40,26 @@ verify cron (admin-node/script/scheduler.js → questionManagerJob, COMMENTED by
 - Returns a **strict Structured Output** (OpenAI `json_schema`, `strict:true`) — always exactly these fields:
   `isSolvable, questionText, options, correctOption, correctAnswer, wasCorrected, changes, explanation, reason`.
 - Request body: `{ question_text, options, difficulty, subtopic }`.
+- **Model routing:** in UAT/PROD the `gpt-5-mini` call goes through the in-cluster **LiteLLM gateway**
+  (`build_openai_client`, `LITELLM_PROXY_URL`); `gpt-5-mini` is registered on the proxy with an OpenAI backend
+  key (the proxy is otherwise Gemini-only). DEV can also call OpenAI directly.
 
 ## admin-node apply (`QuestionManager.verifyQuestionWithLLM`)
 
 - Keys the correct option by the derived **answer TEXT** (`correctAnswer`) matched against the final options —
   **robust to the model reordering options**. If it can't match exactly one option, the question is
   **deactivated** rather than keyed wrongly.
-- Applies repairs in a single DB transaction (question text/explanation, rebuild option rows + key,
-  set `isActive`/`isReviewed`).
+- **Applies repairs by conditional copy-on-write** (one DB transaction):
+  - *Fresh / unassigned question* → repaired **in place** (update text/explanation, rebuild option rows + key,
+    set `isActive`/`isReviewed=true`).
+  - *Already assigned to an assessment set* → **clones** a corrected, active question (same section/subtopic
+    classification + corrected options/key) and **deactivates the old one**. Delivery
+    (`student-node getAptitudeAssessmentQuestions`) serves questions by `assessment_set` membership and reads
+    their text/options **live** — it does **not** filter `is_active` — so an in-place edit would change what
+    in-progress students see (and rebuilt option rows would change their IDs). The clone keeps the old set
+    serving the untouched original, while future selection (`selectAptitudeQuestionsForAssessment`, which
+    filters `is_active=true`) picks up the corrected copy. The `after_snapshot` records
+    `appliedAs` (`in-place` | `new-question`) and `newQuestionId`.
 - Writes one **audit row per outcome** to `assessment.question_verification_audit`.
 
 ## Audit table — `assessment.question_verification_audit`
@@ -55,12 +67,12 @@ verify cron (admin-node/script/scheduler.js → questionManagerJob, COMMENTED by
 | Column | Type | Purpose |
 |--------|------|---------|
 | `audit_id` | uuid PK | row id |
-| `question_id` | uuid FK → `questions` (cascade) | which question |
+| `question_id` | uuid FK → `questions` (cascade) | which question was processed |
 | `outcome` | varchar(20) | `corrected` / `verified` / `deactivated` / `error` |
 | `was_corrected` | boolean | whether anything changed |
 | `correct_option_index` | integer | final keyed index |
 | `changes` | jsonb | list of edits made |
-| `before_snapshot` / `after_snapshot` | jsonb | full text + options + key, before vs after |
+| `before_snapshot` / `after_snapshot` | jsonb | full text + options + key, before vs after (`after` also carries `appliedAs` + `newQuestionId` for copy-on-write) |
 | `reason` | text | why deactivated |
 | `error_detail` | text | failure detail |
 | `created_by`, `created_at` | varchar / timestamp | `system-cron-verify`, time |
@@ -71,9 +83,11 @@ Indexed on `question_id`, `outcome`, `created_at`. Migration: DB-Scripts
 ## Status / gating
 
 - The verify cron (`questionManagerJob`) is **commented out** in `admin-node/script/scheduler.js` — it must be
-  uncommented to run, and a live `OPENAI_API_KEY` must be present in the FastAPI env.
-- **Deployed:** DEV + UAT. **PROD:** pending.
-- **Audit table:** applied on DEV + UAT. **PROD:** pending.
+  uncommented to run.
+- **Code deployed:** validate-and-repair on DEV + UAT + PROD; **copy-on-write** on DEV + UAT (PROD pending).
+- **Audit table:** applied on DEV + UAT + PROD.
+- **Model on gateway:** `gpt-5-mini` registered on the PROD LiteLLM proxy (OpenAI backend) — required before the
+  cron is enabled in PROD.
 
 ## Cost
 
