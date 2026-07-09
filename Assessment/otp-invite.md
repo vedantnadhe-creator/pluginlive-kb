@@ -43,6 +43,29 @@ The same link can be copied manually from the admin assessment detail **Students
 
 The invite URL is built from `process.env.ASSESSMENT_FE_BASE_URL` (admin-node helper `app/helpers/assessmentInviteEmail.js`). Each environment **must** set this — the helper falls back to `https://assessment.dev.pluginlive.com` if unset, so a UAT or PROD container without the var silently sends candidates to DEV. UAT value: `https://assessment.uat.pluginlive.com`. PROD value: `https://assessment.pluginlive.com`.
 
+## SMS channel — OTP also texted via MSG91 (2026-07-09)
+
+The **same** verification OTP is now also delivered by **SMS via MSG91**, as a **best-effort second channel** alongside the email. Email remains the source of truth; SMS never blocks or fails the request.
+
+- **Where:** `user-management-node` `assessmentInviteOtpHandler.requestOtp` (and `/resend`). After the email is dispatched, it looks up the candidate's phone and texts the same code. `verifyOtp` is unchanged — one hash validates a code read from either channel.
+- **Sender:** `user-management-node/app/helpers/msg91Sms.js` → `sendOtpSms({to, otp})` POSTs to MSG91's **Flow API** (`https://control.msg91.com/api/v5/flow/`) with `{ template_id, recipients:[{ mobiles, var: otp }] }`. Reuses the WhatsApp helper's `normalizeRecipient` (India +91). Reuses the existing `MSG91_AUTHKEY` (same MSG91 account `pluginlive5` as WhatsApp).
+- **Phone source:** the candidate's `users.phone_number` (encrypted, decrypted via `MASKING_SECRET`), matched **case-insensitively by email**. No column added to `assessment_invite_otps`, no candidate-facing "enter phone" step. Missing phone → SMS silently skipped, email still sent.
+- **`SMS_ENABLED` master switch:** only the literal string `"true"` enables SMS; anything else (unset / `"false"`) skips the lookup+send entirely and keeps the flow email-only. Read per-request, so it can be flipped by env without a redeploy.
+- **Response additions (backward compatible):** `/request` & `/resend` now also return `sms_sent: boolean` (a phone was on file and an SMS was dispatched — **not** a delivery guarantee) and `masked_phone: string|null` (last-4 masked, e.g. `••••1234`; full number never returned).
+- **Frontend hint:** `Assessment-React` `InviteStart` OTP screen appends "and texted to **••••1234**" to the "Code sent to &lt;email&gt;" line **only** when `sms_sent` is true; email-only candidates see the unchanged copy.
+- **DLT is mandatory for delivery (external, not code).** MSG91's Flow API returns `type:"success"` on **acceptance into the queue** — that does **not** mean delivered. Indian carriers reject via DLT unless (1) the SMS template is **DLT-approved** (MSG91 shows "Verified by DLT"; template `6a4deb0448d912e6610658e3`, sender **PILTEC**, DLT template `1707167757323433650`) **and** (2) the **PE-TM chain** is Active on the DLT operator portal — for MSG91 the telemarketer is **Walkover Web Solutions**, TM ID **`1302157225275643280`** (added via the DLT portal's "Telemarketer Request", accepted by MSG91, then chain approved). A missing chain surfaces in MSG91 Delivery logs as **"PE-TM Chain Error on DLT"**. Both were completed for `pluginlive5` on 2026-07-09.
+
+### SMS env keys (`user-management-node/.env.<env>`, box-local, NOT in git)
+
+| Key | Value | Notes |
+|---|---|---|
+| `MSG91_AUTHKEY` | (account authkey) | shared with WhatsApp; already present |
+| `MSG91_SMS_OTP_TEMPLATE_ID` | `6a4deb0448d912e6610658e3` | DLT-approved OTP Flow template |
+| `SMS_ENABLED` | `"true"` | `"true"` sends; anything else = email-only |
+| `MSG91_FLOW_URL` | *(optional)* | defaults to `https://control.msg91.com/api/v5/flow/` |
+
+DEV + UAT: live 2026-07-09 (`SMS_ENABLED="true"`). PROD: pending (set the keys + `SMS_ENABLED` and confirm the DLT chain before enabling).
+
 ## Candidate flow
 
 1. Candidate opens `assessment.<env>.pluginlive.com/assessment/start/<token>`.
