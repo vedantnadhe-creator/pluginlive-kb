@@ -45,7 +45,9 @@ Lists all **currently active assessments** (end_time >= now) for the admin dashb
 - `states`, `cities` — comma-separated geographic filters
 - `isSubscribed`, `isTrial` — subscription type filters
 - `instituteId` — filter for a specific institute
-- `sort` + `order` — sorting by creation date / start time
+- `sort` (`asc`/`desc`) + `order` — sort field. Recognised `order` values: `endDate`, `startDate`, `assessmentName`; **any other value (the frontend sends `createdAt`) falls through to the creation-time branch** `COALESCE(aaudit.createdat, <map>.start_time)`. **Default is `order=createdAt`, `sort=desc` → newest-created first** (set July 2026; was `endDate`/`asc`). The admin-react default lives in the `SubscribedInstitutes.filters` reducer (`order: 'createdAt', sort: 'desc'`), which always wins over the `?? 'createdAt'` fallback in `fetchActiveAssessments`.
+  - **Creation time comes from the `assessment_audit` join, not the map table.** `assessment_institute_map`/`assessment_corporate_map` have **no `created_at` column** — the created timestamp is `assessment_audit.createdat`, reached via `<map>.audit_id → assessment_audit.audit_id`. Both branches `LEFT JOIN assessment.assessment_audit aaudit` (corporate branch got this join + `COALESCE` fallback in July 2026 to match the college branch, which already had it).
+  - **`audit_id` is nullable** (older rows created before the audit table was wired). For those, the sort `COALESCE`s to `start_time`, so created-time ordering is exact for rows with an audit link and start-time-approximate for the rest. PROD footprint at rollout: college ~3.4% of active rows null-audit; **corporate ~55%** null-audit (so corporate created-sort ≈ start-time sort until backfilled). A dedicated `created_at` column on both map tables is planned for a later sprint to remove the audit-join dependency.
 
 **Also returns:** `totalCount`, `subscribedCount`, `trialCount` for tab-level badge counts
 
@@ -60,6 +62,8 @@ Lists **past assessments** (end_time < now) in the Completed tab.
 Same parameters and return structure as `getActiveAssessments`. Separate internal handlers per entity type:
 - `handleCollegeAssessments()` — queries `assessment_institute_map`
 - `handleCorporateAssessments()` — queries `assessment_corporate_map`
+
+**Sorting differs from Active:** this endpoint **ignores `order`** — both branches hardcode `ORDER BY <map>.end_time ${sort}` (only `sort` asc/desc is honoured). So the shared `createdAt` default (from the `SubscribedInstitutes.filters` reducer) has **no effect on the Completed tab** — it stays end-date-ordered. Only the Active tab respects the `createdAt` created-time default.
 
 ---
 
