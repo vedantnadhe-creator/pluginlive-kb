@@ -79,6 +79,7 @@ flowchart TD
 - Admin selects **assessment type** = `Communication`
 - Configures: name, start/end date & time, CEFR level, domain, proctoring, student list
 - Supports **one-time** or **scheduled** (daily/weekly/monthly/custom) distribution
+- Select **Listening Audio Accent** (default `en-IN` Indian English; other options: `en-US`, `en-GB`, `en-AU`). Default keeps the existing shared set pool; any non-default accent generates a fresh set on the fly.
 - Dispatches `assignCommunicationAssessment` action to backend
 
 #### Backend — `Assessment.js` → `assignCommunicationAssessment()`
@@ -91,10 +92,10 @@ flowchart TD
    - Uses raw SQL with `DISTINCT ON (LOWER(primary_email))` ordered by `submitted_at DESC`
    - First-time students (no progression record) → use the admin-selected CEFR level
    - Returning students → use `suggestedCefr` from their latest progression record
-3. Generates question sets via `generateCommunicationQuestions()` which calls FastAPI `/communication/generate_questions`
+3. Generates question sets via `generateCommunicationQuestions()` which calls FastAPI `/communication/generate-questions` with the admin-selected `accent`
 4. Creates DB records:
    - `assessmentInstituteMap` — links assessment to institute
-   - `assessmentSet` — stores generated questions with CEFR level
+   - `assessmentSet` — stores generated questions with CEFR level and the `accent` the listening/dictation audio was generated with
    - `assessmentAssignedStudent` — one per student, linked to an assessment set
 5. Handles **set rotation** — tracks which sets have been assigned to avoid repetition
 6. Creates students in the system if they don't exist yet (auto-registration)
@@ -122,7 +123,7 @@ Same flow as above but queries `progression_history` with `is_practice = true` f
 **Key behaviors in `assessment.js`:**
 - **Fullscreen enforcement** — enters fullscreen, detects violations (tab switch, right-click, copy-paste)
 - **Recording** — uses MediaRecorder API for video/audio capture, uploads to OCI storage
-- **Section navigation** — Next/Previous with response saving between sections
+- **Section navigation** — Next/Previous with response saving between sections. When a section is complete, a sticky green banner appears with a prominent **"Next Section →"** button and a pulsing ring so users clearly know to proceed.
 - **Auto-submit** — on timer expiry or too many violations
 - **Drag-and-drop** — for Sentence Build section (uses `@dnd-kit`)
 - **Anti-cheat** — blocks copy/paste, right-click, tracks fullscreen exits
@@ -190,7 +191,7 @@ corporateMap.response_language  →  instituteMap.response_language  →  Englis
 
 | Endpoint | Purpose |
 |----------|--------|
-| `generate_questions` | Generates question sets using Gemini/Groq AI based on CEFR level and domain. **Question Based Response** sections need an AI image: `QuestionGeneration/Communication/image_generation_google.py` generates it via **Imagen** and uploads to student-node. Image gen routes through the **LiteLLM gateway** (`gemini/imagen-4.0-fast-generate-001`, tracked) when `LITELLM_PROXY_URL`+`LITELLM_VIRTUAL_KEY` are set, else native `google.genai`. If image gen fails, the **entire** set generation aborts with *"Assessment cannot be generated right now. Image generation failed…"*. See `Infrastructure/ai-gateway.md`. |
+| `generate_questions` | Generates question sets using Gemini/Groq AI based on CEFR level, domain, and the admin-selected `accent`. Default `accent=en-IN` keeps Indian-context scenarios and the existing shared set pool. Any other accent (`en-US`, `en-GB`, `en-AU`) generates a **fresh** set with culturally-neutral content and uses Google Cloud **Wavenet** voices for the Audio Question and Dictation audio (`en-US` → `en-US-Wavenet-F`). Set selection/rotation is scoped by `accent` so pools never mix. **Question Based Response** sections need an AI image: `QuestionGeneration/Communication/image_generation_google.py` generates it via **Imagen** and uploads to student-node. Image gen routes through the **LiteLLM gateway** (`gemini/imagen-4.0-fast-generate-001`, tracked) when `LITELLM_PROXY_URL`+`LITELLM_VIRTUAL_KEY` are set, else native `google.genai`. If image gen fails, the **entire** set generation aborts with *"Assessment cannot be generated right now. Image generation failed…"*. See `Infrastructure/ai-gateway.md`. |
 | `calculate_paragraph_reading_audio_score` | Uses **Azure Speech SDK** for pronunciation assessment — measures accuracy, completeness, fluency, prosody |
 | `calculate_question_based_response_score` | AI evaluation of image description — grammar, phrasing, spelling, vocabulary, coherence |
 | `calculate_email_writing_score` | AI evaluation of email — phrasing, voice/tone, format, grammar, spelling |
