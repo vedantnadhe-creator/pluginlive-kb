@@ -356,9 +356,17 @@ Recalculates communication progression history for every student (or a filtered 
 
 > **Live and backfill are the same code.** The backfill no longer has its own pairing/`is_calc` logic — it routes through the identical `replayCommunicationProgression` the live path uses, so the two cannot diverge. Because the replay is a deterministic full-chain recompute (idempotent upsert per assessment), running it is safe and self-correcting; there is no `is_calc` to keep in sync.
 
-**Request body:** `{ "primaryEmails": ["a@x.com", ...] }` (optional — omit to process all students). `batchSize` optional (default 50).
+**Request body:** `{ "primaryEmails": ["a@x.com", ...] }` (optional — omit to process all students). `batchSize` optional (default 50). `simulate` and `dryRun` optional booleans (default false).
 
 Use this after fixing progression/scoring bugs to recalculate historical data, or scoped to specific students to repair them.
+
+**`simulate: true` — recover chains spoiled by the out-of-order race.** The default replay trusts the **served** set level (`assessmentSet.cefrLevel`). But the pre-gate out-of-order race (a student attempting the next assessment before the predecessor's progression landed) served **wrong-level sets**, so a normal backfill just re-derives the same wrong progression — it cannot self-heal. Simulate mode re-derives each **post-diagnosis** assessment as if it had been served a set at the student's **intended** level (the predecessor row's `suggestedCefr`, which is the value the set-selector *should* have used) instead of the level actually served. Diagnosis assessments (index 0/1) keep their real set level, `finalScore` is reused (no re-scoring), and `assessmentCefrAtTime` still records what was **actually served** (historical truth). Because the frontend "assigned" pill reads the predecessor's `suggestedCefr` (not `assessmentCefrAtTime`) — see §6 Dashboard Data Sources — fixing the chain also corrects the displayed assigned level. `simulate:false` is byte-identical to the normal replay. Implemented in `computeNextCommunicationRecord`/`computeCommunicationChain` (`communicationProgression.js`) via a `simulate` flag; simulate/dryRun always force the **full** replay (never the incremental fast-path).
+
+**`dryRun: true` — preview without writing.** Computes the whole chain and returns a per-assessment `data.preview` (per student: `{ assessmentAssignedId, submittedAt, setServed, before:{progression,suggested}, after:{progression,suggested}, changed }`) but performs **no** upsert and **no** profile/`resultingCefr` update. Combine with `simulate:true` to preview a recovery before committing.
+
+> **Invariant to check after a simulate run:** for every post-diagnosis row, `assigned − progression ≥ 0` (a student assigned A1 cannot show progression B1). This is exactly what the out-of-order race broke.
+
+> ⚠️ **Do not run a plain (non-simulate) backfill on emails you repaired with `simulate:true`.** A plain backfill reads the real served set (e.g. B2) again and would re-spoil them, because `assessmentSet.cefrLevel` / `assessmentCefrAtTime` still hold the served level. For those students, `simulate:true` is the only correct backfill. New occurrences are prevented by the **progression gate** (see `assignment-calculation-queue.md`); simulate exists to repair rows created **before** the gate was deployed. First real use: 6 Christ University Communication students (2026-07).
 
 ---
 

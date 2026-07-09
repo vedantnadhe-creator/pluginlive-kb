@@ -194,6 +194,13 @@ predecessor's progression hadn't been written yet → wrong-difficulty set.
 - **No new schema** — reuses `progression_history` existence + calc flags.
 - **Flag:** `PROGRESSION_GATE_ENABLED=1` + `PROGRESSION_GATE_TYPES=Communication,Aptitude`
   (student-node). Off → gate inert.
+- **Repairing rows spoiled *before* the gate:** the gate only prevents *new* wrong-level
+  sets. Rows already spoiled (wrong-level set served → progression derived above the
+  assigned level, e.g. assigned A1 but progression B1) are recovered with the
+  **simulate backfill** — `POST /assessment/backfill-progression` with `{ simulate: true }`
+  (preview first with `dryRun: true`). It re-derives each post-diagnosis assessment at
+  the intended level (predecessor's `suggestedCefr`) instead of the served set level.
+  See `communication.md` §8 Backfill API. (Communication only; aptitude has no simulate path yet.)
 
 ## Video upload-wait optimization (scoring)
 
