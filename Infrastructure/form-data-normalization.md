@@ -468,12 +468,28 @@ LinkedIn-sourced candidate gets a populated work history / education without a r
 > has no recent job, `recent_*` == `work_1_*` and `map_to_final_schema`'s sheet-entry dedup
 > (role + start + end) collapses them, so no duplicate is introduced.
 >
+> **Gotcha 4 — internships & projects were dropped from the payload (fixed 2026-07-10, UAT `69bb547`).**
+> `map_to_final_schema` only rebuilt `resume.workExperience` (from `work_N_*`/`recent_*`). The
+> normalizer also emits `internship_N_*` and `project_N_*`, but nothing mapped them into the
+> create-full payload, so ERP internships/projects were silently missing (only appeared if a
+> parsed CV/LinkedIn `cv_data` happened to carry them). Fix: two additive blocks mirroring the
+> workExperience merge build `resume.internships` (`{role, organization, started_in, ended_in,
+> description?, skills?}` from `internship_N_*`) and `resume.projects` (`{title, …}` from
+> `project_N_*`), then keep non-duplicate CV entries. Guarded — only set when non-empty, so
+> candidates without these columns produce byte-identical payloads. `internships`/`projects`
+> are already whitelisted (`ALLOWED_RESUME_FIELDS`) and modeled (`resume.internships/projects
+> Json[]`) in student-node.
+>
 > **Deploy target (important):** the hook runs in the **`datanormalization-worker`** container
 > (`python main.py worker`) on **uat.pluginlive.com** — that's what processes the ingest
-> queue. `deploy.sh` option 24 only rebuilds the API container from the wrong branch
-> (`git pull origin Development`), so deploy LinkedIn/normalization changes manually:
-> `ssh uat → git pull origin UAT → (add PDL_* to .env) → docker build -t datanormalization:api . →`
-> recreate **all three** containers (`datanormalization`, `-worker`, `-cron`).
+> queue. `deploy.sh` option 20 only rebuilds the API container (and the running containers use
+> tag `datanormalization:api-namefix`, not the `:api` deploy.sh builds), so it never updates the
+> worker/cron. Deploy normalization changes manually, keeping the existing `.env` (do **not**
+> `cp .env.uat .env` — it can regress the hand-applied Gemini keyfix):
+> `ssh uat → cd ~/api/form-data-normalization → git pull origin UAT → docker build --build-arg ENVIRONMENT=uat -t datanormalization:<tag> . →`
+> recreate **all three** containers with their exact cmd/ports/restart (`datanormalization` api
+> `-p 5013:5013 --restart always`, `-worker` `python main.py worker`, `-cron` `python main.py cron`,
+> both `--restart unless-stopped`, all `--env-file .env`).
 
 **Flow** (`services/peopledatalabs_service.py`):
 - `PeopleDataLabsService.enrich(linkedin_url=…)` → `GET /v5/person/enrich?profile=<url>&min_likelihood=6`,
