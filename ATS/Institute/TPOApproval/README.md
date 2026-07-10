@@ -92,3 +92,12 @@ Each field has two flags:
 - **Bulk approve:** Approve multiple pending requests at once
 - **Student resume management:** View and edit resumes during approval flow
 - **Cascading filters:** Year of passing, degree hierarchy for listing
+
+### Gotcha — certifications/courses field mapping (fixed 2026-07-10)
+
+Certifications live in the Prisma resume under the **`courses`** column, but the TPO-approval config namespace for them is **`certifications`**. Two mismatches in `student-node/app/helpers/tpoApprovalHelper.js` (`processExistingArrayItem`) made certification edits bypass approval and, worse, silently drop:
+
+- **Config lookup mismatch.** The sub-field mapping hardcoded `certificate → certifications` and `organization → companyName`, so for the `certifications` namespace `getFieldConfig` missed the real `certifications.certificate` / `certifications.organisation` config entries. Certificate-upload and institute-name edits therefore fell through to the **"no config found" direct-update branch** instead of requiring TPO approval. Fixed so `certificate`/`organization` map to `certificate`/`organisation` when `fieldName === 'certifications'` (and stay `certifications`/`companyName` for projects/internships/workExperience).
+- **DB column mismatch.** Direct-update writes used the config namespace name (`certifications`) as the resume array key, but the actual Prisma column is `courses`. `student.resume['certifications']` was `undefined` → array defaulted to `[]` → `itemIndex` always `-1` → the function returned before saving, **silently dropping** direct-update fields like the certificate upload. Fixed with a reverse mapping `{ certifications: 'courses' }` before reading `student.resume[arrayFieldName]`.
+
+Net: certification certificate-upload and institute-name edits now correctly require approval (or persist on direct update) instead of vanishing.

@@ -45,3 +45,5 @@ The Job Preview module provides a detailed view of a specific job role. It displ
 - **Placement history:** Historical placement data
 - **Resume viewer:** Side drawer for viewing student resumes
 - **Role status metrics:** Current status of the job role
+- **Archive / restore from the preview header (2026-07-10):** The Job Preview header (`PageHeader/Components/InformationHeader.js`) now exposes **Archive** / **Restore** actions for institute-published roles — the same soft-hide flow as the Job Roles list (see `ATS/Institute/JobRoles` → Archive/Restore, backed by the global `job_roles.is_archived`/`archived_at`/`archived_by` columns and the `archiveJobRole`/`unarchiveJobRole` endpoints). Both use an antd `Modal.confirm` dialog and, on success, navigate back to `/jobRoles`.
+- **Drive offer-status tags (2026-07-10):** the ATS candidate table (`ATS/Components/IndividualTable/DriveStatus.js`) now renders three additional `offerStatus` values — `JOINED` → **"Joined"**, `LEFTED` → **"Left"**, `NOT_RELEASED` → **"Intent to Offer"** — alongside the existing offer states.

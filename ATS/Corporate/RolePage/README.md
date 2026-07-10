@@ -35,6 +35,8 @@ The Role Page module provides a category-based job role listing view. It support
 | `getStatusFilter` | `/corporates/filterStatus/corporate/{corpId}/jobs?jobCategory={cat}` | GET | Status filter options per job category |
 | `getRoleFilter` | `/corporates/filterRole/corporate/{corpId}/jobs?jobCategory={cat}` | GET | Role filter options per job category |
 | `getScheduleFilter` | `/corporates/filterEvaluation/corporate/{corpId}/jobs?jobCategory={cat}` | GET | Evaluation schedule filter options |
+
+> **"Scheduled" vs "Not scheduled" semantics (fixed 2026-07-10, `corporate-node/app/models/JobRoles.js`).** The evaluation filter now keys off whether **at least one interview round is actually configured**, i.e. `interview_workflow -> 'rounds'` is a JSON array with `jsonb_array_length > 0`. Previously "Scheduled" only tested that `interview_workflow` was a non-empty **object**, so a role with `{"rounds": []}` (workflow shell created but no rounds added) was wrongly counted as Scheduled. `NOT_SCHEDULED` is the symmetric complement (`interview_workflow` null, or `rounds` not an array, or an empty array). Applies to both the corporate listing and the per-campus listing query paths.
 | `getDomainList` | `/institutes/{campusId}/domain` | GET | Domain list filtered by job category |
 | `getDegreeList` | `/institutes/{campusId}/degree` | GET | Degree list filtered by domain and job category |
 | `getDepartmentList` | `/institutes/{campusId}/streams` | POST | Department/stream list |
