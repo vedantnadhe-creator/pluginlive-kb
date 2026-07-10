@@ -2,6 +2,24 @@
 
 This folder contains module-wise documentation for the PluginLive Search Service — a NestJS backend that provides ElasticSearch-powered search, data ingestion, synchronization, and index management for the entire ATS platform.
 
+## ⚠️ Search engine per environment (ES → Postgres migration)
+
+| Env | Engine | Notes |
+|---|---|---|
+| DEV | **Postgres** (`SEARCH_ENGINE_DEFAULT=pg`) | ES container removed |
+| UAT | **Postgres** (`SEARCH_ENGINE_DEFAULT=pg`) | Full PG code deployed 2026-07-10 |
+| PROD | **ElasticSearch** | Unchanged — everything below still describes PROD |
+
+Under the PG engine (flag resolved per endpoint by `src/modules/search/pg/engine.flag.ts`, default via `SEARCH_ENGINE_DEFAULT`; the flag must live in the box `.env`, not `docker -e`):
+
+- **Reads** are served from materialized views in the `search_engine` Postgres schema (one MV per former ES index, e.g. `mv_institutes_master`, `mv_corporate_list`, `mv_degree_stream_specialisation_master`, `mv_institute_job_role`). Query logic lives in `src/modules/search/pg/pgSearch.service.ts`. Search semantics mirror ES: per-word prefix AND for multi-word terms, punctuation-stripped short-form matching (`B.C.S` ⇄ `BCS`), trigram typo tolerance for single words, and exact-name > exact-short-form > prefix > contains ranking (score terms are NULL-proofed — `similarity(NULL, q)` once poisoned the ordering).
+- **`/sync/*` endpoints and their crons** no longer write ES — they `REFRESH MATERIALIZED VIEW CONCURRENTLY` the corresponding MV(s) via `search_engine.refresh_one()` (helper `pgRefreshMvs` in `sync.service.ts`). Outcomes are logged in `search_engine.refresh_log`. Datasets with no MV no-op with a log.
+- **`/ingest/*`** (per-document writes from institute/corporate/student-node) is an acknowledged **no-op** under PG — data freshness is cron-cadence (12h + the 3/5-min degree-stream-spec pair), not per-write realtime.
+- **`/synonyms`** stays ES-only (no callers); synonyms under PG come from the `search_engine.pluginlive` text-search dictionary.
+- **`/collegenamecorporatesfilter/lists`** returns an empty result under PG — its source views (`institute.college_name_corporates_filter_*_view`) no longer exist on any env, so the ES pipeline was already dead; recreate the views to restore data.
+- **DB migrations** live in `PluginLive-Technologies/DB-Scripts` → `Search Service Postgres Migration/` (001–009 + `institute_job_role_mv`). DEV + UAT applied; **PROD pending** — apply all of them (sorted by filename) before ever flipping PROD to `pg`.
+- Known data caveat: exact-short-form junk degrees in DEV/UAT master data (e.g. "BE TESTING DEGREE", short form `BE`) legitimately rank alongside Bachelor of Engineering for `BE` searches — clean the master data, don't change the ranking.
+
 **Backend:** `search-service-1`
 **Framework:** NestJS (TypeScript)
 **Port:** 3001 (default)
