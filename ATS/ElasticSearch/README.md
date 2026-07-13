@@ -19,6 +19,7 @@ Under the PG engine (flag resolved per endpoint by `src/modules/search/pg/engine
 - **`/collegenamecorporatesfilter/lists`** returns an empty result under PG — its source views (`institute.college_name_corporates_filter_*_view`) no longer exist on any env, so the ES pipeline was already dead; recreate the views to restore data.
 - **DB migrations** live in `PluginLive-Technologies/DB-Scripts` → `Search Service Postgres Migration/` (001–009 + `institute_job_role_mv`). DEV + UAT applied; **PROD pending** — apply all of them (sorted by filename) before ever flipping PROD to `pg`.
 - Known data caveat: exact-short-form junk degrees in DEV/UAT master data (e.g. "BE TESTING DEGREE", short form `BE`) legitimately rank alongside Bachelor of Engineering for `BE` searches — clean the master data, don't change the ranking.
+- **Per-dataset `orSearchCols` (since UAT 2026-07-13):** a `PgDataset` can list extra columns OR'd into the search predicate as punctuation-stripped contains, with a +4 boost on exact match. Used by `INSTITUTES_MASTER` with `orSearchCols: ['instute_campus_short_name']` to recover the ES `instituteCampus.shortName^2` behavior — short-form institute lookups like `?search=pcwd` now hit a college whose campus short form is `pcwd`/`PCWD`/`P.C.W.D`. Other datasets inherit name-only matching.
 
 **Backend:** `search-service-1`
 **Framework:** NestJS (TypeScript)
