@@ -480,6 +480,31 @@ LinkedIn-sourced candidate gets a populated work history / education without a r
 > are already whitelisted (`ALLOWED_RESUME_FIELDS`) and modeled (`resume.internships/projects
 > Json[]`) in student-node.
 >
+> **Gotcha 5 — university dropped from education[] (fixed 2026-07-13, UAT `c101b1c`).**
+> The normalizer only had an `institution_name` (college) slug — no university slug — so a
+> "Graduation University" / "Post Graduation University" column had nowhere to map and was
+> dropped, even though student-node's `educationProfile` has a `university` column. Fix:
+> (a) registered slugs `education_ug_university` + `education_pg_university` in
+> `candidate_ingestion_schema.normalized_columns` (mapping_field NULL, like `education_ug_city`),
+> (b) prompts (V2 live + V1 + no-norm) map university columns to `education_<level>_university`,
+> distinct from the college, (c) `map_to_final_schema`'s `education[]` record now carries
+> `"university": data.get("university","")` (+ in has_data). Name-only — `universityId` left
+> empty (no university-master matching). **PROD needs the same 2 slug INSERTs** (config table,
+> not shipped by code): `INSERT ... education_ug_university / education_pg_university`.
+>
+> **Gotcha 6 — CGPA won over Percentage when a level had both columns (fixed 2026-07-13, UAT `c101b1c`).**
+> The compact score rule (`SYSTEM_PROMPT_V2`) had no guidance when a level exposed BOTH a
+> percentage column and a CGPA/GPA column, so the LLM took CGPA. Added a "PREFER PERCENTAGE"
+> rule (V2 + V1): when both exist, use the percentage value for `education_{level}_marks` and
+> set `cumulative_type=Percentage`; fall back to CGPA only when no percentage column exists.
+>
+> **Address (reference):** both current & permanent address already normalize. current_* →
+> `studentPersonalProfile.corr*` (corrAddrLine1/corrCity/corrState/corrPostCode/corrCountry, +IDs);
+> permanent_* → `perm*`. If current-address fields are blank the worker copies permanent→current.
+> The `*_address_city/state/pincode` slug variants are unmapped (NULL) decoys — the canonical
+> `current_*`/`permanent_*` slugs carry the data. CV parsing runs whenever a sheet has a
+> CV/resume URL column (`Upload CV`, `CV URL`, `Resume URL`, …) → `parse_pdf`; no CV column = no parse.
+>
 > **Deploy target (important):** the hook runs in the **`datanormalization-worker`** container
 > (`python main.py worker`) on **uat.pluginlive.com** — that's what processes the ingest
 > queue. `deploy.sh` option 20 only rebuilds the API container (and the running containers use
