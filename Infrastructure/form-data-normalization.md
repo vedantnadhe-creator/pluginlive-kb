@@ -492,11 +492,34 @@ LinkedIn-sourced candidate gets a populated work history / education without a r
 > empty (no university-master matching). **PROD needs the same 2 slug INSERTs** (config table,
 > not shipped by code): `INSERT ... education_ug_university / education_pg_university`.
 >
-> **Gotcha 6 — CGPA won over Percentage when a level had both columns (fixed 2026-07-13, UAT `c101b1c`).**
-> The compact score rule (`SYSTEM_PROMPT_V2`) had no guidance when a level exposed BOTH a
-> percentage column and a CGPA/GPA column, so the LLM took CGPA. Added a "PREFER PERCENTAGE"
-> rule (V2 + V1): when both exist, use the percentage value for `education_{level}_marks` and
-> set `cumulative_type=Percentage`; fall back to CGPA only when no percentage column exists.
+> **Gotcha 6 — CGPA won over Percentage when a level had both columns (fixed 2026-07-13, UAT `c101b1c`
+> prompt-only, hardened `6e692c6`).** The compact score rule (`SYSTEM_PROMPT_V2`) had no guidance when
+> a level exposed BOTH a percentage column and a CGPA/GPA column, so the LLM took CGPA. Added a "PREFER
+> PERCENTAGE" prompt rule (V2 + V1). But the LLM still applied CGPA→% conversion **inconsistently**
+> (CGPA-only sheets sometimes stored raw `7.9` shown in UI as "7.90%") — hardened with a **deterministic**
+> `_cgpa_marks_to_percentage()` in `map_to_final_schema`, run for every education level +
+> `highest_qualification_marks` before the mapping loop: CGPA-flagged or bare 0–10 values ×10 (0–1 ×100),
+> relabel `cumulative_type=Percentage`. Guarded — values already >10 are only relabelled, never re-scaled.
+>
+> **Gotcha 7 — Certifications column dropped; now → `resume.courses[]` (fixed 2026-07-13, UAT `6e692c6`).**
+> A "Certifications" column often lists several entries ("1. … \n 2. …") with no mapping at all. Prompt
+> now splits each into `course_1_title, course_2_title, …` (title only, numbering/trailing-desc stripped);
+> worker builds `resume.courses[]` (`{title}`, mirrors the internships/projects blocks) from `course_N_title`
+> / `courses_N_title`, keeping non-duplicate CV entries.
+>
+> **Gotcha 8 — Extra-curricular achievements dropped (fixed 2026-07-13, UAT `6e692c6`).** The
+> `extra_curricular` slug existed but had `mapping_field=NULL`. Prompt now maps the "Extra-curricular
+> achievements" column (distinct from "Academic achievements") to it; DB `mapping_field` set to
+> `studentPersonalProfile.extraCurriculars` (single string field, applied directly to shared UAT DB —
+> config data, not shipped by code; **PROD needs the same UPDATE**).
+>
+> **Gotcha 9 — "Other Degree" (second PG/second qualification) dropped (fixed 2026-07-13, UAT `6e692c6`).**
+> A sheet with BOTH "Post Graduation ___" and "Other Degree ___" blocks only kept Post Graduation — Other
+> Degree had no level assignment and vanished. Prompt now infers the level from the DEGREE NAME (not
+> hardcoded): Bachelor→ug, Master/M.Tech/MBA/MHRD→pg, PhD→phd, PG-Diploma/PGDM→p_g_diploma, Diploma
+> →diploma; if that level is already occupied (e.g. `pg` held by Post Graduation), it falls through the
+> nearest empty higher-ed slot (`pg → p_g_diploma → pd → phd → diploma`) so both qualifications survive
+> as distinct `education[]` blocks. Reuses existing `education_<level>_*` slugs — no new DB rows.
 >
 > **Address (reference):** both current & permanent address already normalize. current_* →
 > `studentPersonalProfile.corr*` (corrAddrLine1/corrCity/corrState/corrPostCode/corrCountry, +IDs);
