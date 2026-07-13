@@ -123,7 +123,7 @@ Same flow as above but queries `progression_history` with `is_practice = true` f
 **Key behaviors in `assessment.js`:**
 - **Fullscreen enforcement** — enters fullscreen, detects violations (tab switch, right-click, copy-paste)
 - **Recording** — uses MediaRecorder API for video/audio capture, uploads to OCI storage
-- **Section navigation** — Next/Previous with response saving between sections. When a section is complete, a sticky green banner appears with a prominent **"Next Section →"** button and a pulsing ring so users clearly know to proceed.
+- **Section navigation** — Next/Previous with response saving between sections. A sticky "Next Section →" completion banner (`SectionCompleteBar`) was added on `Development` (commit `d1a64cc` + hotfix `59c504f`) but **reverted on UAT only** (commit `1334753`, 2026-07-13) at the client's request — UAT/PROD currently show the original inline blue Next button with no banner. The feature remains on `Development` for future re-promotion.
 - **Auto-submit** — on timer expiry or too many violations
 - **Drag-and-drop** — for Sentence Build section (uses `@dnd-kit`)
 - **Anti-cheat** — blocks copy/paste, right-click, tracks fullscreen exits
