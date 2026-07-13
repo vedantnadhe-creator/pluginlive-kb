@@ -501,3 +501,12 @@ This is a **separate stack** from the institute candidate list — it does NOT u
 ## AssessmentNavBar — visibility for expired schedules
 
 `Partials/ActiveCollegeList/components/AssessmentNavBar.js` is the switcher that lets you move between the assessments in a schedule (Diagnosis + each run) from the detail view, gated by `navList.length > 1` in `InstituteAssessmentDetails.js`. Its internal `isItemVisible` filter hides only **`Upcoming`** runs and shows ongoing/completed/**expired** runs (`Expired - Completed` / `Expired - Lapsed`). It previously allowed only `completed`/`ongoing`, which hid the entire bar once a schedule's runs had expired (all runs filtered out → only Diagnosis left → `visibleItems.length <= 1` → renders `null`). Backend run statuses come from institute-node `StudentListInfo.js` (`Upcoming` / `Ongoing` / `Expired - Lapsed` / `Expired - Completed`).
+
+## Gotcha: assessment start/end dates showed a bogus "6:30 PM" (fixed 2026-07-09)
+
+In the Active Assessment student table (`admin-react` `Partials/Assessment/StudentsTable`), the **ASSMT. START & END DATE** / **ASSESSMENT SENT DATE** columns rendered e.g. `Jul 12, 2026 06:30 PM – Jul 20, 2026 06:30 PM`. The DB window was correct (`start 00:01Z`, `end 23:59Z` = the intended IST full-day window). Two-layer bug:
+
+1. **Backend** `admin-node getAssessmentDetails` built the strings with `moment(assessment.startTime/endTime).format("DD MMM YYYY")`. `start_time`/`end_time` are **IST-wall-clock-labelled-UTC**, so the server's IST render pushed the end **+1 day** (`23:59Z` → `"21 Jul"`). Fixed by using **`moment.utc(...)`** for those assessment start/end dates (real-instant fields — started/dropped/attempted — keep local `moment`). Sort (which parses `sentDate` as `"DD MMM YYYY"`) and the Excel export are unaffected — still get date strings.
+2. **Frontend** `StudentsTable.formatDateOnly` then re-parsed the bare `"21 Jul 2026"` via `new Date()` (browser-IST midnight) and rendered with `timeZone:'UTC'` → shifted **−5:30** → `"Jul 20, 2026 06:30 PM"`. Fixed: render the already-formatted string **as-is**; only genuine ISO timestamps get UTC date formatting.
+
+Result: `13 Jul 2026 – 20 Jul 2026`. "Everywhere else was fine" because other tables receive **raw ISO timestamps** (`00:01Z`) that the UTC render handles correctly — only this endpoint pre-formats the dates as strings.
