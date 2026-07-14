@@ -469,6 +469,22 @@ Institute/college AI Interview assignments don't use this template at all (see t
 entity-type split above) — they get the normal student-portal activation/reminder emails,
 untouched by this fix. DEV+UAT live.
 
+**Follow-up (2026-07-14): end time in IST on the deadline line.** The "Please complete the
+interview by" line now shows date **+ time (AM/PM), labelled IST**, not date-only. Critical
+detail: AI Interview `end_time` (and the corporate map `end_time`) is stored as **IST
+wall-clock digits in a UTC `:00Z` field** (the `combine()`/`combineDateTime()` convention —
+6 PM IST is persisted as `18:00:00Z`). So every send path formats it with
+`moment.utc(...).format("DD MMM YYYY, hh:mm A [IST]")` — `moment.utc` reads the stored digits
+back as-is and the `[IST]` literal labels them; a plain `moment()` would re-convert and break
+on any non-UTC host (UAT/PROD app containers happen to be UTC today, so plain moment looked
+fine, but it was fragile). Four paths: sync create (`endDateTime`), add-to-existing (AI-only
+override from `assessmentMap.endTime`), resend (`_getAiInterviewEmailMeta` now also returns
+`acm.end_time` since `assessmentInfo.endDate` was date-only), async worker
+(`configSnapshot.endDateLabel` pre-formatted, worker prefers it over date-only `cfg.endDate`).
+Non-AI corporate-OTP emails keep their existing date label (the IST reformat is AI-gated).
+Note: on UAT `ASSIGNMENT_ASYNC_TYPES`/`ASSIGNMENT_ASYNC_ENABLED` are empty → AI Interview
+assign runs the **sync** path, not the queue worker.
+
   New-vs-existing is determined by a `student_personal_profile`/`students` lookup on the
   candidate emails (`newUsers` / `existingUsers`). The reminder links to the student portal
   (`/onboarding/activate/:studentId` or `/login`); the candidate logs in and takes the AI
