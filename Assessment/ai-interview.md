@@ -436,6 +436,39 @@ a person's name — don't reuse it for candidate-facing greetings.
     **assessment-reminder email** via `this.sendRemindersToStudents(assessment.id, "college",
     existingUsers, …)`. No activation email (they're already activated).
 
+#### Corporate OTP invite email — role name, dynamic duration, layout (fixed 2026-07-11)
+
+The shared OTP invite template (`admin-node/app/helpers/assessmentInviteEmail.js`, used for
+every `assessmentType`, not just `AI_Interview`) had three bugs specific to the AI Interview
+copy:
+1. **Role missing when adding/resending on an EXISTING assessment.** The create-new-assessment
+   path (`assignAIInterviewAssessment`) always passed `role: roleName` correctly, but the two
+   flows that operate on an assessment that already exists —
+   `_addStudentsToOneTimeAssessment` (admin's "add student to existing assessment") and
+   `resendInvitesToStudents` — hardcoded `role: null` because neither has `interviewConfig` in
+   scope. Fixed with a new `Assessment._getAiInterviewEmailMeta(assessmentAssignedId)` (raw join
+   `assessment_assigned_students → assessment_sets → ai_interview_config`, best-effort/never
+   throws) called from both, gated on `assessmentType(Name) === "AI_Interview"`.
+2. **Duration was hardcoded "about 25 minutes"** in the email tip regardless of the admin's
+   configured `interviewDuration`. `buildHtml`/`sendAssessmentInviteEmail` now take
+   `durationMinutes` and render "This interview takes about N minutes." dynamically (omitted if
+   unavailable — no more false 25-min fallback). Threaded through all 4 AI Interview send paths:
+   sync create (`assignAIInterviewAssessment`, from `interviewConfig.interviewDuration`), async
+   create (`assignAIInterviewAssessmentAsync` stores `configSnapshot.interviewDurationSec`,
+   `assignmentWorker.js` reads it back), add-to-existing and resend (via the new
+   `_getAiInterviewEmailMeta` lookup — `interview_duration` is stored in seconds, converted to
+   minutes with `Math.round(.../60)`).
+3. **Duration + end-date now render ABOVE the CTA button** (`buildHtml`'s `durationLine` /
+   `deadlineLine`, moved from below the "copy link" text to above the "Start AI Interview"
+   button) — candidate sees the commitment (how long, by when) before clicking through, not
+   after. This reorder applies to the shared template for every `assessmentType`, not just
+   AI_Interview (only the duration line itself is AI_Interview-gated).
+
+Scope note: this only covers the **corporate OTP invite** path (`isCorporateOtpInvite`).
+Institute/college AI Interview assignments don't use this template at all (see the
+entity-type split above) — they get the normal student-portal activation/reminder emails,
+untouched by this fix. DEV+UAT live.
+
   New-vs-existing is determined by a `student_personal_profile`/`students` lookup on the
   candidate emails (`newUsers` / `existingUsers`). The reminder links to the student portal
   (`/onboarding/activate/:studentId` or `/login`); the candidate logs in and takes the AI
