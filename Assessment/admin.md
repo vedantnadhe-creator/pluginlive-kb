@@ -150,7 +150,9 @@ Quota is stored per entity **and per assessment type** in `assessment.subscribed
   - `scheduleAssessment` (schedule creation — rejects immediately instead of failing silently at night).
   - Nightly `AssessmentSchedulerService` (re-checks at trigger time).
 
-**Frontend** — admin-react `CreateAssessment` catches the 400 and renders a **"Assessment Quota Exhausted"** popup (`Modal.error`) showing Type / Remaining / Required when `error.code === 'QUOTA_EXHAUSTED'`; a generic error popup otherwise. The Feature Access → institute screen shows one mandatory per-type limit table (Role_Based merged in).
+**Reading saved quota (prefill on revisit)** — `GET /assessment/getInstituteSubscriptionQuota` returns the stored `token_limit`/`tokens_used` per type. It takes **either** `institute_id` (campus id is resolved to the parent institute) **or** `corporate_id` (used directly — corporates have no campus). Omit `assessment_type` to get all types (`{ quotas[], totalLimit, totalUsed, totalRemaining }`); pass it for a single type. Reads `subscribed_institutes` or `subscribed_corporates` accordingly. (Corporate support was added so the Feature Access screen prefills saved limits/usage on revisit for corporates, not just institutes.)
+
+**Frontend** — admin-react `CreateAssessment` catches the 400 and renders a **"Assessment Quota Exhausted"** popup (`Modal.error`) showing Type / Remaining / Required when `error.code === 'QUOTA_EXHAUSTED'`; a generic error popup otherwise. The Feature Access → institute/corporate screen shows one mandatory per-type limit table (Role_Based merged in) and prefills existing limits/usage on revisit for **both** institutes and corporates.
 
 **Scheduler quota-exhausted alerts** — when the nightly scheduler hits an exhausted quota it emails the schedule creator **plus** all active rows in `assessment.quota_alert_recipients` (`email`, `is_active`) — editable in DB, no code deploy needed. The loader never throws (returns `[]` on error) so alerting can't break a run.
 
