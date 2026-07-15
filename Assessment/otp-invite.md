@@ -26,6 +26,25 @@ ALTER TABLE assessment.assessment_corporate_map
 - No new tables, no enum changes, no new indexes.
 - DB-Scripts: `Assessment OTP Invite/001_corporate_map_is_otp_invite.sql`.
 
+### Postgres — invite short links (2026-07-15)
+
+```sql
+CREATE TABLE assessment.assessment_invite_short_links (
+  code                    VARCHAR(9)  PRIMARY KEY,
+  assessment_assigned_id  UUID        NOT NULL UNIQUE REFERENCES assessment.assessment_assigned_students ON DELETE CASCADE,
+  expires_at              TIMESTAMPTZ NOT NULL,
+  revoked_at              TIMESTAMPTZ,
+  click_count             INTEGER     NOT NULL DEFAULT 0,
+  last_clicked_at         TIMESTAMPTZ,
+  created_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at              TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+```
+
+- Stores **only** the assignment id — never candidate PII. The JWT payload is re-derived at click time.
+- `assessment_assigned_id` UNIQUE = one code per assignment, so the invite email and admin Copy Link emit the identical URL.
+- DB-Scripts: `Assessment OTP Invite/20260715T100351Z__assessment_invite_short_links.sql`. **DEV + UAT applied 2026-07-15; PROD pending.**
+
 ### MongoDB (user-management-node) — generalized OTP store
 
 - Old: `ai_interview_invite_otp` collection + `AiInterviewInviteOtp` model + `aiInterviewOtpHandler` + `/public/interview-otp/*` routes.
@@ -37,7 +56,9 @@ ALTER TABLE assessment.assessment_corporate_map
 
 When `is_otp_invite = true` the admin-node assignment handler **suppresses both** the portal-signup email and the legacy "complete your assessment" reminder, and sends only the OTP invite-link email.
 
-The invite-link email template lives at `user-management-node/src/utils/emailTemplates/assessmentInviteOtp.js` (renamed from the AI-interview-specific template). It carries: candidate name, assessment name (resolved live), corporate name, link to `/assessment/start/<token>`, expiry window.
+The invite-link email template lives at `user-management-node/src/utils/emailTemplates/assessmentInviteOtp.js` (renamed from the AI-interview-specific template). It carries: candidate name, assessment name (resolved live), corporate name, the invite link, expiry window.
+
+Since 2026-07-15 the link handed out is the **short** `/s/<code>` form, not `/assessment/start/<jwt>` — see [Invite link shortener](#invite-link-shortener-scode-2026-07-15).
 
 The same link can be copied manually from the admin assessment detail **StudentsTable** (Copy Link action) and shared via WhatsApp/SMS. This is a fallback for failed email delivery and reuses the same OTP-invite flow — the candidate still verifies email with a 6-digit OTP before entering the assessment. See `Assessment/admin-frontend.md` for the institute equivalent (activation link).
 
@@ -78,9 +99,62 @@ The **same** verification OTP is now also delivered by **SMS via MSG91**, as a *
 
 DEV + UAT: live 2026-07-09 (`SMS_ENABLED="true"`). PROD: pending (set the keys + `SMS_ENABLED` and confirm the DLT chain before enabling).
 
+## Invite link shortener (`/s/<code>`) — 2026-07-15
+
+The invite URL used to carry the whole JWT in its path (~475 chars): wrapped and broken by mail clients, unusable in WhatsApp templates, impossible to read aloud. It is now a **49-char** `https://assessment.<env>.pluginlive.com/s/<9-char code>`.
+
+```
+GET /s/vMkS1k3jc            (admin-node, public, unauthenticated)
+  -> resolve code -> assessment_assigned_id      (reject if unknown / revoked / expired)
+  -> re-derive email, type, role, company, phone from the assignment
+  -> mint invite JWT, TTL = min(24h, time left on the link)
+  -> 302 -> /assessment/start/<jwt>              (FE route unchanged)
+```
+
+The row stores **only the assignment id**, and this is load-bearing rather than incidental:
+
+- **No PII anywhere.** A JWT is signed, not encrypted — the old URL exposed the candidate's email, phone, role and company to every log, scanner and browser history that saw it.
+- **Secret rotation can't orphan links.** Rotating `ASSESSMENT_INVITE_SECRET` would have invalidated every stored JWT.
+- **It fixes a live bug.** A token frozen at send time keeps a typo'd email forever and 403s the candidate off their own invite (`requestOtp` matches on the email claim). Deriving at click time means correcting the email **repairs** the existing link.
+- **Links are revocable and expirable for the first time** — the deadline moved from an unrevocable JWT to a DB row. Re-issuing a revoked link **rotates** to a fresh code rather than resurrecting the dead one.
+
+Codes are 9 chars over `[a-z][A-Z][0-9]` (62^9 ≈ 1.4e16) from `crypto.randomInt` (rejection-sampled — a `randomBytes % 62` shortcut would skew toward the first 8 letters since 256 % 62 ≠ 0). The unique index decides collisions; inserts retry on 23505/P2002. The code is the credential, so the endpoint is public by design — the **OTP gate behind it** is what authenticates.
+
+### Link expiry follows the assessment window — NOT a flat TTL (2026-07-15)
+
+`expires_at` = the assessment's `end_time` (`COALESCE(assessment_corporate_map.end_time, assessment_institute_map.end_time)`) — the same instant the invite email already prints as *"Please complete the assessment by …"*. `ASSESSMENT_INVITE_TTL_DAYS` (14) is now only a **fallback** for assignments with no window set.
+
+The old flat 14-day TTL was wrong in both directions:
+
+- **It stranded candidates.** On DEV, **45 of 130** corporate assessments (~35%) run a window longer than 14 days — longest **77 days**. On those, the email promised a 60-day deadline while the link died on day 14; the candidate hit *"Invalid or expired invite link"* on a wide-open assessment. This predated the shortener (the JWT was minted at send with `expiresIn: 14d`); the workaround was invisible because support just resent the invite, minting a fresh token.
+- **It kept dead links alive.** A closed assessment still handed out a working 14-day link. The row is now written already-expired, so `resolveCode` rejects it.
+
+Anchoring to `end_time` also makes the deadline **idempotent** — it no longer re-opens a fresh 14 days on every send/copy. Extending an assessment's `end_time` propagates to the existing link on the next send/copy (the resolver reads the stored `expires_at`, not `end_time` live — so *shortening* a window leaves existing links on the old deadline until re-copied).
+
+### The 24h click ticket
+
+The click-minted JWT is capped at **24h** (`ASSESSMENT_INVITE_CLICK_TTL_HOURS`) **and** by the time left on the link. This is what makes the above safe: the clamp used to be the link's whole remaining window, so a link running to a far-future `end_time` would mint a bearer JWT of the same length. **Not hypothetical** — institute assignments carry `end_time` in **2036**, so a click would have minted a ~10-year token (verified on UAT: the clamp returns 24.00h, not 87,648h).
+
+A ticket only has to survive the OTP ceremony (click → request code → go read the email → type it in). `verifyOtp` then issues the scoped `assessment:run` token the attempt actually runs on, so **nothing mid-attempt depends on the invite token** — raising it would not fix a mid-assessment 401 (see the scoped-JWT and portal-header gotchas below for what actually does). Floored at 1s: `resolveCode` only guarantees `msRemaining > 0`, and `jwt.sign({expiresIn: 0})` mints an already-dead token.
+
+### Deploy order — the table and nginx MUST land before admin-node
+
+`buildInviteUrl` now hits the DB, and it is called **inside** `sendAssessmentInviteEmail`'s try block, which reports failure by returning `false` rather than throwing. Consequences if admin-node ships to an env that isn't prepared:
+
+- **No table** → every new invite email **silently stops sending** (no exception surfaces). Copy Link is louder: HTTP 500.
+- **No nginx `location /s/`** → invites send fine but every link 404s into the React SPA, while old JWT links keep working — so it looks like only new candidates are affected.
+
+Required per env, in order: (1) the DB-Scripts migration, (2) `location /s/` → admin-node `:8000` on the **assessment-react** vhost, placed **above `location /`** so the SPA doesn't swallow it, plus the `invite_shortlink` `limit_req_zone` in `conf.d/`, (3) then deploy admin-node.
+
+The rate limit is deliberately generous — **10r/s, burst 200**. A tight per-IP limit is actively dangerous: campus drives put a whole college behind one NAT egress IP, so a strict limit would 429 real students mid-drive. At 62^9 the keyspace already makes guessing infeasible; the zone only exists to stop a scanner exhausting the DB.
+
+### Backward compatibility
+
+Existing `/assessment/start/<jwt>` links already in inboxes **keep working** — that FE route, the JWT contract and `ASSESSMENT_INVITE_SECRET` are untouched, and nothing revokes them. They age out on their own 14-day `exp`. So for up to 14 days after a deploy an old assignment can have **two different valid links**. Note the "email and Copy Link emit the identical URL" guarantee only holds for assignments invited **after** the deploy: for a pre-deploy assignment, the candidate's inbox has the old JWT link while Copy Link now returns a `/s/` URL — both work, but they differ on a support call.
+
 ## Candidate flow
 
-1. Candidate opens `assessment.<env>.pluginlive.com/assessment/start/<token>`.
+1. Candidate opens the invite link — `assessment.<env>.pluginlive.com/s/<code>`, which 302s to `/assessment/start/<token>` (pre-2026-07-15 links point straight at the latter and still work).
 2. Assessment-React `InviteStart` component prompts for email → calls UMS `/public/assessment-otp/send` → 6-digit OTP delivered.
 3. Candidate enters OTP → `/public/assessment-otp/verify` → UMS mints a scoped JWT (`scope: "assessment:run"`) carrying `assessment_assigned_id`, `assessment_type`, `email`, `role`, `company`. **TTL = the portal login token lifetime** (`SCOPED_JWT_TTL = server.LOGIN_TOKEN_EXPIRES_IN`, currently `43200000` → parsed by jsonwebtoken's `ms` as 43.2M **ms** = **~12h**). Previously this was hardcoded to `"2h"`, which expired mid-attempt on long assessments (Communication/Hinglish with video upload) and surfaced as a `401` on **every** authed call — `heartbeat`, `saveResponse`, `uploadVideo`, `submitAssessment` — with a "Failed to submit assessment: Request failed with status code 401" alert. Bumped to match login 2026-06-15 (sourced from the same config so the two stay in sync). The scoped token has no refresh; an attempt still must complete within the TTL window from OTP verification.
 4. `student-node` `/ai-interview/invite/resolve` (generic despite the legacy path name) reads the corporate map + assessment row, returns the **real assessment name**, the type-specific runner config, and the assignment's **`status` + `submitted`** (added 2026-06-15 — see "already-submitted gate" below).
@@ -101,6 +175,7 @@ A candidate who re-opens their invite link (or re-verifies OTP) after submitting
 | `admin-react` | Checkbox in Assessment Assignment form (corporate only, entity-select step); `isOtpInvite` carried through `filterAssessmentData` (the function used to strip it) for the direct Send flow. **For Role-Based** (which is filtered OUT of the Send flow and uses Generate Test → Review Panel), the same `isOtpInvite` state is passed as a prop from `CreateAssessment` into `AssessmentSelect`, which adds `isOtpInvite` to the `initiateRoleBasedGeneration` payload (corporate only) — wired 2026-06-15. The Review-Panel `assignStudentsToGroup(groupId)` call sends only `groupId`, so the flag MUST be captured at generation time. |
 | `admin-node` | `assignAssessmentSchema` accepts `isOtpInvite` (was stripping it via the Fastify body schema); `assign*Assessment` methods set it on the corporate map and gate email branches via `isCorporateOtpInvite`. Invite URL built from `ASSESSMENT_FE_BASE_URL` env var. **Per-type wiring is independent** — each `assign*Assessment` method must thread `isOtpInvite` and add an OTP branch separately. Communication/Hinglish/Aptitude/Custom/AI_Interview were wired first (2026-06-10); **Role-Based + Behaviour wired 2026-06-15** (`assignRoleBasedAssessment`→`createRoleBasedAssessment` in `script/generateRoleBasedQuestions.js`, and `assignBehaviorAssessment`). Before that, ticking the OTP checkbox on a Role-Based/Behaviour corporate assign was silently ignored and the candidate got the legacy portal-signup/reminder email instead of a scoped `/assessment/start` link. **Role-Based has TWO assign paths and admin-react uses the OTHER one** — see the set-group gotcha below; the `set-group` path was wired for OTP on **2026-06-15** (later same day). |
 | `admin-node` (Role-Based set-group flow) | The path admin-react actually drives for Role-Based is **Generate Test → Review Panel → Assign**, NOT the direct `assignRoleBasedAssessment`. Wiring (2026-06-15): `initiateRoleBasedGeneration` handler persists `isOtpInvite` into `groupConfig` (corporate only); `AssessmentSetGroupService.assignStudents` reads `config.isOtpInvite`, sets `isOtpInvite` on the `assessmentCorporateMap` create, and passes it to `processStudentsForAssessment`; that function (in `script/generateRoleBasedQuestions.js`) captures each `assessmentAssignedStudent.id` in STEP 1 and, when `isOtpInvite && corporate`, short-circuits STEP 2 — sending `sendAssessmentInviteEmail({assessmentType:'Role_Based', role, company, ...})` to every candidate and **skipping account creation + portal reminders**. The flag is decided at *generation* time (the Generate Test confirm dialog), stored on the group, and applied at *assign* time. |
+| `admin-node` (invite shortener, 2026-07-15) | `app/service/InviteShortLinkService.js` — code generation (`crypto.randomInt` over base62), `getOrCreateCode` (deadline from the assessment window, retry on 23505/P2002), `computeLinkExpiry`, `clickTokenTtlSeconds`, `resolveCode`, `recordClick`. `app/helpers/assessmentInviteEmail.js` — `buildInviteUrl` is now **async** and returns `/s/<code>`; `mintInviteToken` gained `expiresInSeconds`; `buildStartUrl` builds the 302 target (absolute — `/s/` is reachable on two hosts, so a relative `Location` would resolve against the admin API origin). `app/handlers/assessmentHandler.js` — `resolveInviteShortLink`. `app/routes/assessment.js` — public `GET /s/:code`. `app/models/Assessment.js` — `getInviteTokenPayload` (shared by Copy Link and the resolver so they cannot drift). Prisma model `InviteShortLink` in `schema-assessment.prisma`. Tests: `test/inviteShortLink.spec.js` (29). |
 | `user-management-node` | Renamed handler/model/routes; backward-compatible aliases retained; scoped JWT carries `assessment_type`. Scoped JWT TTL sourced from `LOGIN_TOKEN_EXPIRES_IN` (matches login, ~12h) — was hardcoded `"2h"`. The `assessmentRemainder` handler (`app/handlers/user.js`) selects the email template by flag: `isPracticeAccess && !isCorporate` → practice reminder; `isCorporate` → `assessmentStudentCorporate2` (login **email + password**, auto-creates the user + `temp_password` if missing); else → institute reminder. It does NOT send OTP links — OTP campaigns must use `sendAssessmentInviteEmail` in admin-node instead. |
 | `student-node` | `resolveInvite` reads the real campaign name from the corporate/institute map and **no longer hard-codes `"AI Interview"`** for the title — that was the early bug where Communication invites displayed as "AI Interview". Also returns `status` + `submitted` so the FE can gate an already-submitted invite, and `startSession` rejects a completed assignment with 409 (both 2026-06-15). Exposes `POST /students/assessments/invite/reloadGuard` for the runner reload→dropout guard (see gotcha). |
 | `Assessment-React` | `InviteStart` is generic; `InviteAssessmentRunner` dispatches by `assessment_type` via a `TYPE_MAP` + `switch` — **a type with no entry renders "Unsupported assessment"**, so every OTP-capable type must be listed there. Cases: `Communication`, `Aptitude`, `Custom_Assessment`, `Behavior`, `Role_Based` (last added 2026-06-15). **`TYPE_MAP.Hinglish` now resolves to `'Communication'`** (2026-07-03), so a `Hinglish` token opens the Communication runner and the standalone `Hinglish` case/import were removed. Exact token `assessmentType` claim strings (underscores, US spelling): **`Role_Based`**, **`Behavior`** — not `Role-Based`/`Behaviour`. Cognitive/Tech_MCQ/Tech_CODING have no invite runner, so OTP can't run end-to-end for them. |
@@ -114,6 +189,14 @@ A candidate who re-opens their invite link (or re-verifies OTP) after submitting
 | UAT | live since 2026-06-11 | `https://assessment.uat.pluginlive.com` — must be set in `~/api/admin-node/.env.uat` |
 | PROD | pending | `https://assessment.pluginlive.com` — must be set before sending live invites |
 
+### Shortener rollout (`/s/<code>`)
+
+| Env | Table | nginx `/s/` | admin-node | Status |
+|---|---|---|---|---|
+| DEV | applied 2026-07-15 | `sites-available/assessment-react.conf` | `41e20f7` | live |
+| UAT | applied 2026-07-15 | `sites-available/assessment-react.conf` + `conf.d/invite-shortlink-limit.conf` | `3dd84f1` (UAT) | live 2026-07-15 |
+| PROD | **pending** | **pending** | pending | not rolled out — see deploy-order note above |
+
 ## Backward compatibility checklist
 
 - Existing AI Interview invites continue to work via the `/public/interview-otp/*` and `aiInterviewInviteOtp` aliases.
@@ -124,6 +207,10 @@ A candidate who re-opens their invite link (or re-verifies OTP) after submitting
 ## Known gotchas (carried over from build)
 
 - **`ASSESSMENT_FE_BASE_URL` env var.** Without it, the admin-node helper falls back to the DEV URL — UAT and PROD admin-node `.env.<env>` files must include the matching frontend base URL or every invite email links candidates to DEV.
+- **Don't verify the base URL with a bare `docker exec admin node -e ...`.** The var is loaded by `dotenv` from the image's `.env` at app startup, so it is **not** in the container's process environment: `docker exec admin printenv` won't show it, and a fresh `node -e` that skips `require('dotenv').config()` reads `undefined` → the helper falls back to the DEV URL and the probe **looks like a live DEV-leak that isn't one**. Use `docker exec -w /app admin node -e "require('dotenv').config(); ..."`, or just curl the real `/s/<code>` and read the `Location` header.
+- **A raw `/s/` probe returning `text/html` means nginx is missing the route** (the SPA swallowed it); `application/json` means it reached admin-node. A bogus code correctly 302s to `/assessment/start/invalid`, which renders the FE's existing "Invite link invalid" screen — there is no dedicated expired page, so *"expired"* and *"never existed"* look identical to the candidate (deliberate; upgrade path is a real `/s/expired` FE route).
+- **The invite JWT cannot strand a mid-assessment candidate**, so don't raise its TTL to chase a mid-attempt 401. It is used for exactly three calls — `resolveInvite`, `requestOtp`, `verifyOtp` — and only in `InviteStart.js`; the runner's calls carry the **scoped** `assessment:run` token instead. A mid-attempt 401 is one of: the scoped token aged out (12h from OTP verify — very common for QA leaving a tab open), a stale portal token shadowing the scoped one, or an `authRequest` 401 triggering the global session-clear. See the three gotchas below.
+- **Re-clicking the invite link mid-OTP invalidates the code you were sent.** `requestOtp`/`verifyOtp` look the OTP row up by the **exact `invite_token` string**, and the shortener mints a *new* token on every click. Within one page session this is fine (both calls use the token from the URL). But clicking the link again after requesting a code yields a different token, so the old OTP row no longer matches. Self-correcting in practice — the OTP field only appears after a successful `requestOtp`, so the re-click forces a fresh code — but a candidate holding two OTP emails who types the older one gets *"Incorrect code."* Side effect: a re-click also bypasses the `RESEND_WINDOW_MS` cooldown, since that is keyed on `(email, invite_token)`.
 - **Fastify body schema strips unknown fields.** `admin-node` `assignAssessmentSchema` must explicitly list `isOtpInvite` or the handler never sees it (server logs the row with `is_otp_invite = false` even though the request carried `true`). Same applies to any future toggles added on this form.
 - **`admin-react` `filterAssessmentData`** rebuilds the payload from a whitelist before submit. Any new field on the form must be added there or it silently disappears.
 - **Title is dynamic, not hard-coded.** `resolveInvite` returns the campaign's real assessment name; the runner uses it for the instructions header. Old caches on the client can still show "AI Interview" — a fresh OTP verify rewrites the `sessionStorage` entry, so retesting requires reopening the invite link.
