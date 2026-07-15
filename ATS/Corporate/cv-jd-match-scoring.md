@@ -45,6 +45,32 @@ candidates → evaluation
   Status: `GET .../ai-match/status` → `{ total, scored, failed, pending, queue:{...} }`
   (`pending` excludes terminally-`failed` candidates).
 
+## Resume formats — PDF, DOC, DOCX
+
+`/evaluate` takes **either** `resume_text` (used as-is) **or** `resume_url`
+(downloaded, then text-extracted). `resume_text` wins when both are set and
+skips the download/parse entirely — the response's `evidence_source` says which
+was used (`RESUME_TEXT` / `RESUME_PDF` / `SYSTEM_PROFILE`). Note `RESUME_PDF` is
+a historical label meaning "extracted from the uploaded file" — it is reported
+for **any** supported format (a `.doc` also says `RESUME_PDF`). Nothing reads the
+field today; it is stored in `ai_match_score` for debugging.
+
+Format is detected from **magic bytes**, not the URL extension or Content-Type:
+object storage serves every resume as `application/octet-stream`, candidates
+upload `.doc` files named `.pdf`, and some stored `cvUrl`s carry no extension at
+all. `utils/document_text.py` routes by signature:
+
+| Detected | Extractor | Notes |
+|---|---|---|
+| `pdf` (`%PDF`) | PyMuPDF (`fitz`) | preamble/BOM before the header tolerated |
+| `doc` (OLE2 `d0cf11e0`) | `antiword` (system pkg in the Dockerfile) | legacy Word 97–2003 |
+| `docx` (zip + `word/document.xml`) | `python-docx` | **includes table cells** — resumes lean on tables, and `document.paragraphs` alone silently drops that text |
+| anything else (images, `.odt`) | — | `422` naming the detected type; scanned images would need OCR |
+
+Unit tests: `test_document_text.py` (standalone `unittest`; fixtures generated at
+runtime so no candidate PII lives in the repo). Note `.dockerignore` excludes
+`test*.py`, so tests are not shipped in the image.
+
 ## Data
 
 - `corporate.job_roles.ai_match_criteria` (JSON) — cached criteria per role.
@@ -156,6 +182,20 @@ Roles open **only** to ITI / Diploma candidates skip AI match entirely
   and strengths/summary are proper sentences. Non-Pydantic / mime-only callers
   keep the old `json_object` path (backward compatible; the `_coerce_to_schema`
   net stays as defence-in-depth). `fastapi-ai-engine` Development→UAT.
+- **Non-PDF resumes 422'd forever** (all envs, **fixed 2026-07-15**, DEV+UAT):
+  `fetch_and_parse_pdf` wrote *every* download to a `.pdf`-suffixed temp file and
+  handed it to PyMuPDF regardless of the actual bytes, so any non-PDF resume died
+  with `Unable to fetch/parse resume: Failed to open file '/tmp/x.pdf' as type
+  pdf` → 422 → 3 attempts → `ai_match_status='failed'` → **0 stars / "NA" in the
+  corporate UI forever**. It reads like an engine outage but is not: the file
+  downloads fine (200) and other candidates on the same role score normally —
+  **check the `cvUrl` extension first**. Fixed by magic-byte detection + per-format
+  extractors (see *Resume formats* above); `fetch_and_parse_pdf` is now
+  `fetch_and_parse_document`. PROD exposure at the time: **553 `.doc` + 1766
+  `.docx` + 3 `.odt`** of ~40k stored resumes. **No backfill was run** — affected
+  candidates re-score on the next trigger (`?forceRefresh=true`, or clear
+  `ai_match_status`/`ai_match_score` and re-enqueue); until then they keep showing
+  their stale 0/NA.
 - **Retry loop** (resolved 2026-07-01 in corporate-node via
   `ai_match_status='failed'` dead-letter columns): recovery no longer
   re-enqueues candidates whose job has exhausted its 3 attempts. Manual
@@ -169,5 +209,6 @@ Roles open **only** to ITI / Diploma candidates skip AI match entirely
 
 - corporate-node: `app/handlers/aiMatchHandler.js`, `app/queue/aiMatchQueue.js`,
   `app/queue/aiMatchWorker.js`, `app/queue/aiMatchRecovery.js`, `index.js`.
-- fastapi-ai-engine: `routers/resume_match.py`,
-  `ResumeMatchScoring/resume_matcher.py`, `utils/executors.py`.
+- fastapi-ai-engine: `routers/resume_match.py`, `utils/document_text.py`
+  (format detection + text extraction), `ResumeMatchScoring/resume_matcher.py`,
+  `utils/executors.py`.
