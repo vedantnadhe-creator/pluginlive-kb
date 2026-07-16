@@ -106,6 +106,12 @@ When a student takes a new assessment, their level determines the base difficult
 | Competent | Medium |
 | Advanced | Hard |
 
+> **One-time assessments are excluded from adaptive difficulty.** In `getAptitudeAssessmentQuestions` (`student-node/app/models/Assessment.js`), a student with **2+ `progression_history` entries** has the assigned difficulty overwritten from their history, and `generateSingleStudentAssessmentSet()` regenerates their set at that difficulty (repointing `assessment_assigned_students.assessment_set_id`). This is skipped when `assessment_institute_map.is_one_time = true` — a one-time paper carries no progression in or out, so it serves **exactly the set/difficulty it was assigned**.
+>
+> Without this gate, students on the *same* one-time assessment sat different papers: only those with no progression history got the configured difficulty, while everyone else was silently downgraded to Easy/Medium. Because scoring is weight-based over whichever topics were selected, the papers were not even out of the same total, making the scores non-comparable. Fixed 2026-07-16 (`fix(assessment): exclude one-time assessments from progression-based selection`).
+>
+> Note the regeneration path derives its topic list from the **source set** (`uniqueSubtopics` is built from the original set's questions), not from the global `aptitude_topic_question_config`. Removing a subsection from an assigned set therefore propagates to any set regenerated from it.
+
 ### ~~Difficulty Multipliers~~ (Removed)
 
 Previously, difficulty multipliers (Easy 0.85×, Medium 1.15×, Hard 1.40×) were applied to topic rolling averages via `calculateWeightedPercentage()`. These were **removed** because `getLevel()` already uses difficulty-specific thresholds — applying multipliers on top double-counted difficulty, causing inconsistent level assignments.

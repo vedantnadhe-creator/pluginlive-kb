@@ -92,6 +92,9 @@ flowchart TD
    - Uses raw SQL with `DISTINCT ON (LOWER(primary_email))` ordered by `submitted_at DESC`
    - First-time students (no progression record) → use the admin-selected CEFR level
    - Returning students → use `suggestedCefr` from their latest progression record
+   - **One-time assessments (`assessment_institute_map.is_one_time = true`) are excluded** — they always keep the admin-selected CEFR level (see below)
+> **One-time assessments never have their CEFR set swapped.** At delivery time `getCommunicationAssessmentQuestions` (`student-node/app/models/Assessment.js`) re-checks the assigned set's CEFR against the student's history and swaps the set in **two** places: from `progression_history.suggested_cefr` when the student has 2+ entries, and from the `student_personal_profile` CEFR fallback (`AssessmentCEFR` / `PracticeCEFR`) when they have fewer. Both are gated on `assessmentInstituteMap.isOneTime` — a one-time paper is standalone and must serve the CEFR level it was assigned. Fixed 2026-07-16 alongside the equivalent Aptitude gate (see `Assessment/aptitude.md`).
+
 3. Generates question sets via `generateCommunicationQuestions()` which calls FastAPI `/communication/generate-questions` with the admin-selected `accent`
 4. Creates DB records:
    - `assessmentInstituteMap` — links assessment to institute
