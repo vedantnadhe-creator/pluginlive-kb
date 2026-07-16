@@ -401,6 +401,23 @@ no-name greeting rather than "Thanks for your time, Candidate." No backend chang
 **Rule:** `assessment_invite_name` / `INVITE_SESSION_KEYS.name` is the assessment title, never
 a person's name — don't reuse it for candidate-facing greetings.
 
+#### Quick Summary line removed — unsubstantiated claim (fixed 2026-07-16)
+
+The `STEP_DONE` closing screen's "Quick Summary" showed 4 bullet lines. 3 are backed by real
+data (questions answered, transcription status, duration); the 2nd — "Examples and detail
+came through in your answers." — was a hardcoded string with no signal behind it, shown to
+every candidate regardless of actual answer quality. Removed from the `summaryLines` array in
+`Assessment-React/src/modules/Assessments/Partials/AIInterview/interview.js`. DEV+UAT live.
+
+**Deploy gotcha hit while shipping this:** Assessment-React's GitHub Actions self-hosted
+runner fires a `notify.sh "Deployment Started"` on every push to `Development`, but on the
+DEV box that hook does **not** reliably rebuild/restart the actual serving container
+(`assesment`, port 3006) — the bundle stayed stale after the notify fired and the process
+exited. Don't trust the notify hook alone; verify the live bundle (`docker exec assesment
+grep -rl "<changed string>" /app/build`) and manually `docker build --no-cache --build-arg
+ENVIRONMENT=dev -t assesment:frontend .` + swap if stale, same as the documented UAT
+`auto_deploy.sh` recipe.
+
 #### Invite delivery splits by entity type — OTP for corporate, portal for institute (2026-06-17)
 
 `assignAIInterviewAssessment()` (`admin-node/app/models/Assessment.js`) was OTP-invite-only for
