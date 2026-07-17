@@ -538,6 +538,21 @@ LinkedIn-sourced candidate gets a populated work history / education without a r
 > `/institutes/crud/degree/stream/specialisation/bulk`) resolves/creates the master and links the id.
 > Source level = `highest_qualification_education_level` (falls back to the highest present level).
 >
+> **Gotcha — "Other Degree" diploma DEGREE + DEPARTMENT dropped, and UG department stolen (fixed
+> 2026-07-17, UAT `1e1a460`).** ERP sheets (JBIMS / pharmacy colleges) label the diploma/extra
+> qualification block **"Other Degree ___"** instead of "Diploma ___" (e.g. `Other Degree`="D-Pharmacy",
+> `Other Degree Stream`="Medical"). The **deterministic** degree/department extractors in
+> `services/normalization_service.py` (`get_diploma_degree`/`get_diploma_department`) only matched keys
+> containing the literal word "diploma", so they returned `None` → the block at ~L3144-3154 then
+> **POPPED** the LLM's already-correct `education_diploma_degree`/`_department`, leaving the diploma
+> `education[]` entry with empty degree + department (UI showed "Diploma – <college>" then just "in").
+> Worse, `get_ug_department`'s fallback (no "other" in its exclusion list) then claimed
+> "Other Degree Stream"="Medical" as the **UG** department (rendered "UG … in Medicine"). Fix:
+> `get_diploma_degree`/`get_diploma_department` fall back to the "Other Degree" column family (a genuine
+> "Diploma ___" column still wins); `get_ug_department` excludes "other" columns. Now diploma resolves
+> D-Pharmacy→"Doctor Of Pharmacy" + Medical→"Medicine", and UG department = the real "Graduation Stream".
+> Config-free (code only). **PROD needs the same code deploy.**
+>
 > **Gotcha — UG (any-level) department dropped when the sheet has a "Stream"/"Branch" column, not a
 > "Department" column (fixed 2026-07-17, UAT `72c4d4b`).** Sheets carry e.g. "Graduation Stream" =
 > "Electronics and Telecommunication" (no "Graduation Department" column). The extraction model
