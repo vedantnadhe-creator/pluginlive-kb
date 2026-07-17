@@ -521,12 +521,29 @@ LinkedIn-sourced candidate gets a populated work history / education without a r
 > nearest empty higher-ed slot (`pg → p_g_diploma → pd → phd → diploma`) so both qualifications survive
 > as distinct `education[]` blocks. Reuses existing `education_<level>_*` slugs — no new DB rows.
 >
-> **Address (reference):** both current & permanent address already normalize. current_* →
+> **Address (reference):** both current & permanent address normalize. current_* →
 > `studentPersonalProfile.corr*` (corrAddrLine1/corrCity/corrState/corrPostCode/corrCountry, +IDs);
 > permanent_* → `perm*`. If current-address fields are blank the worker copies permanent→current.
 > The `*_address_city/state/pincode` slug variants are unmapped (NULL) decoys — the canonical
 > `current_*`/`permanent_*` slugs carry the data. CV parsing runs whenever a sheet has a
 > CV/resume URL column (`Upload CV`, `CV URL`, `Resume URL`, …) → `parse_pdf`; no CV column = no parse.
+>
+> **Gotcha — permanent city/state kept the raw sheet blob as display text (fixed 2026-07-17, UAT `834c62a`).**
+> In `_resolve_and_store_all_ids` the **current/correspondence** path resolves `city_id`/`state_id`
+> then does a master DB lookup and overwrites `normalized[city_key]`/`[state_key]` with the **canonical
+> name** — so `spp.corr_city`/`corr_state` store clean values (`Mumbai`, `Maharashtra`). The
+> **permanent** block resolved `perm_city_id`/`perm_state_id` correctly but **never wrote the name
+> back**, so `spp.perm_city`/`perm_state` kept the raw un-split sheet text — e.g. a single combined
+> address cell `"Maharashtra, Bhandara, 441904"` got dumped into **both** `perm_city` and `perm_state`
+> even though the IDs (Bhandara city, Maharashtra state) were right. `permanent_city`/`permanent_state`
+> map straight to `spp.perm_city`/`perm_state` (`db_service.py` final-schema map), so the blob reached
+> the DB verbatim. `permanent_country` was unaffected — its path already had a canonical write-back.
+> Fix: after the permanent block resolves the IDs, look `perm_city_id`/`perm_state_id` back up via
+> `get_city_name_by_id`/`get_state_name_by_id` and write the canonical names into
+> `normalized["permanent_city"]`/`["permanent_state"]` — mirroring the current path
+> (`workers/normalization_worker.py`). Forward-only: pre-fix rows keep the blob until re-normalized;
+> the `perm_*_id` on those rows are already correct so a targeted `perm_city`/`perm_state` text update
+> from the master fixes them.
 >
 > **Deploy target (important):** the hook runs in the **`datanormalization-worker`** container
 > (`python main.py worker`) on **uat.pluginlive.com** — that's what processes the ingest
