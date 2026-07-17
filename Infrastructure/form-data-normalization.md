@@ -552,6 +552,29 @@ LinkedIn-sourced candidate gets a populated work history / education without a r
 > skipped (distinct from department). Pre-fix rows need re-normalization (reset
 > `candidates_raw_data.normalization_status='pending'`); note `ALLOW_DUPLICATE_CANDIDATES=true` on UAT.
 >
+> **Gotcha — marks shown as raw decimal fraction, e.g. "0.91%" instead of "91%" (fixed 2026-07-17, UAT
+> `f5f24a5`).** A sheet cell percentage-formatted in Excel/Sheets (displays "90.6%") exports as its raw
+> fraction `0.906`; the model correctly sets `cumulative_type="Percentage"` but never scales the fraction.
+> The old `_cgpa_marks_to_percentage` guard only fired when `cumulative_type` was empty or said
+> "CGPA"/"GPA" — so a value already (correctly) labelled "Percentage" was skipped, leaving `0.906` verbatim.
+> Fix: any `marks < 1` is unscaled regardless of the assigned type (a real exam percentage is never sub-1)
+> → `×100`. Genuine CGPA-scale values (`0 < marks ≤ 10`, type says CGPA/GPA or type is blank) still `×10` as
+> before. Applies to every `education_<level>_marks` + `highest_qualification_marks`.
+>
+> **Gotcha — "Batch" year wrong for a correctly-dated candidate, e.g. PG ends 2027 but showed 2025/2022
+> (fixed 2026-07-17, UAT `f5f24a5`).** `highest_qualification_education_level`/`_degree`/`_department` can
+> correctly name the most-recent block (e.g. "pg") while `highest_qualification_end_date`/`_start_date`
+> get a SIBLING level's year instead (UG's 2025 copied in instead of PG's own 2027) — an LLM
+> extraction slip, not a prompt gap. `highest_qualification_end_date` maps straight to
+> `currentCourse.endedOn`, which `institute-react`'s students-list "Batch" column
+> (`StudentsInfoTable/index.js` — `new Date(startedOn/endedOn).getFullYear()`) reads directly. Fix: since
+> `highest_qualification_education_level` unambiguously names the authoritative `education_<level>_*`
+> block, `map_to_final_schema` now always mirrors `end_date`/`start_date`/`marks`/`cumulative_type` from
+> THAT block over the model's own `highest_qualification_*` copy (runs after both marks-scaling passes, so
+> the source is already percentage-normalized). Degree/department are left alone — they resolve to master
+> IDs earlier in `_resolve_and_store_all_ids`, so overwriting the text post-hoc without re-resolving the ID
+> would desync `currentCourse.degreeId` from `currentCourse.degree`.
+>
 > **Gotcha — permanent city/state kept the raw sheet blob as display text (fixed 2026-07-17, UAT `834c62a`).**
 > In `_resolve_and_store_all_ids` the **current/correspondence** path resolves `city_id`/`state_id`
 > then does a master DB lookup and overwrites `normalized[city_key]`/`[state_key]` with the **canonical
