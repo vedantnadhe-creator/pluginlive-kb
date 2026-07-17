@@ -528,6 +528,30 @@ LinkedIn-sourced candidate gets a populated work history / education without a r
 > `current_*`/`permanent_*` slugs carry the data. CV parsing runs whenever a sheet has a
 > CV/resume URL column (`Upload CV`, `CV URL`, `Resume URL`, …) → `parse_pdf`; no CV column = no parse.
 >
+> **Gotcha — current-course SPECIALISATION never populated (fixed 2026-07-17, UAT `f5c72ae`).**
+> `spp.current_course.specialisation` / `specialisationId` stayed empty for every candidate. The value
+> exists on the education level (`education_pg_specializations` = "Human Resources") but nothing plumbed
+> it into `currentCourse` — `map_to_final_schema` never wrote a specialisation into the payload (grep: only
+> read in export queries). There is no entity-normalizer "specialisation" type, so the fix sends the raw
+> text with `specialisationId="OTHERS"` — the same free-text contract the UI uses — and student-node's
+> create-full (`createOrUpdateDegreeDeptAndSpecilisation` → institute-node
+> `/institutes/crud/degree/stream/specialisation/bulk`) resolves/creates the master and links the id.
+> Source level = `highest_qualification_education_level` (falls back to the highest present level).
+>
+> **Gotcha — UG (any-level) department dropped when the sheet has a "Stream"/"Branch" column, not a
+> "Department" column (fixed 2026-07-17, UAT `72c4d4b`).** Sheets carry e.g. "Graduation Stream" =
+> "Electronics and Telecommunication" (no "Graduation Department" column). The extraction model
+> (gpt-4o-mini, `AI_PROVIDER=openai_compatible`) DROPS that value and emits `education_ug_department = "NA"`
+> → `education_profile.department` shows nothing, `stream_id` NULL. Two-layer fix: (1) a `SYSTEM_PROMPT_V2`
+> rule (STREAM/BRANCH → DEPARTMENT, keeping specialization distinct), and — because gpt-4o-mini doesn't
+> reliably honour it — (2) a **deterministic backfill** in `map_to_final_schema`: map each raw
+> "<level> Stream"/"Branch" column to its education level and fill `education_<level>_department` when the
+> model left it blank/"NA". This restores the department **text** (visible in DEG & DEPARTMENT); the
+> `stream_id` master link stays NULL for backfilled values (the value never went through entity-matching) —
+> resolving that would require injecting pre-`_resolve_and_store_all_ids`. Specialization columns are
+> skipped (distinct from department). Pre-fix rows need re-normalization (reset
+> `candidates_raw_data.normalization_status='pending'`); note `ALLOW_DUPLICATE_CANDIDATES=true` on UAT.
+>
 > **Gotcha — permanent city/state kept the raw sheet blob as display text (fixed 2026-07-17, UAT `834c62a`).**
 > In `_resolve_and_store_all_ids` the **current/correspondence** path resolves `city_id`/`state_id`
 > then does a master DB lookup and overwrites `normalized[city_key]`/`[state_key]` with the **canonical
