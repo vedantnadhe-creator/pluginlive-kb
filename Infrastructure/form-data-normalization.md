@@ -533,10 +533,17 @@ LinkedIn-sourced candidate gets a populated work history / education without a r
 > exists on the education level (`education_pg_specializations` = "Human Resources") but nothing plumbed
 > it into `currentCourse` — `map_to_final_schema` never wrote a specialisation into the payload (grep: only
 > read in export queries). There is no entity-normalizer "specialisation" type, so the fix sends the raw
-> text with `specialisationId="OTHERS"` — the same free-text contract the UI uses — and student-node's
-> create-full (`createOrUpdateDegreeDeptAndSpecilisation` → institute-node
-> `/institutes/crud/degree/stream/specialisation/bulk`) resolves/creates the master and links the id.
-> Source level = `highest_qualification_education_level` (falls back to the highest present level).
+> text into `currentCourse`. Source level = `highest_qualification_education_level` (falls back to the
+> highest present level). **Follow-up (`b6d3fd4`): resolve the REAL specialisation master id instead of
+> always `"OTHERS"`.** Sending `specialisationId="OTHERS"` makes student-node's create-full
+> (`createOrUpdateDegreeDeptAndSpecilisation` → institute-node `/institutes/crud/degree/stream/specialisation/bulk`)
+> **create a new "other" master** whenever its EXACT match misses — and it missed on a plural/singular
+> difference ("Human Resources" vs existing master "Human Resource"), so real specialisations were being
+> duplicated as OTHERS. There is no vector-search "specialisation" entity, so `resolve_specialisation_master`
+> (db_service) now matches `institute.specialisation_master` (status=1) directly — case/space-insensitive,
+> tolerant of a trailing-'s' plural mismatch, preferring global masters (empty `student_id`). On a hit it
+> sends the real `specialisationId` (+ canonical master name); only a genuine no-match falls back to
+> `"OTHERS"`. Validated: `cc.specialisationId` = real UUID, `cc.specialisation` = "Human Resource".
 >
 > **Gotcha — "Other Degree" diploma DEGREE + DEPARTMENT dropped, and UG department stolen (fixed
 > 2026-07-17, UAT `1e1a460`).** ERP sheets (JBIMS / pharmacy colleges) label the diploma/extra
@@ -600,12 +607,19 @@ LinkedIn-sourced candidate gets a populated work history / education without a r
 > even though the IDs (Bhandara city, Maharashtra state) were right. `permanent_city`/`permanent_state`
 > map straight to `spp.perm_city`/`perm_state` (`db_service.py` final-schema map), so the blob reached
 > the DB verbatim. `permanent_country` was unaffected — its path already had a canonical write-back.
-> Fix: after the permanent block resolves the IDs, look `perm_city_id`/`perm_state_id` back up via
-> `get_city_name_by_id`/`get_state_name_by_id` and write the canonical names into
-> `normalized["permanent_city"]`/`["permanent_state"]` — mirroring the current path
-> (`workers/normalization_worker.py`). Forward-only: pre-fix rows keep the blob until re-normalized;
-> the `perm_*_id` on those rows are already correct so a targeted `perm_city`/`perm_state` text update
-> from the master fixes them.
+> **The `834c62a` attempt was INCOMPLETE — real fix is `b6d3fd4`.** `834c62a` only mutated the in-memory
+> `normalized["permanent_city"]`/`["permanent_state"]` dict, but the persistence layer
+> (`update_normalized_data_resolved_names`) writes canonical names to
+> `candidate_job_details.normalized_data` keyed by `city_key`/`state_key` — which are the **current_***
+> keys when a current address exists — and never persisted `permanent_city`/`permanent_state`. Since
+> `map_to_final_schema` reads the values back from that DB store (not the in-memory dict), the mutation
+> was discarded and the blob survived. (This was masked earlier by validating via a manual SQL UPDATE
+> instead of a real re-normalization.) `b6d3fd4` passes `perm_city_id`/`perm_state_id` into
+> `update_normalized_data_resolved_names` and patches `names["permanent_city"]`/`["permanent_state"]`
+> from `admin.mongo_db_cities`/`_states` — same mechanism the `permanent_country` write-back already used.
+> Validated by re-normalization: `perm_city`="Nashik", `perm_state`="Maharashtra". Forward-only: pre-fix
+> rows keep the blob until re-normalized; their `perm_*_id` are already correct so a targeted
+> `perm_city`/`perm_state` text update from the master also fixes them.
 >
 > **Deploy target (important):** the hook runs in the **`datanormalization-worker`** container
 > (`python main.py worker`) on **uat.pluginlive.com** — that's what processes the ingest
