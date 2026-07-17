@@ -36,6 +36,24 @@ Questions are distributed across subtopics based on **weights** defined in the `
 | **Logical Reasoning** (11) | Coding-Decoding 5 · Puzzles 5 · Seating Arrangement 5 · Blood Relations 4 · Number/Letter Series 4 · Direction Sense 3 · Syllogisms 3 · Analogy 2 · Data Sufficiency 2 · Input-Output 2 · Odd One Out 2 |
 | **Critical Reasoning** (7) | Conclusions & Inferences 5 · Statement & Assumptions 5 · Course of Action 4 · Statement & Arguments 4 · Cause & Effect 3 · Facts, Inferences & Judgements 2 · Paradox Questions 2 |
 
+### Topic-level difficulty pinning — the "band" model (DEV + UAT; PROD pending)
+
+> Supersedes weight-proportional distribution for set generation. **PROD still runs the legacy weight path** until this is promoted there.
+
+Per the approved **Aptitude Question Blueprint**, each topic is pinned to one or more **difficulty bands** in `assessment.aptitude_topic_band_config` (`sub_section_id`, `difficulty`, `weight`, `buffer_target`, `is_active`). A topic in a band only ever supplies questions of that difficulty, so the easy/medium/hard split is now **exact per track** instead of shuffled globally.
+
+- **Track split:** 40Q = Quant **14** / Logical **13** / Critical **13**; 30Q = **10 / 10 / 10**. (Was 17/15/8 and 13/11/6.)
+- **Difficulty matrix** per (testLength × variant × track) lives in `aptitudeDistribution.js` (`APTITUDE_TRACK_MATRIX`); the 40Q-Medium cell equals the expert blueprint (Quant 4/7/3, Logical 4/7/2, Critical 4/6/3). Column totals still match the old 30/50/20 budget, so the level ladder is unchanged.
+- **Selection:** `buildAptitudeBandSlots()` emits one slot per question (topic + pinned difficulty); `_selectAptitudeQuestionForSlot()` fetches at that exact difficulty (relaxes topic within the track under exhaustion, never difficulty). Mirrored in `student-node` `generateSingleStudentAssessmentSet` and `admin-node` `selectAptitudeQuestionsForAssessment`.
+- **Fallback:** if the blueprint can't fill all slots for a set, the partial set is discarded and a full set is rebuilt from the legacy config — never an empty/short set (logs `[BANDS][FALLBACK]`).
+- **Seating Arrangement** intentionally sits in **both** medium (linear) and hard (circular) bands. **Analogy** and **Data Sufficiency** are intentionally dropped (rows omitted; questions retained).
+- Config panel `GET /assessment/getAptitudeConfig` reads the band table (falls back to the count table pre-seed).
+- Migration: DB-Scripts `Aptitude Config Revamp/20260717T081421Z__aptitude_topic_band_config.sql`.
+
+### Dynamic generation buffers (per topic × difficulty)
+
+The aptitude generation cron (`admin-node/script/generateAptitudeAssessment.js`) previously topped every subtopic×difficulty to a hardcoded **6**. It now reads a per-cell **`buffer_target`** from `aptitude_topic_band_config` (band cells, default 6), and applies a small **insurance floor (2)** to non-band cells so a future revert still has stock. **Editable from Question Manager without a redeploy** — see `manage-cron.md` (Manage Buffers). API: `GET/PUT /questionManager/generationTargets` (QM-JWT gated, target cap 500). Migration: DB-Scripts `Aptitude Config Revamp/20260717T180734Z__aptitude_band_buffer_target.sql`.
+
 ---
 
 ## Scoring System

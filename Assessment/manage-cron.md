@@ -45,6 +45,14 @@ Migration: DB-Scripts `Question Manager Cron Config/…__cron_config_and_locks.s
 - The single PROD-deployed UI can drive **any** env via the env selector (admin-node CORS is `*`),
   but that env must have the cronConfig backend + `cron_config` table + QM creds.
 
+## Manage Buffers — sibling feature (aptitude generation targets)
+
+The same Question Manager UI + auth pattern now also drives **per-topic × per-difficulty generation buffer targets** for the aptitude cron (how many questions it maintains per cell). See `aptitude.md` → "Dynamic generation buffers".
+- **UI:** "Manage Buffers" button (header, next to "Manage Cron") → modal table of topic / difficulty / in-bank count / editable target, for the selected env.
+- **API:** `GET /questionManager/generationTargets` (list) · `PUT /questionManager/generationTargets` (`{ updates: [{ subSectionId, difficulty, target }] }`) — same question-manager JWT gate, target range 0–500.
+- **Backing:** `assessment.aptitude_topic_band_config.buffer_target`. Band cells default 6; non-band cells use a small insurance floor (2) in the generator.
+- **Status:** DEV + UAT ready (2026-07-17). PROD backend (admin-node endpoints + `buffer_target` column) **pending**, same as cron config.
+
 ## Per-environment status
 Each env's flags live in its own DB. Readiness (backend + table + creds):
 - **DEV** — ready. (`question_verification` was enabled here for testing.)
