@@ -621,6 +621,22 @@ LinkedIn-sourced candidate gets a populated work history / education without a r
 > rows keep the blob until re-normalized; their `perm_*_id` are already correct so a targeted
 > `perm_city`/`perm_state` text update from the master also fixes them.
 >
+> **Gotcha — résumé `started_in`/`ended_in` emitted in a format student-react can't parse (fixed
+> 2026-07-17, UAT `905723e`).** The four date-bearing résumé sections `map_to_final_schema` builds —
+> `resume.workExperience`, `resume.internships`, `resume.projects`, `resume.courses` — format their
+> `started_in`/`ended_in` via `_normalize_work_date` (`workers/normalization_worker.py`), which used to
+> output `YYYY-MM-DD` / `YYYY-MM` / bare `YYYY`. But **student-react**'s resume screens
+> (`Resume/Components/ResumeDownload.js`, `Resume/DrawerComponents/ProjectDetails/ProjectForm.js`) parse
+> these with a **strict `moment(x, 'MM/YYYY')`**, so any non-`MM/YYYY` value silently fails to parse →
+> blank/invalid dates on the student's resume (and broken end-date sort in ResumeDownload). Fix rewrote
+> `_normalize_work_date` to always emit `MM/YYYY` (converts `YYYY-MM-DD`, `YYYY-MM`, `DD/MM/YYYY`,
+> `"Apr 2019"`/`"April 2019"`, `"2019 April"`; added a pass-through for input already `MM/YYYY`/`M/YYYY`
+> which previously fell through to the broken bare-year branch). Bare year with **no** month now returns
+> `""` (a half-formed non-`MM/YYYY` string is worse than an omitted date; downstream already treats empty
+> as "no date"). Shared by both the corporate and institute-ERP paths — not ERP-only. `awards` uses a
+> separate single-date field `awarded_on` and is untouched; there is no `training` section built in the
+> mapper today. Config-free (code only). **PROD needs the same code deploy.**
+>
 > **Deploy target (important):** the hook runs in the **`datanormalization-worker`** container
 > (`python main.py worker`) on **uat.pluginlive.com** — that's what processes the ingest
 > queue. `deploy.sh` option 20 only rebuilds the API container (and the running containers use
