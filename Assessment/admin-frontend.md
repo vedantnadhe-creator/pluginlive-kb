@@ -327,6 +327,18 @@ This provides an image avatar with letter fallback when no logo URL is available
 
 ---
 
+## Add Candidate on the global Active Assessments list (July 2026)
+
+The **Add Candidate** action — previously only in the per-institute / per-corporate drill-down (`UnifiedAssessmentTable`) — is now also on the **global Active Assessments list** (`admin-react` `Partials/ActiveAssessmentTable/index.js`, rendered from `Assessment/index.js` when `activeTable === 'active-assessment'`), for **both** the College and Corporate entity toggles.
+
+- **Where:** a new `ACTIONS` column with a `UserAddOutlined` icon-button (same style as the drill-down). It calls `onAddCandidate({ ...record, entityType })`, where `entityType` is the parent's current College/Corporate toggle (authoritative — the list shows one entity type at a time).
+- **Reuse:** the parent (`Assessment/index.js`) reuses the exact same `EnhancedBulkUploadDrawer` (`mode="addCandidate"`) + `utils/bulkAddStudentsToAssessment` → `POST /assessment/addStudentsToAssessment` as the dashboards. No new UI or endpoint.
+- **Payload:** college → `{ entityType: 'college', assessmentInstituteMapId: record.id }`; corporate → `{ entityType: 'corporate', assessmentCorporateMapId: record.id }` (each row's `id` **is** the map id).
+- **Origin routing is fully backend-driven.** `admin-node` `addStudentsToExistingAssessment` resolves the flow from the map id alone: college map with a `scheduleId` → `_addStudentsToScheduledAssessment` (added to the schedule roster + schedule invite); college map without → `_addStudentsToOneTimeAssessment` (institute portal activation); corporate → one-time honoring the map's `is_otp_invite` flag (OTP no-login vs email+password portal). The frontend never branches invite logic.
+- **Schedule dialog (schedule rows only):** for a **college** row whose `scheduleId` is non-null, `handleActiveAddCandidate` shows an `antd` `Modal.confirm` ("added to the schedule roster…") **before** opening the drawer; all other origins open the drawer directly. This needs the `scheduleId`/`instituteId`/`instituteCampusId` fields added to `getActiveAssessments` (college branch) — see `Assessment/admin.md`. The degree picker in the drawer is fed by `instituteId`/`instituteCampusId` from the row.
+
+---
+
 ## Passing Year Race Condition (yearLoaded Pattern)
 
 Both `InstituteAssessmentDashboard.js` (admin-react) and `Assessment/index.js` (institute-react) use a `yearLoaded` state gate to prevent API calls before the passing year is fetched and set.

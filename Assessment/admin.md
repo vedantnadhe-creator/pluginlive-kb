@@ -37,7 +37,8 @@ Lists all **currently active assessments** (end_time >= now) for the admin dashb
 - `collegeName`, `collegeLogoUrl`, `collegeCity`, `collegeState`
 - `assessmentSubDate`, `endDate`
 - `subscription_type` — subscribed / trial
-- `allowProctoring`
+- `allowProctoring`, `allowVerification`
+- **College branch only (added July 2026 for the Active Assessments "Add Candidate" action):** `scheduleId` (`aim.schedule_id` — non-null ⇒ the row is one run of a schedule), `instituteId` (`aim.institute_id`), `instituteCampusId` (`MIN(ic.id)` — aggregated so the `GROUP BY` cardinality is unchanged). These are SELECT-only additions (no DB migration). The frontend uses `scheduleId` to gate a schedule-info confirmation dialog and `instituteId`/`instituteCampusId` to feed the Add-Candidate drawer's degree picker. Unquoted aliases fold to lowercase in the raw result and are re-mapped to camelCase in the `formattedData` loop. The **corporate branch was not changed** — its row `id` is already `assessment_corporate_map_id`, which is all the corporate Add-Candidate path needs.
 
 **Filters:**
 - `searchBy` — searches assessment name + college name
