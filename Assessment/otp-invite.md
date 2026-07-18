@@ -43,7 +43,7 @@ CREATE TABLE assessment.assessment_invite_short_links (
 
 - Stores **only** the assignment id — never candidate PII. The JWT payload is re-derived at click time.
 - `assessment_assigned_id` UNIQUE = one code per assignment, so the invite email and admin Copy Link emit the identical URL.
-- DB-Scripts: `Assessment OTP Invite/20260715T100351Z__assessment_invite_short_links.sql`. **DEV + UAT applied 2026-07-15; PROD pending.**
+- DB-Scripts: `Assessment OTP Invite/20260715T100351Z__assessment_invite_short_links.sql`. **DEV + UAT applied 2026-07-15; PROD applied 2026-07-18.**
 
 ### MongoDB (user-management-node) — generalized OTP store
 
@@ -163,6 +163,21 @@ A ticket only has to survive the OTP ceremony (click → request code → go rea
 Required per env, in order: (1) the DB-Scripts migration, (2) `location /s/` → admin-node `:8000` on the **assessment-react** vhost, placed **above `location /`** so the SPA doesn't swallow it, plus the `invite_shortlink` `limit_req_zone` in `conf.d/`, (3) then deploy admin-node.
 
 The rate limit is deliberately generous — **10r/s, burst 200**. A tight per-IP limit is actively dangerous: campus drives put a whole college behind one NAT egress IP, so a strict limit would 429 real students mid-drive. At 62^9 the keyspace already makes guessing infeasible; the zone only exists to stop a scanner exhausting the DB.
+
+**PROD routing is a K8s Ingress, not an nginx vhost — and it was the 2026-07-18 incident.** PROD (OKE) has no `assessment-react` nginx file; the host `assessment.pluginlive.com` is served by `assessment-react-ingress` (namespace `frontend`, path `/` → `assessment-react`). admin-node had shipped to PROD with the code, table, env and secret chain all correct, so PROD was **generating and sending `/s/` links** — but with no `/s/` route, every click fell into the SPA and rendered the **login page** (a corporate AI-Interview OTP invite that "redirects to login" is this exact symptom). Fixed by a **separate** Ingress `assessment-shortlink` (namespace `api`, so it can reference the `admin-node` service directly — ingress backends must be same-namespace):
+
+```yaml
+# ~/pl-oks-cluster/api-ns/Ingress/assessment-shortlink-ingress.yaml
+kind: Ingress            # namespace: api
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: assessment.pluginlive.com
+    http: { paths: [ { path: /s/, pathType: Prefix,
+             backend: { service: { name: admin-node, port: { number: 80 } } } } ] }
+```
+
+ingress-nginx **merges** the two Ingresses by host (nginx longest-prefix sends `/s/…` to admin-node, everything else to the SPA). TLS is **deliberately omitted** here: the `assessment-tls` secret lives in `frontend`, and an `api`-namespace Ingress referencing it would fail to find it and fall back to a default cert — the frontend Ingress terminates TLS for the host and `/s/` is served under that same cert. No rate limit, matching the sibling `admin-api-ai-interview` (`/ai-interview/`) candidate path. Applying an Ingress is **config-only**: no pod restart, persists in etcd across restarts (`kubectl delete ingress assessment-shortlink -n api` reverts).
 
 ### Backward compatibility
 
