@@ -39,6 +39,16 @@ This folder contains module-wise documentation for the PluginLive Corporate Port
 - **UI Framework:** Ant Design (antd) + styled-components
 - **Routing:** React Router
 
+## Cross-cutting features
+
+Standalone docs in this folder, covering behaviour that spans several modules or
+services:
+
+| Doc | Covers |
+|---|---|
+| `cv-jd-match-scoring.md` | AI resume-vs-JD scoring (corporate-node + fastapi-ai-engine) |
+| `shortlist-gate.md` | The shortlist gate for corporate-node-v2 — **built and reverted**, kept as the design record for a rework |
+
 ## Documentation Structure
 
 Each module folder contains a `README.md` covering:
