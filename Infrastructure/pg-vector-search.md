@@ -50,6 +50,17 @@ Input (e.g., "BVRIT Narsapur")
 
 **Graceful Degradation:** When embedding/LLM API is down, circuit breaker skips vector signal and LLM — serves trigram/acronym/exact only.
 
+> **Known issue (open, 2026-07-27) — specific degree loses to generic `degree_level`.**
+> `/normalize/multi` with `entity_types=["degree","degree_level"]` for input `"B.E./B.Tech"` returns the
+> `degrees_level` row **"BACHELOR DEGREE"** (conf 0.65, `method=llm_fallback`) instead of the exact
+> `institute.degrees` row **`B.E/B.Tech`** — so the candidate's UG degree renders as generic
+> "Bachelor Degree". Cause: `exact_search` is punctuation-sensitive (`WHERE LOWER(name)=LOWER($1)`), so
+> `"B.E./B.Tech"` (with the extra dot) does not exact-match `"B.E/B.Tech"`; no exact hit → the LLM
+> reranker chooses the broad degree_level. Candidate fix: make the exact signal punctuation-insensitive
+> (compare alphanumeric-normalized names) and/or prefer a specific `degree` over a `degree_level` on ties.
+> Blast radius spans all entities, so treat as a scoped change with its own deploy. Reported via the
+> form-data-normalization degree/department bug — see `Infrastructure/form-data-normalization.md`.
+
 ---
 
 ## Directory Structure

@@ -560,6 +560,29 @@ LinkedIn-sourced candidate gets a populated work history / education without a r
 > D-Pharmacy→"Doctor Of Pharmacy" + Medical→"Medicine", and UG department = the real "Graduation Stream".
 > Config-free (code only). **PROD needs the same code deploy.**
 >
+> **Gotcha — UG department stolen from "Post Graduation Stream"; extra-curriculars dropped when
+> `mapping_field` NULL (fixed 2026-07-27, UAT `266ec7d` / Development `3909856`).** On the standard
+> "Graduation ___" / "Post Graduation ___" sheet template (columns `Graduation Degree`=B.E./B.Tech,
+> `Graduation Stream`=Computer Science and Engineering, `Post Graduation Stream`=Human Resources), a
+> B.E./B.Tech CSE candidate rendered as **UG "… in Human Resource"**. The LLM output was already correct
+> (`education_ug_department`="Computer Science and Engineering"); the **deterministic** override in
+> `services/normalization_service.py` clobbered it. Root cause: `get_ug_department`/`get_pg_department`
+> did not know the ERP "Graduation" (UG) / "Post Graduation" (PG) naming — "graduation" was not a UG
+> keyword and the exclusion list only had "post graduate"/"postgraduate" (not "post graduation"). So the
+> UG **fallback branch** (any bare *Stream column) grabbed "Post Graduation Stream"="Human Resources" and
+> overwrote the correct value; `get_pg_department` returned `None`, so the PG dept was popped too. Fix:
+> add "graduation" to `get_ug_department` UG keywords, add "post graduation"/"postgraduation"/"post grad"
+> to its non-UG exclusion **and gate BOTH primary and fallback on it** (a "Post Graduation ___" column
+> also contains "graduation", so it must be excluded first); add "post graduation"/"postgraduation" to
+> `get_pg_department`'s keywords. Same commit adds `extra_curricular → studentPersonalProfile.extraCurriculars`
+> to the worker `FALLBACK_MAPPING` (`workers/normalization_worker.py`) so extra-curriculars are not
+> silently dropped when `normalized_columns.mapping_field` is NULL (as it is on PROD; UAT already had the
+> DB mapping). Config-free (code only). **PROD needs the same code deploy** (and, independently, the
+> `extra_curricular` `mapping_field` UPDATE if not relying on the fallback). Note: the sibling **degree**
+> mis-map ("B.E./B.Tech" → generic "Bachelor Degree") is NOT this service — it is the pg-vector-search
+> entity normalizer returning a `degree_level` over the exact `B.E/B.Tech` degree (see
+> `Infrastructure/pg-vector-search.md`).
+>
 > **Gotcha — UG (any-level) department dropped when the sheet has a "Stream"/"Branch" column, not a
 > "Department" column (fixed 2026-07-17, UAT `72c4d4b`).** Sheets carry e.g. "Graduation Stream" =
 > "Electronics and Telecommunication" (no "Graduation Department" column). The extraction model
