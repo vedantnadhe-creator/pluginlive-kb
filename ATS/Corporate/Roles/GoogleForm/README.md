@@ -266,6 +266,26 @@ Handler: `student-node/app/handlers/companymasterHandler.js` — `exportCandidat
 
 **Applied Date & Time column (added 2026-06-15):** the export always emits an **`Application Details`** header group with a single **`Applied Date & Time`** sub-column, formatted `DD/MM/YYYY HH:mm` (via `formatDateTimeString()`). The value is the candidate's `student_role_mapping.applied_date`, falling back to `created_at` for older rows. This column is **unconditional** — it does **not** need to be requested in the `downloadList` payload (no Corporate React change required) and renders for all download types. It is sourced by an independent `studentRoleMapping.findMany({ select: { studentId, appliedDate, createdAt } })` lookup and injected as `student["Application Details"]`; the header is registered in the `convertData()` `headersEnabled` list so it gets a column range. Implemented in `exportCandidateList`.
 
+### Candidate Export — Skills column group
+
+Requested via `downloadList: ["Skills"]`. The **Skills** header group always emits six sub-columns: `UG`, `PG`, `Internship`, `Work Experience`, `Courses`, `Projects`. Each cell is a comma-joined list of skill names, assembled in `student-node/app/models/Student.js` → `getStudentDetailsForExport()`:
+
+| Sub-column | Source |
+|---|---|
+| `UG` / `PG` | `education_profile.skills` for that level **plus** `current_course.skills` when `current_course.education_level` matches |
+| `Internship` | `resume.internships[].skill_set[].name` |
+| `Work Experience` | `resume.work_experience[].skill_set[].name` |
+| `Courses` | `resume.training[].skill_set[].name` |
+| `Projects` | `resume.projects[].skill_set[].name` |
+
+**Gotcha — stray commas in empty Skills cells (fixed 2026-07-28):** the resume-backed columns were built with `flatMap(entry => entry?.skill_set?.map(...))`. A resume entry with **no `skill_set`** makes the callback return `undefined`, which `flatMap` appends as an array element rather than dropping — so a candidate with, say, three internships and no tagged skills exported a bare `,` or `, ,` instead of an empty cell. Skill objects with a blank `name` had the same effect. Fixed by a `joinSkillNames()` helper that flattens the groups, drops missing/blank names, dedupes, and joins with `", "` — an empty result is now an empty cell.
+
+The same fix corrected `UG`/`PG`, which concatenated the education-profile skills string and the current-course skills string with `+` and **no separator** (education-profile `C` + current-course `C, Python` exported as `CC, Python`; now `C, Python`, deduped).
+
+Applies to all download types (`xlsx` / `csv` / `googlesheet`) and to both `exportCandidateList` and `exportCandidateListByRole`, since both call `getStudentDetailsForExport()`.
+
+**Still open:** the Institute **Custom Report** export (`PUT /students/instituteCampus/{campusId}/customReport/{downloadType}/export` → `getCustomReport()`) builds its Skills group in raw SQL with `jsonb_agg(skill->>'name')`, which can likewise aggregate SQL `NULL`s into the array. That path was **not** changed.
+
 ### Tally Form URL — New Columns on `job_role_institute_map` Table
 
 After role publish, a unique Tally Form is created per college. The form URL needs to be stored in the institute mapping.
