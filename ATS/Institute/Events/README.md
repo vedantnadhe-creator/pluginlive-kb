@@ -65,6 +65,31 @@ The Events module enables TPO users to create, manage, and track placement event
 | `bulkUploadForEvents` | `/students/event/{eventId}/instituteCampus/{id}/bulkUpload` | POST | Bulk upload students for an event |
 | `resolveConflict` | `/institutes/instituteCampus/{id}/event/{eventId}/conflict/candidates` | GET | List conflicting candidates for an event |
 
+### Candidate Export
+
+| Action | API | Method | Purpose |
+|--------|-----|--------|---------|
+| — | `/students/event/{eventsId}/instituteCampus/{id}/export/{downloadType}` | PUT | Export the event's candidate list (Invited / Registered students) as an Excel file or Google Sheet |
+
+**Backend:** `student-node` → `app/handlers/companymasterHandler.js` → `exportEventCandidateList`
+(`exportEventCandidateList_old` is dead code, kept only for reference.)
+
+Query params: `eventName`, `instituteName`, `displayname` (e.g. `Invited Student` — used for the
+"<displayname> Count" row), `forPage`, and `Reg` which selects the column set:
+
+| `Reg` | Columns |
+|-------|---------|
+| `1` | Registered Date, Registration No., Student Name, Email, Mobile, Degree Type, Degree, Department, Specialisation, Batch (+ `Status` = Paid/UnPaid when the event has a `registerAmount`) |
+| `0` | Same, without Registered Date and Status |
+| unset | Same as `0`, with Registered Date prepended when the event is a registered event |
+
+Rows 1–3 of the sheet carry Event Name, `<displayname> Count`, and College Name; the header row is row 4.
+
+**Batch column:** built by `getBatchLabel(currentCourse.startedOn, currentCourse.endedOn)`. Both are epoch
+timestamps (seconds or ms). A `0`/missing timestamp means "not set", so it is dropped rather than
+formatted — a student with no `startedOn` shows `2026`, not `1970 - 2026`. Both present → `2022 - 2026`;
+both missing → empty cell.
+
 ### Other
 
 | Action | API | Method | Purpose |
