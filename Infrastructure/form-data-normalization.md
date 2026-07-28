@@ -583,6 +583,40 @@ LinkedIn-sourced candidate gets a populated work history / education without a r
 > entity normalizer returning a `degree_level` over the exact `B.E/B.Tech` degree (see
 > `Infrastructure/pg-vector-search.md`).
 >
+> **Gotcha — Roll No. / Preferred Location / social links ingested but never mapped (fixed 2026-07-28,
+> UAT `706fb08` / Development `8460c9b`).** Three ERP columns reached `candidates_raw_data` and (for
+> roll no) the LLM output, but never the create-full payload:
+> - **`Roll No.` → `student.uniRollNo`** — the `roll_no` slug IS registered and the LLM emits it
+>   (e.g. `24-MF-01`), but `mapping_field` is NULL in every env, so it fell through to `result["extra"]`
+>   and `uniRollNo` stayed `""`. Added `roll_no`/`roll_number`/`uni_roll_no`/`university_roll_no` to the
+>   worker `FALLBACK_MAPPING`, plus a raw-column fallback matched on `\broll\b` (word-bounded so
+>   "Payroll" / "Enrollment No" don't false-positive).
+> - **`Preferred Location (Anywhere or Particular City)` → `isAnywhere` / `preferredJobLocation[]`** —
+>   nothing assembled it. "Anywhere" is a FLAG, not a place: it sets `isAnywhere=true` and contributes no
+>   city rows. Other values are split on `, ; / |` + "and" and resolved via `DBService.lookup_city_state_ids`
+>   (→ `get_state_country_from_city` → `get_state_name_by_id`) against `admin.mongo_db_cities` /
+>   `mongo_db_states`, producing the production shape `{city_id, city_name, state_id, state_name}`; a value
+>   that is a state, not a city, yields a state-only row `{state_id, state_name}` (both shapes exist in PROD,
+>   written by the student profile UI). Unresolvable tokens are logged and skipped, never published.
+> - **LinkedIn / social / portfolio columns → `socialMedia[{media, link}]`** — never assembled. Platform is
+>   derived from the URL **host** (`_SOCIAL_HOSTS`) so a "LinkedIn URL" column holding a GitHub link is
+>   still labelled `Github`, falling back to the column header; multiple URLs per cell are supported,
+>   bare `www.` is upgraded to `https://`, entries deduped by link.
+>
+> All three read the normalized slug FIRST and the raw column second, deliberately: `preferred_location` /
+> `social_media` / `linkedin_url` are registered on UAT but NOT PROD, so a slug-only implementation would
+> have silently done nothing on PROD — the same `normalized_columns` config gap that dropped
+> extra-curriculars. Consumers: `student.uni_roll_no`, `student_personal_profile.preferred_job_location` /
+> `is_anywhere` / `social_media`; `preferredJobLocation`/`isAnywhere` also drive the corporate
+> preferred-location candidate filter (`StudentRoleMapping.js`).
+>
+> Same commit **stops persisting the `[{"city_id":"","state_id":""}]` placeholder** that the payload
+> template wrote to `preferred_job_location` for every student with no preferred location (visible on
+> thousands of PROD rows). `preferredJobLocation`/`socialMedia`/`isAnywhere` are now dropped from the
+> payload when empty — so an ERP re-upload no longer wipes locations a student set in the UI. The
+> `studentPersonalProfile.preferredJobLocation.*` mapping_field hook was made index-safe (it used to rely
+> on the placeholder dict at `[0]`). Config-free (code only). **PROD needs the same code deploy.**
+>
 > **Gotcha — UG (any-level) department dropped when the sheet has a "Stream"/"Branch" column, not a
 > "Department" column (fixed 2026-07-17, UAT `72c4d4b`).** Sheets carry e.g. "Graduation Stream" =
 > "Electronics and Telecommunication" (no "Graduation Department" column). The extraction model
