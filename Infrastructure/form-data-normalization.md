@@ -775,10 +775,28 @@ LinkedIn-sourced candidate gets a populated work history / education without a r
 > separate single-date field `awarded_on` and is untouched; there is no `training` section built in the
 > mapper today. Config-free (code only). **PROD needs the same code deploy.**
 >
+> **Follow-up — the CV/LinkedIn half of the same bug (fixed 2026-07-29, UAT `2316363`).** The 2026-07-17
+> fix only covered the **sheet-derived** entries (`recent_*` / `work_N_*` / `internship_N_*` /
+> `project_N_*` / `course_N_*`). Each of those four sections then **appends the CV-parser entries** that
+> don't duplicate a sheet row (`cv_data.resume.workExperience/internships/projects/courses`, also used
+> for the LinkedIn/PDL resume) — and those were appended **verbatim**, keeping the parser's raw
+> `2023-07-01` style values and the `start_date`/`end_date` aliases. So any candidate whose work history
+> came from a **CV rather than sheet columns** still produced un-parseable dates. This is the common case
+> for **corporate-role Tally applies** (candidate uploads a CV), which is why ERP bulk uploads looked
+> fixed while corporate applicants did not. Fix adds `_normalize_cv_entry_dates(entry)` next to
+> `_normalize_work_date` and wraps every appended CV entry in all four sections; it also collapses the
+> `start_date`/`end_date` aliases onto `started_in`/`ended_in`. **PROD pending.**
+>
+> **Not the same bug as a "Invalid date" on the corporate candidate drawer** — a correctly stored
+> `MM/YYYY` value can still *render* as `Invalid date` if the frontend parses it without the format
+> token. See `ATS/Corporate/README.md`; the two failures look identical in the UI but only one is a data
+> problem. Check the stored value before assuming normalization is at fault.
+>
 > **Deploy target (important):** the hook runs in the **`datanormalization-worker`** container
 > (`python main.py worker`) on **uat.pluginlive.com** — that's what processes the ingest
-> queue. `deploy.sh` option 20 only rebuilds the API container (and the running containers use
-> tag `datanormalization:api-namefix`, not the `:api` deploy.sh builds), so it never updates the
+> queue. `deploy.sh` option 20 only rebuilds the API container (and the running containers use a
+> hand-set tag — `datanormalization:api-degreeguard` as of 2026-07-29, previously `api-namefix` — not
+> the `:api` deploy.sh builds; **check the live tag with `docker ps` before building**), so it never updates the
 > worker/cron. Deploy normalization changes manually, keeping the existing `.env` (do **not**
 > `cp .env.uat .env` — it can regress the hand-applied Gemini keyfix):
 > `ssh uat → cd ~/api/form-data-normalization → git pull origin UAT → docker build --build-arg ENVIRONMENT=uat -t datanormalization:<tag> . →`

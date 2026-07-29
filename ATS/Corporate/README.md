@@ -49,6 +49,24 @@ services:
 | `cv-jd-match-scoring.md` | AI resume-vs-JD scoring (corporate-node + fastapi-ai-engine) |
 | `shortlist-gate.md` | The shortlist gate for corporate-node-v2 — **built and reverted**, kept as the design record for a rework |
 
+## Gotchas
+
+**Résumé dates render as "Invalid date" when moment is called without the format token
+(fixed 2026-07-29, UAT `8463ac97`).** Résumé `started_in`/`ended_in` are stored in the system format
+**`MM/YYYY`** (`"01/2025"`). `moment("01/2025")` with **no** format argument is not RFC2822/ISO, so
+moment falls back to `new Date("01/2025")` and yields **`Invalid date`** — the value in the DB is
+perfectly good. The Roles candidate drawer
+(`modules/Roles/Partials/ViewCollegeDetails/…/StudentDrawerContent/Partials/WorkExperienceSection`)
+hit this on both its `resume` and non-`resume` branches, showing `Invalid date - Invalid date` under
+every job title; the sibling `Students/` and `Page/` drawers already passed `'MM/YYYY'`, which is why
+only the Roles ATS view was affected. Fix parses with `moment(value, 'MM/YYYY')` behind a
+`formatMonthYear` helper that also `.isValid()`-guards, so blank/unparseable values render as empty /
+`Present` instead of `Invalid date`.
+
+Diagnosis order when you see `Invalid date` here: **read the stored value first.** If it is already
+`MM/YYYY`, it is this frontend bug; if it is raw (`2023-07-01`) the normalization payload is at fault —
+see `Infrastructure/form-data-normalization.md`. The two are independent and were both live at once.
+
 ## Documentation Structure
 
 Each module folder contains a `README.md` covering:
