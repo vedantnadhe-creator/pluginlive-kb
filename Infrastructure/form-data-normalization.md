@@ -193,6 +193,27 @@ Backs the admin-react Candidate Metrics dashboard. Supports the full filter set
 plus pagination and async CSV/Excel export (`/download/async` → `export_jobs`,
 drained by the `worker` sibling).
 
+**Degree / Department filter options come from the CANDIDATES, not the masters**
+— *UAT + DEV, 2026-07-29.* `GET /api/student-metrics/degrees` and `/departments`
+return `SELECT DISTINCT TRIM(degree|department) FROM student.current_course`
+(`services/db_service.py` → `fetch_distinct_degrees` / `fetch_distinct_departments`).
+
+They used to read `institute.degrees` / `institute.streams` filtered to `status = 1`,
+which was wrong on **both** sides:
+
+- the list filter matches on `LOWER(TRIM(current_course.degree))`, so the master
+  offered thousands of degrees no candidate holds; and
+- only **297 of 4454** PROD degree rows are `status = 1` — `B.Tech`, `MBA`, `BBA`,
+  `MCA`, `B.Com`, `BSc` and `B.E` all sit at `status 0`, so the most common real
+  degrees never appeared at all.
+
+Sourcing from the candidates means every option returns ≥1 row (PROD: 2212 degrees /
+1716 departments). ~50 ms over 99k `current_course` rows — seq scan, no index needed.
+admin-react `CandidateMetricDetails/CandidateMetricMain.js` (`fetchDegrees`/`fetchDepts`)
+calls these via `candidateRequest`, matching how Cities/States/Roles on the same page
+already work. **Do not "fix" a polluted dropdown by filtering the master to `status=1`** —
+see the academic-master hygiene section below; the cure is upstream.
+
 **Semantic role search (`role_search`)** — *live UAT + DEV, 2026-06-22.* A free-text
 role query (e.g. `full stack`, `fullstack`, `software developer`) returns **all**
 semantically-matching candidates in one shot, so users don't hand-pick every role
@@ -388,6 +409,66 @@ Two `create-full` behaviors changed in student-node (`app/handlers/common.js`,
   (`email`/`phoneNumber`/`countryCode`/`studentId`/`journey`/…, the keys `Student.create`
   omits). The old corporate-lead-only update path never hit this because those leads carry
   no `resume`/`currentCourse`.
+
+### Behavior — academic masters are self-appending; implausible names are now rejected (2026-07-29)
+
+`institute.degrees` and `institute.streams` are **self-appending**. Combined with
+`activate: true` above, this means: any degree/department string a candidate record
+carries with **no master id** becomes a **live** row in the master that feeds every
+degree/department picker on the platform.
+
+Candidate sheets routinely put the wrong value under a degree column. Traced on PROD:
+ingest row `289e2d0b` carried `"PG Degree": "81.0%"` (the recruiter typed the PG
+**marks** into the degree column). The degree matcher can't match that, its no-match
+path deliberately keeps the ORIGINAL value, and `create-full` then minted `81.0%` as an
+**active degree**. When found, PROD held **4454 degrees / only 297 active / 4243
+carrying a `student_id`**, including marks, CGPA, years of passing, roll numbers and
+Google Drive links.
+
+**The guard now exists in THREE places — keep them in sync:**
+
+| Where | What |
+|---|---|
+| `institute-node` `app/helpers/masterNameGuard.js` | `isPlausibleMasterName()`, enforced in `degreeHandler.createDegreeForStudentsOthers` for degree/stream/specialisation, on both create **and** rename |
+| `form-data-normalization` `workers/normalization_worker.py` | `_is_plausible_academic_name()` + a deterministic scrub in `map_to_final_schema` that blanks implausible `education_<level>_degree/_department` and `highest_qualification_degree/_department` |
+| `institute.is_implausible_academic_name(text)` | SQL, for cleanup/reporting (DB-Scripts `Academic Master Data Hygiene/`) |
+
+Rule — **conservative by design**: rejects only values that *cannot* be an academic
+name — no letter at all (`0.81`, `7.44`, `2019`, `523281`, `10+2`, `---`), marks with a
+unit (`81.0%`, `80 %`, `8.5 CGPA`), a ratio (`8.5/10`, `450 out of 500`), a URL, an
+email, or `<2` / `>120` chars. Back-tested against all 4454 PROD degree names: **97
+rejected, zero false positives.**
+
+- institute-node returns a rejected value as `{ dataType: "REJECTED", name }` with **no
+  `id`**. Both callers already branch on `.id`, so they no-op safely — the candidate
+  keeps the raw text on their profile, it just never becomes a master row.
+- FDN blanks the value so the mapping loop (which skips `""`) omits the field —
+  an honestly-empty degree instead of a wrong one. The raw sheet value survives in
+  `result["rawJson"]` and in the `create_full_student_request` log.
+- **Not caught:** college names typed into degree columns (`Sri Mittapalli College Of
+  Engineering`, `Kristu Jayanti College`). They're real words; separating those from
+  degrees is the semantic matcher's job, not a syntactic guard's.
+
+**Cleanup scripts** live in DB-Scripts `Academic Master Data Hygiene/`:
+
+- `20260729T050158Z__deactivate_implausible_degree_stream_masters.sql` — records each
+  row's previous status in a new `institute.master_name_cleanup_audit` table, then flips
+  junk `status 1 → 0`. **Nothing is deleted**, so `current_course` references and the
+  candidate's raw text survive; rollback SQL is in the file. Idempotent.
+  *DEV + UAT applied (UAT retired 1 stream, `"2222321"`); PROD pending (12 active
+  degrees, 0 active streams).*
+- `20260729T053000Z__requeue_candidates_with_implausible_degree.sql` — finds candidates
+  whose `current_course.degree/department` is implausible and re-queues their ingest rows
+  (`normalization_status='pending'`) so the corrected pipeline rewrites them in place
+  (create-full **updates** an existing student — see the section above). **Section 2 is
+  operator-initiated and left commented out**: it makes the worker re-call the LLM
+  providers per row and rewrites live candidate records. *UAT: function + review applied,
+  38 affected candidates all linkable to an ingest row; PROD pending, 129 affected /
+  123 linkable.*
+
+> **Order matters:** deploy the guards **before** running the cleanup, or the tables
+> re-pollute within days. The re-queue script is a **no-op until the FDN guard is
+> deployed** — without it the pipeline re-derives the same junk from the same column.
 
 ### Gotcha — city/state "mismatch" = entity-normalizer (vector-search) Gemini key invalid
 
