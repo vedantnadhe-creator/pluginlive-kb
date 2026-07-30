@@ -44,7 +44,7 @@ The Resume module is the student's comprehensive profile and resume management h
 
 | Action | API | Method | Purpose |
 |--------|-----|--------|---------|
-| `getPromotion` | `/students/{studentId}/promotion` | GET (Student) | Fetch promotion data |
+| `getPromotion` | `/students/{studentId}/promotion` | GET (Student) | Work-experience grouped into career-progression chains — see [Promotion grouping](#promotion-grouping-studentsstudentidpromotion) |
 | `getPendingData` | `/students/{studentId}/pending-data` | GET (Student) | Fetch pending data fields |
 | `getFrozenFields` | `/students/{studentId}/frozen-fields` | GET (Student) | Fetch frozen (non-editable) fields |
 | `changePassword` | `/user/{userId}/password` | PATCH (Auth) | Change user password |
@@ -75,7 +75,8 @@ After `updateStudentData`:
 
 - **Frozen fields:** Certain fields are non-editable (institution-controlled)
 - **Pending data:** Tracks which profile fields need completion
-- **Promotion data:** Academic promotion/year advancement tracking
+- **Promotion data:** Career progression, not academic year advancement — see
+  [Promotion grouping](#promotion-grouping-studentsstudentidpromotion) below
 - **Profile image caching:** Stores profile image in localStorage as base64
 - **ES sync on update:** Every student data mutation syncs skills to ElasticSearch
 - **Resume download:** Supports PDF, DOC, DOCX with correct MIME types
@@ -120,3 +121,49 @@ upload the zip to S3 and email a link):
 - **No-resume case** now returns a clean `422 "No resume available for the selected
   student"` for single-student requests instead of a noisy 500, matching the existing
   guard in `bulkResumeDownload`.
+
+---
+
+## Promotion grouping (`/students/{studentId}/promotion`)
+
+`getStudentPromotion` (`student-node/app/handlers/common.js`) reads the resume's
+`work_experience` JSON and groups it into **career progression chains** — consecutive
+roles at the same employer collapse into one group so the UI can render them as a
+single promotion track. Despite the name it has nothing to do with academic year
+advancement.
+
+The grouping lives in `student-node/app/helpers/promotionSorting.js` (extracted from
+`app/helpers/utils.js` on 2026-07-30 so it is unit testable — `utils.js` requires the
+generated Prisma clients and cannot be loaded outside a built container;
+`utils.promotionSorting` still re-exports it). Unit tests:
+`student-node/test/promotionSorting.spec.js`.
+
+Shape: entries are sorted `isCurrentlyWorking` first, then newest `ended_in`, then
+newest `started_in`; the response is an **array of arrays**, one inner array per group.
+
+### Gotchas
+
+- **Resumes with no employer fields 500'd.** `GET /students/{id}/promotion` returned
+  `500 "Cannot read properties of undefined (reading 'split')"` for any student whose
+  work-experience entries carried no `industry` / `corporateId` (the common shape for
+  self-entered experience — e.g. PROD student `7ab6cba0-609c-4d4f-817d-9f159fe24ee4`
+  with a single A.T.E Group row). The first entry (`i = 0`) has no predecessor, so
+  `lastIndustry`/`lastCorporateId` were `undefined`; when the entry itself also lacked
+  them, both loose comparisons were false, so instead of opening a new group the loop
+  fell through to the continuation check and called `.split()` on the non-existent
+  previous entry. Fixed 2026-07-30: `i = 0` always opens a new group, and
+  `checkContinuation` returns `Infinity` for missing/unparseable dates rather than
+  throwing. The same guard covers `isCurrentlyWorking` entries, which carry no
+  `ended_in`.
+- **The gap check never splits a group.** `checkContinuation` is called as
+  `(workExp[i].started_in, workExp[i-1].ended_in)`, but entries are sorted
+  newest-first, so `workExp[i]` is the *older* role. The difference is therefore
+  always negative and always `<= 1`, and same-employer roles chain regardless of how
+  many years separate them. Pre-existing and **deliberately left alone** by the 500
+  fix (correcting it changes promotion output for every student); pinned by a test so
+  any future change is intentional.
+- **Differing-organization `OTHERS` entries are dropped.** Two same-industry entries
+  both using the `OTHERS` placeholder `corporateId` but with different `organization`
+  names match no branch in the grouping loop, so the second one is silently omitted
+  from the response. Also pre-existing, also pinned by a test; the one-line fix is
+  noted as a `ponytail:` comment in `promotionSorting.js`.
