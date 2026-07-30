@@ -62,6 +62,96 @@ the full mechanics — as of 2026-07-16 both `overall_score` and `verdict` are
 **recomputed deterministically in code** from the LLM's per-parameter ratings,
 not taken from the model's own numbers.
 
+### Why these bands — rationale
+
+**These are not market benchmarks or industry percentiles.** If a client asks
+"is 50 the industry threshold?", the honest and stronger answer is: it is a
+defined point on our seniority-relative rating scale, and it derives as follows.
+
+**The identity.** `overall_score` is a unit change on the 0–5 parameter ratings,
+nothing more:
+
+```
+score = Σ(wᵢ · (rᵢ/5) · 100) / Σwᵢ  =  20 · r̄        (r̄ = weight-weighted mean rating)
+```
+
+So every band boundary is really a **mean-rating** threshold, readable in the
+rating scale's own vocabulary (`Excellent 5 / Strong 4 / Adequate 3 / Concern 2 /
+Weak 1 / No Response 0`):
+
+| Verdict | Score | Mean rating r̄ | Reads as |
+|---|---|---|---|
+| Strong Fit | ≥ 80 | ≥ 4.00 | `Strong` or better on every weighted dimension |
+| Fit | 50–79 | 2.50 – 3.99 | from halfway `Concern`→`Adequate` up to nearly all `Strong` |
+| Borderline | 35–49 | 1.75 – 2.49 | around `Concern` — gaps worth probing |
+| Not Fit | < 35 | < 1.75 | below `Weak`-to-`Concern` on average |
+
+Useful anchors: **all-`Adequate` = 60** (mid-Fit), all-`Concern` = 40
+(Borderline), all-`Weak` = 20 (Not Fit), all-`Strong` = 80 (Strong Fit floor).
+
+**Core principle: the bands are absolute; seniority-relativity is injected at the
+RATING step, not the band step.** The rating scale is defined relative to the
+role — `3 Adequate` is literally *"meets the bar **for the seniority**"*. So
+`r̄ = 3.0 → 60` means "meets the bar for this role" whether the role is Fresher
+or Lead; the absolute difficulty differs, the score's meaning does not. This is
+why there is **one** band table rather than a table per seniority — moving the
+bands per seniority would double-count the relaxation that the rating
+calibration already applies.
+
+**Fit is deliberately wide, and is the relaxed band for lower-tier roles.** The
+`SCORING CALIBRATION (FRESHER / ENTRY-LEVEL)` block (fires for seniority
+`Fresher` and `Junior`) instructs that an engaged candidate who articulates
+clearly and shows foundational understanding *"should score Adequate (3) or
+above"* → 60 → mid-Fit. So for lower-tier roles **Fit ≈ "engaged, coherent,
+foundations present"**, which is the correct signal at that tier: for volume
+campus / entry hiring the decision needed is *"worth a human conversation?"*,
+not a fine-grained ranking. Narrowing Fit would push trainable freshers into
+Borderline — a false negative, which is the expensive error when the pool is
+large and training is provided. At `Mid` / `Senior` / `Lead` the same band is
+**not** relaxed: no leniency block applies and "meets the bar" is a much higher
+absolute standard, so identical 60 reflects a far stronger candidate.
+
+**Per-band justification:**
+- **≥ 80 Strong Fit** — a fast-track signal that must survive a hiring manager's
+  challenge, so it is deliberately strict: `Strong` across the board, and a
+  single `Adequate` must be paid for with an `Excellent` elsewhere.
+- **50–79 Fit** — proceed to a human round. The floor sits *below* the stated
+  bar (r̄ 2.5) on purpose: the AI interview is a **screening** instrument, not
+  the hiring decision. Its job is to protect the human interviewer's time, so it
+  optimises **recall over precision** at this gate.
+- **35–49 Borderline** — `Concern` territory; flagged for a human to overrule
+  rather than auto-rejected, because a screening tool should not silently discard
+  candidates whose weakness may be an artifact (nerves, audio quality, language).
+- **< 35 Not Fit** — in practice reached mainly via the **non-engagement caps**
+  (10 / 25), not by the rating arithmetic: r̄ < 1.75 requires mostly `Weak`/`No
+  Response`. Honest description: Not Fit is predominantly a *non-participation*
+  verdict, not a *low-competence* one.
+
+**On the uneven widths** (in rating units: Strong Fit 1.0, Fit 1.5, Borderline
+0.75, Not Fit 1.75) — precision is concentrated where the action changes. The top
+band needs confidence, so it is narrow and strict. Everyone inside Fit gets the
+same action (human interview), so width costs nothing there. The bottom is wide
+but rarely reached by degrees because non-engagement dominates it. Fit's width is
+only a defect if `Fit` is expected to **rank**; it is correct if `Fit` is a
+**gate**, which is what it is. Where senior hiring needs finer discrimination,
+use the numeric score and the per-parameter ratings (both already on the report)
+rather than adding labels or per-seniority bands.
+
+**Known caveat — not outcome-validated.** No correlation has been measured
+against downstream outcomes (shortlisted / progressed / offered / on-job
+performance). The bands are internally consistent with the rating scale, which is
+a different and weaker claim than being predictive. The cheapest way to upgrade
+this is retrospective: join PROD `ai_interview_scores` to whatever downstream
+outcome signal exists and check whether the bands actually separate the groups.
+
+**Provenance (for the record).** The four labels shipped 2026-05-18 (`618e2dc`)
+with **no numeric bands** — the LLM picked a label freely. The numbers arrived as
+a bug fix: `f12c454` (2026-05-30) added `<35` and `<50` as a downward-only clamp
+because Gemini was labelling near-zero scores "Borderline"; `8a8af35`
+(2026-06-02) added `80+` to complete the bucket table. The rating-scale alignment
+documented above was recognised after the fact, not designed up front — it holds,
+but it was not the original motivation.
+
 ---
 
 ## End-to-End Flow
