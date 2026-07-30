@@ -68,6 +68,49 @@ Diagnosis order when you see `Invalid date` here: **read the stored value first.
 `MM/YYYY`, it is this frontend bug; if it is raw (`2023-07-01`) the normalization payload is at fault —
 see `Infrastructure/form-data-normalization.md`. The two are independent and were both live at once.
 
+**Candidate drawer went blank (white screen) on a `null` entry inside a skills array
+(fixed 2026-07-30, UAT `ba4afa7f`).** `student.current_course.skills` can hold a **one-element array
+containing `null`** — `[null]` — written by the ERP import path; 11 PROD students were in this state when
+it was found. Every render site gated the block on `item?.skills?.length > 0` (true for `[null]`) and then
+read `value.name` **without** optional chaining, so React threw
+`Cannot read properties of null (reading 'name')` **inside render** and unmounted the whole tree — the
+user sees an empty page, not a partial one. First reproduced on `prabha+erp90op012@pluginlive.com` in the
+Roles → college → candidate drawer.
+
+Fix is a single shared guard, `getNamedSkills()` in `corporate-react/src/utils/commonFunction.js`:
+
+```js
+export const getNamedSkills = skills => {
+  return Array.isArray(skills) ? skills.filter(skill => skill?.name) : []
+}
+```
+
+Both the heading gate **and** the `.map` now go through it, so the "Skills" heading disappears when
+nothing survives the filter instead of leaving an empty grey pill. Applied at every unguarded `.name`
+deref over a `skills` / `skill_set` array:
+
+| Where | Field |
+|---|---|
+| `modules/Roles/Partials/ViewCollegeDetails/…/EducationSection` | `skills` |
+| `modules/Students/…/ViewStudentDrawer/…/EducationSection` | `skills` (also had no React `key`) |
+| `modules/Roles/ViewRole/ApplicantTrackingSystem/…/CandidateViewDrawer/Partials/{Internship,WorkExperience,Project}Section` | `skill_set` |
+| `modules/InterviewerDashboard/…/CandidateViewDrawer/Partials/{Internship,WorkExperience,Project}Section` | `skill_set` |
+| `components/ResumeDownload/Partials/DownloadFile.js`, `modules/Report/Styles/DownloadResume.js` | `skills` + `skill_set`, 5 blocks each |
+
+The two `@react-pdf` renderers also had their `|` separators switched from `item?.skills?.length - 1` to
+the filtered list length (the `map` third arg), so the last skill no longer gets a trailing pipe.
+
+Sites already using `item?.name` (`ResumeDownload/Partials/Skills.js`, the `WorkExperienceSection`
+drawers in `Students/` and `Roles/Partials/ViewCollegeDetails/`) never crashed — they degrade to empty
+output — and were left alone.
+
+**The write path is still unfixed:** something in the ERP `create-full` import writes `[null]` into
+`current_course.skills`. The frontend guard stops the white screen everywhere, but bad rows keep
+accumulating. To find them:
+`SELECT count(*) FROM student.current_course WHERE skills::text LIKE '%null%';`
+Related sibling bug on the backend (non-array `skill_set` crashing PDF generation) —
+see `ATS/Student/Resume/README.md`.
+
 ## Documentation Structure
 
 Each module folder contains a `README.md` covering:

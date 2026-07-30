@@ -110,6 +110,13 @@ upload the zip to S3 and email a link):
   loop and to the render blocks (`workExperience`/`internships`/`projects`/`courses`/`education`).
   This is **data-shape dependent** — only resumes that fall into the generate-PDF
   branch *and* carry a non-array resume sub-field were affected.
+- **`null` *entries inside* a skills array are a separate, still-live data defect.**
+  `student.current_course.skills` can be `[null]` (ERP import writes it), which is a
+  perfectly good array — so the `asArray` guards above pass — but any renderer that
+  reads `skill.name` unguarded then throws. This white-screened the corporate candidate
+  drawers and the corporate resume PDFs; fixed frontend-side 2026-07-30 with
+  `getNamedSkills()`, see `ATS/Corporate/README.md`. The write path is unfixed, so
+  **assume skills arrays can contain nulls** in any new consumer.
 - **No-resume case** now returns a clean `422 "No resume available for the selected
   student"` for single-student requests instead of a noisy 500, matching the existing
   guard in `bulkResumeDownload`.
