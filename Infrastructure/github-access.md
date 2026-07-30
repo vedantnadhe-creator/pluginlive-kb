@@ -71,11 +71,15 @@ git -C ~/api/student-node fetch origin --dry-run && echo OK    # verify
 `origin` (`https://x-access-token:<token>@github.com/…`), and an embedded URL credential wins over
 `~/.git-credentials` — fixing only the credential store leaves every repo still 403ing.
 
-Coverage of the 2026-07-30 rotation: **63 checkouts on DEV** (`~/api`, `~/frontend`, plus
+Coverage of the 2026-07-30 rotation: **68 checkouts on DEV** (`~/api`, `~/frontend`, plus
 `Elastic-Search/search-service`, `Mail-Server`, `Resume_parser`, `assesment/*`, `pluginlive-designs`,
-`projects/devops-control-center`, `resume-match{,-staging}`, and the `actions-runner/_work/*`
-CI workspaces), **29 on UAT** (incl. `ucat-ai-prep`, `pil-ai-learning`, `banking-career-launchpad`),
-**25 on PROD** (`~/repositories/{api,frontend}/*`, `builder-jenkins` workspaces, `medverse-build`).
+`projects/devops-control-center`, `resume-match{,-staging}`, active worktrees under `~/worktrees`
+and `~/wt-cleanup`, and the `actions-runner/_work/*` CI workspaces), **29 on UAT** (incl.
+`ucat-ai-prep`, `pil-ai-learning`, `banking-career-launchpad`), **26 on PROD**
+(`~/repositories/{api,frontend}/*`, `builder-jenkins` workspaces incl. its git object caches,
+`medverse-build`). Re-verified 2026-07-30 (same-day re-run picked up a few new worktrees created
+after the initial rotation — the `find ... | while ...` step is idempotent and safe to re-run
+whenever a new checkout/worktree appears with the old token still embedded).
 Backups of the credential file: `~/.git-credentials.bak.<epoch>` on each box.
 
 ## Not covered by this token
