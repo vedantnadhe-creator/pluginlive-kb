@@ -17,6 +17,7 @@ When working on a feature, check the relevant file here **before asking the user
 - `Obsidian.md` — Obsidian knowledge base tool: setup, pricing, plugins, team collaboration, vault structure
 
 **Infrastructure & DevOps:**
+- `Infrastructure/github-access.md` — GitHub credentials for every checkout (fine-grained PAT, ≤90-day expiry, rotation steps) — **read this on any `git` 403**
 - `Infrastructure/README.md` — server access overview (Dev, UAT, Prod)
 - `Infrastructure/servers.md` — all servers, ports, services, systemd units
 - `Infrastructure/mcp-servers.md` — all MCP integrations (browser-agent, GitHub, Slack, Linear, Notion, WhatsApp, S3, Postgres, etc.)

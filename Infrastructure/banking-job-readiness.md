@@ -22,6 +22,8 @@ git pull origin main   # if package-lock.json is dirty from a prior install, `gi
 nvm use 20 && npm install && npm run build
 ```
 
+If that `git pull` 403s, the org GitHub token has expired — see `Infrastructure/github-access.md` (the checkout's `origin` URL carries its own token, so the credential store alone is not enough).
+
 - nginx (`/etc/nginx/sites-enabled/banking-react.conf`) serves `dist/` as static files directly — no service/container restart needed, nginx picks up the new build immediately.
 - `.env` holds Supabase keys for project `kbwjokmmzkgjwiqelrdc`; `VITE_*` vars are baked in at build time.
 

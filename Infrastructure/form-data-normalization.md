@@ -840,6 +840,7 @@ LinkedIn-sourced candidate gets a populated work history / education without a r
 > and `-cron` from the same `:api` image. **Still check the live tag with `docker ps` before building** —
 > if someone hand-tags again, the api and worker will silently diverge. Deploy normalization changes manually, keeping the existing `.env` (do **not**
 > `cp .env.uat .env` — it can regress the hand-applied Gemini keyfix):
+> (a `git pull` 403 here means the org GitHub token expired — see `Infrastructure/github-access.md`)
 > `ssh uat → cd ~/api/form-data-normalization → git pull origin UAT → docker build --build-arg ENVIRONMENT=uat -t datanormalization:<tag> . →`
 > recreate **all three** containers with their exact cmd/ports/restart (`datanormalization` api
 > `-p 5013:5013 --restart always`, `-worker` `python main.py worker`, `-cron` `python main.py cron`,
