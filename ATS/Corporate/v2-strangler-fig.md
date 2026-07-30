@@ -1,12 +1,69 @@
-# Corporate ATS v2 — strangler-fig, and why it is DEV-only
+# Corporate ATS v2 — strangler-fig (LIVE on PROD since 2026-07-30)
 
 The Corporate portal is being rebuilt vertical-by-vertical behind a strangler-fig,
 the same pattern as institute-react-v2. Two new repos sit alongside the v1 app:
 
 | Repo | Checkout | Stack | Where it runs |
 |---|---|---|---|
-| `corporate-react-v2` | `~/frontend/corporate-react-v2` | Next.js + TS + Tailwind, `basePath=/v2` | **DEV only** — systemd `corporate-react-v2` :3012, nginx `location /v2` in `corp-react.conf` |
-| `corporate-node-v2` | `~/api/corporate-node-v2` | Fastify + TS + Zod + Kysely/pg (no Prisma) | **DEV only** — systemd `corporate-node-v2` :4001, OpenAPI at `/docs` |
+| `corporate-react-v2` | `~/frontend/corporate-react-v2` | Next.js + TS + Tailwind, `basePath=/v2` | DEV: systemd :3012 · **PROD: k8s ns `frontend`** |
+| `corporate-node-v2` | `~/api/corporate-node-v2` | Fastify + TS + Zod + Kysely/pg (no Prisma) | DEV: systemd :4001 · **PROD: k8s ns `api`** (API + worker) |
+
+## PROD topology (release-v1.37, deployed 2026-07-30)
+
+| Object | ns | Notes |
+|---|---|---|
+| `corporate-node-v2` Deployment + Service | api | port 4001, Service `:80→4001`, probes `/v2/health`. **No Ingress** — cluster-internal only |
+| `corporate-node-v2-worker` Deployment | api | same image, `command: ["node","dist/worker.js"]`, `replicas: 1`, `strategy: Recreate` |
+| `corp-v2-api-config` ConfigMap | api | mounted `/app/.env` via `subPath` |
+| `corporate-react-v2` Deployment + Service | frontend | port 3000, Service `:80→3000` |
+| `corporate-v2-reminders` CronJob | api | hourly `POST /v2/reminders/run` |
+| `/v2` path on `corporate-react-ingress` | frontend | → `corporate-react-v2:80`, same host as v1 |
+
+Images: `pl-corporate-api-v2`, `pl-corporate-react-v2` (OCIR). Env files:
+`repositories/envs/api/corporate-node-v2.env`, `repositories/envs/ui/corporate-react-v2.env`.
+
+**The worker must stay `replicas: 1`.** `installSchedules()` clears the five
+repeatable jobs by name and re-adds them at boot; two workers doing that
+concurrently can leave duplicates registered, and the agent then runs twice per
+tick — meaning candidates mailed twice.
+
+The Evaluation Agent ships disarmed on PROD (`EVALUATION_AGENT_ENABLED=false`,
+`SHADOW=true`) and `REMINDER_ENABLED=false`, so no candidate mail moves until
+those are deliberately flipped.
+
+## Gotcha — PROD Postgres is hostssl-only; DEV and UAT are not
+
+`corporate-node-v2` builds its pg Pool from `connectionString` with no explicit
+`ssl`, so on PROD every query fails with:
+
+```
+no pg_hba.conf entry for host "...", user "plproduction", database "prod_pluginlive", no encryption
+```
+
+`/v2/health` answers `503 {"status":"degraded","db":"down"}` and the pod
+crash-loops on its liveness probe. **This cannot reproduce on DEV or UAT** —
+neither requires TLS.
+
+The fix is in the URL, not the code: append **`sslmode=no-verify`**.
+`require` and `prefer` both fail with `self-signed certificate in certificate
+chain`, because the PROD cert chain is self-signed and those modes validate it.
+v1 `corporate-node` never hit this because Prisma negotiates TLS without
+validating by default.
+
+## Gotcha — the frontend and the backends are in DIFFERENT namespaces
+
+`corporate-react-v2` runs in ns `frontend`; `corporate-node-v2` and `auth-node`
+run in ns `api`. A bare Service name only resolves within its own namespace, so
+the BFF's `CORP_V2_API_URL` / `AUTH_API_URL` **must be FQDNs**:
+
+```
+CORP_V2_API_URL=http://corporate-node-v2.api.svc.cluster.local
+AUTH_API_URL=http://auth-node.api.svc.cluster.local
+```
+
+A short name here fails every BFF call at runtime while the pod stays happily
+`1/1 Running`. `student-node`'s `CORPORATE_ATS_URL=http://corporate-node-v2` is
+fine unqualified — student-node is itself in ns `api`.
 
 v1 (`corporate-react` :3001, `corporate-node` :8080) is untouched and still serves
 every vertical. v2 reads the existing corporate tables and owns only additive
@@ -50,6 +107,19 @@ block in that env's `corp-react.conf`. To check whether a bundle carries a flip:
 docker exec corporatereact sh -c 'grep -rho "/v2/roles" /usr/share/nginx/html | wc -l'
 ```
 
-Note `corporate-react-v2` / `corporate-node-v2` are **not** services in
-`auto_deploy.sh`, so a UAT/PROD deploy of them is manual work, not a one-liner —
-another reason the flip outruns the app.
+On PROD `deploy.sh` now has menu entries **19) Corporate-Node-V2** and
+**20) Corporate-React-V2**, but they only *build and roll* — `kubectl set image`
+cannot create objects, so the Deployments/Services/ConfigMap/CronJob above were
+created by hand once. `deploy.sh` also rolls only `deployment/corporate-node-v2`;
+**the worker needs its own `kubectl set image`** or it silently keeps old code.
+
+`deploy.sh` runs `docker system prune -af` on every build. Use
+`~/autodeploy_noprune.sh` (or build manually) when another deploy is running on
+the box, or the prune will destroy the other build's cache and untagged layers.
+
+### Status on PROD as of 2026-07-30
+
+v2 is deployed and reachable at `https://corporate.pluginlive.com/v2`, but the
+v1 nav flip is **still reverted**, so there is no in-product link to it — v2 is
+URL-only until `corporate-react`'s Roles entry is pointed back at `/v2/roles`.
+That is deliberate: it keeps a rollback lever that needs no deploy.
