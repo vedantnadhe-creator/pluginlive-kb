@@ -46,12 +46,21 @@ Unlike static assessments, AI Interview is a **conversation** — questions are 
 
 ### Final Recommendation
 
-| Recommendation | Criteria |
+Verdict stored in `ai_interview_scores.ai_recommendation` as one of four labels
+(not `strong_hire`/`hire`/`maybe`/`no_hire` — that enum was never shipped):
+
+| Verdict | `overall_score` band |
 |---|---|
-| `strong_hire` | Overall score ≥ 85 with high confidence |
-| `hire` | Overall score ≥ 70 |
-| `maybe` | Overall score 50–69, mixed signals |
-| `no_hire` | Overall score < 50 or critical gaps |
+| `Strong Fit` | ≥ 80 |
+| `Fit` | 50–79 |
+| `Borderline` | 35–49 |
+| `Not Fit` | < 35 |
+
+Exception: a **non-engagement** transcript (see below) always forces `Not Fit`
+regardless of the numeric band. See the "score-final" section further down for
+the full mechanics — as of 2026-07-16 both `overall_score` and `verdict` are
+**recomputed deterministically in code** from the LLM's per-parameter ratings,
+not taken from the model's own numbers.
 
 ---
 
@@ -93,7 +102,8 @@ The live interview is driven by `student-node` (`app/handlers/aiInterviewHandler
 
 - **Per-turn scoring is off the critical path.** `score-turn` is fire-and-forget from `submitTurn` (its signals are a soft hint only) and, in FastAPI, now runs on the **background executor** (`_gemini_json_background`, behind the scoring semaphore) instead of the priority pool — so it can never contend with the live `generate-question` call. This removed a visible slowdown on the turn after the first substantive answer (the candidate's "3rd question"). Each live turn is a single Gemini call.
 
-- **AI-only verdict (changed 2026-07-03).** The LLM is now the sole decision-maker for the fit verdict — FastAPI `score-final` no longer clamps/overrides a valid verdict the model returns. The prompt includes an explicit **VERDICT RUBRIC** (`≥ 80` → Strong Fit, `50-79` → Fit, `35-49` → Borderline, `< 35` → Not Fit, non-engagement always forces Not Fit) that the model applies itself, so the mapping stays consistent across candidates without a Python override. `score-final`'s Gemini call now runs at **`temperature=0.5`** (previously unset/SDK default) specifically to reduce verdict variance/hallucination — scoped to this call only, not question-generation. Python only fills in a verdict when the model's field is missing or not one of the four known labels (`Strong Fit`/`Fit`/`Borderline`/`Not Fit`) — a data-integrity fallback, not a decision override. student-node's `deriveVerdictFromScore` (`aiInterviewHandler.js`) and `verdictFromScore` (`Assessment.js`) are unchanged and remain fallback-only (fire when no `aiRecommendation` is stored at all — e.g. a pre-existing row — never overriding a real AI verdict). The old deterministic non-engagement **score cap** (caps `overall_score` when answers are mostly one-word/gibberish, based on average answer length) is unchanged.
+- **AI-only verdict (changed 2026-07-03, REVERTED 2026-07-16 — superseded, kept for history).** Briefly the LLM was the sole decision-maker for the fit verdict — FastAPI `score-final` didn't clamp/override a valid verdict the model returned, relying only on prompt discipline (an explicit VERDICT RUBRIC + `temperature=0.5`). Python only filled in a verdict when the model's field was missing or unrecognized. **This did not hold up**: the model's own arithmetic on weighted-average `overall_score` frequently disagreed with the correct computation (e.g. a `4,3,3,4,4` / `10,10,15,10,55`-weighted config computes to 75 but the model sometimes returned 60) — enough to shift a candidate across a verdict band boundary (Fit vs Strong Fit, Fit vs Borderline) on identical transcript content.
+  **Current behaviour (`e31ead3`, 2026-07-16, DEV+UAT+release-v1.36):** `score-final` still asks Gemini for per-parameter `rating`s (0–5) and prose (strengths/concerns/analysis/quotes), but `overall_score` is **recomputed in Python** as the weighted average of `(rating/5)*100` across the admin's configured parameters (iterating the *config*, not the LLM's output list, so a parameter the model skipped can't skew the total) — the model's own `overall_score` number is discarded. A **non-engagement cap** then applies to the recomputed score using a word-count proxy (not an LLM judgement): average answer length `< 8` words, or `≥ 25%` of answers `≤ 3` words, caps the score at 25; `≥ 50%` of answers `≤ 3` words caps it at 10 (intro turns excluded from the count). The **verdict is then derived mechanically** from that final score against the same four bands, and forced to `Not Fit` whenever the non-engagement condition fires — the model's own `verdict` field is never read. `score-final` still runs Gemini at `temperature=0.5` (lower prose variance is still worth having even though the verdict itself is no longer model-decided). student-node's `deriveVerdictFromScore` (`aiInterviewHandler.js`) and `verdictFromScore` (`Assessment.js`) are unchanged and remain fallback-only (fire when no `aiRecommendation` is stored at all — e.g. a pre-existing row — never overriding a stored verdict). Test coverage: `fastapi-ai-engine/tests/test_score_final_recompute.py`.
 
 - **Parameter name is authoritative from config, not the LLM (fixed 2026-07-03).** The report's per-parameter label comes from `parameter_scores[].name`. The score-final prompt asks Gemini to echo each parameter's `name`, but the model intermittently returned it **blank** (or echoed the id). Nothing re-filled it, so the PDF renderer's fallback `name: p.name || p.id` surfaced the raw admin id (e.g. **"PARAM_XYRD"**) instead of the human label. Two-part fix: (1) **FastAPI `score-final`** now backfills each `parameter_scores[].name` from the input `evaluation_parameters` by matching `id` (`name_by_id = {p.id: p.name ...}`), right before `return ScoreFinalResponse(...)` — the admin config name is the source of truth, the LLM's `name` is ignored whenever the id matches (the prompt guarantees every input param appears carrying its id). This fixes **all future reports**, both the PDF and the JSON report UI, since the DB row is then stored with the correct name. (2) **student-node PDF path** (`Assessment.js` `generateAIInterviewReport`) loads the config's `evaluation_parameters` (raw query joining `ai_interview_config` on `assessment_set_id`) into an id→name map and resolves the label as `paramNameById[p.id] || p.name || p.id` — this repairs **already-scored historical rows** whose stored name is blank (the FastAPI fix alone only helps rows scored from then on). DEV+UAT live; PROD pending.
 
@@ -587,12 +597,17 @@ AssessmentAssignedStudent
 - `is_follow_up`: boolean, true if this was a follow-up question
 - `parent_interaction_id`: links follow-up to original question
 
-**AIInterviewScore:**
-- `overall_score`: 0–100 weighted final score
-- `technical_score`, `behavioral_score`, `communication_score`, `problem_solving_score`: 0–100 category scores
-- `ai_recommendation`: `strong_hire` | `hire` | `maybe` | `no_hire`
-- `strengths`, `weaknesses`: JSONB arrays
-- `detailed_feedback`: comprehensive text analysis
+**AIInterviewScore (`ai_interview_scores`):**
+- `overall_score`: 0–100 weighted final score, recomputed in code from `parameter_scores` ratings + config weights (see verdict section above) — not trusted as-returned from the LLM
+- `ai_recommendation`: `Strong Fit` | `Fit` | `Borderline` | `Not Fit` (not `strong_hire`/`hire`/`maybe`/`no_hire`)
+- `parameter_scores`: JSONB array, one entry per evaluation parameter — `{ id, name, rating (0-5), rating_label, analysis, supporting_quote, not_assessed }`. `rating_label` ∈ `Excellent`(5) / `Strong`(4) / `Adequate`(3) / `Concern`(2) / `Weak`(1) / `No Response`(0) / `Not Assessed` (uncovered parameter — rating backfilled to the rounded average of covered parameters, never a hard 1/5)
+- `strengths`, `weaknesses`: JSONB arrays of `{ claim, quote }`
+- `executive_summary`, `recommendation_text`: prose fields from score-final
+- `detailed_feedback`: "why this score" one-liner (`score_rationale`), e.g. *"Scored 57/100 — Not Fit: answers were scripted and lacked real depth."* — repurposed column, previously an unused duplicate of `executive_summary`
+
+There is no separate `technical_score`/`behavioral_score`/`communication_score`/
+`problem_solving_score` — per-category scoring lives entirely in `parameter_scores`,
+keyed by the admin's configured evaluation parameters (which vary per assessment).
 
 ---
 
