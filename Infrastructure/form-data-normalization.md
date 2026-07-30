@@ -787,6 +787,45 @@ LinkedIn-sourced candidate gets a populated work history / education without a r
 > `_normalize_work_date` and wraps every appended CV entry in all four sections; it also collapses the
 > `start_date`/`end_date` aliases onto `started_in`/`ended_in`. **PROD pending.**
 >
+> **Gotcha — internship start/end dates dropped because the sheet header is bare (fixed 2026-07-30,
+> UAT `50f6303` / Development `6bb8924`).** ERP sheets qualify most columns (`Intership Company 1: Sector`,
+> `Internship Company 1: Skills`) but label the internship date pair **bare** — `Started Date (MM/YYYY)` /
+> `Ended Date (MM/YYYY)` — and rely on the column *sitting inside* the internship block for its meaning
+> (pandas mangles the second occurrence to `Started Date (MM/YYYY).1`). That position is **destroyed
+> before the LLM ever sees the row**: `candidates_raw_data.raw_data` is a **jsonb** column, and Postgres
+> jsonb reorders object keys by (length, bytes). The logged prompt shows the keys length-sorted, so
+> `Started Date (MM/YYYY)` arrives with no neighbours and nothing to attribute it to → the LLM emitted
+> `internship_1_company/role/skills/description/duration` but **no** `internship_1_started_in`/`_ended_in`,
+> and create-full received `{"started_in":"","ended_in":""}`. Work experience was unaffected because those
+> headers name themselves (`Company 1 Started Date - mm/yyyy` → `recent_work_start_date`). The slugs were
+> never the problem — `internship_N_started_in`/`_ended_in` are registered and active.
+> Fix: `ExcelReader._qualify_bare_date_headers()` (`services/excel_reader.py`) rewrites a bare start/end-date
+> header to `"<nearest preceding entity header>: <bare header>"` (→ `Intership Company 1: Started Date
+> (MM/YYYY)`) **at parse time, while pandas column order is still intact**, stripping pandas' `.N` dupe
+> suffix; collision-guarded so two columns can never collapse onto one key. The entity qualifier is the
+> greedy match up to the last `intern(?)ship|company|employer|organization|project|course` + optional
+> number, so already-qualified headers are untouched. Covers **both** ingest paths (institute-ERP upload
+> and the Drive/Sheets webhook — both go through `ExcelReader.read_all_sheets`). Verified end-to-end on
+> the reported sheet: `internship_1_started_in=2019-04-01`, `_ended_in=2019-06-01` →
+> `_normalize_work_date` → `04/2019` / `06/2019`. Check: `tests/test_bare_date_headers.py`.
+> **Only helps NEW uploads** — rows already in `candidates_raw_data` keep the ambiguous keys, so re-running
+> normalization on them cannot recover the dates; the sheet must be re-ingested. **PROD needs the same
+> code deploy.** General rule this establishes: **never** try to fix a mapping by relying on column
+> adjacency in the prompt — qualify the header at ingest instead.
+>
+> **Known gap (not fixed) — internship / work-experience SKILLS never become `skill_set`.** The sheet's
+> `Internship Company N: Skills` is extracted (`internship_1_skills`) and the worker does ship it, but as a
+> raw **string** (`"skills": "A, B, C"`), which is what lands in `resume.internships[]`. The platform's
+> canonical shape is `skill_set: [{id, name}]` resolved against the `student.skills` master — that's what
+> `student-node/app/helpers/utils.js` reads when collecting a student's skills and what every resume
+> renderer maps (`student-react ResumeDownload.js`, `institute-react ResumeDownload/Partials/DownloadFile.js`).
+> Nothing reads the `skills` string, so ERP-imported skills display nowhere and count for nothing in
+> role/skill matching. Work-experience skills are lost one step earlier, on a key mismatch: the LLM emits
+> `recent_work_skills` but the worker reads `recent_work_skill_set` (both slugs exist), so the payload
+> ships `"skills": ""`. Skills embedded in the Certifications text are also discarded (only
+> `course_N_title` is taken). student-node already resolves skill names → master ids for education /
+> currentCourse (`Student.js` `student.skills` lookup) — internships and workExperience simply never run it.
+>
 > **Not the same bug as a "Invalid date" on the corporate candidate drawer** — a correctly stored
 > `MM/YYYY` value can still *render* as `Invalid date` if the frontend parses it without the format
 > token. See `ATS/Corporate/README.md`; the two failures look identical in the UI but only one is a data
@@ -794,10 +833,12 @@ LinkedIn-sourced candidate gets a populated work history / education without a r
 >
 > **Deploy target (important):** the hook runs in the **`datanormalization-worker`** container
 > (`python main.py worker`) on **uat.pluginlive.com** — that's what processes the ingest
-> queue. `deploy.sh` option 20 only rebuilds the API container (and the running containers use a
-> hand-set tag — `datanormalization:api-degreeguard` as of 2026-07-29, previously `api-namefix` — not
-> the `:api` deploy.sh builds; **check the live tag with `docker ps` before building**), so it never updates the
-> worker/cron. Deploy normalization changes manually, keeping the existing `.env` (do **not**
+> queue. `deploy.sh` option 20 only rebuilds the API container, so it never updates the
+> worker/cron. As of **2026-07-30 all three containers run the `datanormalization:api` tag** —
+> the hand-set tags (`api-degreeguard` 2026-07-29, `api-namefix` before that) are gone, because that
+> deploy ran `auto_deploy.sh form-data-normalization UAT` (builds `:api`) and then recreated `-worker`
+> and `-cron` from the same `:api` image. **Still check the live tag with `docker ps` before building** —
+> if someone hand-tags again, the api and worker will silently diverge. Deploy normalization changes manually, keeping the existing `.env` (do **not**
 > `cp .env.uat .env` — it can regress the hand-applied Gemini keyfix):
 > `ssh uat → cd ~/api/form-data-normalization → git pull origin UAT → docker build --build-arg ENVIRONMENT=uat -t datanormalization:<tag> . →`
 > recreate **all three** containers with their exact cmd/ports/restart (`datanormalization` api
