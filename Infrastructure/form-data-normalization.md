@@ -371,7 +371,9 @@ Two `create-full` behaviors changed in student-node (`app/handlers/common.js`,
   updated via the shared `updateExistingStudentData(req, studentId, { promoteCorporate })`
   helper — it re-applies the `admin`/profile fields, materializes missing masters,
   then writes `student` + `studentPersonalProfile` + `education` (upsert per
-  `educationLevel`) + `currentCourse` + `resume` (the last two only when present in
+  `educationLevel` **plus** degree/institutionName, each existing row claimed once — a
+  level can legitimately hold two rows, e.g. a finished PG and one being pursued)
+  + `currentCourse` + `resume` (the last two only when present in
   the payload; `Student.update` does a nested *update*, so those child rows must
   already exist). `promoteCorporate:true` keeps the old corporate-lead promotion
   (`accessLevel [2] → [1,2]`, `isCorporate → false`); the general path passes
@@ -851,6 +853,58 @@ LinkedIn-sourced candidate gets a populated work history / education without a r
 > normalization on them cannot recover the dates; the sheet must be re-ingested. **PROD needs the same
 > code deploy.** General rule this establishes: **never** try to fix a mapping by relying on column
 > adjacency in the prompt — qualify the header at ingest instead.
+>
+> **Gotcha — two PG blocks in one sheet collapse into one, leftover shown as "P.G. Diploma"
+> (fixed 2026-07-31, UAT `fa8c382` / Development `3c81f40`; student-node UAT `fd252ff7` /
+> Development `ca87b9de`).** ERP templates repeat the **whole** Post Graduation block when a candidate
+> has a finished PG plus one being pursued: `Post Graduation College` … `Year of Passing`, then
+> `Post Graduation College - currently pursuing` followed by the **same five headers again** (pandas
+> mangles the repeats to `… Degree Stream.1`). Three failures compounded:
+> (1) every `get_pg_*` helper in `normalization_service.py` returns the **first** header match, so block 1
+> always won and block 2 was invisible to the deterministic layer — degree came from one block and year of
+> passing from the other; (2) the normalized schema is **flat** (one `education_<level>_*` family per
+> level), so the model pushed the leftover block onto `education_p_g_diploma_*` and
+> `education_level_defaults` then hard-relabelled it → a **"P.G. Diploma" the candidate never took**;
+> (3) ERP sheets write `"NA"`, not blanks, and `"NA"` is truthy — a fresher's NA-filled first PG block beat
+> the real PG further right, so `education_pg_department` became `"NA"` and the degree was lost outright.
+> Fix (5 parts):
+> - **`services/education_blocks.py` (new)** — classifies each sheet column into (level, field);
+>   `qualify_repeated_education_headers()` runs **at ingest in `ExcelReader.read_all_sheets`, while column
+>   order still exists**, tagging the 2nd block's headers with a trailing `" (2)"`. Mandatory: `raw_data` is
+>   **jsonb** and reorders keys, so block membership must be readable from the header TEXT alone (same root
+>   cause as the bare-internship-date gotcha above). Two marks columns (`Aggregate CGPA` +
+>   `Aggregate Percentage`) deliberately do **not** open a new block — only structural anchors
+>   (institution/university/degree/department/ended_on/board) do.
+> - **`apply_multi_block_education()`** (`normalization_service.py`, runs **last** in the deterministic
+>   layer so it is the final authority): the block with the **latest** year of passing keeps
+>   `education_<level>_*` — so `currentCourse` and `highest_qualification_*`, which derive from those slugs,
+>   describe the course actually in progress — and each earlier block moves to a spare slot
+>   (`p_g_diploma` → `phd`, both of which have a full slug family) **carrying its TRUE
+>   `education_<slot>_education_level`**, applied after `education_level_defaults` so the slot is not
+>   relabelled. Reuses existing slugs — **no new DB rows**. No-op for levels with a single block.
+> - Placeholder cells (`NA`/`N/A`/`Nil`/`None`/`-`) are hidden from the `get_<level>_*` helpers via a
+>   filtered `edu_input`; the explicit "sheet says no PG" guard now reads the **raw** cell so it still fires.
+> - A degree sitting in front of a stream (`"M.Sc, finance"` in `Post Graduation Degree Stream`) is split
+>   into degree + department when the level has no degree — some templates have no PG degree column at all.
+>   The genuinely ambiguous header `Post Graduation Degree University` (holds `M.Tech` in one block,
+>   `Anna University` in the next) is disambiguated **by value**, not by header.
+> - **`normalization_worker.py`** mirrors `degree` + `department` (not just dates/marks) from the
+>   identified highest-qualification block into `currentCourse`.
+> - **student-node `createFullStudent`** (`app/handlers/common.js`, existing-student path) upserted
+>   education rows by `educationLevel` **alone**, so two `pg` rows made the second overwrite the first and a
+>   **re-upload collapsed both into one entry**. Now matches on level **plus** degree or institutionName and
+>   claims each existing row once; unchanged when a level has a single row. (`education_profile` has no
+>   unique constraint on `(student_id, education_level)`, and the create path uses a nested `create:` — both
+>   already allowed two rows.)
+> Verified on the reported sheet with keys reordered jsonb-style: current PG (`M.Sc` / finance /
+> Anna University / 91 / **2026**) owns `pg`; the finished `M.Tech` (IISc / Civil Engineering / 81 /
+> **2021**) sits in the spare slot reporting `education_level: "pg"`. Rows 1–2 (NA first block) now recover
+> `M.Sc` + `finance` where the degree was previously lost. Check:
+> `docker exec datanormalization python -m unittest discover -s tests` (`tests/test_education_blocks.py`).
+> **Only helps NEW uploads** — rows already in `candidates_raw_data` keep the untagged headers, so
+> re-running normalization on them cannot split the blocks; the sheet must be **re-ingested**.
+> **Limit:** only two spare slots exist, so a third same-level block is logged and dropped, not blended.
+> **PROD needs the same code deploy (both repos).**
 >
 > **Known gap (not fixed) — internship / work-experience SKILLS never become `skill_set`.** The sheet's
 > `Internship Company N: Skills` is extracted (`internship_1_skills`) and the worker does ship it, but as a
