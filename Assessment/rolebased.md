@@ -101,6 +101,8 @@ Parameters: `entityId, name, instructions, assessmentType, startTime, endTime, s
 
 - Delegates to `createRoleBasedAssessment()` script at `admin-node/script/generateRoleBasedQuestions.js`
 
+**Assigning an already-approved set is a different, async path.** `AssessmentSetGroupService.assignStudents()` (`admin-node/app/service/AssessmentSetGroupService.js`, ~line 1025) is what the admin *review* screen (`/assessment/review/<groupId>`) calls. When `AssignmentJobService.isAsyncEnabled('Role_Based')` is true — DEV and UAT run `ASSIGNMENT_ASYNC_ENABLED=1`, so it always is there — it builds its **own** `items`/`studentPayload` list (`__assign`, `__notify`, `__name`, `__phone`) and hands off to the assignment queue instead of inserting rows itself. This builder is structurally parallel to, but entirely separate from, `customAssessment.js`'s and the sync `createMany` in `generateRoleBasedQuestions.js`, and it is the path that actually runs on DEV/UAT — a fix applied only to the sync site is dead code there. It has repeatedly been the place where per-candidate fields get silently dropped or, on 2026-07-31, where a missing helper import (`pickCandidateMobile`) took Role_Based assignment down completely; see `Assessment/otp-invite.md` for that history.
+
 #### Create Assessment — `Assessment.js`
 **Path:** `admin-node/app/models/Assessment.js` → `createRoleBasedAssessment()` (line ~8594)
 
