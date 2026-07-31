@@ -58,6 +58,61 @@ The assessment detail **StudentsTable** (Pending / In-Progress / Dropped-Off tab
 
 Important frontend detail: `StudentsTable` rows set `record.id` to the candidate **email** for both entity types; the real `assessment_assigned_id` lives in `record.assessmentAssignedId`. The corporate path therefore uses `record.assessmentAssignedId` (with `record.id` as fallback) to avoid 404s. Implemented 2026-07-08; live on UAT.
 
+### Column sorting on the assessment detail candidate table (2026-07-31)
+
+Every sortable column in `StudentsTable` (all five attempt tabs, institute and corporate)
+had `sorter: true` but the table had no `onChange` handler, so the arrows were decorative
+and clicking did nothing. Sorting is now wired up **client-side**.
+
+Why client-side: this screen calls `fetchStudentsByStatus` **without** `paginate`, so
+`getAssessmentDetails` returns every candidate of the assessment, bucketed into the five
+tabs, and `StudentsTable` pages it in the browser (`slice`). antd therefore only ever sees
+the ten rows of the current page — if antd did the sorting it would reorder *those ten*
+instead of the whole list. So:
+
+- Columns keep `sorter: true` (antd draws the affordance and reports the click, but does
+  not reorder) and add `sortValue` / `sortKind`.
+- `sortOrder` is controlled from component state, so exactly one column reads as sorted.
+- The full list is sorted in `src/modules/Assessment/Partials/studentSorters.js`
+  (`sortRows`) **before** the page slice, and the pager resets to page 1.
+- Switching attempt tabs keeps the sort when the new tab has that column (name, sent date)
+  and silently drops it otherwise.
+
+`studentSorters.js` normalises values first, because raw cell values are not comparable:
+
+| Value kind | Rule |
+|---|---|
+| Dates | Parsed with moment against the formats admin-node emits (`DD MMM YYYY, h:mm A`, `DD MMM YYYY`, ISO). These are **pre-formatted strings**, so a lexical sort puts `01 Aug` before `30 Jul`. |
+| Scores | Only real finite numbers count. While `scores_calculated` is false the backend puts the **status string** ("Pending") in the score fields, and those rows render `-`. |
+| Behaviour proficiency | Ranked on the ladder (Beginner → Apprentice → Practitioner), not alphabetically. |
+| Proctoring | Good → Poor → Evaluating, via `getProctoringLabel`, which the cell renderer also uses so the sorted value cannot drift from the shown label. |
+| Blanks | Sort **last in both directions** — an unscored candidate never outranks a scored one. |
+| Ties | Break by name then email, so the page slice is deterministic. |
+
+Covered by `studentSorters.test.js` (framework-free: `node src/modules/Assessment/Partials/studentSorters.test.js`).
+
+**Gotchas — why a sort can look broken when it is not:**
+- **`ASSMT. SENT DATE` is identical for every candidate.** The backend derives it from the
+  assessment's own `start_time`, not a per-candidate value. `ASSMT. DROPPED OFF DATE & TIME`
+  is likewise `end_time`. Clicking those headers reorders rows only via the name tie-break;
+  the date column itself never changes.
+- **`ASSMT. STARTED DATE & TIME` is often blank or visually identical.** ~45% of `COMPLETED`
+  rows on DEV have `assessment_started_at` NULL, and candidates from one broadcast typically
+  start within the same minute — the cell truncates to minutes, so seven rows can all read
+  `Jul 29, 2026 05:04 AM` while their underlying timestamps differ.
+- A tab with a single candidate obviously cannot reorder.
+
+Verified on DEV 2026-07-31 against a 7-candidate Completed tab: OVERALL PERCENTAGE sorts
+24.56 → 77.19 ascending and reverses on the second click, with the two rows tied at 57.89
+holding name order in both directions.
+
+`CandidateList` (the server-paginated institute/corporate-dashboard table) is a **different
+component** with its own sorters and is unaffected.
+
+> Known limitation: because the whole list is fetched, `getAssessmentDetails` runs 2–4
+> sequential per-candidate queries (CEFR lookup, score fetch, proctoring logs) for every row.
+> Moving bucketing/sorting/pagination into SQL is tracked as follow-up work.
+
 ### Shared Components
 
 | Component | File | Purpose |
