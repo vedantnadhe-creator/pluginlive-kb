@@ -95,17 +95,35 @@ why *clicked* is a soft signal and *assessment_opened* is the one to trust.
 - `deriveDeliveryStatuses()` collapses the stages into **one status per
   candidate**, most-advanced-wins:
 
-  | precedence | status | label |
-  |---|---|---|
-  | 1 | `opened` | **Assessment Opened** |
-  | 2 | `clicked` | **Opened** |
-  | 3 | `sent` | **Sent** |
-  | 4 | `failed` | **Failed** |
-  | — | `untracked` | `-` |
+  | precedence | status | label | source |
+  |---|---|---|---|
+  | 1 | `completed` | **Completed** | assignment row |
+  | 2 | `started` | **Started** | assignment row |
+  | 3 | `opened` | **Assessment Opened** | journey event |
+  | 4 | `clicked` | **Opened** | journey event |
+  | 5 | `sent` | **Sent** | email event |
+  | 6 | `failed` | **Failed** | email event |
+  | — | `untracked` | `-` | nothing recorded |
 
   A failed send followed by a successful resend reads as `sent`. A candidate whose
   send failed but who clicked anyway (given the link by hand via Copy Link /
   WhatsApp) correctly reads as reached, not failed.
+
+  **Attempt state outranks every email signal (2026-07-31).** Sitting the
+  assessment is itself proof the invite arrived. Without this the column
+  contradicted the funnel outright — a candidate showing *Completed* above still
+  read *"Opened — has not started the assessment yet"*, because the email tracking
+  knows nothing about the attempt. The two attempt stages come from
+  `assessment_assigned_students` (`submitted = true OR status = 'COMPLETED'`, and
+  `status IN ('INPROGRESS','DROPOUT') OR attempted = true`) in the *same* query, so
+  there is no extra round trip. Being sourced from the assignment rather than a
+  tracking event, they stay correct for candidates predating tracking and for the
+  portal-login flow, which has no `/s/<code>` click to record.
+
+  Because the `sent` bucket contains every candidate (the other buckets are
+  sub-states of it), the status must be derived per-assignment rather than per
+  bucket — otherwise the same person would show a different tag depending on which
+  bucket you were viewing.
 
   **Label naming (2026-07-31):** the DELIVERY column tells the *email's* story, so
   "Opened" belongs to the link click. The runner-mount stage is therefore
@@ -119,6 +137,12 @@ why *clicked* is a soft signal and *assessment_opened* is the one to trust.
 (`emailAccepted`, `emailFailed`, `linkClicked`, `assessmentOpened`,
 `hasTrackingData`). The internal `statusByAssignment` Map is stripped before
 serialisation.
+
+Counts and `hasTrackingData` deliberately cover the **email/journey stages only**,
+not the attempt stages: they describe delivery, and a pre-tracking campaign full
+of completed attempts still has no delivery data to show. Such a campaign
+correctly reports `hasTrackingData: false` while its candidates still carry a
+truthful `Completed` tag.
 
 ## Admin UI
 
