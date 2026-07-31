@@ -60,6 +60,12 @@ The invite-link email template lives at `user-management-node/src/utils/emailTem
 
 Since 2026-07-15 the link handed out is the **short** `/s/<code>` form, not `/assessment/start/<jwt>` — see [Invite link shortener](#invite-link-shortener-scode-2026-07-15).
 
+Since 2026-07-31 every send attempt (accepted or failed) is recorded in
+`assessment.email_events`, and clicks on `/s/<code>` plus the runner mounting are
+recorded in `assessment.candidate_journey_events`. Admins see the result as a
+**DELIVERY** column on the candidate table and in the Excel export — see
+[`email-delivery-tracking.md`](./email-delivery-tracking.md).
+
 The same link can be copied manually from the admin assessment detail **StudentsTable** (Copy Link action) and shared via WhatsApp/SMS. This is a fallback for failed email delivery and reuses the same OTP-invite flow — the candidate still verifies email with a 6-digit OTP before entering the assessment. See `Assessment/admin-frontend.md` for the institute equivalent (activation link).
 
 The invite URL is built from `process.env.ASSESSMENT_FE_BASE_URL` (admin-node helper `app/helpers/assessmentInviteEmail.js`). Each environment **must** set this — the helper falls back to `https://assessment.dev.pluginlive.com` if unset, so a UAT or PROD container without the var silently sends candidates to DEV. UAT value: `https://assessment.uat.pluginlive.com`. PROD value: `https://assessment.pluginlive.com`.
