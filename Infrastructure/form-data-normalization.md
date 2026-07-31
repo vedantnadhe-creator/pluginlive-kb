@@ -470,6 +470,45 @@ rejected, zero false positives.**
 > re-pollute within days. The re-queue script is a **no-op until the FDN guard is
 > deployed** — without it the pipeline re-derives the same junk from the same column.
 
+### Behavior — `currentCourse.domainId`/`domain` now derived from the degree master (2026-07-31)
+
+ERP/normalization `create-full` payloads only ever resolved `currentCourse.degreeId`
++ `streamId` (`workers/normalization_worker.py` has no domain concept at all), so
+`current_course.domain_id` stayed **NULL** for every ERP-sourced student. That silently
+dropped them from every domain-scoped screen: the students-list / batch-folder / report
+filters AND `domainId` together with `degreeId`/`streamId`
+(`student-node app/models/Student.js`, `getStudentPlacementCounts`), so a course row with
+a correct degree+stream but no domain is excluded the instant a TPO picks a domain — the
+first filter step on all three screens. Confirmed on DEV: 17,429 `current_course` rows had
+`domain_id IS NULL`, of which 9,757 had a resolvable `degreeId` (100% resolvable, 0
+orphans) — mostly MANAGEMENT (8,586), ENGINEERING (383), SCIENCE (281).
+
+Domain hangs off the degree master (`institute.degrees."domainId"` → `institute.domains`),
+one degree carries exactly one domain, so it's fully derivable from `degreeId` alone —
+same source the CSV bulk-upload path already reads (`common.js` builds `currentCourse`
+from `instituteCourseData.degreeStreamMap.degree.domain`), just not wired for create-full.
+
+Fix (`student-node app/handlers/common.js`, `Development`/`UAT` `2d2ac7c7`):
+
+- New `app/helpers/courseDomain.js` → `getDomainLookupDegreeId(course)` picks the degree id
+  to resolve the domain from: `course.degreeId`, or `course.otherDegreeId` when
+  `degreeId === "OTHERS"` (the pending-master sentinel — same `institute.degrees` table,
+  just `status !== 1`). Returns `null` (skip) when the course already has a `domainId`, or
+  has no degree at all.
+- `materializeMissingMasterIds` gained `ensureDomain(currentCourse)`, called right after
+  `ensureDegreeStream(currentCourse)` so a degree minted in the same request is covered too.
+  One `institute.degrees JOIN institute.domains` read, sets both `domainId` and `domain`
+  (the name) — best-effort like its sibling `ensure*` helpers, never blocks student
+  creation.
+- **`currentCourse` only** — `education[]` rows are untouched; the domain-scoped filters
+  read `current_course`, not `education_profile`.
+- The existing ERP canonical-or-NULL guard (drops `degreeId`/`streamId` when only one of
+  the pair resolved) now also drops `domainId`/`domain` in that case, so a course never
+  persists a domain it can no longer be traced back to.
+
+**No backfill was run** — this only fixes the write path going forward. The 17,429
+existing NULL-domain rows on DEV (and UAT/PROD equivalents) are still NULL.
+
 ### Gotcha — city/state "mismatch" = entity-normalizer (vector-search) Gemini key invalid
 
 When the normalized-data UI flags **Current City / Current State** red (and `corrCityId` /
