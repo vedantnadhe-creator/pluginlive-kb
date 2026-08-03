@@ -84,6 +84,34 @@ After `updateStudentData`:
 
 ---
 
+## Education dates render as bare years (student-react)
+
+Every education row — on screen and in the downloaded resume — shows **year only**
+(`2027`, or `2023 - 2027` when `startedOn` is set). There are **three independent
+copies** of that formatting in `student-react`, and all three must be changed together;
+each one had its own `MMM YYYY` path until 2026-08-03:
+
+| File | Surface |
+|---|---|
+| `src/modules/Resume/Style/EducationSection.js` (`getEducationDate`) | On-screen *My Resume → Education* |
+| `src/modules/Resume/Components/ResumeDownload.js` (`startDate`/`endDate` mapping) | Client-side resume **download** |
+| `src/modules/Resume/Style/ExpCandidateEducation.js` (`getEducationDate`) | react-pdf template for **experienced** candidates (via `Style/DownloadResume.js`) |
+
+The offending pattern was a `isCurrentCourse` special case (`edu?.isCurrentCourse ? 'MMM YYYY' : 'YYYY'`,
+or a dedicated `isCurrentCourse` branch), so the **currently-pursuing** row rendered as
+e.g. `Jun 2026` while every completed row rendered `2026`. `currentCourse` is unshifted
+into the education list with `isCurrentCourse: true` only when the student is **not** an
+experienced candidate, which is why the bug only showed on the current-course row.
+
+`src/modules/Resume/Style/Education.js` is a fourth near-identical copy but is **imported
+nowhere** — dead code, left as-is.
+
+The same fix applies to institute-react's candidate drawer
+(`src/modules/Students/.../StudentDrawerContent/Partials/EducationSection/index.js`),
+where the 10th/12th fallback branch was `MMM YYYY` too.
+
+---
+
 ## Resume Resolution & PDF Generation (bulk download)
 
 Both bulk-download handlers (`bulkResumeDownload`, `bulkResumeDownloadJobRoles` in
