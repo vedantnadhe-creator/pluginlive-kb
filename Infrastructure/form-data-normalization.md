@@ -193,26 +193,55 @@ Backs the admin-react Candidate Metrics dashboard. Supports the full filter set
 plus pagination and async CSV/Excel export (`/download/async` → `export_jobs`,
 drained by the `worker` sibling).
 
-**Degree / Department filter options come from the CANDIDATES, not the masters**
-— *UAT + DEV, 2026-07-29.* `GET /api/student-metrics/degrees` and `/departments`
-return `SELECT DISTINCT TRIM(degree|department) FROM student.current_course`
-(`services/db_service.py` → `fetch_distinct_degrees` / `fetch_distinct_departments`).
+**Degree / Department filter options = the ACTIVE master, matched by id OR text**
+— *UAT + DEV, 2026-07-31.* `GET /api/student-metrics/degrees` and `/departments`
+return `SELECT DISTINCT TRIM(name) FROM institute.degrees|streams WHERE status = 1`
+(`services/db_service.py` → `fetch_distinct_degrees` / `fetch_distinct_departments`) —
+i.e. exactly the list the admin **System Config → Institute Settings → Degree** screen
+shows. Dropdown size: **PROD 297 degrees / 1849 streams; UAT 324 / 772.**
 
-They used to read `institute.degrees` / `institute.streams` filtered to `status = 1`,
-which was wrong on **both** sides:
+History — this flipped twice, so read the whole note before changing it again:
 
-- the list filter matches on `LOWER(TRIM(current_course.degree))`, so the master
-  offered thousands of degrees no candidate holds; and
-- only **297 of 4454** PROD degree rows are `status = 1` — `B.Tech`, `MBA`, `BBA`,
-  `MCA`, `B.Com`, `BSc` and `B.E` all sit at `status 0`, so the most common real
-  degrees never appeared at all.
+1. Originally the master filtered to `status = 1`, but the list filter matched only
+   `LOWER(TRIM(current_course.degree))`, so selecting a master name returned nothing
+   for candidates whose text had drifted.
+2. *2026-07-29* it was changed to source from `student.current_course` (candidate
+   free-text). That guaranteed every option returned ≥1 row, but exposed **~2200
+   distinct spellings** on PROD — `Bachelor of Engineering (B.E)`,
+   `B.E (Bachelor of Engineering)`, `Bachelor of Engineering - Chemical`, … — where
+   the master holds one curated `Bachelor Of Engineering`. Unusable as a filter list.
+3. *2026-07-31* back to the ACTIVE master, **but the filter predicate was fixed at the
+   same time** so option (1)'s failure mode can't recur. `degree`/`department` now match
+   the raw text **OR** the linked master's name:
 
-Sourcing from the candidates means every option returns ≥1 row (PROD: 2212 degrees /
-1716 departments). ~50 ms over 99k `current_course` rows — seq scan, no index needed.
+```sql
+EXISTS (SELECT 1 FROM student.current_course cc
+        LEFT JOIN institute.degrees d ON d.id = cc.degree_id
+        WHERE cc.student_id = s.id
+          AND (LOWER(TRIM(cc.degree)) IN (:names) OR LOWER(TRIM(d.name)) IN (:names)))
+```
+
+**Why the OR is load-bearing:** on PROD 68% of `current_course` rows carry a `degree_id`
+resolving to an ACTIVE master, and **8% of those have drifted from the master's name**.
+Selecting `Bachelor Of Engineering` returns **14,847** candidates with id-or-text vs
+**11,263** with text alone — a name-only match silently drops 3,584 people. Never
+revert the predicate to text-only while the options come from the master.
+
+Search collapses runs of whitespace (`regexp_replace(..., '\s+', ' ', 'g')`) because some
+master rows carry a stray double space — `BACHELOR OF  ENGINEERING TCS` is invisible to a
+plain `LIKE '%bachelor of engin%'` even though the master screen's fuzzy search-service
+finds it.
+
+**Consequence — junk in the ACTIVE master is now visible in Analytics.** Page 1 of the UAT
+degree dropdown currently shows `1. TEDxYouth@PalmRoad (07/2018-11/2018)` and
+`ANNA UNNIVERSITY`. These are real active master rows minted by the self-appending
+behaviour below; they carry letters so the write-time guard does not reject them (the
+documented college-name gap). Fix them by deactivating in the Degree master screen —
+**not** by changing this endpoint.
+
 admin-react `CandidateMetricDetails/CandidateMetricMain.js` (`fetchDegrees`/`fetchDepts`)
 calls these via `candidateRequest`, matching how Cities/States/Roles on the same page
-already work. **Do not "fix" a polluted dropdown by filtering the master to `status=1`** —
-see the academic-master hygiene section below; the cure is upstream.
+already work.
 
 **Semantic role search (`role_search`)** — *live UAT + DEV, 2026-06-22.* A free-text
 role query (e.g. `full stack`, `fullstack`, `software developer`) returns **all**
