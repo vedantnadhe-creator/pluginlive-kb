@@ -591,6 +591,43 @@ Two related quirks worth knowing:
   so a candidate with zero arrears *and* no resolved `degreeId` legitimately ships a
   `currentCourse` without the arrears keys. student-node's schema defaults both to 0.
 
+### Behavior — ERP `currentCourse` carries the CAMPUS city/state (2026-08-03)
+
+Institute-ERP bulk uploads never sent `currentCourse.city` / `cityId` / `state` /
+`stateId`, so every ERP-created student's current course landed with a blank
+location. An ERP sheet has no college-address column, so there was nothing in the
+normalized slugs to map — but the student demonstrably studies at the **campus that
+uploaded the sheet**, whose location is already known server-side
+(`institute.institutes_campuses.city / city_id / state / state_id`).
+
+Fix (`services/db_service.py` + `workers/normalization_worker.py`, Development
+`c90e11c` → UAT `5d90f9e`, deployed 2026-08-03; **PROD pending**):
+
+- New `DBService.get_campus_location(campus_id)` reads the campus row. `city_id` /
+  `state_id` are **nullable** on `institutes_campuses` (23,132 UAT campuses have a
+  city name but no `city_id`), so it falls back to a name lookup against
+  `admin.mongo_db_cities` / `mongo_db_states` — the same masters the student profile
+  UI writes.
+- `_apply_institute_erp_overrides()` (now `async`, all three call sites `await`) fills
+  the four `currentCourse` fields, cached per campus on the worker instance — one
+  query per upload, not per row. It uses `setdefault("currentCourse", {})`, so the
+  location survives the "no meaningful value" prune that drops an all-empty
+  `currentCourse` (student-node creates the row regardless).
+
+Only fields the campus actually has are written: a campus whose city name doesn't
+match the city master (e.g. campus `"Ranebennur"` vs master `"Ranibennur"`) ships
+`city` and **omits** `cityId` rather than writing an empty string or a wrong id. A
+lookup failure logs a warning and never fails the upload.
+
+student-node needed no change — `createFullStudentBodySchema.currentCourse` already
+allows all four keys and `Student.create()` spreads `currentCourse` straight into the
+Prisma nested create.
+
+**Forward-only:** existing ERP students keep their blank location until re-uploaded.
+Regression test `tests/test_erp_campus_location.py` (5 cases: full location, missing-id
+omission, absent `currentCourse`, unknown campus, per-upload caching) —
+`docker exec datanormalization python -m unittest discover -s tests`.
+
 ### Gotcha — city/state "mismatch" = entity-normalizer (vector-search) Gemini key invalid
 
 When the normalized-data UI flags **Current City / Current State** red (and `corrCityId` /
