@@ -1,0 +1,130 @@
+# Admin v2 — strangler-fig (scaffold only, DEV, nothing migrated)
+
+The Admin portal is being rebuilt module-by-module behind a strangler-fig, the same
+pattern as [institute-react-v2](../Institute/README.md) and
+[corporate-react-v2](../Corporate/v2-strangler-fig.md). One new repo sits alongside
+the v1 app; there is **no** admin-node-v2 — the BFF calls the existing `admin-node`.
+
+| Repo | Checkout | Stack | Where it runs |
+|---|---|---|---|
+| `admin-react-v2` | `~/frontend/admin-react-v2` | Next.js 16.2.10 + React 19 + TS + Tailwind 4, `basePath=/v2` | **nowhere yet** — no systemd unit, no nginx `location /v2`, no container |
+| `admin-react` (v1) | `~/frontend/admin-react` | webpack SPA, antd 4 + Redux | DEV `admin-react.service` (:3004) · UAT · PROD |
+
+Created 2026-08-03 (`PluginLive-Technologies/admin-react-v2`, branch `Development`).
+The org repo had to be created by hand: neither PAT on the DEV box (RajPluginLive,
+vedantnadhe-creator) nor the MCP GitHub identity can `POST /orgs/.../repos` — 403
+"You need admin access to the organization". Pushing to an existing repo is fine.
+
+## Status
+
+**Scaffold only.** Every one of the 18 sidebar entries in
+`admin-react-v2/src/config/nav.tsx` is `kind: "v1"` and bridges back to the legacy
+app; the only BFF endpoints are `/api/me` and `/api/logout`. `ADMIN_V2_MODULES` is
+empty on DEV, so **no user is redirected anywhere** — v1 behaves exactly as before.
+The plumbing is in place so that migrating a module is a config change, not surgery.
+
+## The handoff is env-gated, not branch-gated
+
+This is the one real difference from Corporate, and it exists because of what
+happened there: the Roles nav flip was hand-edited into `navItems.js`, rode a
+Development→UAT merge, and went live on a box with no v2 app. nginx there has only
+`location /` → the v1 SPA, so `/v2/roles` was served **v1's index.html with a 200**
+and rendered `PageNotFound`. Health checks and `curl -w %{http_code}` both looked
+fine; the nav item was simply dead.
+
+In `admin-react`, every top-level nav path resolves through a helper instead:
+
+```js
+// src/modules/Nav/navItems.js
+const V2_MODULES = new Set(
+  (process.env.ADMIN_V2_MODULES || '').split(',').map(k => k.trim()).filter(Boolean)
+)
+const v2Path = (key, legacyPath) => V2_MODULES.has(key) ? `/v2/${key}` : legacyPath
+...
+{ path: v2Path('assessment', '/assessment'), navTitle: 'Assessment', ... }
+```
+
+`ADMIN_V2_MODULES` is a comma-separated list of module keys live in v2 **on that
+box**, read from its own **gitignored** `.env`. Empty or unset ⇒ every module stays
+on the legacy screen, so the flip physically cannot travel through a branch merge.
+
+`config/webpack.base.js` declares it via the **object** form of `EnvironmentPlugin`
+(`{ ADMIN_V2_MODULES: '' }`) — the array form used for the other vars *throws* when
+a var is missing, which would break the first UAT/PROD build after this landed.
+
+## React-router cannot client-route into another app
+
+A `/v2/*` path in `navItems.js` is not enough. `Nav/index.js`'s `onItemClick` calls
+react-router's `navigate()`, which matches the path against **v1's** route table,
+misses, and renders v1's 404 inside the v1 shell — the click looks broken. So:
+
+```js
+const hardNavIfV2 = path => {
+  if (!path?.startsWith('/v2')) return false
+  window.location.href = path
+  return true
+}
+```
+
+It runs **first** in `onItemClick`, before the Reports/Analytics accordion branches,
+so a migrated one hops to v2 instead of toggling a now-empty accordion. The Analytics
+sub-items derive their target from the parent `item.path` rather than a literal
+`/dashboards`, so they follow the parent when it moves.
+
+**Stale-bundle gotcha:** until a user hard-refreshes once after a v1 deploy, the old
+bundle's handler is still running and has no `/v2` check.
+
+## Route convention
+
+A module's route is **`/v2/<key>`**, and the key is identical in both repos:
+`admin-dashboard`, `meta-dashboard`, `onboarding`, `corporates`, `institutes`,
+`assessment`, `feature-access`, `analytics`, `reports`, `users`, `system-config`,
+`course-mapping`, `event-catalogue`, `ranking-algorithm`.
+
+Note the keys that differ from the v1 path: `feature-access` → v1 `/assessmentAccess`,
+`analytics` → `/dashboards`, `system-config` → `/systemConfig`, `course-mapping` →
+`/coursemapping`, `event-catalogue` → `/eventcatalogue`, `ranking-algorithm` →
+`/rankingAlgorithm`.
+
+In v2, `config/nav.tsx` exports `firstV2Route` (the first `kind: "v2"` leaf) and
+`(app)/page.tsx` redirects `/v2` there, so the landing page follows the migration
+automatically. While nothing is migrated it renders an explainer instead.
+
+## Migrating a module
+
+1. Build it at `admin-react-v2/src/app/(app)/<key>/`, with its BFF endpoints under
+   `src/app/api/` calling `adminNodeGet`.
+2. Flip that entry in `src/config/nav.tsx` to `kind: "v2"`, `href: "/<key>"`.
+3. Deploy admin-react-v2 to the target env **and** add a `location /v2` block to that
+   env's admin nginx conf.
+4. Only then, add `<key>` to `ADMIN_V2_MODULES` in that box's `.env` and rebuild v1.
+
+Steps 3 and 4 are the ones that matter. Enabling a key in an env without the app and
+the nginx block reproduces the Corporate failure exactly.
+
+## Auth — admin-node wants the RAW token
+
+v2 is same-origin with v1, so it reads v1's JWT from `localStorage.token` (falling
+back to the redux-persist `persist:root` → `auth` slice) and forwards it to its own
+Route Handlers as `Authorization: Bearer <token>`.
+
+**`admin-node`'s `verifyToken` feeds the entire `Authorization` header straight into
+`jwt.verify()` — it does not strip a `Bearer ` prefix.** `lib/api/adminNode.ts`
+therefore sends the **raw** token, matching v1's `utils/adminRequest.js`; a
+Bearer-prefixed header 401s. The auth service behaves the same way. Only the BFF
+itself speaks Bearer.
+
+## Env
+
+Server-only (read at runtime): `ADMIN_API_URL`, `AUTH_API_URL`.
+Baked into the client bundle at build time by `next build`: `NEXT_PUBLIC_BASE_PATH`
+(`/v2`), `NEXT_PUBLIC_V1_BASE` (empty = same origin), `NEXT_PUBLIC_LOGIN_URL`.
+
+A DEV-built image calls DEV APIs forever regardless of the container's runtime env —
+build each environment's image for that environment. The `Dockerfile` refuses to
+build without `.env.prod` rather than silently baking an env-less bundle.
+
+## Ports
+
+DEV: institute-react-v2 :3011, corporate-react-v2 :3012 — **:3013 is the free next
+port** when admin-react-v2 gets a systemd unit.

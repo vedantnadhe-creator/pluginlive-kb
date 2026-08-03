@@ -39,6 +39,14 @@ This folder contains module-wise documentation for the PluginLive Admin Portal �
 - **UI Framework:** Ant Design (antd) + styled-components
 - **Routing:** React Router (with `authenticatedWithNav` and `authenticatedWithoutNav` route groups)
 
+## Cross-cutting docs
+
+Standalone docs in this folder, covering behaviour that spans several modules:
+
+| Doc | Covers |
+|---|---|
+| `v2-strangler-fig.md` | `admin-react-v2` (Next.js, **scaffold only — nothing migrated, deployed nowhere**) and the env-gated `ADMIN_V2_MODULES` switch that routes v1's sidebar into it — read before enabling a module in any env |
+
 ## Documentation Structure
 
 Each module folder contains a `README.md` covering:
