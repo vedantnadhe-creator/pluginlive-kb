@@ -29,15 +29,40 @@ The limit therefore lives server-side:
 
 | Env | Mechanism |
 |---|---|
-| DEV, UAT | Connects as **`pl_tester_ro`**, a role holding `SELECT` and nothing else, with `default_transaction_read_only=on`. Writes are refused **even if the read-only GUC is turned off** — they fail with `permission denied for table …`, not merely `cannot execute UPDATE in a read-only transaction`. |
-| PROD | The PROD DB is only reachable from the jump host, so `ro-query.sh prod` delegates over SSH to the pre-existing `/home/ubuntu/scripts/prod-readonly-query.sh` (regex pre-flight + `BEGIN READ ONLY` wrapper). |
+| DEV, UAT, PROD | Connects as **`pl_tester_ro`**, a role holding `SELECT` and nothing else, with `default_transaction_read_only=on`. Writes are refused **even if the read-only GUC is turned off** — they fail with `permission denied for table …`, not merely `cannot execute UPDATE in a read-only transaction`. |
+| PROD only | The PROD DB is reachable only from the jump host, so `ro-query.sh prod` delegates over SSH to `/home/ubuntu/scripts/tester-ro-query.sh` there — same `pl_tester_ro` role, just a network hop. |
 
-The two layers are independent, and both were verified per env: `INSERT`/`UPDATE`/`DELETE`/
-`TRUNCATE`/`CREATE TABLE`/`DROP`/`CREATE ROLE` all rejected; `SELECT` unaffected.
+Verified per env with the GUC explicitly disabled at connection level
+(`PGOPTIONS="-c default_transaction_read_only=off"`), which is what proves the *grants* are doing
+the work rather than the bypassable GUC: `INSERT`/`UPDATE`/`DELETE` → `permission denied for
+table …`, `CREATE TABLE <appschema>.x` → `permission denied for schema …`; `SELECT` unaffected.
 
-**PROD caveat:** `prod-readonly-query.sh` connects as the write-capable `plproduction` and is
-guarded only by the script. Running the migration below on `prod_pluginlive` and repointing that
-helper at `pl_tester_ro` closes the gap. **Not yet done — PROD is pending.**
+`/home/ubuntu/scripts/prod-readonly-query.sh` on the jump host still exists and still connects as
+the **write-capable `plproduction`** behind a regex pre-flight + `BEGIN READ ONLY` wrapper. It is
+for **admin/ops** use and is no longer on the tester path — do not point testers at it.
+
+### Open gap on PROD (PG14 `public` schema)
+
+PROD is **PostgreSQL 14**, where schema `public` still grants `CREATE` to `PUBLIC`. The migration
+runs there as `plproduction`, which is `CREATEROLE` but **not** superuser and does **not own**
+schema `public` (owner: `oci_superuser`), so it cannot revoke that grant — expect two harmless
+`no privileges were granted/could be revoked for "public"` warnings on every PROD run.
+
+Consequence: on PROD, `pl_tester_ro` **cannot modify any existing object in any schema**, but
+**can create its own scratch objects in `public`**. DEV (PG15+) and UAT (PG16) are unaffected —
+PG15 removed that default, and `CREATE TABLE public.x` is refused there.
+
+To close it, someone with the OCI master role (`pluginliveprd`, member of `oci_admin_role`; its
+credential is **not** on the jump host) runs:
+
+```sql
+GRANT CREATE ON SCHEMA public TO plproduction;  -- keep app migrations working
+REVOKE CREATE ON SCHEMA public FROM PUBLIC;     -- this is the PG15+ default
+```
+
+The `GRANT` first is not optional: `plproduction`'s own `CREATE` on `public` also comes from the
+`PUBLIC` grant (it owns the four tables there but not the schema), so revoking without it would
+break any future migration that creates a `public` table.
 
 ## The role
 
@@ -49,7 +74,12 @@ Created by `PluginLive-Technologies/DB-Scripts` →
   (via `ALTER DEFAULT PRIVILEGES` per table owner)
 - `statement_timeout=120s`, `idle_in_transaction_session_timeout=60s` so an ad-hoc tester query
   can't pin a connection
-- Applied: **DEV 2026-08-03, UAT 2026-08-03. PROD pending.**
+- Applied: **DEV, UAT and PROD — all 2026-08-03.**
+
+Each grant in the schema loop is wrapped in its own exception block. That is what makes the same
+file runnable on PROD, where the running role owns the tables but not every schema: an
+un-grantable statement is skipped with a `NOTICE` instead of aborting the run and discarding the
+grants that already succeeded.
 
 **Re-run the migration after adding a new schema** — the grant loop covers schemas that exist at
 run time, and default privileges only cover new tables in already-granted schemas. It is
