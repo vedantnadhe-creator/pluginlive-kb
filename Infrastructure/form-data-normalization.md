@@ -540,6 +540,57 @@ Fix (`student-node app/handlers/common.js`, `Development`/`UAT` `2d2ac7c7`):
 **No backfill was run** — this only fixes the write path going forward. The 17,429
 existing NULL-domain rows on DEV (and UAT/PROD equivalents) are still NULL.
 
+### Behavior — arrears reach `currentCourse` from BOTH slug families (2026-08-03)
+
+Institute-ERP bulk uploads always sent `currentCourse.noOfArrears` /
+`historyOfArrears` as **0**, whatever the sheet's "Current Arrears" /
+"History of Arrears" columns said.
+
+Root cause is a **duplicate slug registration** in
+`candidate_ingestion_schema.normalized_columns` — arrears exist under two
+competing *active* families, and only one is mapped:
+
+| slug | `mapping_field` |
+|---|---|
+| `pg_current_arrears_count` / `pg_past_arrears_count` (and `ug_`, `diploma_`, `iti_`, `puc_`, `phd_`, `pd_`, `p_g_diploma_`) | `education_pg.currentArrearsCount` / `…pastArrearsCount` |
+| `education_pg_current_arrears_count` / `education_pg_past_arrears_count` (also `education_diploma_*`, `education_p_g_diploma_*`) | **NULL** |
+
+`map_to_final_schema` only ever read the bare `<level>_*_arrears_count` family.
+On an ERP sheet the LLM picks the **`education_<level>_*`** variant instead —
+"PG Current Arrears" sits alongside every other `education_pg_*` header
+(`education_pg_degree`, `education_pg_marks`, …), so that naming wins — and the
+`education_<level>_<field>` regex grouping then swallows it into `education_map`
+where nothing consumed it. The value was silently dropped in both places that
+read arrears: `currentCourse` and each `education[]` record.
+
+Fix (`workers/normalization_worker.py`, Development `edb00ac` → UAT `f6e9abc`,
+deployed 2026-08-03; **PROD pending**): one `arrears_for_level(level)` resolver
+that reads `<level>_<kind>_arrears_count` first and
+`education_<level>_<kind>_arrears_count` second, used for `currentCourse` and for
+each `education[]` row. It also replaced the four duplicated per-level lookups in
+the `highest_qualification_level` if/elif chain.
+
+Verified by replaying `map_to_final_schema` against the captured
+`normalized_data` of a failing ERP row (sheet: current 0 / history 2 → payload
+was 0 / 0, now 0 / 2). Regression test:
+`tests/test_arrears_slug_families.py` (both families + zero-arrears default) —
+`docker exec datanormalization python -m unittest discover -s tests`.
+
+Two related quirks worth knowing:
+
+- `pg_current_arrears_count`'s `mapping_field` (`education_pg.currentArrearsCount`)
+  is a **pseudo-path** — no such key exists in create-full, so `set_nested` writes a
+  junk top-level `payload.education_pg` object (43 UAT payloads since May 2026).
+  Harmless (student-node ignores it) and *not* how `currentCourse` gets its values —
+  the direct lookup is what counts — but it is dead config.
+- `education[]` records carry **`historyOfArrears` only**; student-node's create-full
+  schema has no `noOfArrears` on education rows. Current arrears live on
+  `currentCourse` alone.
+- `currentCourse` is dropped entirely by the "no meaningful value" prune when every
+  field is falsy (`0`/`""`), then partially rebuilt by the `set_nested` mapping pass —
+  so a candidate with zero arrears *and* no resolved `degreeId` legitimately ships a
+  `currentCourse` without the arrears keys. student-node's schema defaults both to 0.
+
 ### Gotcha — city/state "mismatch" = entity-normalizer (vector-search) Gemini key invalid
 
 When the normalized-data UI flags **Current City / Current State** red (and `corrCityId` /
