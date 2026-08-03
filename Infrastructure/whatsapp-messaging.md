@@ -76,6 +76,65 @@ WA_TEMPLATE_NAMESPACE=ab150d99_86d0_4d64_a278_7f77da79ec0b
 
 In PROD these live in the `auth-api-config` ConfigMap (mounted at `/app/.env` on `auth-node`, namespace `api`); in DEV/UAT they are in the service's `.env`/`.env.<env>` (untracked, per-environment).
 
+## Assessment invites over WhatsApp (corporate, opt-in)
+
+Corporate assessment invites send a **WhatsApp reminder alongside the invite email**
+(admin-node; DEV + UAT as of 2026-08-03, PROD pending).
+
+The send is hooked into `app/helpers/assessmentInviteEmail.js` `sendAssessmentInviteEmail`.
+Every caller of that function is already the corporate no-login OTP invite flow, so one hook
+covers all nine assign/clone/add/resend call sites and is inherently corporate-only. It is
+best-effort: a failure never blocks or fails the email.
+
+**Opt-in per corporate.** Gated on `admin.feature_config` — one active row per
+`(journey, feature)`, with `journey_ids` listing the subscribed entity ids and `is_enabled`
+as the feature-wide kill switch. The feature key is `CORPORATE / WHATSAPP_NOTIFICATION`.
+`FeatureAccessService` **fails closed**: a missing table, missing row, unknown corporate or
+any query error all mean "not subscribed" → email only. Reads are cached 60s, so a toggle
+takes up to a minute to apply (the setter invalidates its own key, so a UI save is instant).
+
+> `admin.feature_config` was created 2026-04-06 and dropped 2026-04-27 (admin-node `85ee7a4`,
+> "remove feature enable/disable config setup") because nothing consumed it. It was restored
+> by DB-Scripts `20260803T102935Z__feature_config_whatsapp_notification.sql` — apply that
+> before expecting the toggle to work in an environment (it 409s otherwise).
+
+**Admin UI.** Feature Access → Service Type has a corporate-only **WhatsApp Notifications**
+toggle (admin-react `Assessment/Partials/AssignSubscription`). It reads
+`GET /assessment/featureAccess?entityId=&entityType=corporate` and saves via
+`POST /assessment/assignSubscription` with `whatsappNotificationEnabled`. **Omitting that
+field leaves the flag untouched** — only an explicit boolean writes, so existing callers and
+the whole college path are unaffected.
+
+**Phone resolution.** Four of the nine call sites never pass `phone` (Aptitude's sync assign,
+`addStudentsToAssessment`, and the two resend/extend paths), so the reminder used to be
+silently skipped for those flows for every type. `sendAssessmentInviteWhatsapp` now falls back
+to `COALESCE(aas.contact_number, spp.contact_number)` — the same source the `/s/` resolver uses
+for the SMS OTP phone claim. No phone anywhere → silently skipped, by design.
+
+**Template.** `WA_ASSESSMENT_TEMPLATE` selects the template, and the param order is pinned to
+the template name in `WHATSAPP_TEMPLATES` (Meta fixes the `{{n}}` count per template, so the
+two must travel together). Current value is the 7-param
+`student_online_assessment_email_link`, which additionally names the candidate's registered
+email; `student_online_assessment` (6-param) is the fallback. An unknown name falls back to the
+6-param builder rather than sending a malformed message.
+
+Verified on UAT 2026-08-03 across **AI_Interview, Aptitude, Communication, Custom_Assessment
+and Role_Based** — five assigns, five `POST /notification/bulkWhatsapp` calls, all HTTP 200,
+no MSG91 errors. Hinglish and Behavior have no corporate-OTP maps on UAT to exercise.
+
+### Extra env this needs (per environment)
+
+```
+AUTH_TOKEN=<long-lived system JWT>              # admin-node -> auth-node
+WA_ASSESSMENT_TEMPLATE=student_online_assessment_email_link
+```
+
+`AUTH_TOKEN` is the one that bites: admin-node had **no** `AUTH_TOKEN` in any environment, and
+auth-node's `/notification/*` routes are `isPrivate` (JWT-only), so without it every send 401s
+— caught and logged, so it looks like "WhatsApp just doesn't fire". Mint it with auth-node's
+own `LOGIN_SECRET_KEY`, `role: system`, issuer/audience `pluginlive.com` (mirrors auth-node's
+existing `SYSTEMJWT`). Mint it **on the target box** so the secret never moves.
+
 ## Gotcha
 
 Do **not** "just swap `WA_PHONE_ID`" to the current WABA in a Graph-API sender — sends fail `#200`. The current number can only be sent to through MSG91 (or by moving the number's Cloud API registration onto our own Meta app, which would disconnect MSG91).
@@ -89,3 +148,49 @@ This bit the corporate Schedule drawer: the recruiter's multi-line **Note/Instru
 `sanitizeParamValue` splits on `\r?\n`, squeezes tabs/4+ spaces and trims **per line**, drops blank lines, then joins the surviving lines with a bullet separator `" • "` (`LINE_SEPARATOR`). So a 3-line note renders as `Line1 • Line2 • Line3` — each item stays visually distinct instead of collapsing into one run-on paragraph (the earlier fix joined with a plain space). A single-line note is unchanged (no stray bullet).
 
 **True per-line stacking is impossible inside a template variable.** Meta's block is on `\n`/`\r`/`\t` specifically; the `U+2028` LINE SEPARATOR char passes the 400 check but renders as a broken glyph (`�`) on WhatsApp clients, so it's not a usable substitute — verified on UAT. The only way to get real line breaks is to bake them into the **static** template body text in Meta Business Manager (static text may contain newlines; `{{n}}` values may not) using a fixed number of separate variables, which requires a template edit + Meta re-approval. Bullet-separator is the shipped approach.
+
+### A MARKETING-category template is silently dropped
+
+A template in Meta's **MARKETING** category is **accepted by MSG91 and then never delivered**.
+MARKETING sends are gated behind per-recipient marketing opt-in plus Meta's marketing-message
+limits; UTILITY sends are not. Transactional templates (assessment invites, interview
+reminders) **must be UTILITY**.
+
+This is expensive to diagnose because every layer reports success: MSG91 returns HTTP 200
+`{"status":"success","hasError":false,"data":"Your request is in process, check delivery
+reports for status"}` — acceptance, **not** delivery, and identical for delivered and dropped
+messages — so `sendWAmessage` returns normally and the caller logs a success. WABA and phone
+health also look perfect (`ACTIVE` / `APPROVED` / `CONNECTED` / `GREEN`).
+
+Check the category first when WhatsApp "stops working":
+
+```bash
+TOKEN=$(grep '^WA_ACCESS_TOKEN' ~/api/user-management-node/.env | cut -d'"' -f2)
+curl -s "https://graph.facebook.com/v17.0/<template_id>?fields=name,status,category,rejected_reason" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+Meta can **re-categorise a template it previously approved as UTILITY into MARKETING** on its
+own review, so a template that worked can start failing with no code change on our side.
+
+**Verifying delivery at all** — the only trustworthy signal is Meta's own WABA analytics
+(our token has business-management access). Note the daily bucket is timezone-offset (today's
+sends can land in yesterday's bucket) and `granularity(HOUR)` returns nothing on this WABA, so
+compare `sent`/`delivered` **deltas** on `granularity(DAY)` rather than looking for today's row:
+
+```bash
+START=$(date -u -d '2 days ago 00:00' +%s); END=$(date -u -d tomorrow +%s)
+curl -s "https://graph.facebook.com/v17.0/36136604129316933?fields=analytics.start($START).end($END).granularity(DAY)" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+This WABA is shared by DEV/UAT/PROD, so on a busy day the delta includes other traffic — for a
+single test send, prefer auth-node's own logs (`POST /notification/bulkWhatsapp` → `statusCode`).
+
+**Creating templates via the Graph API:** wording that mentions a *verification/OTP code* is
+instant-`REJECTED` with `rejected_reason: INCORRECT_CATEGORY` (it reads as AUTHENTICATION).
+Phrase it like the approved `aiinterview_with_link`: "You can also check your registered email
+({{n}}) for additional instructions." Our token can create and list templates but **cannot
+delete** them (`#100`), and every MSG91 management endpoint (templates, balance, delivery
+reports) **404s** with our authkey — it is send-only, so delivery logs need the MSG91 dashboard
+(account `pluginlive5`).
