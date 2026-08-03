@@ -25,5 +25,6 @@ When working on a feature, check the relevant file here **before asking the user
 - `Infrastructure/deployment.md` — deployment guide (Dev → UAT → Prod, Docker, OCI, K8s)
 - `Infrastructure/form-data-normalization.md` — Form Data Normalization service (Python/FastAPI, Google Drive ingestion, LLM normalization, entity matching, port 5013)
 - `Infrastructure/pg-vector-search.md` — PG Vector Search / Entity Normalizer service (Python/FastAPI, multi-signal RRF ranking, pgvector, port 8002)
+- `Infrastructure/uat-docker-build.md` — UAT image builds failing on apt (`exit code: 100`), the deb.debian.org HTTP stall, why the package layer rebuilds every deploy, rollback tagging
 
 Read only what's relevant to the current task. Do not read all files upfront.
