@@ -1023,6 +1023,56 @@ LinkedIn-sourced candidate gets a populated work history / education without a r
 > **Limit:** only two spare slots exist, so a third same-level block is logged and dropped, not blended.
 > **PROD needs the same code deploy (both repos).**
 >
+> **Sequel — a "Currently Pursuing Course" column holding a COLLEGE opened a FALSE second block
+> (fixed 2026-08-03, Development `a1ee514` / UAT `20d890b`; PROD pending).** The JBIMS `MHRD - 2027`
+> sheet has ONE PG block, but every PG column after the first came back tagged `" (2)"` in
+> `candidates_raw_data` (`PG Degree (2)`, `PG Specializations (2)`, `PG YOP (2)`…). Cause: the block's
+> first column is `PG Currently Pursuing Course`, which **holds the college**
+> ("Rani Anna Government College for Women test, Tirunelveli") while its header says "Course", so
+> `field_from_label` classified it as a **degree** column — the next real `PG Degree` column then looked
+> like a repetition and opened block 2. One misread column produced three symptoms on 28 candidates:
+> - **6/28 had an empty `currentCourse.specialisation`.** The model scattered the PG block across `pg`
+>   plus the PG-diploma slot, and on those 6 rows spelled the slot `education_pg_diploma_*` instead of
+>   the canonical `education_p_g_diploma_*`. The specialisation probe used exact keys, so it found
+>   nothing. (Same class as the arrears slug-family bug: read the slug the LLM **actually emitted**.)
+> - **28/28 got a PG qualification of `ANNA UNNIVERSITY`.** The college name in a degree slug reached the
+>   degree normalizer, which fuzzy-matched it onto that master at **62%**. `ANNA UNNIVERSITY` is a junk
+>   row in `institute.degrees` — a misspelled *university* in the DEGREE master, `status=1`, created
+>   2024-10-07; `BHUPAL NOBLES UNIVERSITY` and `Asian College of Journalism` are also active there.
+>   10 UAT `student.education_profile` rows (Dec 2025–Apr 2026) still point at it — **master cleanup
+>   pending**, see the `masterNameGuard` section above.
+> - **4/28 got a `currentCourse.startedOn` the sheet never stated** (816/824/827 = 2027, the year of
+>   PASSING; 820 = 2026). Unrelated to the block split: the model invented
+>   `highest_qualification_start_date`, and the highest-qualification mirror in `map_to_final_schema`
+>   only ever **overwrote** that field, never cleared it.
+>
+> Fix (4 parts):
+> - `field_from_label` decides a course/degree header **by its VALUE** — new `looks_like_institution()`;
+>   a college in a "Course"/"Degree" column is read as `institution_name`. Same value-over-header
+>   principle already used for `Post Graduation Degree University`.
+> - `ExcelReader.read_all_sheets` passes the **first real cell of each column** into
+>   `qualify_repeated_education_headers(headers, samples)` — header text alone cannot decide this.
+>   Without samples the function keeps its old header-only behaviour.
+> - the `currentCourse` specialisation probe matches slugs by a **punctuation-squashed** form, so
+>   `pg_diploma` ≡ `p_g_diploma` and the off-spelling no longer loses the value.
+> - the highest-qualification mirror now **clears** `highest_qualification_start_date` when
+>   `education_<hq_level>_started_on` is empty, and `_call_degree_normalizer_api` **refuses
+>   institution-looking input** outright.
+>
+> Verified: the real workbook re-ingested through the fixed reader produces **zero `(2)` tags**; the 4
+> failing rows replayed through the fixed worker (`map_to_final_schema` on the stored
+> `normalization_logs.details->'payload'->'responceData'`) give `specialisation = "Human Resource"` and
+> `startedOn = 0` with `endedOn` unchanged. Checks: `tests/test_education_blocks.py`,
+> `tests/test_current_course_from_erp_sheet.py` (41 tests) — run them in-container:
+> `docker exec -w /app datanormalization-worker python -m unittest discover -s tests`.
+> **Only helps NEW uploads** — already-ingested rows keep their `(2)`-tagged headers; the sheet must be
+> re-ingested, not merely re-normalized.
+>
+> **Separate, still open — half the batch got an nginx `504` from `create_full_student`.** 14 of the 28
+> calls logged `create_full_student_response` as failed with a 504 Gateway Time-out, yet 31 students were
+> created in that window: student-node exceeds the nginx timeout and the normalizer records a false
+> failure. Retrying such an upload risks duplicates.
+>
 > **Known gap (not fixed) — internship / work-experience SKILLS never become `skill_set`.** The sheet's
 > `Internship Company N: Skills` is extracted (`internship_1_skills`) and the worker does ship it, but as a
 > raw **string** (`"skills": "A, B, C"`), which is what lands in `resume.internships[]`. The platform's
