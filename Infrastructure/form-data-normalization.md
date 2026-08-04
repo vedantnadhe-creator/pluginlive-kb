@@ -628,6 +628,71 @@ Regression test `tests/test_erp_campus_location.py` (5 cases: full location, mis
 omission, absent `currentCourse`, unknown campus, per-upload caching) —
 `docker exec datanormalization python -m unittest discover -s tests`.
 
+### Behavior — a postcode column that is really an address no longer kills the student (2026-08-04)
+
+An institute ERP upload of **157 candidates created only 104 students**. All 157 rows
+normalized and were reported as **Done / 0 Failed** on the upload status screen; 53
+students simply did not exist.
+
+Root cause, two independent defects:
+
+1. **The postcode was built from the whole address.** The address column detector
+   matches the word `pincode` / `postcode` / `zip` **in the header**, and these sheets
+   name their columns `Current Address (State, City, Pincode)` /
+   `Permanent Address (State, City, Pincode)`. So the value handed to the cleaner was
+   the entire address, and the cleaner did `re.sub(r"[^0-9]", "", v)` — stripping every
+   non-digit and **concatenating**:
+
+   | raw address | old postcode | now |
+   |---|---|---|
+   | `MAULI, 102.1296, E Ward, … Kolhapur - 416006` | `1021296416006` | `416006` |
+   | `Flat no. 2806, SRA Tower, … Mumbai - 400012` | `2806400012` | `400012` |
+   | `Mig 161 block 5 sector 6 … road 800026` | `16156800026` | `800026` |
+
+   `student_personal_profile.corr_post_code` / `perm_post_code` are **INT4**. Prisma does
+   not reject an over-range value as a field error — it reaches the driver and aborts the
+   **entire nested `student.create()`** with
+   `ConversionError("Unable to fit integer value '1021296416006' into an INT4")`,
+   surfaced to the worker as a generic 400 `"Something went wrong, please try again later."`
+   One junk field cost the whole candidate. Correlation was exact: 53/53 failures had a
+   postcode > 2147483647, 0/104 successes did.
+
+2. **Failed rows were still marked `completed`.** `mark_completed(raw_data_id, …)` ran
+   unconditionally after *both* the success and the `api_failed` branch. The ERP status
+   screen (`get_raw_candidates`) counts purely off
+   `candidates_raw_data.normalization_status`, so the 53 lost candidates showed as Done
+   and Failed could never be non-zero for this class of error. The truth was only in
+   `candidate_job_details.api_status = 'api_failed'`, which no screen reads.
+
+Fix (Development `ffd1cbc` → UAT `6bcec11`, deployed 2026-08-04; **PROD pending**):
+
+- New `extract_pincode()` in `services/normalization_service.py` takes the **trailing
+  6-digit token** (`\b\d{6}\b`, last match — the PIN comes last in an Indian address),
+  falling back to the bare digits only when they are exactly 6 (`560 034`, `560-034`).
+  Anything else returns `""` and the caller **omits the field** rather than persisting
+  junk. Replaces the digit-concatenating `re.sub` at **all five** postcode call sites
+  (the `current_postcode` cleaner plus the explicit and positional 1-col/2-col address
+  detectors). A 10-digit phone number has no 6-digit token boundary, so it is rejected.
+- The worker only calls `mark_completed` when a student actually came back; otherwise
+  `mark_failed`. `failed` is terminal (the claim query takes `pending` / stale
+  `in_progress` only), shows under **Failed** on the status screen, and is replayable by
+  setting `normalization_status='pending'`.
+
+Checked against the 66 real addresses from the failed batch: **all 66 now yield the
+correct PIN, none discarded, 0 remaining INT4 overflows.** Regression test
+`tests/test_pincode_extraction.py` (7 cases incl. the exact strings that broke the
+upload) — `docker exec datanormalization python -m unittest discover -s tests`.
+
+**Not retroactive:** the 53 rows from the 2026-08-04 UAT batch (campus
+`081849b1-7e7f-47bc-9c3a-6053e82f7f88`) are still `completed`-but-studentless. Replay
+them by setting their `normalization_status` to `pending`.
+
+> **Deploy note — the fix lives in the WORKER.** `auto_deploy.sh form-data-normalization`
+> rebuilds `datanormalization:api` and recreates **only** the api container.
+> `datanormalization-worker` / `-cron` run the `datanormalization:api-mastersrc` tag and
+> are left on the old image, so normalization behaviour would not change. Always bump all
+> three — see *Docker & Deployment* below.
+
 ### Gotcha — city/state "mismatch" = entity-normalizer (vector-search) Gemini key invalid
 
 When the normalized-data UI flags **Current City / Current State** red (and `corrCityId` /
@@ -1194,6 +1259,30 @@ docker run -itd --name datanormalization-worker --restart always --env-file .env
 # Scheduler (sibling container)
 docker run -itd --name datanormalization-cron --restart always --env-file .env datanormalization:api python main.py cron
 ```
+
+> **UAT reality — `auto_deploy.sh` only bumps 1 of the 3 containers.**
+> `./auto_deploy.sh form-data-normalization UAT` builds `datanormalization:api` and
+> recreates **only** the `datanormalization` (api) container. On UAT the worker and cron
+> containers run the separate **`datanormalization:api-mastersrc`** tag, so they keep
+> serving the previous build and any change to `workers/` or `services/` has no effect —
+> which is most of this service's behaviour. After the script finishes, retag and roll the
+> siblings (their env is `--env-file .env`, restart policy `unless-stopped`):
+>
+> ```bash
+> cd ~/api/form-data-normalization
+> docker tag $(docker inspect datanormalization-worker --format '{{.Image}}') \
+>            datanormalization:api-mastersrc-prev          # rollback tag
+> docker tag datanormalization:api datanormalization:api-mastersrc
+> docker rm -f datanormalization-worker datanormalization-cron
+> for m in worker cron; do
+>   docker run -itd --name datanormalization-$m --restart unless-stopped --env-file .env \
+>     --log-opt max-size=100m --log-opt max-file=3 --log-opt tag='service_name={{.Name}}' \
+>     datanormalization:api-mastersrc python main.py $m
+> done
+> ```
+>
+> Verify all three actually carry the change, e.g.
+> `for c in datanormalization datanormalization-worker datanormalization-cron; do docker exec $c grep -c '<new symbol>' <file>; done`.
 
 > To change `GEMINI_MODEL` / `NORMALIZATION_COMPACT_PROMPT` etc. on UAT you must **recreate**
 > the containers with the new value (OS env overrides the baked `/app/.env`); editing `.env`
