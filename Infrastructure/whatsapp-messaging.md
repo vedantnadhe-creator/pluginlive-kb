@@ -111,16 +111,37 @@ silently skipped for those flows for every type. `sendAssessmentInviteWhatsapp` 
 to `COALESCE(aas.contact_number, spp.contact_number)` — the same source the `/s/` resolver uses
 for the SMS OTP phone claim. No phone anywhere → silently skipped, by design.
 
-**Template.** `WA_ASSESSMENT_TEMPLATE` selects the template, and the param order is pinned to
-the template name in `WHATSAPP_TEMPLATES` (Meta fixes the `{{n}}` count per template, so the
-two must travel together). Current value is the 7-param
-`student_online_assessment_email_link`, which additionally names the candidate's registered
-email; `student_online_assessment` (6-param) is the fallback. An unknown name falls back to the
-6-param builder rather than sending a malformed message.
+**Template — selected per assessment type.** Param order is pinned to the template name in
+`WHATSAPP_TEMPLATES` (Meta fixes the `{{n}}` count per template, so the two must travel
+together). An unknown name falls back to the 6-param builder rather than sending a malformed
+message.
+
+| Type | Template | Params |
+|---|---|---|
+| AI_Interview | `aiinterview_access_link` | 7 — name, **company**, role, **duration**, deadline, **email**, link |
+| everything else | `student_online_assessment_email_link` | 7 — name, **assessment label**, role, company, deadline, link, **email** |
+| (fallback) | `student_online_assessment` | 6 — as above, no email |
+
+Note the two 7-param templates are **not interchangeable**: the AI one puts company in `{{2}}`
+and email *before* the link, the generic one puts the assessment label in `{{2}}` and email
+last. Selecting the wrong one silently renders a scrambled message, which is the whole reason
+name and param-builder are defined as one unit.
+
+AI Interview has its own template because its copy is interview-specific ("This is an
+AI-powered interview… approximately `{{4}}` minutes"), which reads wrong for an Aptitude or
+Communication candidate. `{{4}}` is also why it cannot be the global default: `durationMinutes`
+comes from the interview config and is null for every other type (it defaults to 25 rather than
+emitting a blank param, which Meta rejects).
+
+Overrides: `WA_ASSESSMENT_TEMPLATE` for the default, `WA_ASSESSMENT_TEMPLATE_AI_INTERVIEW` for
+the AI Interview slot — so one type can be rolled back without touching the others. Templates
+are **WABA-scoped** and DEV/UAT/PROD share one WABA, so an approved template is usable in every
+environment at once; the env vars exist only to switch back without a deploy.
 
 Verified on UAT 2026-08-03 across **AI_Interview, Aptitude, Communication, Custom_Assessment
 and Role_Based** — five assigns, five `POST /notification/bulkWhatsapp` calls, all HTTP 200,
 no MSG91 errors. Hinglish and Behavior have no corporate-OTP maps on UAT to exercise.
+The per-type AI Interview template was verified separately on DEV and UAT the same day.
 
 ### Extra env this needs (per environment)
 
