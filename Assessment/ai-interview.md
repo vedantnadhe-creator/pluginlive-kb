@@ -851,6 +851,23 @@ Fix (`admin-node/app/models/Assessment.js`):
 
 Regression cover: `admin-node/test/resendInvitesSetPreservation.spec.js`.
 
+**Follow-up (2026-08-04): wrong Prisma client on first UAT deploy — `42883 uuid = jsonb`.**
+`admin-node` has **two generated Prisma clients** — `helpers/util.js` exports `Prisma` from
+`prisma/generated-admin` and `PrismaAssessment` from `prisma/generated-assessment` — but
+`Assessment.js`'s module-level `prisma` (what `resendInvitesToStudents`'s transaction actually
+runs on) is the **assessment** client. The `ai_interview_*` cleanup above originally built its
+`IN (...)` list with `Prisma.join(assessmentAssignedIds.map(id => Prisma.sql`...`))` — the
+**admin** client's tagged-template helpers. A `Sql` object built by one generated client isn't
+recognised by another client's `$executeRaw`, so instead of erroring at build time it silently
+serialized the whole thing as **one jsonb parameter**, and Postgres rejected the resulting
+`assessment_assigned_id IN ($1)` comparison with `42883: operator does not exist: uuid = jsonb`
+— reproduced live on UAT on the very first resend after deploy. Fix: use
+`PrismaAssessment.join`/`PrismaAssessment.sql` for any raw SQL that runs on the assessment
+client. Confirmed against a real Postgres connection (not just the log message) that
+`Prisma.join` reproduces the exact error and `PrismaAssessment.join` runs clean. **Any new raw
+SQL in `Assessment.js` must use `PrismaAssessment`, not `Prisma`** — grep for which one a
+helper imports before copying a `$queryRaw`/`$executeRaw` pattern from elsewhere in the file.
+
 **Not backfilled.** Candidates already mis-assigned by a pre-fix resend keep the wrong set until
 someone repoints `assessment_assigned_students.assessment_set_id` back to the campaign's set.
 To find them, group a campaign's assignments by `assessment_set_id` — a single campaign should
