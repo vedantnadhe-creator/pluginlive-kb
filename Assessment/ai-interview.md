@@ -739,11 +739,59 @@ created without them (same as other types) and the report shows the email until 
 
 ---
 
+#### Resend invite must NOT re-roll the assessment set (fixed 2026-08-04)
+
+**The assessment_set IS the AI Interview configuration.** `ai_interview_config` is 1:1 with
+`assessment_set_id` and holds `job_role`, `job_description`, `skills[]`, `seniority`,
+`interview_duration`, `max_questions` and `stage_config.language` (the Hinglish / Hindi /
+Marathi / Tamil selector read by `student-node/app/helpers/aiInterviewLanguage.js`). There is
+no per-candidate copy of any of it.
+
+`Assessment.resendInvitesToStudents` ("Resend invite" on dropped-off candidates) used to hand
+each candidate a **random different set**, filtered only on `assessment_type_id +
+assessment_domain_id + is_active` (plus `cefr_level` / `difficulty` / `accent` when non-null).
+That filter was written for **Aptitude**, where ~10k sets in one domain really are
+interchangeable question banks. For AI Interview it is catastrophic: on PROD **all 192 active
+AI_Interview sets sit in one domain and 191 share `accent='en-IN'` with NULL cefr/difficulty**,
+so the candidate pool was "every AI Interview ever created, for every company" — 87 distinct
+job roles, 5 languages. A resend therefore moved candidates onto another company's interview:
+**different job role AND different spoken language** (e.g. a "Business Development Manager /
+Hinglish" campaign resent as "Investment Banking Analyst / English").
+
+Nothing surfaced the swap: the invite email is built **after** the re-roll, and
+`_getAiInterviewEmailMeta` joins through the *new* `assessment_set_id`, so the email
+confidently advertised the wrong role instead of erroring.
+
+Fix (`admin-node/app/models/Assessment.js`):
+- `CONFIG_BOUND_SET_TYPES = { AI_Interview, Role_Based, Custom_Assessment }` — types whose set
+  carries campaign configuration (`Role_Based` → `role_name`/`seniority` on the set;
+  `Custom_Assessment` → `custom_config_set_map`). A resend for these **keeps the assigned set**
+  and only resets the attempt. Question-bank types (Aptitude, Communication, Hinglish,
+  Behavior) keep the fresh-set behaviour, which is the point of the feature.
+- The attempt-state reset moved out of the per-assignment set loop into a single `updateMany`,
+  so an assignment whose set has since been deactivated still gets reset instead of being
+  silently skipped by the loop's `continue`.
+- An AI_Interview resend now also deletes the abandoned `ai_interview_interactions`,
+  `ai_interview_scores` and `ai_interview_sessions` rows. **These three tables carry no foreign
+  keys, so nothing cascades** — they must be deleted explicitly, children first, and admin-node
+  reaches them by raw SQL (it has no Prisma models for them; same as `_getAiInterviewEmailMeta`).
+  Previously the reset flipped the row to PENDING while the old session survived, and the
+  report / TPO dashboard kept reading it.
+
+Regression cover: `admin-node/test/resendInvitesSetPreservation.spec.js`.
+
+**Not backfilled.** Candidates already mis-assigned by a pre-fix resend keep the wrong set until
+someone repoints `assessment_assigned_students.assessment_set_id` back to the campaign's set.
+To find them, group a campaign's assignments by `assessment_set_id` — a single campaign should
+only ever have one for AI Interview.
+
+---
+
 ## Database Tables
 
 | Table | Purpose |
 |---|---|
-| `ai_interview_config` | Per-assessment-set interview configuration: job role, skills, seniority, duration, AI model, evaluation criteria |
+| `ai_interview_config` | Per-assessment-set interview configuration: job role, skills, seniority, duration, AI model, evaluation criteria. **1:1 with the set — the set IS the campaign config, never swap it on a resend** |
 | `ai_interview_sessions` | Per-student session: status (PENDING/IN_PROGRESS/COMPLETED), start/end times, duration, metadata |
 | `ai_interview_interactions` | Per-question interaction log: question text, response, score, AI evaluation, follow-up tracking |
 | `ai_interview_scores` | Final scores: overall, technical, behavioral, communication, problem-solving, recommendation, strengths, weaknesses |

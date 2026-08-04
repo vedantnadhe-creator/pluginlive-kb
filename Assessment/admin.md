@@ -342,7 +342,7 @@ Supports: Communication, Aptitude, Behavior, Role_Based
 | Function | Purpose |
 |----------|--------|
 | `sendRemindersToStudents(assessmentInstituteMapID, entityType, selectedStudents, bulkUploadData, instituteId)` | Sends reminder emails to unattempted students. Accepts specific student emails or bulk data. Normalizes emails before sending |
-| `resendInvitesToStudents(assessmentInstituteMapID, entityType, selectedStudents)` | Re-triggers the invitation email for selected students. Used when original email was missed/bounced |
+| `resendInvitesToStudents(assessmentInstituteMapID, entityType, selectedStudents)` | Re-triggers the invitation email for dropped-off students and resets their attempt (clears answers/scores, status back to `PENDING`). Also hands out a **different assessment set** — but only for question-bank types (Aptitude, Communication, Hinglish, Behavior). `CONFIG_BOUND_SET_TYPES` (AI_Interview, Role_Based, Custom_Assessment) keep their assigned set, because for those the set carries the campaign config (job role, language) — see `Assessment/ai-interview.md` |
 | `sendRoleBasedAssessmentEmails(assessmentId, entityType, selectedStudents, bulkUploadData, instituteId)` | Sends role-based specific invitation emails |
 
 ---
