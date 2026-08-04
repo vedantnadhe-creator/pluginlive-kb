@@ -545,6 +545,23 @@ hasEnoughSignal` across the whole 0–8 range so the two can't drift apart.
     scored` block, driven by `notScoredReason`: nothing answered / below the coverage bar (no
     score will *ever* come) / scorable but not yet landed. Conflating the last two is the easy
     mistake — a recruiter told to "check back shortly" for a below-bar interview waits forever.
+  - **GOTCHA — the Excel export blanked Score/Verdict for drop-offs while the report showed
+    both (fixed 2026-08-04).** Two independent gates in `admin-node/app/models/Assessment.js`,
+    both keyed on the wrong signal, and each sufficient on its own to blank the cells:
+    1. The score enrichment inside `getAssessmentDetails` runs under `if (is_submitted)`. A
+       drop-off deliberately keeps `submitted=false` / `status=DROPOUT`, so
+       `aiInterviewScores` came back **`undefined`** — the row was never enriched at all.
+    2. `exportStudentData` fills score cells only when the status label is `"Completed"`; a
+       drop-off is labelled `"Dropped Off"`, so even an enriched row would have been blanked.
+    Fix: enrichment also runs for an **attempted** AI Interview (`is_submitted ||
+    (isAIInterviewAssessment && is_attempted)`), and the export keys the AI Interview cells
+    off **a score actually existing** (`typeof aiInterviewScores?.overallScore === "number"`)
+    rather than off the status label — so Excel and the report cannot disagree. Applied to
+    **both** the college and corporate paths (they are separate ~1000-line blocks that drift;
+    always check both). No other assessment type changes behaviour. Same change also fixes the
+    blank Score column for drop-offs in the on-screen CandidateList, which reads the same
+    enrichment. **Note the `typeof === "number"` test is load-bearing**: a legitimately-scored
+    drop-off can have `overall_score = 0`, and a truthiness check would blank it.
   - **Download button needs no change** — `checkReportAvailability`'s AI_Interview branch
     already requires `(submitted || attempted)` + a score row, and the dropout cron sets
     `attempted=true`. It ungreys by itself once scoring lands. A below-bar interview never gets
