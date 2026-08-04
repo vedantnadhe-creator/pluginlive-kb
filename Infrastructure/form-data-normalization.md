@@ -962,6 +962,44 @@ LinkedIn-sourced candidate gets a populated work history / education without a r
 > Note: already-ingested candidates are NOT backfilled — re-run affected raw rows via
 > `normalization_status='pending'` to populate their locations.
 >
+> **Gotcha — a "Language" column on the sheet never reached the profile; Languages empty on the resume
+> page (fixed 2026-08-04, Development `3ae47d2` / UAT `09b06d7`).** The `languages` slug IS registered
+> AND mapped (`normalized_columns.mapping_field = studentPersonalProfile.languages` on UAT), yet
+> `student_personal_profile.languages` stayed `[]` for every ERP-uploaded student. Three independent
+> breaks:
+> - **The model doesn't emit the `languages` slug for a plain "Language" column.** It files the value
+>   under the legacy `language_proficiency_<lang>` slugs instead — a leftover from Google-Form sheets
+>   whose columns read `Language Proficiency [English]`. Those slugs have `mapping_field` NULL in every
+>   env, so the value fell through to `result["extra"]` and was never persisted. Confirmed on the
+>   `Language = " English "` ERP row: `pre_mapping_debug` shows `"language_proficiency_english": true`
+>   and **no** `languages` key.
+> - **No raw-column fallback**, unlike roll-no / preferred-location / social-media above.
+> - **Type mismatch.** When `languages` *is* emitted its value is a STRING (`"Tamil, English"`), while
+>   student-node's create-full schema types the field `{ type: "array" }` — `set_nested` would have
+>   written the string straight through and 400'd the **whole candidate** with `FST_ERR_VALIDATION`.
+>
+> Fix: the `studentPersonalProfile.languages` mapping_field is now **skipped** by the generic mapping
+> loop and the array is assembled deterministically in `map_to_final_schema`, reading (in order of trust)
+> the `languages` slug → truthy `language_proficiency_<lang>` slugs → raw headers. Two header shapes are
+> handled: **value-carries-the-language** (`Language`, `Language Proficiency`, `.1`/`.2` dedup suffixes,
+> `Mother Tongue`, `What are the languages you know?`) and **header-carries-the-language**
+> (`Language Proficiency [English]`, where the cell is only a rating — `4`, `100%`, `Option 3`, `N/A` —
+> so the language comes off the bracket and the cell merely gates inclusion). `_is_language_name` rejects
+> ratings, the `Other (Mother Tongue)` placeholder and proficiency words; `_NOT_A_LANGUAGE_HEADER_RE`
+> excludes "programming/coding languages" skill questions; a trailing `(CQ)` custom-question marker is
+> stripped before bracket detection so it isn't read as a language named "CQ". Values are split on
+> `, ; / | & +` + "and", title-cased and deduped case-insensitively. Consumer:
+> `student_personal_profile.languages` (jsonb array of text — see `Student.js`, which reads it with
+> `jsonb_array_elements_text` and treats `'[""]'` as NULL) → student-react resume "Additional Info".
+> Regression check: `tests/test_languages_from_sheet.py` (14 cases, no DB needed). Config-free (code
+> only) — no `normalized_columns` row is required for any of the three paths. **PROD needs the same code
+> deploy** — all three FDN deployments (api/worker/cron), since `map_to_final_schema` runs in the
+> **worker**; see "UAT reality — `auto_deploy.sh` only bumps 1 of the 3 containers" below. The UAT
+> deploy on 2026-08-04 ran `auto_deploy.sh form-data-normalization UAT`, then rebuilt
+> `datanormalization:api-mastersrc` from the same checkout and recreated `-worker` / `-cron`.
+> Note: already-ingested candidates are NOT backfilled — re-run affected raw rows via
+> `normalization_status='pending'`.
+>
 > **Gotcha — UG (any-level) department dropped when the sheet has a "Stream"/"Branch" column, not a
 > "Department" column (fixed 2026-07-17, UAT `72c4d4b`).** Sheets carry e.g. "Graduation Stream" =
 > "Electronics and Telecommunication" (no "Graduation Department" column). The extraction model
