@@ -449,33 +449,39 @@ generic assessment-scoring cron, the same one used for aptitude/communication:
    `calculation_attempts`; after the max it sets `calculation_error=true` and **stops
    retrying** (so the row silently disappears from the cron's pickup query).
 
-**Scoring threshold: unchanged bar, now applied to BOTH endings (2026-08-04).** The bar is
-still `MIN_ANSWERS_FOR_SIGNAL = 4` answered turns (intro counts) **AND** ≥ **50% coverage** of
-`totalExpected`, with the 4-answer floor capped at `totalExpected` so small configs stay
-clearable. What changed is *who it applies to*: a **drop-off is now held to exactly the same
-bar as an early exit**. Below it, the assignment is marked `scores_calculated=true` with **no
-score row** — legitimately skipped, not an error — and the report shows the incomplete marker
-plus the attempted questions. At or above it the interview is scored even though it is
-partial, and `score-final` receives `completion_ratio` / `total_answered` / `total_expected` /
-`completion_reason` so it grades what it actually got.
+**Scoring threshold: 2 answered turns, both endings, no coverage percentage (2026-08-04).**
+`MIN_ANSWERS_FOR_REPORT = 2` (the intro counts) is the **only** scoring gate, and it applies
+identically to a drop-off and an early exit. Below it the assignment is marked
+`scores_calculated=true` with **no score row** — legitimately skipped, not an error — and the
+report shows the incomplete marker plus the attempted questions. At or above it the interview
+is scored even when partial, and `score-final` receives `completion_ratio` / `total_answered`
+/ `total_expected` / `completion_reason` so it grades what it actually got.
 
-> A brief intermediate state on 2026-08-04 lowered the gate to "one answered turn is enough".
-> That was **reverted the same day** — a 1-or-2-answer transcript produces a number that reads
-> as a judgement of the candidate rather than of the coverage. Don't reintroduce it.
+> **The 50% coverage rule was REMOVED, not merely lowered alongside the minimum.** Keeping it
+> would have made this constant dead: on an 8-question interview `ceil(8 * 0.5) = 4` demanded
+> 4 answers by itself, so any minimum below 4 had no observable effect. If you are ever asked
+> to change "the minimum questions for a report", changing `MIN_ANSWERS_FOR_REPORT` alone is
+> only sufficient because that percentage is gone — do not reintroduce it.
+
+Same-day history, so the intent is not re-litigated: the gate started at 4 answers + 50%
+coverage (early exits only, drop-offs skipped entirely), briefly went to 1 answer, was put
+back to 4 + 50% applied to **both** endings, and finally settled at **2 answers, no
+percentage**.
 
 The rules live in `student-node/app/helpers/aiInterviewOutcome.js` —
-`classifyInterviewOutcome(totalAnswered, totalExpected)` returns
-`{isPartial, hasEnoughSignal, canScore}` and is the single source of truth shared by
-`completeSession` and `finalizeAbandonedSession`. Pure, no I/O; unit tests in
-`student-node/test/aiInterviewOutcome.spec.js` (11), one of which pins `canScore ===
-hasEnoughSignal` across the whole 0–8 range so the two can't drift apart.
+`classifyInterviewOutcome(totalAnswered, totalExpected)` returns `{isPartial, canScore}` and is
+the single source of truth shared by `completeSession` and `finalizeAbandonedSession`. Pure,
+no I/O; unit tests in `student-node/test/aiInterviewOutcome.spec.js` (9), including one that
+pins the constant at 2 and one asserting 2-of-12 is scorable (the old rule required 6).
 
-- `canScore` (the scoring gate) and `hasEnoughSignal` are deliberately the **same** bar.
+- `canScore` is the scoring gate.
 - `isPartial` (`totalAnswered < totalExpected`) is **independent** — an interview can be
-  partial *and* comfortably scorable, which is the whole point of the recruiter marker.
-- `session_metadata.interviewIncomplete` stores `!hasEnoughSignal` and remains the
-  **candidate-facing** flag, so `AIInterviewReportCard.js` behaves exactly as it always has.
-  Recruiter surfaces read `partialInterview` instead.
+  partial *and* scorable, which is the whole point of the recruiter marker.
+- `session_metadata.interviewIncomplete` is stored as the exact **inverse of `canScore`**, so
+  that flag now means precisely **"no score exists"** on every surface. Both the admin banner
+  and the PDF's `notScoredReason` key off it to distinguish "too little to grade" from "not
+  scored yet"; that only stays correct because of this identity. It is also still the flag the
+  candidate's own `AIInterviewReportCard.js` gates on.
 
 - **Drop-offs are now finalized and scored (2026-08-04).** A candidate who closes the tab
   never reaches `completeSession`, so the session row kept **no terminal metadata** (status
@@ -503,8 +509,8 @@ hasEnoughSignal` across the whole 0–8 range so the two can't drift apart.
   - That `completionReason='dropout'` predicate is also what scopes this to **new drop-offs
     only** — historical dropouts carry no such metadata and are intentionally never picked
     up. **No backfill was run** (deliberate: one `gemini-2.5-pro` call per row).
-  - **The coverage bar gates drop-offs exactly as it gates early exits** — a drop-off with
-    fewer than 4 answers (or under 50% coverage) is finalized and marked, but **never sent to
+  - **The answered-turn minimum gates drop-offs exactly as it gates early exits** — a
+    drop-off under `MIN_ANSWERS_FOR_REPORT` is finalized and marked, but **never sent to
     the scorer**. `finalizeAbandonedSession` returns `canScore` and the cron `continue`s on
     false, so no LLM call is made. The retry sweep re-derives the same verdict from the stored
     counters via `classifyInterviewOutcome`, so it can't resurrect a below-bar row either.
@@ -518,8 +524,8 @@ hasEnoughSignal` across the whole 0–8 range so the two can't drift apart.
 - **Recruiter report: partial-interview marker + attempted questions (2026-08-04).** The
   "Interview Not Completed" banner used to **replace** the score card entirely, so an
   unfinished interview showed a recruiter nothing actionable. It now sits **above** the score
-  rather than instead of it, because a partial interview that clears the coverage bar IS
-  scored. Below the bar there is no score and the banner plus the attempted questions are the
+  rather than instead of it, because a partial interview that meets the answered-turn
+  minimum IS scored. Below the minimum there is no score and the banner plus the attempted questions are the
   whole report — which is still far more than the nothing a drop-off used to produce.
   - **New flag `session_metadata.partialInterview`** = `totalAnswered < totalExpected`,
     surfaced by `admin-node` `getReportByAssignment` (falls back to `interviewIncomplete`
@@ -546,7 +552,7 @@ hasEnoughSignal` across the whole 0–8 range so the two can't drift apart.
     `interviewIncomplete`, whose meaning was preserved exactly, so candidates see what they
     always saw and are never shown a partial score. Partial scores are recruiter-only.
   - **Three distinct "no score" messages**, on both the admin banner and the PDF's `Not
-    scored` block, driven by `notScoredReason`: nothing answered / below the coverage bar (no
+    scored` block, driven by `notScoredReason`: nothing answered / below the minimum (no
     score will *ever* come) / scorable but not yet landed. Conflating the last two is the easy
     mistake — a recruiter told to "check back shortly" for a below-bar interview waits forever.
   - **GOTCHA — the Excel export blanked Score/Verdict for drop-offs while the report showed
