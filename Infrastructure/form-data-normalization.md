@@ -837,6 +837,7 @@ LinkedIn-sourced candidate gets a populated work history / education without a r
 >   `mongo_db_states`, producing the production shape `{city_id, city_name, state_id, state_name}`; a value
 >   that is a state, not a city, yields a state-only row `{state_id, state_name}` (both shapes exist in PROD,
 >   written by the student profile UI). Unresolvable tokens are logged and skipped, never published.
+>   Since 2026-08-04 the master lookup is **spelling-tolerant** — see the gotcha below.
 > - **LinkedIn / social / portfolio columns → `socialMedia[{media, link}]`** — never assembled. Platform is
 >   derived from the URL **host** (`_SOCIAL_HOSTS`) so a "LinkedIn URL" column holding a GitHub link is
 >   still labelled `Github`, falling back to the column header; multiple URLs per cell are supported,
@@ -855,6 +856,22 @@ LinkedIn-sourced candidate gets a populated work history / education without a r
 > payload when empty — so an ERP re-upload no longer wipes locations a student set in the UI. The
 > `studentPersonalProfile.preferredJobLocation.*` mapping_field hook was made index-safe (it used to rely
 > on the placeholder dict at `[0]`). Config-free (code only). **PROD needs the same code deploy.**
+>
+> **Gotcha — a preferred location typed without a space silently vanished (fixed 2026-08-04, Development
+> `658a714` / UAT `3f0c19e`).** `DBService.lookup_city_state_ids` matched the masters with an exact
+> `name ILIKE :name`, but the ERP cell is hand-typed: a sheet reading `tamilnadu` never found the
+> `Tamil Nadu` master row, both the city and state lookups returned `None`, and the worker's
+> "matched no city/state master row — skipped" branch dropped the whole entry — the student was created
+> with an EMPTY `preferred_job_location` and `is_anywhere=false`, with no error anywhere in the pipeline.
+> The lookup now falls back to a **squashed** comparison when the exact match misses
+> (`regexp_replace(lower(name),'[^a-z0-9]','','g')`, mirrored in Python by `squash_place_name`), so
+> `tamilnadu` / `TAMIL-NADU` / `Tamil  Nadu` all resolve, as does `newdelhi` → `New Delhi`. Exact ILIKE
+> still runs first; the fallback scan is cheap (~5.7k cities, 41 states) and only fires on a miss.
+> Because the helper is shared, campus-location and candidate city/state resolution gained the same
+> tolerance. Regression check: `tests/test_preferred_location_spelling.py` (hits the real masters,
+> skips when the DB is unreachable). Config-free (code only). **PROD needs the same code deploy.**
+> Note: already-ingested candidates are NOT backfilled — re-run affected raw rows via
+> `normalization_status='pending'` to populate their locations.
 >
 > **Gotcha — UG (any-level) department dropped when the sheet has a "Stream"/"Branch" column, not a
 > "Department" column (fixed 2026-07-17, UAT `72c4d4b`).** Sheets carry e.g. "Graduation Stream" =
