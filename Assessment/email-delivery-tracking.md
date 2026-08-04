@@ -101,9 +101,40 @@ why *clicked* is a soft signal and *assessment_opened* is the one to trust.
   | 2 | `attemptStarted` | `opened` | **Opened** | assignment row |
   | 3 | `assessmentOpened` | `opened` | **Opened** | journey event |
   | 4 | `linkClicked` | `opened` | **Opened** | journey event |
-  | 5 | `emailAccepted` | `sent` | **Sent** | email event |
-  | 6 | `emailFailed` | `failed` | **Failed** | email event |
+  | 5 | `inviteAccepted` | `sent` | **Sent** | delivery event (any channel) |
+  | 6 | `inviteFailed` | `failed` | **Failed** | delivery event (all channels) |
   | — | — | `untracked` | `-` | nothing recorded |
+
+  **Both channels count (2026-08-03).** An assessment invite goes out over
+  **email AND WhatsApp**, but only the email leg was recorded until now, so the
+  column judged delivery on email alone — a candidate reached only by WhatsApp
+  read as *untracked*, and a failed WhatsApp send was invisible. `email_events`
+  gained **`channel`** (`email` | `whatsapp`, defaulted so every pre-existing row
+  and writer keeps its meaning) and **`to_phone`**; WhatsApp sends are written by
+  `TrackingService.recordWhatsappEvent()` from
+  `assessmentInviteEmail.sendAssessmentInviteWhatsapp()`.
+
+  One table rather than two, because the column asks a single question — was this
+  candidate reached? — and two tables would mean a second query and a merge on
+  every render. `to_email` stays populated on whatsapp rows: it identifies the
+  candidate (and is what the assignment joins on), while `to_phone` records where
+  the message actually went.
+
+  The delivery stages therefore **do not filter on channel** — the two are
+  interchangeable evidence, so one accepted send on either is enough for *Sent*,
+  and *Failed* requires **every** channel to have failed. `emailAccepted` /
+  `emailFailed` were renamed `inviteAccepted` / `inviteFailed` to match; they are
+  internal to `DeliveryFunnelService` and nothing else reads them. Verified on DEV
+  and UAT: WhatsApp-only → *Sent*; email failed + WhatsApp accepted → *Sent*; only
+  WhatsApp failed → *Failed*.
+
+  The failure reason is **prefixed with the channel** (`WhatsApp: …` / `Email: …`)
+  because "Couldn't send invitation" is not actionable without knowing which leg
+  broke. Note `messageId` is null on whatsapp rows — auth-node's bulk endpoint
+  echoes the request rather than returning MSG91's `request_id`, and the column is
+  UNIQUE so a placeholder would collide on the second send.
+
+  Migration: `DB-Scripts/Assessment Email Delivery Tracking/20260804T101949Z__email_events_channel.sql`
 
   **Only three statuses exist: Sent, Failed, Opened (2026-08-03).** The column
   answers one question — did the invitation reach the candidate? — so attempt
