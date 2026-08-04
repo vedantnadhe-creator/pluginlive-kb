@@ -227,6 +227,30 @@ Selecting `Bachelor Of Engineering` returns **14,847** candidates with id-or-tex
 **11,263** with text alone — a name-only match silently drops 3,584 people. Never
 revert the predicate to text-only while the options come from the master.
 
+4. *2026-08-04* the OR still let through rows whose `degree_id` links to an **inactive**
+   or otherwise-null master purely on text — i.e. the id-or-text OR was never actually
+   requiring the id side to be active. Added `AND d.status = 1` inside the `EXISTS`
+   (both the list and single-value branches) so a match now requires the *resolved*
+   master to be active, not just a text/name string coincidence:
+
+```sql
+EXISTS (SELECT 1 FROM student.current_course cc
+        LEFT JOIN institute.degrees d ON d.id = cc.degree_id
+        WHERE cc.student_id = s.id
+          AND (LOWER(TRIM(cc.degree)) IN (:names) OR LOWER(TRIM(d.name)) IN (:names))
+          AND d.status = 1)
+```
+
+   Net effect on UAT for `degree=BACHELOR OF ENGINEERING`: **1099 → 1042** — the 57
+   dropped candidates all had `current_course.degree_id` NULL/unlinked (text matched,
+   but there was no master row to be active in the first place). Verified against the
+   admin-node `/meta-dashboard/students` case-sensitive-exact-`cc.degree_id` query,
+   which independently returns the same **1042** for the active `BACHELOR OF ENGINEERING`
+   master id (`69c5559d-3145-4c1e-8107-1b6d2625a745` on UAT). Shared by both
+   `GET /api/student-metrics` and `POST /api/student-metrics/download` since both go
+   through `_build_student_filter_clause`. Deployed DEV + UAT same day
+   (`services/db_service.py`, commit `4d60f34` merged Development → UAT as `5498e8f`).
+
 Search collapses runs of whitespace (`regexp_replace(..., '\s+', ' ', 'g')`) because some
 master rows carry a stray double space — `BACHELOR OF  ENGINEERING TCS` is invisible to a
 plain `LIKE '%bachelor of engin%'` even though the master screen's fuzzy search-service
