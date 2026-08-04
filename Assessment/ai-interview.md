@@ -557,15 +557,36 @@ hasEnoughSignal` across the whole 0–8 range so the two can't drift apart.
        `aiInterviewScores` came back **`undefined`** — the row was never enriched at all.
     2. `exportStudentData` fills score cells only when the status label is `"Completed"`; a
        drop-off is labelled `"Dropped Off"`, so even an enriched row would have been blanked.
-    Fix: enrichment also runs for an **attempted** AI Interview (`is_submitted ||
-    (isAIInterviewAssessment && is_attempted)`), and the export keys the AI Interview cells
-    off **a score actually existing** (`typeof aiInterviewScores?.overallScore === "number"`)
-    rather than off the status label — so Excel and the report cannot disagree. Applied to
-    **both** the college and corporate paths (they are separate ~1000-line blocks that drift;
-    always check both). No other assessment type changes behaviour. Same change also fixes the
-    blank Score column for drop-offs in the on-screen CandidateList, which reads the same
-    enrichment. **Note the `typeof === "number"` test is load-bearing**: a legitimately-scored
-    drop-off can have `overall_score = 0`, and a truthiness check would blank it.
+    Fix: the export keys the AI Interview cells off **a score actually existing**
+    (`typeof aiInterviewScores?.overallScore === "number"`) rather than off the status label,
+    and **AI Interview is enriched unconditionally** — see the rule below. Applied to **both**
+    the college and corporate paths (they are separate ~1000-line blocks that drift; always
+    check both). No other assessment type changes behaviour. Same change also fixes the blank
+    Score column for drop-offs in the on-screen CandidateList, which reads the same enrichment.
+    **Note the `typeof === "number"` test is load-bearing**: a legitimately-scored drop-off can
+    have `overall_score = 0`, and a truthiness check would blank it.
+
+- **RULE — never gate AI Interview score enrichment on the assignment flags (2026-08-04).**
+  Gating on `is_submitted` was first patched to `is_submitted || is_attempted` to cover
+  drop-offs; that was still wrong. Rows exist with a **finalized `ai_interview_scores` row**
+  whose assignment has `submitted=false` **AND** `attempted=false` (seen on DEV:
+  `vedantmnadhe+demob1/2/3/7@gmail.com`, `status=COMPLETED`, scores 84/76/64/49). The report
+  (`getReportByAssignment`) and the PDF (`generateAIInterviewReport`) both read the session +
+  score row **directly and never consult these flags**, so every such row renders marks on
+  screen and in the PDF while the Excel cells come out empty — the exact "report shows it,
+  Excel doesn't" bug, reported repeatedly and mis-diagnosed twice as a drop-off-only issue.
+  The flags simply cannot be made to agree; `is_submitted || isAIInterviewAssessment` is the
+  guard, i.e. always enrich for this type. Costs one indexed lookup per candidate and yields
+  the pre-existing empty shape when there is no score.
+  **Diagnostic that finds these instantly** — any row where the export and the report can
+  disagree:
+  ```sql
+  SELECT aas.primary_email, aas.status, aas.submitted, aas.attempted, sc.overall_score
+  FROM assessment.assessment_assigned_students aas
+  JOIN assessment.ai_interview_sessions s ON s.assessment_assigned_id = aas.assessment_assigned_id
+  JOIN assessment.ai_interview_scores sc ON sc.session_id = s.id
+  WHERE aas.submitted = false;
+  ```
   - **Download button needs no change** — `checkReportAvailability`'s AI_Interview branch
     already requires `(submitted || attempted)` + a score row, and the dropout cron sets
     `attempted=true`. It ungreys by itself once scoring lands. A below-bar interview never gets
