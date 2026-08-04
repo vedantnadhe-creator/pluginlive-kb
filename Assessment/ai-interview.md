@@ -985,6 +985,36 @@ The candidate-facing AI Interview UI lives in `Assessment-React/src/modules/Asse
   - **OTP invite candidate** — completion stays **terminal** ("You can now close this window"), no portal button. The earlier removal (2026-06-15) was because a blanket "Back to Home" cleared the scoped JWT and bounced invite candidates into `AuthPage` (which auto-fires `window.open(AUTH_URL)`); that hazard only applies to invite candidates, so the button is now gated to logged-in students only.
 - **Completion reload guard (since 2026-06-17)** — on `completeSession` success, `interview.js` persists `localStorage['ai_interview_completed_<assignedId>'] = '1'` (helpers `markAiInterviewCompleted` / `isAiInterviewCompleted` in `aiInterviewInviteAPI.js`). On mount, `instruction.js` reads this flag so a **page reload no longer restarts the instructions/welcome flow**: a logged-in student is redirected to `/assessment` (renders nothing meanwhile to avoid a welcome-screen flash); an OTP candidate gets a terminal **"Your interview is already complete"** notice. This complements the server-side no-retake gate (409 from `startSession` once `status=COMPLETED`/`submitted=true`) and the `InviteStart` "already submitted" gate (see [otp-invite.md](otp-invite.md)).
 
+  **The flag is a CACHE, not a source of truth (fixed 2026-08-04).** It was originally
+  write-only — `markAiInterviewCompleted` existed, nothing ever cleared it — and an admin
+  **"resend invite" reuses the SAME `assessment_assigned_id`** (the backend resets that row to
+  `PENDING`; it does not create a new assignment). So the key never changes and the stale flag
+  outlived the reset **forever**: a resent candidate was permanently locked out of their retake
+  with no way to clear it short of manually wiping localStorage in their own browser. Worse,
+  `alreadyCompleted` was read **synchronously during render**, so the redirect to `/assessment`
+  fired before `getConfigInfo` could return the corrected `PENDING` — the server never got a
+  chance to win.
+
+  `getConfigInfo` is now the only source of truth:
+  - New `clearAiInterviewCompleted()` in `aiInterviewInviteAPI.js`. The status effect clears the
+    flag when the server reports status **`PENDING`**. Only `PENDING` counts — `getConfigInfo`
+    returns `status: null` when its own status lookup throws, and null must **not** be read as
+    "takeable".
+  - `alreadyCompleted` is React state seeded from the cache, plus a `statusResolved` gate.
+    Neither the redirect effect nor the terminal "already complete" screen acts until the server
+    answers. Cached-but-unresolved renders a neutral **"Checking your interview status…"**, which
+    keeps the anti-flash property the cache was added for.
+  - Fetch failure **fails closed** (cached verdict stands), so a flaky API can't open a retake.
+  - The status effect now keys off `guardAssignedId` (`assessment?.assessment_assigned_id ||
+    otpAssignedId`) instead of only the former. **OTP invite candidates often don't have
+    `assessment.assessment_assigned_id` populated and were silently skipping the server gate
+    entirely.** It also resolves immediately when there is no id at all, so the guards can never
+    hang on the checking screen.
+
+  Net: the lockout self-heals on the candidate's next page load — no manual localStorage
+  clearing and no per-candidate intervention. Regression cover:
+  `Assessment-React/src/modules/Assessments/Partials/AIInterview/__tests__/aiInterviewCompletedFlag.test.js`.
+
 ### Candidate resume upload (pre-start)
 
 On the instructions screen the candidate optionally attaches a resume (PDF/DOCX/TXT, ≤6 MB). The file is **POSTed directly to FastAPI** `${REACT_APP_FASTAPI_URL}/ai-interview/parse-resume` as multipart (`file` field) — it does **not** go through student-node and is **not** stored in S3. FastAPI extracts plain text (PyMuPDF for PDF, python-docx for DOCX) and returns `{ text, chars, truncated, filename }`. The text is held in component state and passed as `resumeText` to `POST /ai-interview/session/start` (and on each `session/turn`), giving the interviewer resume context. The endpoint requires **no auth** (`_verify` is disabled), so a missing invite JWT does not block it. Field config (`resume_policy`: `mandatory` / `optional` / `not_required`) comes from `ai_interview_config` and is surfaced via `config-info`.
