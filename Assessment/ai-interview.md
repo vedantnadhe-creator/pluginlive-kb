@@ -449,10 +449,26 @@ generic assessment-scoring cron, the same one used for aptitude/communication:
    `calculation_attempts`; after the max it sets `calculation_error=true` and **stops
    retrying** (so the row silently disappears from the cron's pickup query).
 
-**Scoring threshold: 2 answered turns, both endings, no coverage percentage (2026-08-04).**
-`MIN_ANSWERS_FOR_REPORT = 2` (the intro counts) is the **only** scoring gate, and it applies
-identically to a drop-off and an early exit. Below it the assignment is marked
-`scores_calculated=true` with **no score row** — legitimately skipped, not an error — and the
+**Scoring threshold: 2 answered turns for an early exit, 1 for a drop-off, no coverage
+percentage (2026-08-04).** The answered-turn count (the intro counts) is the **only** scoring
+gate, and the two endings deliberately differ:
+
+| Ending | Handled by | Minimum | Constant |
+|---|---|---|---|
+| Early exit — End pressed, time up, question cap, `candidate_unwilling`, `admin_forced` | `completeSession` | **2** | `MIN_ANSWERS_FOR_REPORT` |
+| Drop-off — abandoned, timed out by the cron | `finalizeAbandonedSession` | **1** | `MIN_ANSWERS_FOR_REPORT_DROPOUT` |
+
+Rationale for the split: an early exit is a choice made with the interview still available, so
+a one-answer transcript is treated as noise; walking away is itself the signal a recruiter
+wants recorded, so anything captured is worth showing. **Zero answers scores on neither path.**
+
+`classifyInterviewOutcome(totalAnswered, totalExpected, { isDropout })` takes the ending as an
+explicit opt that **defaults to false** (the stricter bar), so a new ending added later cannot
+silently inherit the drop-off minimum. Only `finalizeAbandonedSession` passes it — in the main
+path and in its retry-resume branch, which is already gated on `completionReason='dropout'`.
+
+Below the applicable minimum the assignment is marked `scores_calculated=true` with **no score
+row** — legitimately skipped, not an error — and the
 report shows the incomplete marker plus the attempted questions. At or above it the interview
 is scored even when partial, and `score-final` receives `completion_ratio` / `total_answered`
 / `total_expected` / `completion_reason` so it grades what it actually got.
@@ -465,14 +481,15 @@ is scored even when partial, and `score-final` receives `completion_ratio` / `to
 
 Same-day history, so the intent is not re-litigated: the gate started at 4 answers + 50%
 coverage (early exits only, drop-offs skipped entirely), briefly went to 1 answer, was put
-back to 4 + 50% applied to **both** endings, and finally settled at **2 answers, no
-percentage**.
+back to 4 + 50% applied to **both** endings, then to **2 answers with no percentage** for
+both, and finally to **2 for an early exit / 1 for a drop-off**.
 
 The rules live in `student-node/app/helpers/aiInterviewOutcome.js` —
 `classifyInterviewOutcome(totalAnswered, totalExpected)` returns `{isPartial, canScore}` and is
 the single source of truth shared by `completeSession` and `finalizeAbandonedSession`. Pure,
-no I/O; unit tests in `student-node/test/aiInterviewOutcome.spec.js` (9), including one that
-pins the constant at 2 and one asserting 2-of-12 is scorable (the old rule required 6).
+no I/O; unit tests in `student-node/test/aiInterviewOutcome.spec.js` (12), including ones that
+pin both constants, assert 1-of-8 scores on a drop-off but not on an early exit, and assert
+2-of-12 is scorable (the old coverage rule required 6).
 
 - `canScore` is the scoring gate.
 - `isPartial` (`totalAnswered < totalExpected`) is **independent** — an interview can be
@@ -509,9 +526,9 @@ pins the constant at 2 and one asserting 2-of-12 is scorable (the old rule requi
   - That `completionReason='dropout'` predicate is also what scopes this to **new drop-offs
     only** — historical dropouts carry no such metadata and are intentionally never picked
     up. **No backfill was run** (deliberate: one `gemini-2.5-pro` call per row).
-  - **The answered-turn minimum gates drop-offs exactly as it gates early exits** — a
-    drop-off under `MIN_ANSWERS_FOR_REPORT` is finalized and marked, but **never sent to
-    the scorer**. `finalizeAbandonedSession` returns `canScore` and the cron `continue`s on
+  - **Drop-offs are gated too, on their own (lower) minimum** — a drop-off under
+    `MIN_ANSWERS_FOR_REPORT_DROPOUT` is finalized and marked, but **never sent to the
+    scorer**. `finalizeAbandonedSession` returns `canScore` and the cron `continue`s on
     false, so no LLM call is made. The retry sweep re-derives the same verdict from the stored
     counters via `classifyInterviewOutcome`, so it can't resurrect a below-bar row either.
   - `runScoringForAssignment` no longer short-circuits on the `interviewIncomplete` flag —
