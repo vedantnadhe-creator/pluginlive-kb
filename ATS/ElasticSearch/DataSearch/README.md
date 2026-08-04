@@ -84,3 +84,22 @@ The DataSearch module provides specialized, purpose-built search endpoints for f
 - **Context-specific queries:** Each endpoint has a tailored ES query optimized for its UI use case
 - **Campus preview:** Advanced filtering with `tpoCollegeList`, `publishedOrNot`, `corporateId`, `roleId` for role publishing flow
 - **Cross-module dependency:** Uses both `DataSearchServices` and `SearchServices` for country lookups
+
+## Short-form search (`orSearchCols`) — PG engine
+
+Record-list search on the Postgres engine (`SEARCH_ENGINE_DEFAULT=pg`, live on DEV+UAT) matches the dataset's `trgmField`/`searchField` (the *name* column) only. Datasets whose entities are commonly typed by **short form** must opt in via `orSearchCols`, or a short-form query returns fuzzy trigram noise while missing the exact match — e.g. System Config → Degree searched for `btech`/`b.tech` returned 82 rows (B.ARCH, "Bachelor Of Laws", "Doctor Of Philosophy" — all trigram hits on "Bachelor") but **not** "Bachelor Of Technology", whose short form *is* `B.Tech`.
+
+`searchClause()` already implements the matching: a **punctuation-stripped contains** (`B.Tech` → `btech`, so `b.tech` and `btech` both hit) plus a **+4 score boost for an exact short-form match**, ranking it above plain name matches. Datasets only need the config entry.
+
+Enabled on (`pgSearch.service.ts`):
+
+| Dataset | Column |
+|---|---|
+| `INSTITUTE_DEGREE`, `DEGREES`, `CRUD_DEGREE_DEPARTMENT` | `degree_short_form` / `short_form` |
+| `STREAMS`, `INSTITUTE_STREAM` | `short_form` (CSE, EEE) |
+| `INSTITUTE_SPECIALISATION` | `short_form` |
+| `INSTITUTES_MASTER`, `INSTITUTES_CAMPUSES` | `instute_campus_short_name` |
+
+**Two gotchas:**
+- **Campuses use `short_name`, NOT `short_form`.** `instute_campus_short_form` is NULL/empty on **all 89,051 rows** on UAT — searching it costs query time for zero recall. `instute_campus_short_name` is the populated column. Always check a column is actually populated before adding it to `orSearchCols`.
+- **`nestedGroup()` needs the value forwarded explicitly.** The standard `query()` path passes `ds.orSearchCols` into `searchClause()`, but `nestedGroup()` originally did not — so adding the config to a nested dataset (e.g. `CRUD_DEGREE_DEPARTMENT`) silently did nothing until the call site was fixed. `PgNestedDataset` now carries `orSearchCols?` and forwards it.
