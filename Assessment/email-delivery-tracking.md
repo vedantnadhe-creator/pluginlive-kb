@@ -89,21 +89,49 @@ why *clicked* is a soft signal and *assessment_opened* is the one to trust.
 
 `admin-node/app/service/DeliveryFunnelService.js`:
 
-- One SQL per entity type (college/corporate), returning `(stage, assignment_id)`
-  pairs. Two complete literal queries rather than one with an interpolated column
+- One SQL per entity type (college/corporate), returning `(stage, assignment_id, reason)`
+  triples. Two complete literal queries rather than one with an interpolated column
   name, so there is no string building near SQL — the only variable is bound `$1`.
 - `deriveDeliveryStatuses()` collapses the stages into **one status per
   candidate**, most-advanced-wins:
 
-  | precedence | status | label | source |
-  |---|---|---|---|
-  | 1 | `completed` | **Completed** | assignment row |
-  | 2 | `started` | **Started** | assignment row |
-  | 3 | `opened` | **Assessment Opened** | journey event |
-  | 4 | `clicked` | **Opened** | journey event |
-  | 5 | `sent` | **Sent** | email event |
-  | 6 | `failed` | **Failed** | email event |
-  | — | `untracked` | `-` | nothing recorded |
+  | precedence | stage | status | label | source |
+  |---|---|---|---|---|
+  | 1 | `attemptCompleted` | `opened` | **Opened** | assignment row |
+  | 2 | `attemptStarted` | `opened` | **Opened** | assignment row |
+  | 3 | `assessmentOpened` | `opened` | **Opened** | journey event |
+  | 4 | `linkClicked` | `opened` | **Opened** | journey event |
+  | 5 | `emailAccepted` | `sent` | **Sent** | email event |
+  | 6 | `emailFailed` | `failed` | **Failed** | email event |
+  | — | — | `untracked` | `-` | nothing recorded |
+
+  **Only three statuses exist: Sent, Failed, Opened (2026-08-03).** The column
+  answers one question — did the invitation reach the candidate? — so attempt
+  progress does not belong in it; that is the STATUS column's job, and carrying it
+  in both made one row state the same fact twice in two vocabularies. The four
+  engagement stages therefore **collapse into `opened`** rather than being dropped:
+  sitting the assessment proves the candidate opened the link, so folding them up
+  keeps those rows truthful instead of demoting them to a weaker status or to
+  *untracked*. The precedence walk is unchanged — it just resolves to fewer
+  distinct answers.
+
+  Tooltips are plain statements of what happened, not of what the signal proves:
+  *Sent — "Invitation was sent"*, *Failed — "Couldn't send invitation: &lt;reason&gt;"*,
+  *Opened — "Clicked the link from Email/Whatsapp invite"*.
+
+  **`deliveryStatusReason`** carries the latest `error` from the assignment's failed
+  `email_events` so the Failed tooltip can name the cause. It is attached **only** to
+  `failed`: a candidate who was handed the link after a bounce reads as *Opened* and
+  must not carry the stale bounce text. The SQL gained a third column (`reason`,
+  `NULL::text` on every branch except `emailFailed`) — keep the UNION arity in step
+  when adding a stage.
+
+  **Legacy statuses are aliased, not deleted.** `admin-react`'s `DeliveryStatusTag`
+  maps `clicked`/`started`/`completed` → `opened`, because a rolling deploy can put
+  a new bundle in front of an older API that still returns them; without the aliases
+  those rows would fall through to the *not tracked* dash and wrongly read as having
+  no delivery data. For an aliased status the local label wins, so an old
+  *"Completed"* cannot leak through as text.
 
   A failed send followed by a successful resend reads as `sent`. A candidate whose
   send failed but who clicked anyway (given the link by hand via Copy Link /
