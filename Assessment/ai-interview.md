@@ -430,7 +430,8 @@ generic assessment-scoring cron, the same one used for aptitude/communication:
 
 1. `aiInterviewHandler.completeSession()` (`student-node/app/handlers/aiInterviewHandler.js`)
    marks the session `COMPLETED`, sets the assignment `submitted=true`, and flips
-   `scores_calculated=false` (only if there is enough signal — see thresholds below).
+   `scores_calculated=false` whenever **at least one turn was answered** (see
+   thresholds below).
 2. `script/calculatePendingAssessmentCron.js` runs **every minute**, picks **one** pending
    assignment (`attempted=true, submitted=true, scores_calculated=false, is_processing=false`),
    atomically locks it (`is_processing=true`), and calls
@@ -444,9 +445,87 @@ generic assessment-scoring cron, the same one used for aptitude/communication:
    `calculation_attempts`; after the max it sets `calculation_error=true` and **stops
    retrying** (so the row silently disappears from the cron's pickup query).
 
-**Scoring thresholds** (in `aiInterviewHandler.js`): `MIN_ANSWERS_FOR_SCORING = 4` and a
-**50% coverage** floor of expected questions. Interviews below this are marked
-`scores_calculated=true` with **no score row** (legitimately skipped as incomplete — not an error).
+**Scoring threshold (rewritten 2026-08-04): one answered turn is enough.** The only floor
+is `totalAnswered >= 1`; a transcript with nothing in it is marked `scores_calculated=true`
+with no score row. Everything else is scored, and `score-final` receives `completion_ratio`
+/ `total_answered` / `total_expected` / `completion_reason` so it grades what it actually got.
+
+The old bar (`MIN_ANSWERS_FOR_SCORING = 4` **and** a 50% coverage floor) no longer gates
+scoring. It survives only as `hasEnoughSignal`, which is what the **candidate-facing**
+`session_metadata.interviewIncomplete` flag stores — so the candidate's own report card
+(`AIInterviewReportCard.js`) behaves exactly as it always has and does not show a partial
+score. Recruiter surfaces read the separate `partialInterview` flag instead.
+
+The rules live in `student-node/app/helpers/aiInterviewOutcome.js` —
+`classifyInterviewOutcome(totalAnswered, totalExpected)` returns
+`{isPartial, hasEnoughSignal, canScore}` and is the single source of truth shared by
+`completeSession` and `finalizeAbandonedSession`. Pure, no I/O; unit tests in
+`student-node/test/aiInterviewOutcome.spec.js` (8).
+
+- **Drop-offs are now finalized and scored (2026-08-04).** A candidate who closes the tab
+  never reaches `completeSession`, so the session row kept **no terminal metadata** (status
+  stuck at `INPROGRESS`) and the assignment stayed `submitted=false` — which the score
+  sweeper's `submitted: true` filter excludes. Net effect: an abandoned interview produced
+  **no report at all**, even one where the candidate had answered 7 of 8 questions, and the
+  Download button stayed greyed (`checkReportAvailability` needs a score row). Fixed by
+  `aiInterviewHandler.finalizeAbandonedSession(assessmentAssignedId)`, called from
+  `script/updateDropoutStatusCron.js` right after the `DROPOUT` flip. It writes the same
+  terminal metadata `completeSession` writes (`status='ABANDONED'`, `completedAt`,
+  `totalDuration`, `interviewIncomplete`, `partialInterview`, `totalAnswered`,
+  `totalExpected`, `completionReason:'dropout'`), so **a drop-off and an early exit render
+  identically**. Idempotent — a session already carrying a `completionReason` is left alone.
+  - The assignment deliberately **stays `status='DROPOUT'`, `submitted=false`**. Flipping
+    `submitted` would have let the change reuse the existing score queue, but it would also
+    have silently moved every dropout into the completion-rate dashboards. So the cron calls
+    `runScoringForAssignment()` **directly**, serially (concurrent `$queryRaw` panics on
+    ARM64 — see the Prisma gotcha), each row in its own try/catch.
+  - **Retry sweep.** Once flipped to `DROPOUT` a row no longer matches the cron's
+    `INPROGRESS` selection, so a single transient scoring failure would strand the report
+    permanently. `retryAiInterviewDropoutScoring()` runs at the **top** of each cron pass
+    (before anything new is flipped, so a retry isn't immediately re-attempted in the same
+    run) over `status='DROPOUT' AND scores_calculated=false AND
+    session_metadata->>'completionReason' = 'dropout'`, capped at 50.
+  - That `completionReason='dropout'` predicate is also what scopes this to **new drop-offs
+    only** — historical dropouts carry no such metadata and are intentionally never picked
+    up. **No backfill was run** (deliberate: one `gemini-2.5-pro` call per row).
+  - `runScoringForAssignment` no longer skips `interviewIncomplete` sessions; the
+    pre-existing `noAnswers` guard is the only floor left.
+  - `submitAnswer` now rejects `ABANDONED` as well as `COMPLETED`, so a client that wakes up
+    after the cron finalized a session cannot append a turn to an already-graded transcript.
+  - Live **DEV + UAT 2026-08-04**; PROD pending.
+
+- **Recruiter report: partial-interview marker + attempted questions (2026-08-04).** The
+  "Interview Not Completed" banner used to **replace** the score card entirely, so an
+  unfinished interview showed a recruiter nothing actionable. It now sits **above** the
+  score rather than instead of it, because a partial interview is scored on what it captured.
+  - **New flag `session_metadata.partialInterview`** = `totalAnswered < totalExpected`,
+    surfaced by `admin-node` `getReportByAssignment` (falls back to `interviewIncomplete`
+    for sessions finalized before the flag existed). Distinct from `interviewIncomplete`:
+    `partialInterview` does **not** imply the absence of a score. No DB migration —
+    `session_metadata` is already jsonb.
+  - **Admin UI** (`admin-react` `StudentReport/index.js`): banner wording now distinguishes a
+    drop-off ("did not return to finish this interview — it was closed automatically") from a
+    deliberate early exit, and states "X of Y questions were answered". Three new render
+    helpers — `renderAIInterviewCandidateCard` (extracted so the scored and unscored branches
+    share it), `renderAIInterviewIncompleteBanner`, `renderAIInterviewTranscript`.
+  - **New "Questions attempted" section.** The admin modal **never rendered a transcript at
+    all**, despite the old banner copy literally saying "the transcript below shows what was
+    captured". `getReportByAssignment` had always returned `transcript`; nothing consumed it.
+    Now rendered on both branches (keyed on the stable `interactionId`).
+  - **PDF** (`student-node/app/models/Assessment.js` `generateAIInterviewReport` +
+    `public/aiInterviewReport.html`): amber `.incomplete-note` block above the score strip,
+    header reads "Questions answered: **3 of 8**", and the score strip is now wrapped in
+    `{{#if hasScore}}`. **That last one was an active bug** — `const score = session.scores?.[0] || {}`
+    meant an unscored session rendered a confident **`0` / "Not Fit"** hero, a wrong number on
+    the artefact a recruiter forwards, not merely a missing one. The `{{else}}` branch shows a
+    "Not scored" note instead.
+  - **Candidate side is deliberately untouched.** `AIInterviewReportCard.js` still gates on
+    `interviewIncomplete`, whose meaning was preserved exactly, so candidates see what they
+    always saw and are never shown a partial score. Partial scores are recruiter-only.
+  - **Download button needs no change** — `checkReportAvailability`'s AI_Interview branch
+    already requires `(submitted || attempted)` + a score row, and the dropout cron sets
+    `attempted=true`. It ungreys by itself once scoring lands. Between the cron finalizing and
+    the score persisting the banner shows a "still being generated" line and download stays grey.
 
 - **GOTCHA — a missing model field in `score-final` 500s ALL scoring → silent queue backlog (regression seen + fixed 2026-06-30).** `ScoreFinalResponse` had several **required** fields (`executive_summary`, `recommendation_text`, `strengths`, `concerns`, `parameter_scores`). When the score-final **prompt JSON template** stopped listing one of them (a `score_rationale` edit accidentally *replaced* the `executive_summary` line instead of inserting alongside it), Gemini stopped emitting that field and **every** score-final call raised `pydantic ValidationError … executive_summary Field required [missing]` → HTTP 500. Effect: interviews **completed but never scored** — in async mode the calc worker logged `[CALC WORKER] NON-TRANSIENT fail … Failed to score interview` and rows piled up `scores_calculated=false`. Two-part fix: (1) keep every field in the prompt template, AND (2) **defensive defaults** after the verdict/score guardrails fill any missing `executive_summary` / `recommendation_text` (from `score_rationale`) and coerce `strengths`/`concerns`/`parameter_scores` to `[]`, so a single absent model field can never again 500 the whole call. **Rule:** when editing the score-final response shape, change the Pydantic model, the prompt JSON template, AND the defensive defaults together.
 
