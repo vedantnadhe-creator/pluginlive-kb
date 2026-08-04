@@ -445,22 +445,33 @@ generic assessment-scoring cron, the same one used for aptitude/communication:
    `calculation_attempts`; after the max it sets `calculation_error=true` and **stops
    retrying** (so the row silently disappears from the cron's pickup query).
 
-**Scoring threshold (rewritten 2026-08-04): one answered turn is enough.** The only floor
-is `totalAnswered >= 1`; a transcript with nothing in it is marked `scores_calculated=true`
-with no score row. Everything else is scored, and `score-final` receives `completion_ratio`
-/ `total_answered` / `total_expected` / `completion_reason` so it grades what it actually got.
+**Scoring threshold: unchanged bar, now applied to BOTH endings (2026-08-04).** The bar is
+still `MIN_ANSWERS_FOR_SIGNAL = 4` answered turns (intro counts) **AND** ≥ **50% coverage** of
+`totalExpected`, with the 4-answer floor capped at `totalExpected` so small configs stay
+clearable. What changed is *who it applies to*: a **drop-off is now held to exactly the same
+bar as an early exit**. Below it, the assignment is marked `scores_calculated=true` with **no
+score row** — legitimately skipped, not an error — and the report shows the incomplete marker
+plus the attempted questions. At or above it the interview is scored even though it is
+partial, and `score-final` receives `completion_ratio` / `total_answered` / `total_expected` /
+`completion_reason` so it grades what it actually got.
 
-The old bar (`MIN_ANSWERS_FOR_SCORING = 4` **and** a 50% coverage floor) no longer gates
-scoring. It survives only as `hasEnoughSignal`, which is what the **candidate-facing**
-`session_metadata.interviewIncomplete` flag stores — so the candidate's own report card
-(`AIInterviewReportCard.js`) behaves exactly as it always has and does not show a partial
-score. Recruiter surfaces read the separate `partialInterview` flag instead.
+> A brief intermediate state on 2026-08-04 lowered the gate to "one answered turn is enough".
+> That was **reverted the same day** — a 1-or-2-answer transcript produces a number that reads
+> as a judgement of the candidate rather than of the coverage. Don't reintroduce it.
 
 The rules live in `student-node/app/helpers/aiInterviewOutcome.js` —
 `classifyInterviewOutcome(totalAnswered, totalExpected)` returns
 `{isPartial, hasEnoughSignal, canScore}` and is the single source of truth shared by
 `completeSession` and `finalizeAbandonedSession`. Pure, no I/O; unit tests in
-`student-node/test/aiInterviewOutcome.spec.js` (8).
+`student-node/test/aiInterviewOutcome.spec.js` (11), one of which pins `canScore ===
+hasEnoughSignal` across the whole 0–8 range so the two can't drift apart.
+
+- `canScore` (the scoring gate) and `hasEnoughSignal` are deliberately the **same** bar.
+- `isPartial` (`totalAnswered < totalExpected`) is **independent** — an interview can be
+  partial *and* comfortably scorable, which is the whole point of the recruiter marker.
+- `session_metadata.interviewIncomplete` stores `!hasEnoughSignal` and remains the
+  **candidate-facing** flag, so `AIInterviewReportCard.js` behaves exactly as it always has.
+  Recruiter surfaces read `partialInterview` instead.
 
 - **Drop-offs are now finalized and scored (2026-08-04).** A candidate who closes the tab
   never reaches `completeSession`, so the session row kept **no terminal metadata** (status
@@ -488,16 +499,24 @@ The rules live in `student-node/app/helpers/aiInterviewOutcome.js` —
   - That `completionReason='dropout'` predicate is also what scopes this to **new drop-offs
     only** — historical dropouts carry no such metadata and are intentionally never picked
     up. **No backfill was run** (deliberate: one `gemini-2.5-pro` call per row).
-  - `runScoringForAssignment` no longer skips `interviewIncomplete` sessions; the
-    pre-existing `noAnswers` guard is the only floor left.
+  - **The coverage bar gates drop-offs exactly as it gates early exits** — a drop-off with
+    fewer than 4 answers (or under 50% coverage) is finalized and marked, but **never sent to
+    the scorer**. `finalizeAbandonedSession` returns `canScore` and the cron `continue`s on
+    false, so no LLM call is made. The retry sweep re-derives the same verdict from the stored
+    counters via `classifyInterviewOutcome`, so it can't resurrect a below-bar row either.
+  - `runScoringForAssignment` no longer short-circuits on the `interviewIncomplete` flag —
+    the bar is enforced by its callers through `scores_calculated`, so anything reaching it is
+    meant to be scored (its own `noAnswers` guard remains as a backstop).
   - `submitAnswer` now rejects `ABANDONED` as well as `COMPLETED`, so a client that wakes up
     after the cron finalized a session cannot append a turn to an already-graded transcript.
   - Live **DEV + UAT 2026-08-04**; PROD pending.
 
 - **Recruiter report: partial-interview marker + attempted questions (2026-08-04).** The
   "Interview Not Completed" banner used to **replace** the score card entirely, so an
-  unfinished interview showed a recruiter nothing actionable. It now sits **above** the
-  score rather than instead of it, because a partial interview is scored on what it captured.
+  unfinished interview showed a recruiter nothing actionable. It now sits **above** the score
+  rather than instead of it, because a partial interview that clears the coverage bar IS
+  scored. Below the bar there is no score and the banner plus the attempted questions are the
+  whole report — which is still far more than the nothing a drop-off used to produce.
   - **New flag `session_metadata.partialInterview`** = `totalAnswered < totalExpected`,
     surfaced by `admin-node` `getReportByAssignment` (falls back to `interviewIncomplete`
     for sessions finalized before the flag existed). Distinct from `interviewIncomplete`:
@@ -522,10 +541,14 @@ The rules live in `student-node/app/helpers/aiInterviewOutcome.js` —
   - **Candidate side is deliberately untouched.** `AIInterviewReportCard.js` still gates on
     `interviewIncomplete`, whose meaning was preserved exactly, so candidates see what they
     always saw and are never shown a partial score. Partial scores are recruiter-only.
+  - **Three distinct "no score" messages**, on both the admin banner and the PDF's `Not
+    scored` block, driven by `notScoredReason`: nothing answered / below the coverage bar (no
+    score will *ever* come) / scorable but not yet landed. Conflating the last two is the easy
+    mistake — a recruiter told to "check back shortly" for a below-bar interview waits forever.
   - **Download button needs no change** — `checkReportAvailability`'s AI_Interview branch
     already requires `(submitted || attempted)` + a score row, and the dropout cron sets
-    `attempted=true`. It ungreys by itself once scoring lands. Between the cron finalizing and
-    the score persisting the banner shows a "still being generated" line and download stays grey.
+    `attempted=true`. It ungreys by itself once scoring lands. A below-bar interview never gets
+    a score row, so its Download stays greyed — same as a below-bar early exit always has.
 
 - **GOTCHA — a missing model field in `score-final` 500s ALL scoring → silent queue backlog (regression seen + fixed 2026-06-30).** `ScoreFinalResponse` had several **required** fields (`executive_summary`, `recommendation_text`, `strengths`, `concerns`, `parameter_scores`). When the score-final **prompt JSON template** stopped listing one of them (a `score_rationale` edit accidentally *replaced* the `executive_summary` line instead of inserting alongside it), Gemini stopped emitting that field and **every** score-final call raised `pydantic ValidationError … executive_summary Field required [missing]` → HTTP 500. Effect: interviews **completed but never scored** — in async mode the calc worker logged `[CALC WORKER] NON-TRANSIENT fail … Failed to score interview` and rows piled up `scores_calculated=false`. Two-part fix: (1) keep every field in the prompt template, AND (2) **defensive defaults** after the verdict/score guardrails fill any missing `executive_summary` / `recommendation_text` (from `score_rationale`) and coerce `strengths`/`concerns`/`parameter_scores` to `[]`, so a single absent model field can never again 500 the whole call. **Rule:** when editing the score-final response shape, change the Pydantic model, the prompt JSON template, AND the defensive defaults together.
 
