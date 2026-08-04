@@ -156,6 +156,55 @@ auth-node's `/notification/*` routes are `isPrivate` (JWT-only), so without it e
 own `LOGIN_SECRET_KEY`, `role: system`, issuer/audience `pluginlive.com` (mirrors auth-node's
 existing `SYSTEMJWT`). Mint it **on the target box** so the secret never moves.
 
+## ATS (corporate-node) WhatsApp sends — same opt-in gate
+
+The ATS has its own WhatsApp senders, entirely separate from the assessment-invite leg above.
+Until 2026-08-04 **none of them checked anything**: presence of a phone number was the only
+condition, so candidates of corporates that had never been subscribed to `WHATSAPP_NOTIFICATION`
+received WhatsApp anyway. All three now resolve the owning corporate and go through the same
+`admin.feature_config` gate (corporate-node `app/services/FeatureAccessService.js` — a
+**read-only** mirror of admin-node's; admin-node still owns the write side, so one row keeps
+one writer). DEV + UAT as of 2026-08-04, PROD pending.
+
+| Flow | Template | Corporate id from |
+|---|---|---|
+| Bulk "Invite Candidates" upload on a role (`bulkUploadInviteCandidates`, `app/handlers/common.js`) | `corporate_role_invite` | `jobRoles.corporateId` via `getJobRoleById` |
+| Lapsed approval request (`app/helpers/notification.js` `createNotifications`) | `approval_lapsed_uti` | `notification.companyId` |
+| Assessment round scheduled, `EXTERNAL_LINK` mode (`NotificationService.triggerNotificationWhenAssesmentSchedualed`) | `assesment_invite_link` | `role.corporateId` |
+
+The **email and in-app legs are untouched** — only the WhatsApp leg is gated, so an unsubscribed
+corporate loses nothing it had before WhatsApp existed. The `Phone` column on the invite sheet is
+still parsed and stored on the invite row; it just no longer implies consent to message.
+
+Two implementation notes worth keeping:
+
+- `FeatureAccessService` is required **directly** (`require("./FeatureAccessService")`), not off
+  the `app/services` barrel, inside `NotificationService.js`. `index.js` loads NotificationService
+  before it assigns `FeatureAccessService`, so a destructure off `"."` there resolves to
+  `undefined` at call time — the classic silent-`undefined` circular-require in this repo (the
+  same warnings appear at boot for `JobRoleInstituteMap`, `Drive`, etc.).
+- Prisma is resolved per call (`require("../helpers/utils").getPrismaInstance()`) rather than
+  bound at module load, matching admin-node — keeps the lookup stubbable and avoids pulling
+  `helpers/utils`' dependency chain into a unit test (`test/featureAccess.spec.js`).
+
+### Still ungated: TPO share-on-publish (frontend sender)
+
+One WhatsApp path is **not** covered by the above and still fires for every corporate:
+`corporate_role_share_tpo`, sent to each college's TPO POC numbers when a role is published from
+the Select Colleges drawer. It is built and dispatched **in the browser** —
+`corporate-react/src/modules/Roles/NewRoleCreation/Partials/SelectCollegesDrawer/index.js`
+(~line 1142) calls `sendNotificationBulkEmailWhatsapp` straight at
+`/notification/bulkWhatsapp` — so there is no server-side choke point to gate, and a client-side
+check would not be a real control anyway. Gating it properly needs a corporate-facing
+feature-access endpoint on corporate-node (admin-node's `/assessment/featureAccess` is
+admin-authed) plus a corporate-react rebuild. Note this one targets **TPO staff at colleges**,
+not candidates, which is why it was left out of the 2026-08-04 fix rather than rushed.
+
+corporate-node reads `admin.feature_config` over its own Prisma client on the shared database.
+That is cross-schema, which the coding standard normally forbids, but it matches existing
+practice in the repo (`JobRoles.js` already `$queryRaw`s `student.*` directly) and the table has
+a single writer in admin-node.
+
 ## Gotcha
 
 Do **not** "just swap `WA_PHONE_ID`" to the current WABA in a Graph-API sender — sends fail `#200`. The current number can only be sent to through MSG91 (or by moving the number's Cloud API registration onto our own Meta app, which would disconnect MSG91).
