@@ -51,7 +51,7 @@ the gateway is published, on loopback.
 | Foreign keys | 108 (103 validated, 5 grandfathered — see below) |
 | Triggers | 82 |
 | SQL functions | 28 |
-| Edge functions | 106 deployed (100 were live on Supabase; repo carries 6 extra) |
+| Edge functions | 108 deployed (100 were live on Supabase; the repo carries 8 extra) |
 | `auth.users` | 2, bcrypt hashes intact, nobody forced to reset |
 | Storage | bucket `pilvidya`, 0 objects |
 
@@ -101,6 +101,13 @@ all 57 `curriculum_content` rows are orphaned and the app renders them.
 entrypoint, so 73 of the 100 functions had unresolved `../_shared/*.ts` imports. The repo carries
 `supabase/functions/_shared/` — use the repo as the source of truth; it is a strict superset of what
 was deployed.
+
+**There are TWO checkouts of this repo on the boxes, at different commits.** Deploy functions from
+`~/frontend/eduspeak-india-react/supabase/functions` (commit `7370534`), **not**
+`~/api/eduspeak-india-node/supabase/functions` (commit `a3e2935`, an ancestor). The older one is
+missing `admin-dashboard-data` and `database-dump`, and without them the Admin Dashboard renders
+all-zero stats plus a banner reading `function 'database-dump' not found`. Both are admin-gated
+(anon gets 403) and need only `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY`.
 
 **Realtime is deliberately not deployed.** It needs cluster-wide `wal_level = logical`, currently
 `replica`. Changing it restarts the cluster shared with `uat_pluginlive`, so it was not done. The
@@ -173,3 +180,47 @@ docker run -d --name eduspeakreact --restart unless-stopped -p 3008:3008 eduspea
 
 `eduspeakreact:pre-pg-migration` is the pre-cutover image. Keep the hosted Supabase project alive
 and unfrozen for the whole soak; rollback stops being possible once it is deleted.
+
+## UAT test accounts (created 2026-08-05)
+
+EduSpeak has **two unrelated login mechanisms** — do not confuse them.
+
+**Admin** — GoTrue email/password (`supabase.auth.signInWithPassword`) at `/admin/login`.
+Dashboard entry is granted by `getAdminAccess()`, which allows either a hardcoded address in
+`PLATFORM_ADMIN_EMAILS` (`src/lib/adminAccess.ts`, currently only
+`prakash.chinnadurai@gmail.com`) **or** a `staff_ops_roles` row with `ops_role = 'ops_admin'`.
+The second route is the one to use for new admins; the allow-list is compiled into the bundle.
+
+| Email | Password | Grants |
+|---|---|---|
+| `eduspeak.admin@pluginlive.com` | `EduSpeak@Admin#2026` | `user_roles.admin` + `staff_ops_roles.ops_admin` |
+
+**Students** — *not* GoTrue email/password. `/student-entry` takes **mobile + password**: the client
+opens an anonymous GoTrue session, then calls the `student_authenticate(p_mobile, p_password_hash)`
+RPC. The hash is computed client-side in `src/lib/studentSession.ts` as
+`sha256("pilvidya:v1:" + password)` hex, so any seeded row must use exactly that:
+
+```sql
+-- python3 -c "import hashlib;print(hashlib.sha256(b'pilvidya:v1:Student@001').hexdigest())"
+INSERT INTO public.student_profiles
+  (display_name, mobile_number, password_hash, board, class_level, school_name, location, user_id)
+VALUES ('Aarav Sharma','9000000001','<sha256 hex>','CBSE','8','Scott School','Chennai', NULL);
+```
+
+| Mobile | Password | Name | Class | Board |
+|---|---|---|---|---|
+| `9000000001` | `Student@001` | Aarav Sharma | 8 | CBSE |
+| `9000000002` | `Student@002` | Diya Patel | 9 | CBSE |
+| `9000000003` | `Student@003` | Rohan Iyer | 10 | ICSE |
+| `9000000004` | `Student@004` | Ananya Nair | 11 | State Board |
+| `9000000005` | `Student@005` | Kabir Menon | 12 | CBSE |
+
+Seeding gotchas:
+- `password_hash`, `board` **and** `class_level` must all be non-NULL. If any is NULL,
+  `student_authenticate` takes the "incomplete profile" branch and returns success *without
+  checking the password*.
+- Leave `user_id` NULL. The RPC binds it to the caller's anonymous uid on first login and rebinds
+  on later logins, so a row bound to a stale uid is not locked out — but seeding it NULL is cleanest.
+- `mobile_number` is UNIQUE.
+
+These are UAT-only credentials on non-production data. Rotate or delete before any production use.
