@@ -59,7 +59,19 @@ The Docker image's CMD only runs the API. The worker and scheduler run as **sepa
 | `datanormalization-worker` | `python main.py worker` | AI normalization loop |
 | `datanormalization-cron` | `python main.py cron` | APScheduler (renewal, daily ingest, status) |
 
-⚠️ **`deploy.sh` only builds/runs `datanormalization`** — it does *not* recreate the `-worker`/`-cron` siblings, and rebuilding the image does not restart them. After any redeploy, recreate the two siblings manually (or add them to `deploy.sh`). Code + SA key are **baked into the image** (`COPY . /app`), so config/key changes require an image rebuild, not just an `.env` edit. The runtime config (batch sizes, model, normalizer URL) is read from the baked `/app/.env`, but OS env vars set via `docker run -e`/`--env-file` **override** it.
+⚠️ **`deploy.sh` only builds/runs `datanormalization`** — it does *not* recreate the `-worker`/`-cron` siblings, and rebuilding the image does not restart them. After any redeploy, recreate the two siblings manually (or add them to `deploy.sh`). **This bites hardest on worker-only changes** (`workers/normalization_worker.py`): `auto_deploy.sh` reports success, the API container is new, and the normalization logic is still running the old code. Always check `docker ps` — if `-worker`/`-cron` show an older `Up …` than `datanormalization`, they were not rolled.
+
+**Tag drift (resolved 2026-08-05):** the siblings historically ran a separate **`datanormalization:api-mastersrc`** tag while `deploy.sh` builds `datanormalization:api`, so a plain redeploy left them on a stale image even after a manual `docker restart`. As of 2026-08-05 all three UAT containers run **`datanormalization:api`**. Recreate them from that tag:
+```bash
+cd ~/api/form-data-normalization
+for m in worker cron; do
+  docker rm -f datanormalization-$m
+  docker run -itd --name datanormalization-$m --restart unless-stopped --env-file .env \
+    --log-opt tag='service_name={{.Name}}' --log-opt max-size=100m --log-opt max-file=3 \
+    datanormalization:api python main.py $m
+done
+```
+Expect `No pending sheets found.` (worker) and `Scheduler started` (cron) in the logs. Code + SA key are **baked into the image** (`COPY . /app`), so config/key changes require an image rebuild, not just an `.env` edit. The runtime config (batch sizes, model, normalizer URL) is read from the baked `/app/.env`, but OS env vars set via `docker run -e`/`--env-file` **override** it.
 
 ### PROD runtime topology — 3 Deployments in ns `api`
 
@@ -374,6 +386,82 @@ on both-blank so a valid first/last is **never** overwritten; runs on **both**
 paths. **Forward-only:** the ~349 already-created blank-name students
 (2026-02-10 → 2026-06-15) are unaffected — they need a one-off backfill from
 `candidate_job_details.normalized_data.full_name` into `student.students`.
+
+**Follow-up (2026-08-05, DEV + UAT `b6f1b05`) — the fallback ran too late.** It
+lived *inside* `map_to_final_schema`, which runs **after**
+`insert_candidate_job_details`, and it mutates the flat dict used to build the
+payload — **not** the `normalized_data` list that gets stored. So the seeded
+`first_name` reached the create-full payload only; the persisted
+`candidate_job_details.normalized_data` still had `full_name` and **no
+`first_name`/`last_name` key at all**. That is invisible while the push succeeds,
+but any candidate that *fails* the push stays in **Mismatched Candidates**, and
+that list (`CandidateService.get_candidates`) builds its display name as
+`first_name + ' ' + last_name`, falling back to `candidates.name` — so those rows
+render **`-`** in the CANDIDATE column and **`N/A`** in the drawer header, even
+though the drawer's Normalized Data panel shows the name. The list's **search
+clause matches `first_name`/`last_name`/concat/`email` but never `full_name`**, so
+those candidates were also **unfindable by name**.
+
+⚠️ The `candidates.name` fallback is **dead** — `insert_candidate_new` is called
+with `name=normalized.get("name")` and the normalizer never emits a `name` slug
+(only `full_name`/`first_name`/`last_name`). On PROD `candidates.name` is NULL for
+**all 52,149 rows**. Do not rely on it; the display name comes from
+`normalized_data` alone.
+
+**Fix:** the fallback is now the reusable
+`NormalizationWorker._seed_first_name_from_full_name(normalized_data, raw_data)`
+(same both-blank guard, same `full_name` → raw-`Name`-column precedence), called
+in `_process_single_candidate` **before** the insert — after the CV name-fill and
+before the duplicate check, a single point covering both the existing-candidate
+and new-candidate insert branches. `map_to_final_schema` keeps its call as a
+payload-side safety net for the other callers. **Forward-only:** existing rows
+keep their empty `normalized_data`; re-normalize (`normalization_status='pending'`)
+to repair them.
+
+### Behavior — `create-full` is skipped when `admin.email` is missing (Aug 2026)
+
+student-node's create-full schema (`app/schemas/student.js`, `CreateFullStudentBodySchema`)
+declares `admin.email` as **required with `format: "email"`**, so a blank or
+malformed email is a **guaranteed 400**:
+
+```
+{"statusCode":400,"code":"FST_ERR_VALIDATION","error":"Bad Request",
+ "message":"body/admin/email must match format \"email\""}
+```
+
+**Institute-ERP sheets are the common trigger** — an ERP export with **no Email
+and no Mobile column at all** (only Full Name / Age / Gender / education / work
+experience) normalizes fine, then 400s on **every** row. The candidates land in
+Mismatched Candidates with `api_status='api_failed'`, `student_id` NULL, and the
+drawer showed the raw Fastify blob, which reads like a platform bug rather than
+missing source data. Observed on PROD 2026-07-27 (sheet
+`3dd3f65d-…-196630e5c909_1785132809.xlsx`, campus `3dd3f65d-…`, all 3 rows).
+
+**Fix (2026-08-05, DEV + UAT `b6f1b05`):** `NormalizationWorker.create_full_student`
+now short-circuits **before** the HTTP call when `admin.email` is absent, blank,
+has no `@`, or contains whitespace, returning
+
+```
+Skipped create-full — admin.email is missing or malformed ('');
+also blank: phoneNumber, countryCode.
+The source record has no usable email; add one and push again.
+```
+
+with `error_type='MissingMandatoryField'`. All three call sites already treat
+`status: False` as `api_failed` + a `create_full_student_response` WARNING log, so
+this string is what the drawer's "API Failed / RESPONSE" box shows — no call-site
+changes were needed. The check is **deliberately permissive** (present, has `@`,
+no whitespace) rather than a strict regex: AJV's `format: "email"` accepts values
+like `user@localhost`, so anything ambiguous still goes to student-node, which
+stays the source of truth on format. `firstName`/`phoneNumber`/`countryCode` are
+**reported** in the message but **not blocked on** — the schema has no `minLength`
+on them, so `""` currently passes validation and blocking would change behavior
+for existing rows. This replaces the long-commented-out `mandatory_fields` block.
+
+**This does not rescue affected candidates** — with no email anywhere in the
+source there is nothing to push. Fill the email via the drawer's Edit → Push to
+API, or re-upload the ERP sheet with Email/Mobile columns. Regression checks:
+`tests/test_missing_email_and_name_fallback.py` (runs standalone, no DB/LLM).
 
 ### Behavior — Tally/normalization students are NOT linked to a college (`source` field, Jun 2026)
 
