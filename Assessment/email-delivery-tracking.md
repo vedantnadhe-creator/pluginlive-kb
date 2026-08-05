@@ -136,6 +136,49 @@ why *clicked* is a soft signal and *assessment_opened* is the one to trust.
 
   Migration: `DB-Scripts/Assessment Email Delivery Tracking/20260804T101949Z__email_events_channel.sql`
 
+  **Per-channel breakdown on the hover (2026-08-05, DEV + UAT).** Collapsing both
+  channels into one answer is right for the tag but loses the detail an admin acts
+  on: a row reading *Sent* because WhatsApp got through gives no sign the email
+  bounced, and nobody chases a bounce they cannot see. Each candidate therefore
+  also carries **`deliveryChannels`** — `[{channel, status, reason}]` — which
+  `DeliveryStatusTag` renders under the summary line on hover:
+
+  | situation | tag | hover |
+  |---|---|---|
+  | both got through | **Sent** | Invitation was sent · Email — Sent · WhatsApp — Sent |
+  | email failed, WhatsApp accepted | **Sent** | Invitation was sent · **Email — Failed: 550 mailbox unavailable** · WhatsApp — Sent |
+  | every channel failed | **Failed** | Couldn't send invitation · Email — Failed: … · WhatsApp — Failed: template not approved |
+  | WhatsApp only attempted | **Sent** | Invitation was sent · WhatsApp — Sent |
+
+  A channel is judged by the **same rule as the tag** — reached if it ever had an
+  accepted send, failed only if it never did — so the two can never contradict
+  each other: the tag reads *Failed* exactly when every channel line does. This is
+  also why a channel that failed and was then successfully resent reads *Sent*
+  rather than showing stale bounce text.
+
+  **A channel that was never attempted is absent, not "Failed."** An unsubscribed
+  corporate or a candidate with no phone on file has no WhatsApp leg to chase, and
+  printing one would invent work. Historical rows predating channel tracking
+  therefore hover with a single Email line.
+
+  The breakdown is attached to **every** status, not just `failed` — the whole
+  point is that a *Sent* row can still be hiding a bounced leg. The single
+  `deliveryStatusReason` stays failed-only (it is what the tag itself says), and
+  the UI suppresses it when channel lines are present so the reason is not printed
+  twice; with no channel data it falls back to the old appended-reason hint.
+
+  SQL: a `channel_state` CTE (`bool_or(status IN ('accepted','delivered'))` per
+  `(assignment, channel)`) feeds two extra stages, `channelSent` / `channelFailed`.
+  The UNION gained a **fourth column** (`channel`, `NULL::text` on every
+  non-channel branch) — keep the arity in step when adding a stage. Those two
+  stages are collected outside `assignmentIds` on purpose: they are detail hung off
+  a candidate, not funnel stages, and counting them would double-count anyone
+  reached on both channels. No migration — the existing
+  `email_events_assigned_channel_status_idx` already covers the grouping.
+
+  Verified on DEV and UAT by inserting probe rows for all four situations against a
+  real campaign, running the deployed `getDeliveryFunnel`, and deleting them again.
+
   **Only three statuses exist: Sent, Failed, Opened (2026-08-03).** The column
   answers one question — did the invitation reach the candidate? — so attempt
   progress does not belong in it; that is the STATUS column's job, and carrying it
@@ -188,9 +231,11 @@ why *clicked* is a soft signal and *assessment_opened* is the one to trust.
   "Opened" belongs to the link click. The runner-mount stage is therefore
   "Assessment Opened" — two statuses sharing one label would be unreadable.
 
-- `annotateWithDeliveryStatus()` stamps `deliveryStatus` + `deliveryStatusLabel`
-  onto candidate rows in **both** branches of `getAssessmentDetails`. The table
-  and the Excel export read the same field, so they cannot disagree.
+- `annotateWithDeliveryStatus()` stamps `deliveryStatus` + `deliveryStatusLabel` +
+  `deliveryStatusReason` + `deliveryChannels` onto candidate rows in **both**
+  branches of `getAssessmentDetails`. The table and the Excel export read the same
+  field, so they cannot disagree. `deliveryChannels` is always an array (empty for
+  an untracked candidate), so the UI can map over it without a guard.
 
 `getAssessmentDetails` also returns campaign totals as `deliveryFunnel`
 (`emailAccepted`, `emailFailed`, `linkClicked`, `assessmentOpened`,
