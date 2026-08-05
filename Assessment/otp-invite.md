@@ -68,6 +68,21 @@ recorded in `assessment.candidate_journey_events`. Admins see the result as a
 
 The same link can be copied manually from the admin assessment detail **StudentsTable** (Copy Link action) and shared via WhatsApp/SMS. This is a fallback for failed email delivery and reuses the same OTP-invite flow — the candidate still verifies email with a 6-digit OTP before entering the assessment. See `Assessment/admin-frontend.md` for the institute equivalent (activation link).
 
+### The "Send Reminder" button reuses the invite template — so it must be enriched the same way (fixed 2026-08-05)
+
+For a corporate OTP campaign, admin's **Send Reminder** (`POST /assessment/sendReminders` → `Assessment.sendRemindersToStudents`) does **not** go to the UMS portal reminder — `isCorporateOtpInvite` short-circuits it into the *same* `sendAssessmentInviteEmail` the invite uses (OTP candidates have no portal account to log into). That means the reminder inherits the invite template's AI-Interview branches, and anything the call site fails to pass silently disappears from the email:
+
+- `role: null` was **hardcoded** → subject degraded from `Your AI Interview for <Role> at <Company>` to `Your AI Interview for a role at <Company>`, and the body's `<role> · <company>` context line collapsed to the company alone.
+- `durationMinutes` was **never passed** → `durationLine` in `buildHtml` is gated on `isAiInterview && durationMinutes`, so the **"This interview takes about N minutes"** line vanished entirely.
+
+Visible in PROD `assessment.email_events` as 73 rows subjected `Your AI Interview for a role at meesho` sitting alongside the correct `…for Business Development Manager at meesho`.
+
+The **resend** branch (`resendInvitesToStudents`) already did this correctly; only the reminder branch was missed. Both now call `_getAiInterviewEmailMeta(assessmentAssignedId)` for `jobRole` + `interviewDuration` + the IST-formatted `endTime` (`moment.utc(...)` — `end_time` stores IST wall-clock digits in a UTC field, so a plain `moment()` would re-convert). Non-AI-Interview types skip the lookup and keep the date-only `endDate`. DEV + UAT 2026-08-05 (`admin-node` `ceed5e0`); PROD pending.
+
+**Rule:** any new field added to the invite email's AI-Interview copy must be threaded through **all three** `sendAssessmentInviteEmail` call families — assign, resend, and reminder — or it will be present on one email and absent on the others.
+
+Note the `is_otp_invite = false` counterpart: that reminder goes to UMS `assessmentRemainder` → `assessmentStudentCorporate2`, whose subject is the fixed string `PluginLive has invited you to join "PluginLive - Assessment"` — no corporate, no role, no duration, by design (it is a portal-credentials email, not an invite).
+
 The invite URL is built from `process.env.ASSESSMENT_FE_BASE_URL` (admin-node helper `app/helpers/assessmentInviteEmail.js`). Each environment **must** set this — the helper falls back to `https://assessment.dev.pluginlive.com` if unset, so a UAT or PROD container without the var silently sends candidates to DEV. UAT value: `https://assessment.uat.pluginlive.com`. PROD value: `https://assessment.pluginlive.com`.
 
 ## SMS channel — OTP also texted via MSG91 (2026-07-09)
@@ -148,6 +163,20 @@ The row stores **only the assignment id**, and this is load-bearing rather than 
 - **Secret rotation can't orphan links.** Rotating `ASSESSMENT_INVITE_SECRET` would have invalidated every stored JWT.
 - **It fixes a live bug.** A token frozen at send time keeps a typo'd email forever and 403s the candidate off their own invite (`requestOtp` matches on the email claim). Deriving at click time means correcting the email **repairs** the existing link.
 - **Links are revocable and expirable for the first time** — the deadline moved from an unrevocable JWT to a DB row. Re-issuing a revoked link **rotates** to a fresh code rather than resurrecting the dead one.
+
+#### `company` is the corporate, `name` is the assessment title (fixed 2026-08-05)
+
+`getInviteTokenPayload` sourced the **`company`** claim from `assessment_corporate_map.name` (aliased `corpName`), but that column holds the **assessment/schedule title**, not the hiring entity — the corporate lives in `corporate.corporates.name` via `acm.corporate_id` (same for `assessment_institute_map.name` vs `institute.institutes.name`). Because the click-time token's claim **outranks** student-node's own lookup (`resolveInvite` does `let company = decoded.company || null`, so its correct `corporate.corporates` fallback at the `if (!company && r.corporateId)` guard never ran), the assessment name surfaced as the company in **three** candidate-facing places at once:
+
+- the **"Verify your email"** screen — `Applying for <role> · <company>` (`InviteStart.js`)
+- the **OTP email** — `contextLine` in UMS `assessmentInviteOtpHandler` is built from `invite.company`
+- the **instructions page** — reads `sessionStorage.assessment_invite_company`, written by `InviteStart` from the resolve response
+
+Observed on UAT: claim `company` = `dadad` / `SAILESH` / `ai-interview-3` where the real corporates were `amazon aws` / `assessment testing` / `demo corporate`.
+
+**This is a regression of the shortener itself.** Before 2026-07-15 the token was minted at *send* time from the caller's `company` argument (`entityName`, already resolved from `corporate.corporates`) — correct. Moving minting to click time routed it through `getInviteTokenPayload`, which read the map.
+
+Fix: the query LEFT JOINs `corporate.corporates` / `institute.institutes` for `company`, and the assessment title now travels in its own **`name`** claim (`mintInviteToken` gained `name`; omitted when absent so older tokens keep student-node's `decoded.name || corpName || instName` fallback). Because the emails carry `/s/<code>` and the JWT is minted per click, **every invite link already in candidates' inboxes self-corrects** — no re-send needed. Tests: `test/aiInterviewInviteContext.spec.js`, plus two claim-separation cases in `test/inviteShortLink.spec.js`. DEV + UAT 2026-08-05 (`admin-node` `ceed5e0`); PROD pending.
 
 Codes are 9 chars over `[a-z][A-Z][0-9]` (62^9 ≈ 1.4e16) from `crypto.randomInt` (rejection-sampled — a `randomBytes % 62` shortcut would skew toward the first 8 letters since 256 % 62 ≠ 0). The code is the credential, so the endpoint is public by design — the **OTP gate behind it** is what authenticates.
 
