@@ -512,6 +512,10 @@ pin both constants, assert 1-of-8 scores on a drop-off but not on an early exit,
   `totalDuration`, `interviewIncomplete`, `partialInterview`, `totalAnswered`,
   `totalExpected`, `completionReason:'dropout'`), so **a drop-off and an early exit render
   identically**. Idempotent — a session already carrying a `completionReason` is left alone.
+  - The `DROPOUT` flip also stamps `assessment_assigned_students.dropped_at` (August 2026) —
+    both here in the cron and in `aiInterviewHandler`'s restart guard — so the admin
+    dashboard shows when the candidate actually dropped instead of the assessment deadline.
+    See [Drop-off timestamp](admin.md#drop-off-timestamp-dropped_at-august-2026).
   - The assignment deliberately **stays `status='DROPOUT'`, `submitted=false`**. Flipping
     `submitted` would have let the change reuse the existing score queue, but it would also
     have silently moved every dropout into the completion-rate dashboards. So the cron calls

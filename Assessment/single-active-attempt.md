@@ -59,6 +59,11 @@ type (institute-scheduled, corporate) is single-shot** — once started, a refre
 or tab-leave cannot get the candidate back in. Unit tests:
 `student-node/test/assessmentStartGuard.spec.js`.
 
+The instructions-page reload that turns a live attempt into a drop-off also stamps
+`assessment_assigned_students.dropped_at` (August 2026), so the admin dashboard can show
+when the candidate dropped rather than the assessment deadline — see
+[Drop-off timestamp](admin.md#drop-off-timestamp-dropped_at-august-2026).
+
 ## Frontend — Assessment-React
 
 - `src/utils/assessmentSession.js` — **per-tab** in-progress marker in

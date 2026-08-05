@@ -90,6 +90,9 @@ The per-student `status` field ("Completed" / "In Progress" / "Pending" / "Dropo
 **Per-student data returned:**
 - Basic: name, email, phone, degree, department, specialization, photo
 - Dates: sentDate, startDate, endDate, startedDateTime, droppedOffDateTime
+  (see [Drop-off timestamp](#drop-off-timestamp-dropped_at-august-2026) — `droppedOffDateTime`
+  is an **ISO instant** from `aas.dropped_at`, or absent; the other dates are pre-formatted
+  IST strings)
 - Status: `scoresCalculated`, `assignedCefr`, `resultingCefr`
 - **Type-specific scores:**
 
@@ -181,6 +184,48 @@ All assignment functions follow the same pattern:
 4. Create `assessmentSet` + question mapping
 5. Create `assessmentAssignedStudent` records
 6. Send invitation emails via `StudentService`
+
+### Drop-off timestamp (`dropped_at`, August 2026)
+
+`assessment.assessment_assigned_students.dropped_at` (`TIMESTAMPTZ`, nullable) is the
+instant an assignment was flipped to `status='DROPOUT'`. It is the source of the admin
+dashboard's **"ASSMT. DROPPED OFF DATE & TIME"** column.
+
+**What it replaced.** Nothing recorded the drop-off moment, so `getAssessmentDetails`
+aliased the assessment window's deadline — `aim.end_time` / `acm.end_time AS dropped_at` —
+into `droppedOffDateTime`. Every dropped-off candidate on an assessment therefore showed the
+**same value, routinely weeks in the future** (invite sent 04 Aug, "dropped off"
+02 Sep 11:59 PM). There was no other truth to read: the table has only
+`assessment_started_at` / `submitted_at`, `audit_id` is NULL on these rows, and
+`candidate_journey_events` records only `assessment_opened`.
+
+**Who writes it** (student-node, all three paths that create a `DROPOUT`):
+- `app/handlers/assessmentHandler.js` — reload of a live non-diagnosis attempt.
+- `app/handlers/aiInterviewHandler.js` — restart of an already-started AI Interview
+  (raw SQL: `SET status = 'DROPOUT', dropped_at = NOW()`).
+- `script/updateDropoutStatusCron.js` — the timeout sweep (60 min aptitude / AI Interview,
+  22 min everything else). Here it is **detection time**, not the last keystroke.
+
+**Who clears it:** the cron's Assessment #1/#2 reset branch and admin-node's resend-invites
+reset (`droppedAt: null` alongside `status: 'PENDING'`), so the timestamp never outlives the
+status it describes.
+
+**Two clocks, do not mix them.** `dropped_at` is a **genuine UTC instant**, unlike
+`start_time`/`end_time` which store IST wall-clock in a UTC column (next section). The
+admin-node container runs in UTC, so `moment().format()` on a real instant prints **IST minus
+5:30** — which is why admin-node ships `dropped_at` to the browser as **ISO**
+(`app/helpers/candidateTimestamps.js` → `toInstantIso`) and admin-react's
+`formatEventDateOnly` renders it in the viewer's zone.
+
+**No backfill.** Rows that dropped out before 2026-08-05 have `dropped_at IS NULL` and
+admin-react renders `-`. There is no trustworthy historical source, and inventing one would
+re-create the class of bug this removed. Applied DEV + UAT 2026-08-05; **PROD pending**
+(`DB-Scripts/Assessment Dropout Timestamp/20260805T120510Z__assessment_assigned_students_dropped_at.sql`).
+
+> Still unfixed nearby: `startedDateTime` is formatted with `moment()` on a real UTC instant,
+> so the In-progress "STARTED DATE & TIME" column reads 5:30 behind IST; and the **corporate**
+> path builds it from `aas.submitted_at` (aliased `attempted_at`), so it shows the submit
+> time, not the start. The college path uses `assessment_started_at` correctly.
 
 ### Timezone convention for `start_time` / `end_time` (IST)
 
