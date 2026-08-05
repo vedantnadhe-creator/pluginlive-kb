@@ -50,6 +50,22 @@ Per the approved **Aptitude Question Blueprint**, each topic is pinned to one or
 - Config panel `GET /assessment/getAptitudeConfig` reads the band table (falls back to the count table pre-seed).
 - Migration: DB-Scripts `Aptitude Config Revamp/20260717T081421Z__aptitude_topic_band_config.sql`.
 
+### Topic selection — admin picks the sub-topics (DEV + UAT 2026-08-05; PROD pending)
+
+Both the **institute** and **corporate** create-assessment flows now expose the same topic picker (section cards → "Select Assessment Topics" modal). The institute flow previously showed a read-only *"Auto-configured for Institute"* panel and sent every sub-topic.
+
+**The selection now binds.** Before this, both band selectors loaded their rows by `section_id` **only** — the chosen sub-topics were resolved, logged, then ignored, so corporate's picker had been a **no-op on DEV/UAT** ever since the band model shipped (it only ever narrowed *sections*). PROD was unaffected because the legacy weight path does honour subtopics.
+
+- **Selection binds:** `selectAptitudeQuestionsForAssessment` narrows band rows to the selected `sub_section_id`s via `_fetchAptitudeBandRows()` (shared with the pre-flight, so the two can never disagree). Mirrored in `student-node` `generateSingleStudentAssessmentSet`.
+- **Dropped tracks are re-homed:** `resolveAptitudeTrackCounts()` moves the question budget of a track that lost all its topics onto the tracks that remain, dealing the surplus from a **rotating start track per difficulty** — 30Q over two sections lands on an even **15/15**, one section takes all 30. The **easy/medium/hard totals are unchanged** in every case, so the level ladder and `getLevel()` thresholds still hold. With all three tracks active the matrix is returned untouched, so a default (all-topics) paper is bit-for-bit what it was.
+- **Emptied cells:** a (track × difficulty) cell the selection emptied is filled from another topic **in the same track at the same difficulty**. Difficulty drives scoring and is never relaxed.
+- **Non-selectable topics are hidden:** `GET /assessment/getAptitudeTopics` returns `selectable` per topic — band rows if the band table is seeded, else the legacy count config. A topic outside the blueprint can never win a slot, so the picker must not offer it. On DEV/UAT this hides **Pipes and Cisterns, Input-Output, Data Sufficiency, Analogy, Odd One Out** (25 of 30 selectable); on PROD (no band rows) nothing is hidden. Adding a band row makes a topic reappear — no code change.
+- **Pre-flight:** `POST /assessment/aptitudeTopicAvailability` (`{aptitudeTypes, subtopics, difficultySettings}`) reports `canGenerate` plus per `(topic, difficulty)` `shortfalls`. The admin-react picker calls it whenever the selection or difficulty settles and blocks Save — otherwise a too-narrow selection silently trips the `[BANDS][FALLBACK]` path and serves a paper built from topics nobody picked.
+- **Minimum 10 sub-topics**, ≥1 section — identical for institute and corporate, enforced in the picker AND server-side (`MIN_APTITUDE_TOPICS` in `aptitudeDistribution.js`) on **both** `assignAptitudeAssessment` and `assignAptitudeAssessmentAsync` (the queue path is the one that actually runs on DEV/UAT).
+- **`assessment_sets.selected_sub_section_ids` (uuid[])** records the topics a paper was commissioned from. Regeneration used to re-derive the topic list from the *questions* in the source set and then repoint the assignment at the set it built — a 30-question paper cannot cover every selected topic, so the pool narrowed at every regeneration. Written by all four sync set-creation sites and by `app/queues/setGenerators/aptitudeSetGenerator.js`; carried forward onto the regenerated set. **Empty = not recorded** (pre-2026-08 sets), in which case readers keep the old section-wide behaviour — no backfill needed.
+- **Scheduled assessments:** the selection applies to every run of the schedule **and to the diagnosis pair**, and is fixed for the schedule's life (`EditScheduleDrawer` edits dates/frequency/students only — never the assessment config). The picker shows an advisory that scores measured on different topic sets are not comparable with past attempts.
+- Migration: DB-Scripts `Aptitude Topic Selection/20260805T092354Z__aptitude_selected_sub_section_ids.sql` (DEV + UAT applied, PROD pending).
+
 ### Dynamic generation buffers (per topic × difficulty)
 
 The aptitude generation cron (`admin-node/script/generateAptitudeAssessment.js`) previously topped every subtopic×difficulty to a hardcoded **6**. It now reads a per-cell **`buffer_target`** from `aptitude_topic_band_config` (band cells, default 6), and applies a small **insurance floor (2)** to non-band cells so a future revert still has stock. **Editable from Question Manager without a redeploy** — see `manage-cron.md` (Manage Buffers). API: `GET/PUT /questionManager/generationTargets` (QM-JWT gated, target cap 500). Migration: DB-Scripts `Aptitude Config Revamp/20260717T180734Z__aptitude_band_buffer_target.sql`.
@@ -171,6 +187,8 @@ flowchart TD
 - Admin selects **assessment type** = `Aptitude`
 - Configures: name, dates, sections (Quantitative/Logical/Critical), subtopics, difficulty, negative marking, proctoring
 - Supports **one-time** and **scheduled** distribution
+- `renderAptitudeTopics()` hoists the section cards, `TopicSelectionModal` and the selection summary **above** the institute/corporate branch, so both flows share one picker; only the surrounding config differs (institute is fixed at 45 min / 30 Q, corporate chooses a duration). See *Topic selection* above.
+- Two sites used to overwrite the admin's picks with every topic — the save path and `handleDifficultyLevelChange` (so changing difficulty **after** picking topics silently discarded them). Both now fill in only what the admin did not choose, so an untouched form still defaults to every section and topic.
 
 #### Backend — `Assessment.js` → `assignAptitudeAssessment()`
 **Path:** `admin-node/app/models/Assessment.js` (line ~6338)

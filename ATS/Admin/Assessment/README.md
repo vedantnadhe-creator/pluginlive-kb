@@ -57,7 +57,8 @@ The Assessment module is the admin's comprehensive assessment management system.
 
 | Action | API | Method | Purpose |
 |--------|-----|--------|---------|
-| `fetchAptitudeTopics` | `/assessment/getAptitudeTopics` | GET (Admin) | Aptitude topic sections for assessment creation |
+| `fetchAptitudeTopics` | `/assessment/getAptitudeTopics` | GET (Admin) | Aptitude topic sections for assessment creation; each topic carries `selectable` (false = outside the live blueprint, hidden from the picker) |
+| `checkAptitudeTopicAvailability` | `/assessment/aptitudeTopicAvailability` | POST (Admin) | Pre-flights a topic selection against the question bank; returns `canGenerate` + per (topic, difficulty) `shortfalls`. Blocks Save on a selection the bank cannot fill |
 | `setAssessmentCreationData` | (Redux only) | — | Store assessment creation form data |
 | `addBulkUploadData` | (Redux only) | — | Add bulk-uploaded student data to assessment |
 | `clearAssessmentCreationData` | (Redux only) | — | Clear creation form |
@@ -100,5 +101,5 @@ The Assessment module is the admin's comprehensive assessment management system.
 - **Bulk upload:** CSV-based student upload for assessments
 - **Excel export:** Student data export as .xlsx blob
 - **Reminders & invites:** Send/resend to all or selected students
-- **Aptitude topics:** Configurable assessment sections
+- **Aptitude topics:** Admin picks the sections AND sub-topics (min 10) for both institute and corporate flows; the selection binds at question selection and is recorded on the set — see `Assessment/aptitude.md` → *Topic selection*
 - **CEFR levels:** Assessment info includes CEFR level data
