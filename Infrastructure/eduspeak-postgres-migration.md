@@ -1,6 +1,7 @@
 # EduSpeak: hosted Supabase → PluginLive PostgreSQL (UAT)
 
-**Status:** UAT live on PluginLive PostgreSQL since 2026-08-05. DEV still on hosted Supabase. PROD does not exist yet.
+**Status:** UAT live on PluginLive PostgreSQL since 2026-08-05, updated 2026-08-06 to app commit `deacd151`
+(410 commits + 141 migrations). DEV still on hosted Supabase. PROD does not exist yet.
 
 EduSpeak (`eduspeak.uat.pluginlive.com`, repo `PluginLive-Technologies/eduspeak-india`) was a
 Lovable-generated app whose real backend was a hosted Supabase SaaS project. UAT now runs entirely
@@ -31,7 +32,7 @@ nginx eduspeak.uat.pluginlive.com   (/etc/nginx/sites-available/eduspeak-uat.con
                         |-- /rest/v1      -> postgrest      v12.2.3
                         |-- /auth/v1      -> gotrue         v2.158.1
                         |-- /storage/v1   -> storage-api    v1.11.13
-                        |-- /functions/v1 -> edge-runtime   v1.58.2  (106 Deno fns)
+                        |-- /functions/v1 -> edge-runtime   v1.58.2  (111 Deno fns)
                         '-- /realtime/v1  -> 501, not deployed
                                 |
                     OCI PostgreSQL 16.14  140.238.245.202:5441
@@ -51,7 +52,7 @@ the gateway is published, on loopback.
 | Foreign keys | 108 (103 validated, 5 grandfathered — see below) |
 | Triggers | 82 |
 | SQL functions | 28 |
-| Edge functions | 108 deployed (100 were live on Supabase; the repo carries 8 extra) |
+| Edge functions | 111 deployed (100 were live on Supabase; the repo carries the rest) |
 | `auth.users` | 2, bcrypt hashes intact, nobody forced to reset |
 | Storage | bucket `pilvidya`, 0 objects |
 
@@ -224,3 +225,53 @@ Seeding gotchas:
 - `mobile_number` is UNIQUE.
 
 These are UAT-only credentials on non-production data. Rotate or delete before any production use.
+
+## 2026-08-06 update — app rolled forward to `deacd151`
+
+Pulled 410 commits (`7370534` → `deacd151`) and rolled the database forward with the repo's
+141 `supabase/migrations/*.sql`.
+
+**Migrations.** There is no `supabase_migrations.schema_migrations` ledger in our database (the
+original dump was `--schema=public` only), so the migrations were replayed in filename order and
+judged by their errors. 69 applied clean, 72 raised only `already exists` (204 such errors) meaning
+they were already reflected in the dump. The only non-benign errors are structural and expected:
+
+| Error | Count | Why it is fine |
+|---|---|---|
+| `schema "cron" does not exist` / `pg_cron is not available` | 7 | We do not run pg_cron. Those migrations only schedule jobs. |
+| `publication "supabase_realtime" does not exist` | 5 | Realtime is not deployed here. |
+| `pg_net is not available` | 2 | Only used by the cron HTTP calls above. |
+| `no unique or exclusion constraint matching the ON CONFLICT` | 1 | `20260709143000` seeding `admin_notification_settings`; the 8 default rows already exist, so it was a no-op. |
+
+Net schema change: 205 → **210 tables**, 438 → **494 policies**, 28 → **35 functions**.
+Take a `pg_dump -Fc` backup before replaying (one is at
+`~/eduspeak-pg-migration/backups/` on the DEV box).
+
+**Re-run `03_grants.sql` and `05_sensitive_columns.sql` after any migration batch** — new tables
+arrive without grants, and the column-scoped SELECT has to be re-applied.
+
+**The student auth flow changed.** `20260713093000_student_mobile_auth_without_anonymous.sql`
+moves student login off the "anonymous GoTrue session + direct table write" model onto
+`SECURITY DEFINER` RPCs (`student_register_profile`, `student_authenticate`,
+`student_complete_profile`, `student_claim_device_session`, `student_verify_device_session`),
+each `REVOKE`d from `PUBLIC` and granted `EXECUTE` to `anon, authenticated, service_role`.
+Students now authenticate as plain `anon`; no anonymous session is minted. This is a better model
+and it did **not** reopen the `user_roles` write hole — `anon` remains SELECT-only there. The only
+tables `anon` can now write are `assessment_alt_submissions` and `assessment_imports`, both
+intentional upstream. Seeded accounts kept working unchanged.
+
+**Upstream bug found and patched locally: blank `/student` page.** Commit `019db980`
+("Restore lovable student landing") uses `GraduationCap` at `StudentDashboard.tsx:275` and `:322`
+but never adds it to the `lucide-react` import, so the whole route died with
+`ReferenceError: GraduationCap is not defined` and rendered an empty `#root`. Vite does not fail
+the build on this, and `npm run typecheck` does not catch it either — only loading the route does.
+Patched on the UAT checkout by adding `GraduationCap` to the line-9 import. **This fix is not yet
+upstream**; a `git pull` will reintroduce the bug until it is committed.
+
+**`mcp` function returns 500 and that is not a regression.** It is a Lovable auto-generated MCP
+server (`npm:@lovable.dev/mcp-js`), never deployed on the hosted project (which 404s it), and not
+called by the frontend.
+
+**Verification after the roll-forward:** 22/22 routes render with zero page errors and zero
+`supabase.co` requests; RLS negative suite 8/8; 111 functions probed (66×200, 27×400 validation,
+13×401, 2×403 admin-gated); admin and all student logins pass end to end.
