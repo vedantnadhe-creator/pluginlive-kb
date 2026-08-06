@@ -237,6 +237,72 @@ proctoring capture times) are true UTC instants → render **local**, not UTC. (
 `scheduleStartDate`/`scheduleEndDate` are stored at **midnight UTC**, so `moment(...)`
 doesn't roll them — `EditScheduleDrawer` is unaffected.)
 
+### Published-assessment configuration in the edit drawer (August 2026)
+
+The drawer now shows the **configuration the assessment was published with** — CEFR level
+and accent, aptitude topics and difficulty, the Role_Based job brief, the AI_Interview
+interview brief, Custom_Assessment section weights — and re-opens the subset of it that
+still has an effect. It sits between "End Date & Time" and "Student List".
+
+**Backend:** `admin-node/app/service/AssessmentConfigService.js`, surfaced on the existing
+`GET /assessment/details` as a `configuration` object and accepted back on
+`PUT /assessment/details` as a `configuration` patch.
+
+**The response is field-descriptor shaped, not a per-type DTO:**
+
+```
+configuration: {
+  assessmentType, contentLocked, lockedReason,
+  groups: [ { key, title, fields: [ { key, label, value, type, editable, help?, options?, min?, max?, unit? } ] } ]
+}
+```
+
+`type` is one of `text | textarea | number | select | boolean | tags | list`. The React
+side (`UnifiedAssessmentTable/AssessmentConfigurationSection.js`) names **no assessment
+type at all** — it renders whatever groups the server sends, so a new assessment type
+appears in the UI without a frontend change. Editability rules live only in the service,
+where they are also enforced on write.
+
+**What is editable, and why — question papers are generated AT PUBLISH TIME.** Editing the
+inputs that produced them (CEFR level, accent, aptitude topics, difficulty, custom section
+weights) would change nothing about the paper candidates already hold; it would only make
+the record lie. So those are read-only, and the drawer shows `lockedReason` explaining it.
+Three things ARE read after publish and stay editable:
+
+| Scope | Editable fields | Why it still applies |
+|---|---|---|
+| **All types** (map row) | `allowProctoring`, `allowVerification`, `instructions` | Read when the candidate opens the assessment |
+| **Role_Based** (`assessment_config`) | `jobDescription`, `skills`, `industryDomain`, `region`, `durationMinutes` | `durationMinutes` drives the attempt-time timer; the rest feed subjective scoring (student-node `RoleBasedCalculations.calculateSubjectiveScore`) |
+| **AI_Interview** (`ai_interview_config`) | `jobDescription`, `skills`, `industryDomain`, `region`, `interviewDurationMinutes`, `maxQuestions`, `resumePolicy`, `enableFollowUp`, `questionGuidance`, `scoringGuidance` | Nothing is pre-generated — the interviewer reads this row live for every candidate |
+
+Read-only everywhere else, including Communication, Hinglish, Aptitude, Custom_Assessment
+and Behavior, plus `roleName`/`seniority`/`aiModel`/`conversationRubric`/
+`evaluationParameters` (the rubric is authored in the AI Interview builder, not here).
+
+**Gotchas worth knowing:**
+- **Writes fan out to every set on the map**, not just the representative one. One
+  Communication map can reach ~70 sets and one Role_Based map ~13 (one per batch of
+  students); updating only the first would leave candidates scored against different job
+  briefs. `assessment_config` is **upserted** per set because older Role_Based sets predate
+  the table and an update-only write would silently drop the edit.
+- **The config patch is applied FIRST**, before name/end-date/roster, so a rejected value
+  (bad interview length, out-of-range question count) aborts the save with everything else
+  untouched.
+- **`interview_duration` is stored in seconds** but shown and edited in minutes (10–30);
+  `max_questions` is clamped 8–15, matching the create form.
+- **Unknown keys are ignored, not rejected** — a stale tab must not fail an otherwise valid
+  save. The drawer also diffs against the loaded values
+  (`UnifiedAssessmentTable/assessmentConfigDiff.js`) and sends only touched fields, so an
+  untouched drawer can never overwrite a job description.
+- **Clearing "Candidate instructions" deletes the `communication_instructions` row** — the
+  column is `NOT NULL`, so "no instructions" means no row.
+- **Config loading is wrapped in try/catch** in `getEditableAssessmentDetails`: it is
+  additive, so an assessment whose config tables predate a column drops the section rather
+  than failing the whole drawer.
+- **Aptitude topics** come from `assessment_sets.selected_sub_section_ids` when recorded,
+  falling back to deriving them from the generated paper for sets created before that
+  column existed.
+
 ---
 
 ## Student Report Drawer (StudentReport/index.js)
@@ -381,6 +447,8 @@ This provides an image avatar with letter fallback when no logo URL is available
 | `/assessment/report/download` | GET | Download student report PDF | student-node |
 | `/assessment/addStudentsToAssessment` | POST | Add candidates to existing assessment | admin-node |
 | `/assessment/backfill-progression` | POST | Backfill progression data | student-node |
+| `/assessment/details` | GET | Edit-drawer payload: name, end date, roster **and published `configuration`** | admin-node |
+| `/assessment/details` | PUT | Edit name / end date / roster / whitelisted `configuration` fields | admin-node |
 
 ---
 
