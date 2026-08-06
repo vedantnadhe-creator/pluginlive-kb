@@ -4,12 +4,19 @@
 > UI, without a redeploy. Supersedes the old approach of commenting the jobs in
 > `scheduler.js`.
 
-## The three managed jobs
+## The managed jobs
 | `job_name` | Cron | Schedule |
 |------------|------|----------|
 | `communication_gen` | Communication question/set generation | every 10 min |
 | `aptitude_gen` | Aptitude question generation | every 10 min |
 | `question_verification` | Aptitude question **review/verification** (validate-and-repair, see `question-verification.md`) | every 11 min |
+| `delivery_feedback_sync` | Reconcile accepted sends against the OCI suppression list (see `email-delivery-tracking.md`) | every 15 min |
+| `assessment_auto_reminder` | Chase candidates still `PENDING` every 24h, capped at 3 (see `auto-reminders.md`) | hourly |
+
+> `assessment_auto_reminder` additionally requires **`AUTH_KEY`** in that
+> environment — the sweep refuses to claim without it, precisely so a
+> misconfigured env cannot spend every candidate's reminder budget on sends that
+> 401. It also self-limits to 09:00–20:00 IST.
 
 ## How it works
 - `admin-node/script/scheduler.js` registers each job with `node-cron`, but **every tick first
@@ -55,6 +62,6 @@ The same Question Manager UI + auth pattern now also drives **per-topic × per-d
 
 ## Per-environment status
 Each env's flags live in its own DB. Readiness (backend + table + creds):
-- **DEV** — ready. (`question_verification` was enabled here for testing.)
-- **UAT** — ready (2026-07-10).
+- **DEV** — ready. (`question_verification` was enabled here for testing.) `assessment_auto_reminder` row seeded disabled 2026-08-06.
+- **UAT** — ready (2026-07-10). `assessment_auto_reminder` row seeded disabled 2026-08-06.
 - **PROD** — **pending** (backend + `cron_config` table + QM creds not yet deployed).

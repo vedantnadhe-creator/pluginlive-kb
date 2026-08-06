@@ -12,6 +12,7 @@ This folder contains detailed documentation for each assessment type and cross-c
 - `ai-interview.md` -- AI Interview Assessment (real-time adaptive interview with shortlisting)
 - `schedule.md` -- Assessment Scheduling (recurring auto-assignment via cron)
 - `assignment-calculation-queue.md` -- Async assignment + calculation/progression queues (flag-gated), real-time Activity UI with Detail page + Assignment/Calculation toggle + retry. Live on DEV + UAT.
+- `auto-reminders.md` -- Automated 24h candidate reminders (hourly cron, atomic claim, capped at 3, queue-backed). DEV + UAT, ships disabled.
 - `email-delivery-tracking.md` -- Invite/reminder delivery + candidate journey tracking (email_events, candidate_journey_events, DELIVERY column + Excel column). Live DEV + UAT.
 - `admin.md` -- Admin Assessment Workflow (dashboard, listing, assignment, analytics, proctoring review)
 - `admin-frontend.md` -- Admin-React Assessment Frontend (UnifiedAssessmentTable, StudentReport, NPS, pagination, corporate clickability)
