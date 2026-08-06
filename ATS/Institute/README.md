@@ -2,7 +2,7 @@
 
 This folder contains module-wise documentation for the PluginLive Institute (TPO) Portal — the primary interface used by Training & Placement Officers to manage students, corporates, events, job roles, placements, and assessments.
 
-**Frontend:** `institute-react`
+**Frontend:** `institute-react` (v1) · `institute-react-v2` at `/v2` (see [v2-strangler-fig.md](v2-strangler-fig.md))
 **Route prefix:** `/` (authenticated institute user)
 
 ## Modules
@@ -11,7 +11,7 @@ This folder contains module-wise documentation for the PluginLive Institute (TPO
 
 | Module | Folder | Route(s) | Description |
 |--------|--------|----------|-------------|
-| TPO Dashboard | `TPODashboard/` | `/tpoDashboard` | Placement analytics — job profile status, CTC analysis, student placement with PDF export |
+| TPO Dashboard | `TPODashboard/` | `/tpoDashboard` | Placement analytics — job profile status, CTC analysis, student placement with PDF export. Still v1: the sidebar Dashboard entry points here |
 | Dashboard | `Dashboard/` | `/dashboard`, `/dashboard/roles/:corpID`, `/dashboard/drives/:roleID/:corpID`, `/dashboard/roles/drive/:driveID/:roleID` | Drive and role metrics overview with drill-down |
 | Students | `Students/` | `/students` | Student CRUD, bulk upload, blacklist, opt-out, notifications |
 | Corporate | `Corporate/` | `/corporate`, `/corporate/newCorporate`, `/corporate/editCorporate/:corporateId` | Institute-level corporate/company management |
@@ -29,7 +29,7 @@ This folder contains module-wise documentation for the PluginLive Institute (TPO
 | Reports | `Reports/` | `/reports`, `/reports/studentreports` | Management & student reports with export (CSV/Google Sheets) |
 | Settings | `Settings/` | `/setting` | Institute info, tax info, partners, additional settings |
 | Courses | `Courses/` | `/courses` | Course (degree-stream) management with ElasticSearch sync |
-| Assessment | `Assessment/` | `/assessment` | Assessment dashboard, student tracking, charts, reports |
+| Assessment | `Assessment/` | `/assessment` | Legacy assessment dashboard. **The sidebar entry no longer opens this** — since 2026-08-06 it routes to the v2 cockpit at `/v2/dashboard` (see [v2-strangler-fig.md](v2-strangler-fig.md)); the v1 route is kept only for in-flight links |
 | Drive Info | `DriveInfo/` | `/drives/driveInfo` | Drive detail view with candidate list |
 
 ### Supporting Modules
