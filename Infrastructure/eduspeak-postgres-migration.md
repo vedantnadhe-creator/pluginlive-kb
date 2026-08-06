@@ -275,3 +275,42 @@ called by the frontend.
 **Verification after the roll-forward:** 22/22 routes render with zero page errors and zero
 `supabase.co` requests; RLS negative suite 8/8; 111 functions probed (66×200, 27×400 validation,
 13×401, 2×403 admin-gated); admin and all student logins pass end to end.
+
+### Two runtime defects found during the 2026-08-06 roll-forward
+
+**Sign-in 500s after an idle period — `idle_session_timeout`.** The shared UAT cluster sets
+`idle_session_timeout = 600000` (10 min). PostgREST, GoTrue and storage-api hold long-lived pooled
+connections that sit idle far longer than that on a low-traffic box, so PostgreSQL closes them and
+the pool hands out a dead socket on the next request. Symptom: the **first** sign-in after a quiet
+period returns `500: Database error querying schema`, and an immediate retry succeeds. The GoTrue
+log is definitive:
+
+```
+error finding user: FATAL: terminating connection due to idle-session timeout (SQLSTATE 57P05)
+```
+
+Fixed by disabling the timeout for the four EduSpeak service roles only
+(`authenticator`, `supabase_auth_admin`, `supabase_storage_admin`, `eduspeak_owner`). It is a
+per-role setting, so the cluster default and every `uat_pluginlive` role are untouched. Script is in
+DB-Scripts as `*__eduspeak_pg_service_role_idle_timeout.sql`. **Restart the pools after applying.**
+Watch for this on any other service pooling against this cluster.
+
+**Long functions killed mid-flight — edge-runtime supervisor limits.** The supervisor enforces CPU
+and wall-clock limits *independently* of the `workerTimeoutMs` passed to
+`EdgeRuntime.userWorkers.create`. With only `workerTimeoutMs` set, `principal-morning-brief` (called
+from `PrincipalDashboardPanel.tsx`) logged `CPU time soft limit reached` then
+`wall clock duration reached`, and the request hung until the gateway returned 502:
+
+```
+worker failure in 'principal-morning-brief': WorkerRequestCancelled: request has been cancelled by supervisor
+```
+
+Fixed in `functions/main/index.ts` by also passing `cpuTimeSoftLimitMs: 180_000` and
+`cpuTimeHardLimitMs: 300_000` (and raising `memoryLimitMb` to 512). The function then returns 200.
+
+It still takes **~172 s**, which is an upstream inefficiency rather than a migration problem: the
+run issues **205 REST calls, 170 of them repeated `app_secrets` lookups** from
+`_shared/llm-resolver.ts`. Individual queries are fast (~3 ms) and container egress is fine
+(<0.5 s to the LLM providers), so the cost is purely the call count. Caching the secret lookups
+would take it to a few seconds. The hosted project answers the same endpoint in 11.5 s only because
+it still runs a much older build of that function.
