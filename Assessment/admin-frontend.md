@@ -4,7 +4,9 @@
 
 > **Add Candidate field requirement (current):** In the "Add Candidates Manually" / bulk-upload drawers (`CreateAssessment/Drawers/EnhancedBulkUploadDrawer.js` and `BulkUploadDrawer.js`), **only First Name and Email are mandatory — Last Name is optional**. The `*` on Last Name is removed, the "Add Candidate" button is no longer disabled on a blank last name, the submit-time guard doesn't require it, and the Excel-file row parser no longer drops rows that have a blank last name. Backend: `admin-node` `Assessment.saveStudentList`/`updateStudentList` no longer list `lastName` in `requiredFields` and trim it null-safely.
 
-> **Candidate mobile country code (current):** In `EnhancedBulkUploadDrawer.js`'s manual Add Candidate form, mobile number has its own country-code `Select` next to the number input, backed by `utils/candidateMobile.js` (`COUNTRY_DIAL_CODES`, `DEFAULT_COUNTRY_CODE = '+91'`). It defaults to **+91 pre-selected**, not blank — the drawer-open reset must explicitly set `countryCode: DEFAULT_COUNTRY_CODE` (and clear `phone`) alongside the other fields, since an omitted key there renders the Select empty even though the initial `useState` has the default. When a recruiter adds several candidates in a row, the last-chosen country code is intentionally carried over to the next blank form rather than reset each time.
+> **Candidate mobile country code (current):** In `EnhancedBulkUploadDrawer.js`'s manual Add Candidate form, mobile number has its own country-code `Select` next to the number input, backed by `utils/candidateMobile.js` (`COUNTRY_DIAL_CODES`, `DEFAULT_COUNTRY_CODE = '+91'`). It defaults to **+91 pre-selected**, not blank — the drawer-open reset must explicitly set `countryCode: DEFAULT_COUNTRY_CODE` (and clear `phone`) alongside the other fields, since an omitted key there renders the Select empty even though the initial `useState` has the default. When a recruiter adds several candidates in a row, the last-chosen country code is intentionally carried over to the next blank form rather than reset each time. **The Edit Assessment drawer has the same field** — see *Edit Assessment Drawer → Mobile number* below.
+
+> **+91 is the default in every country-code picker (2026-08-06).** Five pickers outside the Assessment module used to open blank, so a user who never touched them submitted `countryCode: undefined` (or tripped a `required` rule): Onboarding → Add New Corporate (`Corporates/.../AddNewCorporateDrawer/Partials/ContactDetails`), Onboarding → Add Institute (`Institutes/.../AddInstDrawer/Partials/InstContactDetails`), both Add-User drawers (`User/Partials/AddUserDrawer`, `User/Partials/UsersView/AddUserDrawer`), and Onboarding → Add New Institute (`Corporates/.../AddNewInstituteDrawer`, which *displayed* `+91` from `useState('+91')` but never wrote it to the form because its picker is not wrapped in a `Form.Item`). **Two different value formats, and the seed must match the picker's options or antd shows a value with no matching option:** the API-driven pickers (options from `/search/countries?groupBy=phone_code`) use **bare digits `'91'`**, while the hardcoded-array pickers use **`'+91'`**. Seeding pattern: a mount-time `form.setFieldValue('countryCode', …)` guarded by `if (!form.getFieldValue('countryCode'))` so an edit flow's value is never overwritten; where a `resetFields()` runs (AddNewInstituteDrawer's `addContent` branch) the default must be re-seeded in the same `setFieldsValue` block. `InstContactDetails` additionally needed `Form.useWatch('countryCode', form)` — it read `form.getFieldValue(['countryCode'])` inline, which is `undefined` on first render and never re-reads, so the seeded default would have stayed invisible.
 
 ---
 
@@ -176,6 +178,43 @@ The table handles both institute and corporate assessment records with different
 
 `UnifiedAssessmentTable/EditAssessmentDrawer.js` lets an admin edit an assessment's
 name, end date **and time**, and student list (`GET`/`PUT /assessment/details`).
+
+**Mobile number on the add-student row (2026-08-06).** The drawer's inline "add student"
+row captured only first name / last name / email — there was **no mobile field at all**,
+so every student added from Edit Assessment landed with `contact_number = NULL` and
+silently got an **email-only OTP** on their `/s/` invite (the resolver mints the phone
+claim from `COALESCE(aas.contact_number, spp.contact_number)`). The gap ran the full
+depth of the stack, so all three layers had to change:
+
+- **Frontend** — the row is now three lines (First/Last · Email · Mobile + Add) and the
+  mobile is a country-code `Select` + national-number `Input` reusing
+  `utils/candidateMobile` (`countryCodeOptions`, `DEFAULT_COUNTRY_CODE`,
+  `parseCandidateMobile`, `nationalNumberLength`, `formatMobile`, `splitFullMobile`) —
+  the same components as `EnhancedBulkUploadDrawer`, not a second implementation.
+  Mobile is **optional**, but a number that *is* typed must parse or the add is
+  rejected (a mangled number is worse than none — the SMS bills and goes nowhere).
+  The chosen country code persists across adds; it resets to `+91` on drawer close.
+  The staged/existing student table gained a **Mobile** column. The save payload sends
+  `mobile_number` + `country_code`, **omitted entirely when blank**.
+- **Request schema** — `updateAssessmentDetailsSchema.body.addStudents.items` now
+  declares `mobile_number` and `country_code`.
+- **Model** — `updateEditableAssessmentDetails`'s `addStudents → bulkUploadData` mapper
+  builds each row from an **explicit field list**, so anything it doesn't name is
+  dropped before `addStudentsToExistingAssessment` ever sees it. That is what silently
+  ate the mobile. It now passes the raw code + number pair through; the add path already
+  normalizes it (`pickPhone` → `contact_number`, `pickNationalNumber`/`pickCountryCode`
+  → `createPublicStudent`). `getEditableAssessmentDetails` also returns each row's stored
+  `contactNumber` as `mobile` so the drawer can render the new column on load.
+
+Regression cover: `admin-node/test/editAssessmentAddStudentsMobile.spec.js` locks down the
+schema keys, the mapper (source-level — the method is too Prisma-heavy to run without a
+DB), and the exact payload the drawer sends, including a non-Indian code and the
+no-mobile case. Deployed DEV + UAT 2026-08-06. **Forward-only** — no backfill; the edit
+drawer does not persist a roster, so pre-fix additions are unrecoverable.
+
+> The separate **Add Candidate** flow (`EnhancedBulkUploadDrawer`, reachable from the
+> same table row and from the three dashboards) already carried the mobile end-to-end —
+> only this drawer's inline row was missing it.
 
 **End date + time picker (June 2026):** the End field is an Ant `DatePicker` with
 `showTime` (12-hour `hh:mm A`, `format="DD/MM/YYYY hh:mm A"`) — admins can pick the exact
