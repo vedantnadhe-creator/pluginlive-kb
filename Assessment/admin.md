@@ -398,14 +398,36 @@ Supports: Communication, Aptitude, Behavior, Role_Based
 
 ## Student List Management (CRUD)
 
-Admins can save reusable student lists, referenced by schedules.
+Admins can save reusable candidate lists ("Save as List" in the bulk-upload
+drawer), referenced by schedules and reusable from "Select from Existing Lists".
+
+**Scoping — a list belongs to an entity, college or corporate.**
+`assessment.student_lists` carries both `institute_campus_id` and `corporate_id`
+plus `entity_type`. `_resolveStudentListScope({ entityType, entityId, instituteCampusId })`
+picks the column: `corporate_id` when `entityType === 'corporate'`, otherwise
+`institute_campus_id`. This is the same convention `AssessmentSetGroupService`
+uses for role-based set groups, so both writers agree. `entityId` is the
+**selected entity's id** (institute id for college, corporate id for corporate) —
+not the campus id. Callers may still send the legacy `instituteCampusId` field;
+it is treated as a college-scoped `entityId`.
 
 | Function | Purpose |
 |----------|--------|
-| `saveStudentList({ instituteCampusId, listName, studentsData, createdBy })` | Creates a new saved student list |
-| `getStudentLists({ instituteCampusId, searchQuery })` | Returns all student lists for an institute (with search) |
+| `saveStudentList({ entityType, entityId, listName, studentsData, createdBy })` | Creates a new saved list, scoped to the institute or the company |
+| `getStudentLists({ entityType, entityId, searchQuery })` | Returns the lists for that entity (with search) |
 | `updateStudentList({ listId, instituteCampusId, listName, studentsData, updatedBy })` | Updates name and/or student data of an existing list |
-| `deleteStudentList({ listId, instituteCampusId })` | Soft-deletes a student list |
+| `deleteStudentList({ listId, instituteCampusId })` | Deletes a student list |
+
+Notes / gotchas:
+- The persisted student keeps `countryCode` + `phone`. Dropping them silently
+  downgrades a reused list's candidates to an **email-only OTP** invite (see the
+  `pickPhone` note in `Assessment.js`).
+- There is **no unique index** on (scope, `list_name`); duplicates are rejected
+  by an explicit lookup returning **409**, not by a constraint violation.
+- `deleteStudentList` and `updateStudentList` have **no caller in any frontend**
+  and are known-broken (`deleteStudentList` references an undefined `tx`/`listName`
+  and has inverted 409/404 logic; `updateStudentList` writes a non-existent
+  `updatedBy` column). Fix before wiring either to the UI.
 
 ---
 
