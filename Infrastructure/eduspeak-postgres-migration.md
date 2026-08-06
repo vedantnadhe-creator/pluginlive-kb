@@ -3,7 +3,12 @@
 **Status:** UAT live on PluginLive PostgreSQL since 2026-08-05, updated 2026-08-06 to app commit `deacd151`
 (410 commits + 141 migrations). DEV still on hosted Supabase. PROD does not exist yet.
 
-EduSpeak (`eduspeak.uat.pluginlive.com`, repo `PluginLive-Technologies/eduspeak-india`) was a
+**UAT hostname is `pilvidya.uat.pluginlive.com` since 2026-08-06** — see
+[Hostname rename](#2026-08-06--uat-hostname-renamed-to-pilvidya) at the bottom. `eduspeak.uat.*`
+still resolves but only 301-redirects. Older sections below still say `eduspeak.uat.*`; read the
+host as `pilvidya.uat.*` throughout.
+
+EduSpeak (`pilvidya.uat.pluginlive.com`, repo `PluginLive-Technologies/eduspeak-india`) was a
 Lovable-generated app whose real backend was a hosted Supabase SaaS project. UAT now runs entirely
 on our own infrastructure: data in our OCI PostgreSQL, auth/REST/storage/functions in our own
 containers. **Nothing in the app makes a request to `*.supabase.co` any more.**
@@ -25,7 +30,7 @@ removing the compatibility. If we later want EduSpeak on standard Express+Prisma
 ```
 Browser  (unchanged @supabase/supabase-js)
   |
-nginx eduspeak.uat.pluginlive.com   (/etc/nginx/sites-available/eduspeak-uat.conf)
+nginx pilvidya.uat.pluginlive.com   (/etc/nginx/sites-available/pilvidya-uat.conf)
   |-- /            -> eduspeakreact  :3008   Vite static
   |-- /api/        -> eduspeaknode   :8086   pre-existing Node adjunct, unchanged
   '-- /sb/         -> eduspeak-sb-gateway 127.0.0.1:8100  (nginx container)
@@ -314,3 +319,54 @@ run issues **205 REST calls, 170 of them repeated `app_secrets` lookups** from
 (<0.5 s to the LLM providers), so the cost is purely the call count. Caching the secret lookups
 would take it to a few seconds. The hosted project answers the same endpoint in 11.5 s only because
 it still runs a much older build of that function.
+
+## 2026-08-06 — UAT hostname renamed to `pilvidya`
+
+`eduspeak.uat.pluginlive.com` → **`pilvidya.uat.pluginlive.com`**. The old host still resolves and
+**301-redirects** to the new one (it is not a second copy of the app); remove it once nothing
+references it.
+
+DNS is **OCI Cloud DNS**, zone `uat.pluginlive.com` (not Route53 — the apex `pluginlive.com` is on
+Route53, but this subzone is delegated to OCI). Added an `A` record `pilvidya` →
+`129.154.248.225`, the same UAT box IP `eduspeak` already pointed at.
+
+The hostname was baked into four places — all four had to change, and the frontend one needs a
+**rebuild**, not a restart, because Vite inlines `VITE_*` at build time:
+
+| Where | Change |
+|---|---|
+| `/etc/nginx/sites-available/pilvidya-uat.conf` | new vhost, copied from the eduspeak one (`/` → :3008, `/api/` → :8086, `/sb/` → :8100) |
+| `/etc/nginx/sites-available/eduspeak-uat.conf` | reduced to a 301 to pilvidya on both :80 and :443 |
+| `~/eduspeak-sb/.env` | `SITE_URL`, `API_EXTERNAL_URL` → pilvidya; `docker compose up -d auth` |
+| `~/frontend/eduspeak-india-react/frontend/.env.uat` | `VITE_SUPABASE_URL`, `VITE_SITE_URL` → pilvidya; rebuild image |
+
+Cert: `sudo certbot certonly --webroot -w /var/www/html -d pilvidya.uat.pluginlive.com` (expires
+2026-11-04, auto-renew registered). The webroot flow needs a plain `:80` vhost answering
+`/.well-known/acme-challenge/` **before** the cert exists — that block is kept in the final config
+so renewals keep working.
+
+**Gotcha — `vite preview` host allow-list.** `vite.config.ts` has
+`preview.allowedHosts: [...]`. It did not include the new host, so the first rebuild served
+**HTTP 403 on every route** while `/sb/*` (proxied straight past the Vite server) answered 200 —
+i.e. the backend looks perfectly healthy and only the app shell is dead. Add the host there and
+rebuild. This file is **committed source**, not env, so the fix belongs in the repo.
+
+**Not a problem, but checked:** `public/schema.sql` still contains three
+`https://eduspeak.uat.pluginlive.com/sb/functions/v1/...` URLs in `cron.schedule` calls
+(`wellbeing-followup-reminders`, `learning-alert-scan`, `outbox-dispatch`). Those would break on a
+301 — `pg_net` does not follow redirects on POST — but **neither `pg_cron` nor `pg_net` is installed
+on `eduspeak_uat`**, so no such job exists. If those extensions are ever enabled, fix the URLs first.
+No function body in the database references the old host.
+
+Do **not** rename `VITE_SUPABASE_PROJECT_ID` / the JWT `ref` claim (both still `eduspeak-uat`) —
+they are baked into the anon and service-role keys and the GoTrue/PostgREST `JWT_SECRET` pairing.
+
+Verified after the rename: `/`, `/auth`, `/student`, `/teacher`, `/status` all 200 with non-empty
+`#root`; headless Chromium reports **zero** `pageerror` and zero failed requests; the only hosts the
+browser contacts are Google Fonts and `pilvidya.uat.pluginlive.com` (no `eduspeak.*`, no
+`*.supabase.co`); anon REST read 200; GoTrue sign-in returns a token and a wrong password is still
+rejected; `outbox-dispatch` edge function 200; `eduspeak.uat.*` 301s.
+
+Rollback: `/etc/nginx/sites-available/eduspeak-uat.conf.bak-*`, `~/eduspeak-sb/.env.bak-*`,
+`~/frontend/eduspeak-india-react/frontend/.env.uat.bak-*` on the UAT box, plus the previous image
+`eduspeakreact:deacd151-fix`.
