@@ -9,7 +9,7 @@
 | Property | Value |
 |---|---|
 | **Assessment Type** | `Role_Based` |
-| **Total Duration** | 30 minutes |
+| **Total Duration** | Admin-selected, **15–60 minutes** (default 30). Falls back to a question-count estimate when unset — see [Duration](#duration) |
 | **Sections** | MCQ (60%), Subjective/Written (25%), Video Response (15%) |
 | **Question Generation** | AI-powered (Gemini via FastAPI) |
 | **Scoring** | MCQ: auto-graded. Subjective + Video: AI-scored (Gemini/Groq) |
@@ -26,6 +26,28 @@
 | **Section A: MCQ** | 10–12 | 18 min | 60% | Auto-graded (correct option) |
 | **Section B: Written Responses** | 2 | 8 min (4 min each) | 25% | AI-scored (0–5 scale per skill) |
 | **Section C: Video Response** | 1 | 4 min | 15% | AI-scored (Deepgram STT + Gemini/Groq) |
+
+The per-section times above are the indicative split of a 30-minute paper. The exam runs on **one whole-assessment countdown**, not per-section timers — see below.
+
+---
+
+## Duration
+
+Duration is **chosen by the admin at creation**, between **15 and 60 minutes** (default 30). It is stored per set on `assessment_config.duration_minutes` and drives the student's countdown.
+
+| Layer | Behavior |
+|---|---|
+| Admin UI (`AssessmentSelect.js`) | "Duration (minutes)" number input, `min=15 max=60 step=5`, default 30, rendered above Question Configuration in the `Role_Based` form. Sent as `duration` on both the broadcast and set-generation payloads |
+| admin-node intake | `broadcastHandler.createBroadcast` and `assessmentHandler.initiateRoleBasedGeneration` clamp with `Math.max(15, Math.min(60, parseInt(duration,10) \|\| 30))` and put `durationMinutes` on `generationPayload` |
+| Persistence | `generationPayload.durationMinutes` → `assessmentSetWorker` → `script/generateRoleBasedQuestions.js`, which writes `assessment_config.duration_minutes` alongside `question_config` |
+| student-node | `getRoleBasedAssessmentQuestions` selects `assessmentConfig.durationMinutes`; when set it is re-clamped to 15–60 and returned as `data.duration_minutes`. When **NULL** it falls back to the legacy estimate: `MCQ 1.5 / Subjective 5 / Video 3 / Coding 10` min per question, rounded up to the nearest 5, minimum 10 |
+| Assessment-React | `assessment.js` reads `props.questions.data.duration_minutes` (`|| 30`) and sets the countdown; unchanged by this feature — it simply receives the admin's number instead of the computed one |
+
+**Gotchas:**
+- The column is **nullable and back-compatible** — every set created before this feature has `duration_minutes = NULL` and keeps the old question-count estimate, so existing assessments are unaffected.
+- The estimate floor is **10** minutes but the admin-selected floor is **15**; a NULL-config set can therefore legitimately report a shorter duration than any admin could pick.
+- The timer remains **client-side only**. `submitAssessment` records `isAutoSubmitted` but student-node does **not** independently verify elapsed time against `duration_minutes`.
+- Duration does **not** change how many questions are generated — that is driven entirely by `question_config`. Setting 15 minutes on a 12-MCQ + 2-subjective + coding paper simply gives candidates less time for the same paper.
 
 ---
 
@@ -120,6 +142,7 @@ In a transaction:
 
 - Admin selects assessment type = `Role_Based`
 - Specifies: job role name, required skills (multi-select), seniority level, industry domain, optional job description
+- Sets **Duration (minutes)** — 15–60, default 30 (see [Duration](#duration))
 - Triggers question generation via API call
 - Admin can preview generated questions before assigning
 - Configures: assessment name, dates, proctoring
@@ -251,7 +274,7 @@ Handlebars template rendered to PDF via Puppeteer. Report includes:
 | `questions` | AI-generated questions with `questionText`, linked to sections |
 | `question_options` | MCQ options with `optionValue` (1 = correct) |
 | `assessment_sections` | Section types: `MCQ Question`, `Subjective Question`, `Video Response`, `Coding Question` (Coding is an optional 4th section) |
-| `assessment_config` | Per-set role config incl. `question_config` JSON (`{ mcqCount, subjectiveCount, videoCount, codingCount }`) — the per-section question counts chosen at creation. A count of **0 excludes that section** from the generated exam |
+| `assessment_config` | Per-set role config incl. `question_config` JSON (`{ mcqCount, subjectiveCount, videoCount, codingCount }`) — the per-section question counts chosen at creation. A count of **0 excludes that section** from the generated exam. Also holds `duration_minutes` (nullable int, 15–60) — the admin-selected exam length; **NULL** means fall back to the question-count estimate |
 | `assessment_set` | Assessment pack with `roleName` stored |
 | `assessment_question_map` | Maps generated questions to assessment set |
 | `assessment_assigned_students` | Per-student assignment with `scoresCalculated` flag |
@@ -266,7 +289,8 @@ Handlebars template rendered to PDF via Puppeteer. Report includes:
 - **Selected-section score columns** — the admin score tables (StudentsTable / CandidateList / StudentReport) show a column per section **selected at creation** (`assessment_config.question_config` count > 0), not a hardcoded MCQ/Subjective/Video/Coding set. admin-node resolves this once per assessment (`getRoleBasedSelectedSections`, falling back to sections actually present in the exam) and returns it as `assessmentInfo.roleBasedSections`; each row's `roleBasedScores` always carries a key per selected section (score value, or `null` when not yet scored → rendered `-`). So a 0-question section never appears, and a selected section is visible even before submission/scoring. `overallScore` averages only the sections that have scores (`null` until any section is scored). The **Excel export** (`exportStudentData`) uses the same selected-section columns via `resolveRoleBasedColumns` (shared helper, mirrored in admin-react's `roleBasedColumns.js`) — so the export includes the **Coding** column when selected and matches the on-screen tables (previously it hardcoded Overall/MCQ/Subjective/Video and dropped Coding).
 - **Skill Coverage Guarantee** — the prompt requires ALL provided skills to be assessed across MCQ + Written + Video sections.
 - **Seniority Adaptation** — question difficulty and focus adapts: Entry level (fundamentals), Intermediate (complex problem-solving), Senior (strategic thinking).
-- **Multi-Modal Assessment** — combines text-based MCQ, written analysis, and video communication in a single 30-minute assessment.
+- **Multi-Modal Assessment** — combines text-based MCQ, written analysis, and video communication in a single assessment whose length the admin sets (15–60 min, default 30).
+- **Admin-Set Duration** — `assessment_config.duration_minutes` is the source of truth for the countdown; when NULL (every pre-feature set) student-node estimates from question counts instead. Enforcement is client-side only. See [Duration](#duration).
 - **AI Scoring** — subjective and video responses are scored by AI (Gemini 2.5 Pro or Groq Llama 3.3 70B) with detailed per-skill feedback.
 - **Speech-to-Text** — video responses are transcribed using Deepgram before AI analysis.
 - **Skill Combining** — final per-skill score = 60% written assessment + 40% video assessment.
