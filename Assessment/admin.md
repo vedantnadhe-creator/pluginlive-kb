@@ -91,8 +91,9 @@ The per-student `status` field ("Completed" / "In Progress" / "Pending" / "Dropo
 - Basic: name, email, phone, degree, department, specialization, photo
 - Dates: sentDate, startDate, endDate, startedDateTime, droppedOffDateTime
   (see [Drop-off timestamp](#drop-off-timestamp-dropped_at-august-2026) — `droppedOffDateTime`
-  is an **ISO instant** from `aas.dropped_at`, or absent; the other dates are pre-formatted
-  IST strings)
+  is an **ISO instant** from `aas.dropped_at`, or absent. `sentDate` is now per-candidate —
+  see [Sent date](#sent-date-created_at--invite_sent_at-august-2026) — and, like the other
+  dates here, ships as a pre-formatted IST string)
 - Status: `scoresCalculated`, `assignedCefr`, `resultingCefr`
 - **Type-specific scores:**
 
@@ -230,6 +231,51 @@ re-create the class of bug this removed. Applied DEV + UAT 2026-08-05; **PROD pe
 > so the In-progress "STARTED DATE & TIME" column reads 5:30 behind IST; and the **corporate**
 > path builds it from `aas.submitted_at` (aliased `attempted_at`), so it shows the submit
 > time, not the start. The college path uses `assessment_started_at` correctly.
+
+### Sent date (`created_at` / `invite_sent_at`, August 2026)
+
+`assessment.assessment_assigned_students.created_at` (`TIMESTAMPTZ`, DB-defaulted `now()`)
+and `.invite_sent_at` (`TIMESTAMPTZ`, nullable) are the source of the admin dashboard's
+**"ASSESSMENT SENT DATE"** column. Both are per-assignment.
+
+**What it replaced.** `getAssessmentDetails` derived `sentDate` from the assessment's own
+`start_time` (`aim.start_time` / `acm.start_time`) — a property of the **map**, shared by
+every candidate under it. `addStudentsToExistingAssessment` (see above) maps new students
+onto that same `assessment_institute_map_id` / `assessment_corporate_map_id`, so a student
+added weeks after the assessment was created still showed the original window start as
+their send date. The same field was independently re-derived two more ways in student-node's
+`TpoDashBoard.js`: the college-list branch read `assessmentData.createdAt`, a field the model
+never had (always `undefined`), and the corporate-list branch fell back to
+`startedAt || submittedAt`.
+
+**Who writes `created_at`:** nobody in application code — it is a DB column default, so
+every one of the ~19 `assessment_assigned_students` insert sites in admin-node (bulk
+`createMany`, single `create`, the raw `INSERT` in `aiInterviewHandler.js`, and the
+assignment queue worker) gets it for free.
+
+**Who writes `invite_sent_at`:** `admin-node/app/service/TrackingService.js`
+`recordEmailEvent()` — the single chokepoint every invite dispatch already passes through,
+for both the email and WhatsApp channels. Stamped only when `category === 'assessment_invite'`
+and the send was accepted/delivered; guarded on `invite_sent_at IS NULL` so a reminder or a
+re-invite never moves the original date.
+
+**Read order** (`candidateTimestamps.js` → `resolveSentDate`, mirrored in student-node's
+`candidateSentDate.js` for the TPO dashboard): `invite_sent_at`, then `created_at`, then the
+map's `start_time` — so every row from before this shipped renders exactly as it did before.
+
+**Two clocks, do not mix them** — same convention as `dropped_at` above: `created_at` /
+`invite_sent_at` are genuine UTC instants (converted to the IST calendar date for display),
+while `start_time` stores IST wall-clock in a UTC column (next section) and is still read
+with `moment.utc`.
+
+**Backfill.** Populated only from `email_events` (`category='assessment_invite'`,
+`status IN ('accepted','delivered')`) — exact evidence a send happened. Deliberately not
+guessed from `assessment_started_at`: for the common case (added at creation, attempted
+mid-window) that would replace a correct window-start date with the attempt date, a
+regression on far more rows than it would fix. Rows with no `email_events` match stay NULL
+and keep rendering the map `start_time`. Applied DEV + UAT 2026-08-06 (10 of 27,489 rows on
+DEV, 35 of 20,196 on UAT); **PROD pending**
+(`DB-Scripts/Assessment Sent Date Per Candidate/20260806T095536Z__assignment_sent_date_per_candidate.sql`).
 
 ### Timezone convention for `start_time` / `end_time` (IST)
 

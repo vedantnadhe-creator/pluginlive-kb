@@ -98,10 +98,14 @@ instead of the whole list. So:
 Covered by `studentSorters.test.js` (framework-free: `node src/modules/Assessment/Partials/studentSorters.test.js`).
 
 **Gotchas — why a sort can look broken when it is not:**
-- **`ASSMT. SENT DATE` is identical for every candidate.** The backend derives it from the
-  assessment's own `start_time`, not a per-candidate value. `ASSMT. DROPPED OFF DATE & TIME`
-  is likewise `end_time`. Clicking those headers reorders rows only via the name tie-break;
-  the date column itself never changes.
+- **`ASSMT. SENT DATE` (fixed August 2026, see admin.md
+  [Sent date](Assessment/admin.md#sent-date-created_at--invite_sent_at-august-2026))** used
+  to be identical for every candidate on a given assessment — derived from the assessment's
+  own `start_time`, not a per-candidate value, so a student added to an existing assessment
+  showed the original window start as their send date. It now reads a per-assignment
+  `invite_sent_at`/`created_at`, so sorting this column is meaningful again — except for rows
+  from before the fix, which still fall back to the shared `start_time` and sort identically
+  to each other.
 - **`ASSMT. STARTED DATE & TIME` is often blank or visually identical.** ~45% of `COMPLETED`
   rows on DEV have `assessment_started_at` NULL, and candidates from one broadcast typically
   start within the same minute — the cell truncates to minutes, so seven rows can all read

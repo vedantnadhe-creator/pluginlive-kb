@@ -70,6 +70,13 @@ Shared writers: `admin-node/app/service/TrackingService.js` and
 never throw, so tracking can never fail a send, a redirect or an assessment
 start. Failures are logged with context, not silently swallowed.
 
+**Side effect (August 2026):** `TrackingService.recordEmailEvent()` also stamps
+`assessment_assigned_students.invite_sent_at` when the row it just wrote is an
+accepted/delivered `assessment_invite` — first-send-wins, so a reminder or
+re-invite never moves it. This is what the admin dashboard's per-candidate
+**ASSESSMENT SENT DATE** now reads; see admin.md
+[Sent date](Assessment/admin.md#sent-date-created_at--invite_sent_at-august-2026).
+
 ### Why `inviteReloadGuard` is the "opened" signal
 The OTP invite runner calls it exactly once per mount, so it is the truest
 server-side "the candidate opened their assessment" signal available — **no
