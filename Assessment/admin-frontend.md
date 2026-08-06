@@ -4,6 +4,8 @@
 
 > **Add Candidate field requirement (current):** In the "Add Candidates Manually" / bulk-upload drawers (`CreateAssessment/Drawers/EnhancedBulkUploadDrawer.js` and `BulkUploadDrawer.js`), **only First Name and Email are mandatory — Last Name is optional**. The `*` on Last Name is removed, the "Add Candidate" button is no longer disabled on a blank last name, the submit-time guard doesn't require it, and the Excel-file row parser no longer drops rows that have a blank last name. Backend: `admin-node` `Assessment.saveStudentList`/`updateStudentList` no longer list `lastName` in `requiredFields` and trim it null-safely.
 
+> **Candidate mobile country code (current):** In `EnhancedBulkUploadDrawer.js`'s manual Add Candidate form, mobile number has its own country-code `Select` next to the number input, backed by `utils/candidateMobile.js` (`COUNTRY_DIAL_CODES`, `DEFAULT_COUNTRY_CODE = '+91'`). It defaults to **+91 pre-selected**, not blank — the drawer-open reset must explicitly set `countryCode: DEFAULT_COUNTRY_CODE` (and clear `phone`) alongside the other fields, since an omitted key there renders the Select empty even though the initial `useState` has the default. When a recruiter adds several candidates in a row, the last-chosen country code is intentionally carried over to the next blank form rather than reset each time.
+
 ---
 
 ## File Reference
