@@ -224,7 +224,7 @@ The live interview is driven by `student-node` (`app/handlers/aiInterviewHandler
 
 - **Admin priority/sample questions (2026-06-29).** `ai_interview_config.sample_questions` (jsonb, default `[]`) holds questions the recruiter wants asked **verbatim, in order, before any AI-generated question** — distinct from `question_guidance` (style hints the AI adapts). admin-react splits the value into an array on `interviewConfig.sampleQuestions`; admin-node persists it on all three config INSERT paths; student-node `loadConfig` reads it and, on each fresh-question turn (never a depth follow-up), serves the next unused sample verbatim (case-insensitive de-dup vs already-asked) with **no LLM call**, then falls back to AI generation once samples are exhausted. DB migration: `Assessment OTP Invite/006_ai_interview_sample_questions.sql`. **Fixed (2026-07-09):** samples were sometimes silently dropped — the completion gate (parameter coverage / 8-question cap / time-up) could fire before all samples were asked. The gate now yields to `samplesRemaining` (candidate-unwilling / trailing refusals still ends the interview absolutely), and a sample's dimension falls back to the last param the candidate was probed on (or the first param) when round-robin is exhausted, so the sample still counts toward `counts[]` / scoring. `student-node/app/handlers/aiInterviewHandler.js` (`submitTurn`). DEV+UAT live. **The admin-react "Priority questions" input was removed (2026-06-30)** — the create form no longer exposes it, so new interviews send `sampleQuestions: []`. The column, the wire field, and the full student-node verbatim-serving path all remain in place (empty array = no priority questions), so it can be re-surfaced later without backend changes.
 
-- **`/assessment/exportStudentData` — AI Interview columns (fixed 2026-06-30).** The export had no AI_Interview branch in its type dispatcher — AI Interview assessments fell into the role-based branch by default and produced **Communication section columns** in the Excel. Fix: add `isAIInterviewAssessment` flag (parallel to behavioral/aptitude/role-based/custom) in both `getAssessmentDetails` sites and propagate through `assessmentInfo`. The export now emits **Overall Score + Verdict + one column pair (Rating + Label) per admin-configured evaluation parameter** resolved once across all completed students. Row cells pull from `ai_interview_scores.parameter_scores` (jsonb); unscored parameters stay blank. Patch: admin-node `app/models/Assessment.js` (`getAssessmentDetails` AI score fetch now also reads `ai_recommendation`, `parameter_scores`, `executive_summary`; the export adds an AI branch before the role-based branch).
+- **`/assessment/exportStudentData` — AI Interview columns (fixed 2026-06-30).** The export had no AI_Interview branch in its type dispatcher — AI Interview assessments fell into the role-based branch by default and produced **Communication section columns** in the Excel. Fix: add `isAIInterviewAssessment` flag (parallel to behavioral/aptitude/role-based/custom) in both `getAssessmentDetails` sites and propagate through `assessmentInfo`. The export now emits **Overall Score + Verdict + Interview Ending + one column pair (Rating + Label) per admin-configured evaluation parameter** resolved once across all completed students. Row cells pull from `ai_interview_scores.parameter_scores` (jsonb); unscored parameters stay blank. Patch: admin-node `app/models/Assessment.js` (`getAssessmentDetails` AI score fetch now also reads `ai_recommendation`, `parameter_scores`, `executive_summary`; the export adds an AI branch before the role-based branch). **Since 2026-08-07** the score/verdict/ending values come from `app/helpers/aiInterviewVerdict.js`, which resolves them to exactly what the recruiter report renders (`Interview Ending` column added there) — see the GOTCHA below before touching any of these cells.
 
 - **Resume in question generation.** The candidate's resume is sent on every `generate-question` turn and is now **used** to personalise questions (a `CANDIDATE RESUME` block, capped ~6000 chars) — anchored to role/JD. (Earlier the prompt explicitly ignored the resume; that instruction was removed.) `score-final` still does not receive the resume.
 
@@ -592,6 +592,57 @@ pin both constants, assert 1-of-8 scores on a drop-off but not on an early exit,
     Score column for drop-offs in the on-screen CandidateList, which reads the same enrichment.
     **Note the `typeof === "number"` test is load-bearing**: a legitimately-scored drop-off can
     have `overall_score = 0`, and a truthiness check would blank it.
+    **Superseded 2026-08-07** — that `typeof === "number"` gate was itself still too narrow;
+    see the entry below.
+
+  - **GOTCHA — the Excel Verdict was blank for an unscorable early exit, and could disagree
+    with the report even when scored (fixed 2026-08-07).** Reported as *"score and verdict are
+    missing in Excel if the candidate ended the interview manually"*. Two independent causes,
+    both in `admin-node/app/models/Assessment.js`:
+    1. **The enrichment query was scores-first.** It read
+       `FROM ai_interview_scores ais JOIN ai_interview_sessions s ON s.id = ais.session_id`,
+       so an interview that ended **below the scoring bar** — which has an
+       `ai_interview_sessions` row but deliberately **no `ai_interview_scores` row**, see
+       `classifyInterviewOutcome` — matched **zero rows**. The export had nothing to render
+       and wrote an empty cell, which reads as *missing data* rather than as *not scorable*.
+       The `typeof overallScore === "number"` fill gate then blanked the row a second time.
+    2. **The Verdict was written raw.** The report **never** renders
+       `ai_recommendation` as stored — `effectiveVerdict` in `admin-react`
+       `Partials/StudentReport/index.js` clamps it to the band the score supports, so a stale
+       row could show `Borderline` in Excel and `Not Fit` in the report for the same
+       interview.
+    Fix: one shared helper, **`admin-node/app/helpers/aiInterviewVerdict.js`** (new), that
+    ports the report's own logic and is called from **both** the college and corporate
+    `getAssessmentDetails` paths (replacing ~71 lines of duplicated query + flatten):
+    - `fetchAIInterviewOutcome()` — driven **from `ai_interview_sessions` with the score
+      `LEFT JOIN`ed**, `ORDER BY ais.created_at DESC NULLS LAST, s.created_at DESC LIMIT 1`
+      (prefers the latest **scored** session, falls back to the latest session of any kind).
+    - `resolveVerdict()` — the score-anchored ceiling, a port of `effectiveVerdict`.
+    - `describeInterviewEndingLabel()` — a port of the `ENDINGS` labels in `admin-react`
+      `Partials/StudentReport/aiInterviewEnding.js`.
+    The Verdict cell now **always says what the report says**: the clamped verdict when
+    scored; `Interview Not Completed` / `Time Limit Reached` / `Interview Ended By
+    Proctoring` / `Interview Ended Early` when unscorable (the report's own banner label,
+    keyed off `session_metadata.completionReason`); `Not Yet Scored` when complete but
+    still queued; and **blank only** for a candidate with no session at all (Pending/Sent).
+    **The system-ended vs candidate-ended distinction is deliberate** — flattening every
+    ending to "Interview Not Completed" holds the missing questions against a candidate who
+    never chose to stop, which is the same mistake the `completionReason` fix below undid on
+    the report.
+    Also added: a **new `Interview Ending` column**, carrying the same banner label for a
+    partial interview that *did* get scored (the report shows the banner **above** the score;
+    without the column a recruiter can't tell a low score came from a three-answer
+    transcript). Overall Score is now **rounded to a whole number** to match the report's
+    `56 / 100` — Excel was writing `55.67` for the same interview. The fill gate keys off
+    `overallScore` being a number **OR** `aiRecommendation` being non-empty, so an unscorable
+    row labelled `Dropped Off` is no longer blanked.
+    **`aiInterviewScores` has no frontend consumer** — nothing in `admin-react` reads it off
+    `getAssessmentDetails`; it exists solely to feed the export, so the blast radius is the
+    Excel file. Tests: `admin-node/test/aiInterviewVerdict.spec.js` (15). Live **DEV + UAT
+    2026-08-07** (`a9b764a`); **PROD pending**.
+    **Three ports now share the verdict/ending vocabulary** — `admin-react` (report),
+    `student-node` `aiInterviewCompletionReason.js` (source of truth for the reason strings),
+    and `admin-node` `aiInterviewVerdict.js` (export). Change one, change all three.
 
 - **RULE — never gate AI Interview score enrichment on the assignment flags (2026-08-04).**
   Gating on `is_submitted` was first patched to `is_submitted || is_attempted` to cover
