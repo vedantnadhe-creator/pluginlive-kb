@@ -52,3 +52,9 @@ The Applied Roles module tracks all roles a student has applied to. It provides 
 - **New role badge:** Tracks new floated role count for notifications
 - **Auth error handling:** 401 errors trigger session clear and redirect to auth URL
 - **Pagination:** `pageLimit=10`, `currentPage`
+
+---
+
+## Related
+
+- [Applied-Role Snapshots](applied-role-snapshots.md) — freezes candidate profile/education/course data at apply time so later profile edits do not retroactively change submitted applications. Flag: APPLIED_SNAPSHOT_READS.
