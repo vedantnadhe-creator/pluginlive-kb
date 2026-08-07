@@ -8,7 +8,14 @@ tags: [service, frontend, uat, supabase, lovable]
 **Repo:** `PluginLive-Technologies/bankingjobreadiness`, branch `main`
 **UAT path:** `/home/ubuntu/bankingjobreadiness` (on the UAT box, directly under `~/`)
 **Live URL:** `https://banking.uat.pluginlive.com/`
-**Stack:** Vite + React + shadcn/ui SPA, backend on **Supabase** (Postgres + Edge Functions, project `kbwjokmmzkgjwiqelrdc`) — not part of the PluginLive Node/Prisma stack.
+**Stack:** Vite + React + shadcn/ui SPA — not part of the PluginLive Node/Prisma stack.
+
+> **UAT moved off hosted Supabase on 2026-08-07.** UAT now talks to a self-hosted
+> Supabase-compatible stack on the same box (`~/banking-sb/`, proxied at
+> `https://banking.uat.pluginlive.com/sb`) backed by our own PostgreSQL. The browser still speaks
+> `supabase-js`; only the origin changed. **PROD is still on hosted project
+> `kbwjokmmzkgjwiqelrdc`.** See `Infrastructure/banking-postgres-migration.md` — read it before
+> touching UAT `.env`, migrations or edge functions.
 
 ## Why it's off the standard deploy path
 
@@ -26,7 +33,9 @@ nvm use 20 && npm ci --legacy-peer-deps && npm run build
 If that `git pull` 403s, the org GitHub token has expired — see `Infrastructure/github-access.md` (the checkout's `origin` URL carries its own token, so the credential store alone is not enough).
 
 - nginx (`/etc/nginx/sites-enabled/banking-react.conf`) serves `dist/` as static files directly — no service/container restart needed, nginx picks up the new build immediately. Because there is no container swap, a failed build leaves a **half-updated live site** — back `dist/` up before building.
-- `.env` holds Supabase keys for project `kbwjokmmzkgjwiqelrdc`; `VITE_*` vars are baked in at build time.
+- `.env` holds the backend URL + anon key; `VITE_*` vars are baked in at build time. **On UAT these
+  now point at `https://banking.uat.pluginlive.com/sb` and the keys are signed with the self-hosted
+  stack's `JWT_SECRET`, not the hosted project's** — the two sets are not interchangeable.
 
 ### `--legacy-peer-deps` is mandatory (as of 2026-08-04)
 
@@ -47,7 +56,10 @@ The app is still entirely Supabase — 229 source files reference Supabase, zero
 ```bash
 # 1. Correct backend baked in, no stray envs
 cd ~/bankingjobreadiness/dist
-grep -rhoE 'https://[a-z0-9]+\.supabase\.co' . | sort | uniq -c        # expect only kbwjokmmzkgjwiqelrdc
+# On UAT since 2026-08-07 this must be EMPTY — any hit means a stale, pre-migration
+# build that would send UAT traffic back to the hosted project.
+grep -rhoE 'https://[a-z0-9]+\.supabase\.co' . | sort | uniq -c        # expect NONE on UAT
+grep -rhoE 'https://banking\.uat\.pluginlive\.com/sb' . | sort -u      # expect this instead
 grep -rhoE '([a-z0-9-]+\.convex\.(cloud|site)|[a-z-]+\.dev\.pluginlive\.com)' . | sort -u   # expect empty
 
 # 2. Site actually renders (SPA — a 200 on index.html proves nothing)
@@ -62,13 +74,21 @@ A `localhost:9999` string in the bundle is expected — it comes from vendor cod
 
 ## Backend (Supabase) — separate deploy step, not covered by the frontend build
 
-`supabase/functions/*` (Edge Functions, Deno) and `supabase/migrations/*` (SQL) live in the same repo but are **not** deployed by `npm run build` — they require the Supabase CLI (`supabase functions deploy <name>`, `supabase db push`) against project `kbwjokmmzkgjwiqelrdc`.
+`supabase/functions/*` (Edge Functions, Deno) and `supabase/migrations/*` (SQL) live in the same repo but are **not** deployed by `npm run build`.
+
+> **On UAT this is no longer a Supabase-CLI step.** Since 2026-08-07, functions deploy with
+> `~/banking-sb/sync-functions.sh` (rsync + fixup overlay + restart the edge runtime), and all
+> **119** migrations are applied to `banking_uat` via `~/banking-sb/replay-migrations.sh`. The
+> drift described below is **resolved on UAT** and applies only to the hosted project, which still
+> backs PROD. See `Infrastructure/banking-postgres-migration.md`.
 
 **The frontend deploy and the Supabase deploy have drifted apart — treat the backend as a separate, explicit step.** As of 2026-08-04 the UAT checkout carries **81 edge functions and 118 migrations**. A fresh `npm run build` ships UI that calls tables and functions which do not exist in the Supabase project. If a newly-deployed screen 404s or errors on a `/functions/v1/...` call, this drift is the first thing to check — not the frontend build.
 
 ### Half the migrations have NEVER been applied — split by who authored them (verified 2026-08-04)
 
-The 118 migrations fall into two groups, and **only one group is live**:
+**Scope: the hosted project only (which now backs PROD). On UAT all 119 are applied.**
+
+The 118 migrations fall into two groups, and **only one group is live on hosted**:
 
 | Filename style | Author | Count | Applied to Supabase? |
 |---|---|---|---|
