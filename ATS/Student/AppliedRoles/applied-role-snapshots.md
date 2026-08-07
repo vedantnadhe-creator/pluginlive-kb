@@ -1,7 +1,7 @@
 ---
 type: module
 created: "2026-08-07"
-last_verified: "2026-08-07"
+last_verified: "2026-08-07 (UAT rollout)"
 tags: [applied-roles, snapshots, student-node, corporate-node, feature-flag]
 ---
 
@@ -78,7 +78,7 @@ All in the `student` schema.
 | `role_application_capture_backlog` | table |
 | `capture_role_application_snapshot` | function |
 | `trg_capture_role_application` | trigger function |
-| `backfill_role_application_snapshots` | function |
+| `backfill_role_application_snapshots` | **procedure** (not a function — invoke with `CALL`) |
 | `trg_capture_role_application_ins` / `_upd` | triggers on `student_role_mapping` |
 
 The DDL is **PG14-safe** — no `MERGE INTO`, no `NULLS NOT DISTINCT`, nothing
@@ -161,7 +161,9 @@ docker exec -w /app <container> node -e \
 | 5 | Production rollout | Same, with monitoring and rollback readiness |
 | 6 | Final cleanup | Remove flag fallback, retain monitoring |
 
-Phases 0–3 are code-complete and merged.
+Phases 0–3 are code-complete and merged. Phase 4 (UAT) is complete as of
+2026-08-07; functional validation by testers is in progress. Phase 5 (PROD) has
+not started.
 
 ---
 
@@ -172,7 +174,8 @@ Phases 0–3 are code-complete and merged.
 | `student-node` | `feat/applied-snapshot` | #1518 | 2026-08-07 |
 | `corporate-node` | `feat/applied-snapshot` | #1735 | 2026-08-07 |
 
-Both merged into `Development`.
+Both merged into `Development`, then promoted to `UAT` (student-node via PR
+#1519; corporate-node via a `Development` -> `UAT` merge).
 
 ---
 
@@ -181,15 +184,34 @@ Both merged into `Development`.
 | | DEV | UAT | PROD |
 |---|---|---|---|
 | Postgres | 17.10 | 16.14 | **14.22** |
-| Snapshot tables | yes | **no** | **no** |
-| Snapshots / applied rows | 598 / 590 | — | — |
-| Capture backlog | 0 | — | — |
-| Code deployed | yes | no | no |
-| `APPLIED_SNAPSHOT_READS` | **true** | unset | unset |
-| Applied rows to backfill | done | **13,008** | **63,347** |
+| Snapshot tables | yes | yes | **no** |
+| Triggers (ins/upd x 2 tables) | 4 enabled | 4 enabled | — |
+| Snapshots captured | 598 | **13,012** | — |
+| Applied rows missing a snapshot | 0 | **0** | — |
+| Capture backlog (unresolved) | 0 | 0 | — |
+| Code deployed | yes | yes | no |
+| `APPLIED_SNAPSHOT_READS` | **true** | **true** | unset |
+| Applied rows to backfill | done | done | **63,347** |
 
-DEV is fully deployed with reads enabled. Functional validation is pending —
-testers will verify in UAT.
+DEV and UAT are both fully deployed with reads enabled. UAT backfill wrote 13,012
+snapshot rows against exactly 13,012 applied applications, all `capture_source =
+'backfill'`. Functional validation by testers is in progress.
+
+### UAT rollout notes (2026-08-07)
+
+- Both `student-node` and `corporate-node` containers verified running the new
+  image with the flag resolving to `"true"` at runtime, and no Prisma
+  `Unknown field` errors in the logs — confirming the generated client includes
+  the snapshot models.
+- **Deploy the two services together.** For roughly an hour UAT ran
+  corporate-node on the new code while student-node was still on a 33-hour-old
+  image. The result is a split-brain: recruiter Drives screens read the frozen
+  value while student-node-served views (candidate lists, TPO screens, candidate
+  drawer) read live. It looks like a feature bug and is not one.
+- After a deploy, confirm the container was actually recreated before concluding
+  anything — compare `docker inspect <c> --format "{{.State.StartedAt}}"` against
+  the image's `{{.Created}}`. A `docker ps` "Up N hours" older than the image
+  means the image was rebuilt but the container was not replaced.
 
 ---
 
@@ -200,10 +222,42 @@ testers will verify in UAT.
    - `*__applied_role_snapshot_capture.sql`
 2. Add `export APPLIED_SNAPSHOT_READS=true` to the environment's env file.
 3. Rebuild and deploy both `student-node` and `corporate-node` from `Development`.
-4. Run `*__applied_role_snapshot_backfill.sql`.
+4. Run `*__applied_role_snapshot_backfill.sql`, then invoke the procedure it
+   creates (see below).
 
 Steps 3 and 4 are interchangeable — the overlay design means enabling reads
-before the backfill completes is safe.
+before the backfill completes is safe. Deploy **both** services in the same
+window, though; see the split-brain note above.
+
+### Running the backfill
+
+It is a database call, not an API call. Two constraints, both of which will
+otherwise fail the run:
+
+- **Use a write-capable role.** The tester helper `scripts/ro-query.sh <env>`
+  connects as `pl_tester_ro`, which is SELECT-only with
+  `default_transaction_read_only=on`; the `CALL` returns permission denied. On
+  UAT the write role is `pluatadmin` (credentials in the services' `.env.uat`).
+- **Do not wrap it in a transaction.** No `psql -1`, no `--single-transaction`,
+  no explicit `BEGIN`. The procedure issues a `COMMIT` per batch so a large
+  backfill does not hold one long-running transaction open, and errors out if it
+  finds itself inside one. Plain `psql` is autocommit and works as-is.
+
+```bash
+psql -h <host> -p <port> -U <write-role> -d <db> --no-psqlrc -v ON_ERROR_STOP=1 \
+     -c "CALL student.backfill_role_application_snapshots();"
+```
+
+Re-running is safe and resumable: each batch selects only applications that still
+lack a snapshot, so a run killed partway resumes rather than duplicating. It also
+**never overwrites an existing `capture_source = 'apply'` row** — a genuine
+as-of-apply capture is never downgraded to a backfilled one.
+
+Orphan applications (mapping rows whose `student.students` record is gone) are
+skipped by design and reported in the `NOTICE` output. DEV and UAT each carry
+~11,106 of these; PROD has none. The `student.students` join is load-bearing, not
+tidiness — without it those rows would permanently "lack a snapshot" and the
+batch loop would never terminate.
 
 ### Testing caveat
 
@@ -215,14 +269,29 @@ application, or wait for the backfill.
 ### Verification queries
 
 ```sql
--- coverage
-SELECT (SELECT count(*) FROM student.role_application_student) snapshots,
-       (SELECT count(*) FROM student.student_role_mapping
-         WHERE is_applied IN (1,-1)) applied_rows;
+-- coverage: must be 0. Unions BOTH mapping tables (PROD has applied rows in
+-- each with no counterpart in the other) and joins student.students to exclude
+-- orphans, which can never be snapshotted.
+SELECT count(*) AS missing FROM (
+  SELECT student_id, role_id FROM student.student_role_mapping   WHERE is_applied IN (1,-1)
+  UNION
+  SELECT student_id, role_id FROM corporate.job_role_student_map WHERE is_applied IN (1,-1)
+) a
+JOIN student.students st ON st.id = a.student_id
+LEFT JOIN student.role_application_student s
+       ON s.id = a.student_id AND s.role_id = a.role_id
+WHERE s.id IS NULL;
+
+-- how snapshots were captured
+SELECT capture_source, count(*) FROM student.role_application_student GROUP BY 1;
 
 -- backlog should be 0 in normal operation
-SELECT count(*) FROM student.role_application_capture_backlog;
+SELECT count(*) FROM student.role_application_capture_backlog WHERE resolved_at IS NULL;
 ```
+
+Note the key column: `role_application_student` mirrors `student.students` via
+`LIKE`, so the student identifier is `id`, not `student_id`. The other three
+snapshot tables do use `student_id`.
 
 ### Rollback
 
@@ -236,19 +305,23 @@ capture is harmless on its own.
 
 1. **DDL is not in version control.** The three SQL files live at
    `/home/ubuntu/db-scripts-staging/applied-role-snapshot/` on the dev host
-   (copied out of `/tmp`, which is cleared on reboot). They need a home in the
-   DB-Scripts repo. Function bodies are also recoverable from a live DB via
-   `pg_get_functiondef()`.
+   (copied out of `/tmp`, which is cleared on reboot). That directory is not a
+   git repo. Pushing them to DB-Scripts was **deliberately deferred** at the UAT
+   stage; it should happen before the PROD rollout, since
+   `grep -rl "PROD — pending"` over DB-Scripts is how the PROD migration order is
+   derived, and this feature is currently invisible to it. Function and procedure
+   bodies are also recoverable from a live DB via `pg_get_functiondef()`.
 2. **No Prisma migration.** `prisma/schema-student.prisma` declares the five
    models with nothing in `prisma/migrations/`. `student-node`'s Dockerfile runs
    `npx prisma migrate deploy`, which will **not** create these tables — they
    must come from the DB-Scripts SQL. This also means `prisma migrate dev` will
    report drift and propose a reset. Consider generating a migration for the five
    tables; triggers and functions must stay raw SQL either way.
-3. **`corporate-node` has no `.env.uat`.** Only `.env`, `.env-sample`,
-   `.env.dev`, `.env.sandbox` exist. A UAT build with `ENVIRONMENT=uat` will fail
-   on the `COPY`. Recruiter-side reads live entirely in corporate-node, so this
-   blocks the main test scenario.
+3. ~~**`corporate-node` has no `.env.uat`.**~~ **Resolved 2026-08-07.**
+   `.env.uat` now exists on the UAT box at `~/api/corporate-node/.env.uat` with
+   `export APPLIED_SNAPSHOT_READS=true` at line 49, and the UAT image built from
+   it. Note it is **untracked** — env files are box-local in both services, so it
+   exists only on that host and must be created again for any new environment.
 4. **PROD is on PG14.22** while dev/UAT are 17/16. Not a blocker for this feature
    (the DDL is PG14-safe), so the planned PG16 upgrade and this rollout are
    independent — do not couple them.
