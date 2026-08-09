@@ -46,6 +46,7 @@ services:
 
 | Doc | Covers |
 |---|---|
+| `cefr-levels.md` | CEFR bands as the corporate end sees them — pitching the level, how the band is computed, filtering/sorting in Drives |
 | `cv-jd-match-scoring.md` | AI resume-vs-JD scoring (corporate-node + fastapi-ai-engine) |
 | `shortlist-gate.md` | The shortlist gate for corporate-node-v2 — **built and reverted**, kept as the design record for a rework |
 | `v2-strangler-fig.md` | corporate-react-v2 / corporate-node-v2 (**DEV only**) and the v1 nav flip that routes users into them — read before promoting a vertical to UAT/PROD |
