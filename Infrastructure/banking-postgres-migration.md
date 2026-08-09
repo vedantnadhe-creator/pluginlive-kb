@@ -1,8 +1,13 @@
 # Banking Job Readiness: hosted Supabase → PluginLive PostgreSQL (UAT)
 
-**Status (2026-08-07): DONE on UAT.** `banking.uat.pluginlive.com` runs entirely on PluginLive
-infrastructure. Verified in a real browser: **zero requests to `*.supabase.co`**, zero 4xx/5xx from
-the API layer, admin login works and the console renders live data.
+**Status (2026-08-09): DONE on UAT, with real production data.**
+`banking.uat.pluginlive.com` runs entirely on PluginLive infrastructure. Verified in a real
+browser: **zero requests to `*.supabase.co`**, zero 4xx/5xx from the API layer, admin login works
+and the console renders live counts (61 candidates, 106 quizzes, 17 assessments taken).
+
+Infrastructure cut over 2026-08-07. A CSV export of the hosted `public` schema was supplied on
+2026-08-09 and loaded: **13,904 of 13,925 rows across 31 tables, 0 skipped**, giving 15,472 rows
+across 46 tables with **all 51 foreign keys orphan-free**.
 
 PROD is untouched and still on hosted Supabase project `kbwjokmmzkgjwiqelrdc`.
 
@@ -35,7 +40,8 @@ could read.
 | Storage buckets | 10 (created by the migrations, **empty**) |
 | Realtime publication | 17 tables, `REPLICA IDENTITY FULL` |
 | Edge functions | 81 deployed, **81 boot clean** |
-| Rows | 1,584 seeded by migrations + 8 recovered from hosted |
+| Rows | **15,472** across 46 tables (1,584 seeded + 13,904 from the hosted CSV export) |
+| auth.users | 61 — 59 reconstructed from the export, **passwordless by design** |
 
 ## Architecture
 
@@ -69,7 +75,11 @@ Frontend cutover was 3 env vars, as planned: everything funnels through
 | `provision.sh` | roles, schemas, extensions, publication ownership |
 | `replay-migrations.sh` | replays the 118 migrations; `fixups/` override upstream by filename |
 | `sync-functions.sh` | repo functions → stack, then overlays `function-fixups/` |
-| `merge-hosted-data.py` | merges the recovered rows by natural key |
+| `merge-hosted-data.py` | merges the 8 anon-key-recovered rows by natural key |
+| `make-auth-users.py [--apply]` | rebuilds the 59 auth identities the CSV export references |
+| `load-csv-export.py [--dry-run]` | loads the hosted CSV export (staging + native `COPY`, FK-ordered) |
+| `verify-load.py` | walks all 51 FKs looking for orphans |
+| `set-user-password.sh <mobile\|email> '<pw>'` | enables one imported account |
 
 Upstream migration files are **never edited**. Deviations live as whole-file overrides in
 `fixups/`, so a repo pull cannot conflict and `diff` shows every change.
@@ -139,7 +149,83 @@ rather than hand-inserting plaintext. Realtime's role needs `REPLICATION`.
   that cannot resolve anywhere. The working tree holds a correct Lovable-regenerated bundle; only
   its OAuth issuer was hardcoded to the hosted project and now reads from the environment.
 
-## Data: 8 rows, and why that is all there is
+## The hosted CSV export (2026-08-09)
+
+A CSV dump of the hosted `public` schema (44 tables) was supplied and loaded. **13,904 of 13,925
+rows, 0 skipped for a missing FK parent.**
+
+### `_table_index.csv` row_count is a LINE count, not a row count
+
+It says `topics,15918`. The file has 15,919 physical lines but only **482 rows** — topic bodies are
+markdown spanning many lines. Confirmed three ways: the CSV parses with zero malformed rows, all
+482 ids are unique, and exactly 482 lines begin with a UUID. Same for `assessment_responses`
+(11,241 rows, not 20,739) and `chat_history` (129, not 3,950). **Do not size work off that
+manifest.**
+
+### auth.users had to be reconstructed — and the accounts have no password
+
+The export is `public`-only, but eight public tables FK to `auth.users`. 59 identities were rebuilt
+with the auth email derived as **`<mobile>@bankready.app`** — that is what `Login.tsx` builds to
+sign candidates in, so it reconstructs the real login identity rather than the contact email
+(44 of 59 have a mobile; the rest get NULL).
+
+**They carry no password and cannot sign in.** The hosted bcrypt hashes were never available.
+Enable one deliberately with `./set-user-password.sh <mobile|email> '<password>'`, which goes
+through GoTrue's admin API so the hash matches what sign-in verifies.
+
+> **GoTrue gotcha:** `confirmation_token`, `recovery_token`, `email_change_token_new` and
+> `email_change` are nullable in the schema but GoTrue scans them into non-nullable Go strings.
+> Left NULL, every read of the row 500s with `Database error loading user` on both sign-in and the
+> admin API. They must be `''`.
+
+### Taxonomy is remapped, not duplicated
+
+`domains.slug` is UNIQUE and 8 of 10 exported domains collide with migration-seeded rows under
+*different* uuids; `subjects` is UNIQUE on `(domain_id, slug)` and 21 of 24 collide. Local ids stay
+canonical (seed-only tables like `admin_modules` reference them) and incoming FKs are rewritten
+through a remap table. Colliding rows still take hosted's attribute values.
+
+### 21 rows hosted allowed and our schema does not
+
+`user_module_access` arrived with 16 duplicate `(user_id, module_id)` and 5 duplicate
+`(user_id, group_id)` pairs. Those partial unique indexes come from hand-written migrations **never
+applied to hosted**, so hosted permitted the duplicates. Collapsed to the newest per key, 379 → 358.
+
+> **Loader lesson:** `pg_constraint` does **not** contain `CREATE UNIQUE INDEX … WHERE …`. Read
+> `pg_index` or partial unique indexes are invisible. And when de-duplicating against one, apply
+> its **predicate** — `profiles` has `UNIQUE(mobile) WHERE mobile <> ''`, and matching on `mobile
+> IS NOT DISTINCT FROM mobile` silently deleted two admin rows that both had `''`, rows the index
+> does not even cover.
+
+## ⚠ Any signed-in user can read every profile (pre-existing)
+
+Three app policies grant **every authenticated user** read access to all rows:
+
+```
+profiles        "Authenticated can view all profiles for leaderboard"        USING (true)
+module_progress "Authenticated can view all module progress for leaderboard" USING (true)
+quiz_attempts   "Authenticated can view all quiz attempts for leaderboard"   USING (true)
+```
+
+RLS policies are OR'd, so these override the narrower "own row" ones. Verified against the live
+site: a plain `candidate` reads other people's **name, mobile, email and institute**.
+
+**Not introduced by the migration** — the policies come from Lovable migration
+`20260316070317_bc5a1b1a-…`, which *is* applied on hosted, so PROD behaves identically. What is new
+is that UAT now holds 59 real people's PII.
+
+`20260728150000_fix_security_vulnerabilities.sql` is meant to fix exactly this and **does nothing**:
+it drops `"Authenticated can view all progress"` while the real policy is `"Authenticated can view
+all module progress for leaderboard"`. `DROP POLICY IF EXISTS` on a non-existent name succeeds
+silently. Same for `quiz_attempts`; `profiles` it never attempts.
+
+The pattern is app-wide: **78 tables** carry a `USING (true)` SELECT policy for `authenticated`,
+including `students`, `payment_requests`, `trainers` and the `proctoring_*` tables.
+
+**Deliberately not fixed here.** `/leaderboard` is a shipped page backed by these policies; the
+right fix exposes only display fields (a view or column-scoped policies) and is a product decision.
+
+## Data recovered before the export: 8 rows
 
 All **117** tables were probed on the hosted project with the public anon key. Exactly **three**
 return rows: `domains` (10), `subjects` (24), `testimonials` (3). The other 114 return 0 — Banking's
