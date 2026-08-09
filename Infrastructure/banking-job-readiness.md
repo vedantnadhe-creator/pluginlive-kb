@@ -27,7 +27,21 @@ This app (and its sibling `ailearning.uat.pluginlive.com`) came in as a Lovable-
 cd ~/bankingjobreadiness
 cp -a dist ../bankingjobreadiness-dist-backup-$(date +%Y%m%d-%H%M%S)   # nginx serves dist/ live; keep a rollback
 git pull origin main   # if package-lock.json is dirty from a prior install, `git checkout -- package-lock.json` first
-nvm use 20 && npm ci --legacy-peer-deps && npm run build
+nvm use 20 && npm install && npm run build
+```
+
+**On UAT, the frontend build is only step 3 of 4.** Since the self-hosted move, a pull that brings
+new migrations or edge functions needs those applied too, or the new UI calls tables/functions that
+do not exist yet:
+
+```bash
+# 1. preserve the self-hosted patches across the pull (.env + adminErrorLogger.ts)
+git stash push -- .env src/lib/adminErrorLogger.ts && git merge --ff-only origin/main && git stash pop
+# 2. any NEW migration -> add an idempotent copy in ~/banking-sb/fixups/ and apply just that file,
+#    then re-run sql/03_grants.sql and SIGUSR1 banking-sb-rest to reload PostgREST's schema cache.
+#    Do NOT re-run the whole replay: it would re-execute data backfills against real data.
+# 3. ~/banking-sb/sync-functions.sh          # edge functions + fixup overlay
+# 4. npm install && npx vite build           # frontend
 ```
 
 If that `git pull` 403s, the org GitHub token has expired — see `Infrastructure/github-access.md` (the checkout's `origin` URL carries its own token, so the credential store alone is not enough).
@@ -37,7 +51,13 @@ If that `git pull` 403s, the org GitHub token has expired — see `Infrastructur
   now point at `https://banking.uat.pluginlive.com/sb` and the keys are signed with the self-hosted
   stack's `JWT_SECRET`, not the hosted project's** — the two sets are not interchangeable.
 
-### `--legacy-peer-deps` is mandatory (as of 2026-08-04)
+### `--legacy-peer-deps` — NO LONGER NEEDED (as of 2026-08-09)
+
+Upstream repinned `date-fns` from `^4.4.0` to `3.6.0`, which satisfies
+`react-day-picker@8.10.1`'s `^2||^3` peer range. Plain `npm install` now succeeds; verified on the
+UAT box at commit `6c0429b`. Keep the note below for context on older checkouts.
+
+### (historical) `--legacy-peer-deps` was mandatory (2026-08-04 → 2026-08-09)
 
 Plain `npm install` **and** `npm ci` both fail with `ERESOLVE`: `react-day-picker@8.10.1` declares `peer date-fns@"^2.28.0 || ^3.0.0"` but the repo pins `date-fns@4.4.0`. This is stale peer metadata in `react-day-picker`, not a real incompatibility. Use `npm ci --legacy-peer-deps` — `ci` keeps the install lockfile-exact, `--legacy-peer-deps` just skips the peer check.
 
