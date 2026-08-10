@@ -51,6 +51,18 @@ Duration is **chosen by the admin at creation**, between **15 and 60 minutes** (
 
 ---
 
+### Coding starter code must not solve the question (2026-08-07, promoted to UAT 2026-08-10)
+
+Generated coding questions were shipping **starter code that already contained the solution** (or part of it), so a candidate could pass the test cases without writing anything. `fastapi-ai-engine` `QuestionGeneration/Role_Specific/question_generator.py` now enforces this on both sides:
+
+- **Prompt** — starter code must be an *empty editor scaffold*: a meaningful function name and signature, body limited to a docstring/comment plus `pass`, `...`, or a clear not-implemented exception. No return value, loop, conditional, or call. Stated as *"it must fail until the candidate writes the solution"*, and the signature/test cases must still be consistent enough that a correct solution passes all 4 tests.
+- **Code-level rejection** — `_is_placeholder_starter_code(language, code)` parses Python starter code with `ast` and accepts it **only** when the module is exactly one function whose body (after an optional docstring) is a single `pass`, `...`, or `raise NotImplementedError(...)`. Anything else is rejected and regenerated. Deliberately restrictive: an LLM-written "hint" body is indistinguishable from a partial solution, so the check allow-lists rather than blocks.
+- Covered by `tests/test_role_coding_starter_code.py`.
+
+Commit `eb518bf` (authored 2026-08-07 on `Development`, reached UAT 2026-08-10 as part of the `Development → UAT` promotion). **PROD pending.**
+
+---
+
 ## End-to-End Flow
 
 1. Admin specifies: job role, skills, seniority, industry domain, optional job description
