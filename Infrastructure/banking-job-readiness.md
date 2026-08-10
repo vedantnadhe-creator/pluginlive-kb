@@ -30,6 +30,18 @@ git pull origin main   # if package-lock.json is dirty from a prior install, `gi
 nvm use 20 && npm install && npm run build
 ```
 
+### Deploy log
+
+| Date | Commit | Migration applied | Notes |
+|---|---|---|---|
+| 2026-08-09 | `6c0429b` | `20260808045623` (as idempotent fixup) | 41 commits; date-fns repin removed the need for `--legacy-peer-deps` |
+| 2026-08-10 | `8877a68` | `20260810100000_admin_subscription_rbac_menu_access` | 18 commits; adds **Subscriptions & Access** and **RBAC & Reports** to the admin nav; edge functions 81 → 82 (`request-password-reset`) |
+
+`20260810100000` needed **no fixup** — it is `ALTER COLUMN … SET DEFAULT` plus a distinct-union
+`UPDATE`, so it is naturally idempotent. Effect on UAT: per-admin `allowed_tabs` went 56 → 58 and
+15 → 54 rows, and every row now carries `subscriptions`, `rbac-reports` and
+`admin-journey-payment-verification`.
+
 **On UAT, the frontend build is only step 3 of 4.** Since the self-hosted move, a pull that brings
 new migrations or edge functions needs those applied too, or the new UI calls tables/functions that
 do not exist yet:

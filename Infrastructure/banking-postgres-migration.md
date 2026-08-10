@@ -1,6 +1,6 @@
 # Banking Job Readiness: hosted Supabase → PluginLive PostgreSQL (UAT)
 
-**Status (2026-08-09): DONE on UAT, with real production data.**
+**Status (2026-08-10): DONE on UAT, with real production data. Deployed at commit `8877a68`.**
 `banking.uat.pluginlive.com` runs entirely on PluginLive infrastructure. Verified in a real
 browser: **zero requests to `*.supabase.co`**, zero 4xx/5xx from the API layer, admin login works
 and the console renders live counts (61 candidates, 106 quizzes, 17 assessments taken).
@@ -39,7 +39,7 @@ could read.
 | Functions / triggers / FKs / indexes | 173 / 26 / 51 / 844 |
 | Storage buckets | 10 (created by the migrations, **empty**) |
 | Realtime publication | 17 tables, `REPLICA IDENTITY FULL` |
-| Edge functions | 81 deployed, **81 boot clean** |
+| Edge functions | **82** deployed, **82 boot clean** (81 until `request-password-reset` arrived 2026-08-10) |
 | Rows | **15,472** across 46 tables (1,584 seeded + 13,904 from the hosted CSV export) |
 | auth.users | 61 — 59 reconstructed from the export, **passwordless by design** |
 
