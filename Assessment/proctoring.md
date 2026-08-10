@@ -129,23 +129,38 @@ Now:
 `uvicorn.run(..., reload=True)` was hardcoded on, **including in production** — the
 dev-only file-watching reloader. Now defaults off; opt in with `UVICORN_RELOAD=true`.
 
-### PROD scheduling constraint (open)
+### PROD scheduling constraint
 
 `fast-api` requests `cpu: 1000m` per replica. That figure is deliberate and
 documented in `pl-oks-cluster/api-ns/fast-api.yaml`: at 250m the scheduler priced a
 pod at a quarter of its real cost and packed four onto one 4-core node. Measured
-draw (0.5–1.4 cores) confirms 1000m is honest pricing, **so do not lower it to make
-more replicas fit**.
+draw (0.5-1.4 cores) confirms 1000m is honest pricing, **so do not lower it to make
+more replicas fit.**
 
-The consequence is that HPA `maxReplicas: 8` is unreachable — the 5-node
-`VM.Standard.A1.Flex` pool is at 74–87% *requested* CPU (while only 6–12% *used*),
-so scale-up attempts park pods in `Pending` with
-`0/5 nodes are available: 5 Insufficient cpu`. Fixing that needs cluster capacity
-or a lower `maxReplicas`, not a smaller request.
+The 5-node `VM.Standard.A1.Flex` pool is at 74-87% *requested* CPU (while only
+6-12% *used*), which fits exactly **6** `fast-api` replicas. HPA `maxReplicas` was
+`8` - unreachable, so two pods sat in `Pending` (`0/5 nodes are available:
+5 Insufficient cpu`) indefinitely.
+
+That also **deadlocked the 2026-08-10 rolling update**: with `maxSurge: 50%` the
+controller created 6 unschedulable new pods and then refused to retire any old one,
+because scale-down requires `available > desired - maxUnavailable` and 6 was not
+greater than `8 - 2`. The rollout sat at "6 out of 8 new replicas have been
+updated" until unstuck. Both settings were corrected:
+
+- HPA `maxReplicas: 8` -> **6** (honest; raising it again needs cluster capacity).
+- Deployment strategy `maxSurge: 50%/maxUnavailable: 25%` -> **`maxSurge: 0`/
+  `maxUnavailable: 1`**, so a replacement pod is scheduled into the CPU freed by
+  retiring the pod it replaces, instead of waiting for headroom that never comes.
 
 Note also that HPA cannot help an exam-start burst at all: scale-up takes ~110s to
-schedule plus warm-up, against a burst that lasts seconds. **Pre-scale ahead of
+schedule plus ~25s warm-up, against a burst that lasts seconds. **Pre-scale ahead of
 scheduled assessments**; `minReplicas: 3` is the real capacity during one.
+
+**`kubectl apply -f fast-api.yaml` used to be dangerous** - the file's `image:` was
+pinned at a 2025 tag while `deploy.sh` sets the real one via `kubectl set image`.
+It has been re-synced (0-line `kubectl diff`), but it drifts again on every deploy;
+check the image line before applying.
 
 ### Load testing it
 
