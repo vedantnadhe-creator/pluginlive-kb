@@ -35,11 +35,59 @@ Service unit: `/etc/systemd/system/institute-react-v2.service` (`next start`,
 | Screen | v2 route | Notes |
 |---|---|---|
 | TPO Dashboard | `/v2/dashboard` | Single assessment view — see below |
-| Manage Assessments | `/v2/assessments` | List + filters + type legend |
+| Manage Assessments | `/v2/assessments` | Schedule-wise / Student-wise toggle — see below |
 | Assessment detail | `/v2/assessments/:id` | Overview · Schedule · Student-wise performance |
 | Full schedule | `/v2/schedule` | Month/Week agenda + mini calendar |
 
 Everything else is still v1.
+
+## Manage Assessments — the two views
+
+A segmented control above the table swaps **two separate table components**
+(not one table with conditional columns):
+
+- **Schedule-wise** — one row per assessment. Backed by
+  `/institutes/assessments/v2/list`, which returns the FULL list; the screen
+  filters, counts and paginates client-side because an institute has only
+  hundreds of assessments.
+- **Student-wise** — one row per *student of the institute*, across every
+  assessment they were sent: current active assessments, taken/sent with a
+  by-type doughnut, Communication and Aptitude (latest score, delta vs their
+  first attempt, sub-section breakdown on hover) and overall progress/level.
+
+**Student-wise is paged and searched in SQL, unlike the rest of v2.** A single
+institute already carries 10k students on DEV, so the "fetch everything, filter
+in the browser" pattern used elsewhere would ship megabytes and render 10k DOM
+rows. `GET /institutes/assessments/v2/students?instituteId&search&limit&offset`
+→ `{ students, total, limit, offset }`; the BFF route is
+`/v2/api/assessments/students`. Model: `app/models/StudentWiseV2.js`.
+
+Roster definition: the institute's campus students (`students.institute_campus_id`
+→ `institutes_campuses.institute_id`) **UNION** every email the institute has
+assigned an assessment to. The union matters both ways — a student whose profile
+was never campus-linked still appears if something was sent to them, and a fresh
+student with no assessments still appears as a real row.
+
+The status tabs are **not** rendered in Student-wise. `.mc-header` is
+`justify-content: space-between`, so with the tabs gone the search/Filters group
+became the header's only child and got parked on the left (throwing the
+right-aligned Filters panel off the card edge); `.mc-header-right:only-child`
+carries a `margin-left: auto` to hold it on the trailing edge.
+
+Known gap: the Filters popover is assessment-scoped (Type / Schedule / Dept /
+Year, counted over *assessments*) and feeds the Schedule-wise table only, so
+selecting values there does nothing to the student rows.
+
+### `statistics` is `jsonb` on DEV but `json` on UAT
+
+`assessment.aptitude_scores.statistics` holds the Aptitude sub-section
+breakdown under `.categories`, and the two environments disagree on its column
+type. `json->'categories'` yields `json`, so `jsonb_array_elements()` over it
+dies with *"function jsonb_array_elements(json) does not exist"* — which passed
+every DEV test and then 500'd the whole endpoint on UAT for any institute with a
+scored Aptitude attempt. Queries touching this column must cast explicitly:
+`jsonb_array_elements((ap.statistics::jsonb)->'categories')`. Assume the same
+split for any other json column until checked on both boxes.
 
 ## Nav wiring (v1 → v2)
 
@@ -120,6 +168,19 @@ sudo systemctl restart institute-react-v2
 ```
 
 `npm ci` fails here — there is no `package-lock.json`.
+
+Two traps worth naming, both hit on 2026-08-10:
+
+- **`node -v` is 16.19.0 over a non-interactive SSH command.** nvm is only
+  sourced by a login shell, so `ssh box "npm run build"` fails with *"Node.js
+  version >=20.9.0 is required"* while leaving the previous `.next/BUILD_ID` in
+  place — so it looks like it worked. Export the path explicitly:
+  `export PATH=$HOME/.nvm/versions/node/v20.20.2/bin:$PATH`, and confirm
+  `BUILD_ID` actually *changed*.
+- **Restart via systemd, never `nohup next start`.** The unit is
+  `Restart=always`; a hand-started process grabs the port and leaves
+  `systemctl status` stuck in `activating` with `MainPID 0` forever — the app
+  serves fine but is unsupervised and will not come back after a reboot.
 
 ## Order of operations when flipping a nav entry
 
