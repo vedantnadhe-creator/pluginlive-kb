@@ -64,6 +64,50 @@ History:
 If you ever see `engineType = "binary"` reintroduced, it should only be a
 temporary ARM64-panic mitigation — prefer library on 6.19.3+.
 
+### 2026-08-10: the panic came back on institute-node (still Prisma 4.16.2)
+
+The 2026-06-16 rollback returned institute-node to Prisma 4.x **and removed
+`serializeRawMethods` + the engine-restart retry with it** (they were part of
+the reverted perf stack). 6.19.3 fixes the panic; 4.16.2 does not. So the
+service went back to panicking on concurrent `$queryRaw` — with nothing left to
+absorb it.
+
+Symptom: **~8 parallel requests to any DB-backed route killed the process**
+(`malloc(): unaligned fastbin chunk detected`, or a silent exit 0), docker
+restarted the container, and every in-flight request returned 502. Non-DB
+routes at the same concurrency were fine. The v2 TPO dashboard fans out four
+calls on load, so it tripped this on essentially every visit and the whole
+screen failed — taking the v1 portal down with it for ~20s each time.
+
+Fix (institute-node `aab8a12`): restored `serializeRawMethods` +
+`retryOnEngineRestart` in `app/helpers/utils.js`, **keeping `engineType =
+"library"`**. Measured on the load that used to kill it every time:
+
+| config | result | dashboard fan-out |
+|---|---|---|
+| library, no serialization | **crashes every time** | — |
+| binary + serialize | 168/168 ok, 0 restarts | 0.33 / 0.95 / 1.08 / 1.10s |
+| **library + serialize** | 168/168 ok, 0 restarts | **0.33 / 0.82 / 0.94 / 0.96s** |
+
+So **serializing the raws is the fix, not the binary engine** — the panic needs
+raw queries running *concurrently*, and the queue removes that. Library stays
+~10-13% faster because it skips the IPC this doc already blames for the June
+UAT slowness. Binary was tried first and reverted for exactly that reason.
+
+Cost to accept: raw queries are serialized process-wide (institute-node has 24
+model files using raw SQL), so one slow raw query briefly blocks the others,
+bounded by `RAW_QUERY_TIMEOUT_MS` (default 30s). Also **array-form
+`$transaction([...])` containing raw queries now throws** ("All elements of the
+array need to be Prisma Client promises") because the wrapper returns a plain
+promise — all current call sites use the interactive `$transaction(async (tx)
+=> …)` form, which is unaffected and verified working.
+
+**Real exit:** upgrade institute-node to `@prisma/client` 6.19.3, where the
+panic is fixed and the serialization queue can be dropped. Until then, do not
+remove `wrapPrismaInstance` from `getPrismaInstance` — and check
+student-node / corporate-node, which were rolled back the same way and are
+likely carrying the same live defect.
+
 ## UAT app server is CPU-bound for portal fan-out endpoints
 
 UAT app host = OCI `VM.Standard.A1.Flex` (Ampere ARM), **8 OCPU / 32 GB** (raised

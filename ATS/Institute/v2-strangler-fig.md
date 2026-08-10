@@ -120,6 +120,26 @@ assessment schedules, `b4c` student at-risk, `b4d` department distribution,
 `b4b` competency, `b6` year-on-year (only with 2+ years of data), plus the
 "This week" rail.
 
+## The dashboard must survive a failed BFF call
+
+`/api/dashboard/filters` used to answer its error fallback as **200** with
+`{ departments, years }` while the client contract is `{ degrees, years }`.
+`useDashboardFilters` only guards on `res.ok`, so it stored that body verbatim,
+left `degrees` undefined, and DashboardView's `for (const d of
+filterOptions.degrees)` threw **"degrees is not iterable"** — escaping to
+`app/global-error.tsx` and rendering a bare, unstyled "Something went wrong"
+with no shell. Any institute-node blip therefore blanked the whole screen
+instead of showing the cockpit's own "Couldn't load the dashboard / Retry".
+
+Fixed 2026-08-10: the shape lives in `lib/types/dashboard` as
+`DashboardFilterOptions` + `EMPTY_FILTER_OPTIONS`, imported by **both** the BFF
+and the hook so they cannot drift again, and the hook normalises the response
+(`Array.isArray(...) ? ... : []`) so no payload can crash the render.
+
+Telling the two apart when debugging: the cockpit's own failure is styled and
+inside the shell; a bare white page with a "Try again" button is the ROOT error
+boundary, i.e. something **threw during render** — a 502 alone never does that.
+
 ## Auth
 
 There is **no middleware auth check** — the JWT lives in `localStorage`, which
