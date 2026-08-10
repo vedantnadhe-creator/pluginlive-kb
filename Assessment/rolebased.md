@@ -276,6 +276,40 @@ Handlebars template rendered to PDF via Puppeteer. Report includes:
 - Per-skill combined scores with source breakdown
 - Detailed AI feedback per question
 - Overall assessment verdict and recommendations
+- **Assessment Feedback** block — see below
+
+#### Assessment Feedback block (Key Strengths / Areas for Improvement / Recommendations)
+
+Generated at PDF time, not at scoring time. `Assessment.js → generateRoleBasedReport()`
+calls `FastAPIService.generateComprehensiveFeedback()` →
+`POST /role_based/generate-comprehensive-feedback`
+(`fastapi-ai-engine/routers/rolespecific.py`), which prompts Gemini 2.5 Pro with the
+section summaries and returns `overall_feedback`, `key_strengths`,
+`areas_for_improvement` and `recommendations`. The lists are rendered verbatim.
+
+**`key_strengths` may legitimately be empty.** The prompt asks for genuine,
+evidence-backed strengths only and explicitly permits `[]` when the responses show
+none — blank, gibberish or off-topic answers. Completion/participation ("the
+assessment was completed"), absence of evidence ("not enough data to identify
+strengths") and things the candidate still needs to develop are forbidden as
+strengths. `filter_key_strengths()` in the same module strips those phrasings
+defensively after the model returns, and the JSON-parse fallback returns `[]` rather
+than a participation line.
+
+When the list is empty the template shows a muted placeholder — *"No role-specific
+strengths could be evidenced from the responses submitted."* — in the Key Strengths
+column. The two columns are gated **independently** in the Handlebars template;
+they were previously nested, and since Handlebars treats an empty array as falsy,
+an empty `key_strengths` would take the Areas for Improvement column down with it.
+
+Gotchas:
+- Handlebars parses inside `<!-- -->` comments. A comment in `roleBasedReport.html`
+  that mentions block syntax counts as an unclosed block and fails the whole
+  template at render time. `compile()` is lazy — use `precompile()` to force a parse
+  when checking.
+- History: until 2026-08-10 the prompt hard-required exactly 3 strengths, so
+  candidates with nothing positive to show got the slots padded with meta-commentary
+  printed under the green "Key Strengths" heading.
 
 ---
 
