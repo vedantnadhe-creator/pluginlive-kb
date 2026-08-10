@@ -70,3 +70,87 @@ The WPM/gaze heuristic alone false-positives on fast, articulate speakers who gl
 - Thresholds (WPM 170, disfluency ≤1.5%, gaze angles) are tunable policy in `useProctoringCollector.js` (`THRESH`, `GLANCE`, `READ_ALOUD`) and `ProctoringReport.js` (`PENALTY`); calibrate against real attempts to avoid flagging fast natural speakers.
 - A real UAT test attempt with zero "reading detected" isn't necessarily broken — the WPM heuristic requires ≥170 WPM / ≥25 words / ≤1.5% filler rate, which normal conversational answers (~85–110 WPM) never reach. Check `proctoring_events` for `reading_pace_suspected`/`delayed_fluent_answer` rows before assuming the LLM layer is misconfigured; if those rows don't exist, the heuristic itself never fired and there was nothing to verify.
 - AI-interview **OTP-invite** scoped-token auth (`AI_INTERVIEW_SCOPED_SECRET`) is a separate concern and is **not configured on UAT** — it only affects OTP-invite AI interviews, not logged-in candidates or the proctoring feature itself.
+
+## Device verification gate (face + audio, before the assessment starts)
+
+Separate from report-only proctoring: this is the blocking check on
+`Assessment-React/src/components/BiometricCheck.js`. The candidate records ~5s of
+webcam video, and the client fires **two unauthenticated FastAPI calls in
+parallel**, letting them through only if **both** pass:
+
+| Check | Endpoint | Payload | Pass condition |
+|---|---|---|---|
+| Face | `POST /proctoring/verify-frame` | `{ student_id, frame_number, image_data, min_confidence }` — bare base64 JPEG, frame grabbed at 2.5s via `canvas.toDataURL('image/jpeg', 0.8)` | `success && face_detected` |
+| Audio | `POST /proctoring/detect-audio` | `{ student_id, audio_data }` — bare base64 Opus/webm | `success && audio_detected` |
+
+The clip is then uploaded fire-and-forget to `students/assessments/uploadVerificationVideo`,
+which stores it at `verification/<studentId>.webm` in the assessment bucket.
+
+**Both endpoints return HTTP 200 with `success:false` on internal errors** — status
+code alone is not a health signal; read the body.
+
+FastAPI hosts: DEV `fast-api.dev`, UAT `fast-api.uat`, **PROD `api-fast.pluginlive.com`**
+(note the reversed name on PROD — `fast-api.prod.pluginlive.com` does not exist).
+
+### Capacity characteristics
+
+Face is the bottleneck and it does **not** scale within a pod. `/verify-frame` runs
+RetinaFace on `priority_executor` (`utils/executors.py`, `PRIORITY_WORKERS=16` on
+PROD), a bounded thread pool. Measured on PROD 2026-08-10 with the load-test
+dashboard: **1 student ≈ 3.7s; 10 simultaneous students ≈ 15s median, 25s p95**.
+Audio (`/detect-audio`, FFT-based VAD) is cheap at ~0.3s throughout.
+
+Under that burst each pod drew only **0.5–1.4 cores of the 4 on its node**, and the
+nodes sat at 6–12% CPU — the ceiling is inside the pod (GIL / single uvicorn
+worker), not the cluster. **Worker count must stay 1**: each worker holds its own
+~2.9GB RetinaFace model against a 5Gi container limit, so a second worker OOMs.
+
+### Cold-start and readiness (changed 2026-08-10)
+
+The model used to be materialised lazily on a pod's **first request** — ~2GB
+resident and several seconds of graph build. With no readiness probe on the
+`fast-api` deployment, a freshly scheduled pod joined the Service immediately and
+served that cost to a real candidate: **12.7s for the first `/verify-frame` vs
+3.6s once warm**. HPA scale-ups therefore *raised* p95 instead of lowering it
+(a 10-student PROD burst measured 15.6s p95 on 3 warm pods, 25.2s p95 once 3 cold
+pods joined).
+
+Now:
+- `warm_up_face_model()` (`Proctoring/ImageProctoring/face_detection.py`) builds the
+  graph and runs one throwaway inference at startup, off the event loop.
+- **`GET /health`** — liveness, always 200 once bound. Deliberately *not* gated on
+  the model, so a slow warm-up cannot get the container restart-looped.
+- **`GET /health/ready`** — returns **503** (`{"ready":false,"faceModel":"pending"}`)
+  until the model is resident, then 200. A *failed* warm-up reports ready on
+  purpose: the lazy path still works, and holding the pod out of the Service
+  would turn a latency problem into an outage.
+- Warm-up takes **~18s after the HTTP port binds** (~33s from container start).
+
+`uvicorn.run(..., reload=True)` was hardcoded on, **including in production** — the
+dev-only file-watching reloader. Now defaults off; opt in with `UVICORN_RELOAD=true`.
+
+### PROD scheduling constraint (open)
+
+`fast-api` requests `cpu: 1000m` per replica. That figure is deliberate and
+documented in `pl-oks-cluster/api-ns/fast-api.yaml`: at 250m the scheduler priced a
+pod at a quarter of its real cost and packed four onto one 4-core node. Measured
+draw (0.5–1.4 cores) confirms 1000m is honest pricing, **so do not lower it to make
+more replicas fit**.
+
+The consequence is that HPA `maxReplicas: 8` is unreachable — the 5-node
+`VM.Standard.A1.Flex` pool is at 74–87% *requested* CPU (while only 6–12% *used*),
+so scale-up attempts park pods in `Pending` with
+`0/5 nodes are available: 5 Insufficient cpu`. Fixing that needs cluster capacity
+or a lower `maxReplicas`, not a smaller request.
+
+Note also that HPA cannot help an exam-start burst at all: scale-up takes ~110s to
+schedule plus warm-up, against a burst that lasts seconds. **Pre-scale ahead of
+scheduled assessments**; `minReplicas: 3` is the real capacity during one.
+
+### Load testing it
+
+`https://dev.pluginlive.com/load-test` → **Verification (Face + Audio)** tab
+simulates 1–200 students against DEV/UAT/PROD. Fixtures are real production
+recordings pulled from `oci://pl-prod-assessment/verification/` and split into a
+JPEG frame + Opus clip with ffmpeg. See
+`load-test-dashboard/VERIFICATION-LOAD-TEST.md` on the DEV box.
