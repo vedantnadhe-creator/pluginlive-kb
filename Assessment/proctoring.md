@@ -92,18 +92,59 @@ code alone is not a health signal; read the body.
 FastAPI hosts: DEV `fast-api.dev`, UAT `fast-api.uat`, **PROD `api-fast.pluginlive.com`**
 (note the reversed name on PROD — `fast-api.prod.pluginlive.com` does not exist).
 
-### Capacity characteristics
+### Capacity characteristics (detector swapped 2026-08-10)
 
-Face is the bottleneck and it does **not** scale within a pod. `/verify-frame` runs
-RetinaFace on `priority_executor` (`utils/executors.py`, `PRIORITY_WORKERS=16` on
-PROD), a bounded thread pool. Measured on PROD 2026-08-10 with the load-test
-dashboard: **1 student ≈ 3.7s; 10 simultaneous students ≈ 15s median, 25s p95**.
-Audio (`/detect-audio`, FFT-based VAD) is cheap at ~0.3s throughout.
+`/verify-frame` now uses **MediaPipe BlazeFace** (short-range, `model_selection=0`),
+not RetinaFace. It only needs a yes/no "is a face in frame" liveness answer, not
+RetinaFace's landmarks.
 
-Under that burst each pod drew only **0.5–1.4 cores of the 4 on its node**, and the
-nodes sat at 6–12% CPU — the ceiling is inside the pod (GIL / single uvicorn
-worker), not the cluster. **Worker count must stay 1**: each worker holds its own
-~2.9GB RetinaFace model against a 5Gi container limit, so a second worker OOMs.
+RetinaFace cost **~3.3s/frame** and ran on `priority_executor`
+(`utils/executors.py`, `PRIORITY_WORKERS=16` on PROD) — a bounded thread pool, so a
+cohort burst queued behind it no matter how many pods were running. Measured on PROD:
+1 student ~3.7s, 10 simultaneous ~15s median / 25s p95, and **50 students ~63s with
+the last few hitting the browser's 60s axios timeout**. Under that burst each pod
+drew only 0.5-1.4 of its node's 4 cores while nodes sat at 6-12% CPU — the ceiling
+was inside the pod, so scaling out could never fix it.
+
+MediaPipe measured **4-11ms/frame**, ~800x cheaper, with no measurable cold start.
+Benchmarked against 20 real production clips from
+`oci://pl-prod-assessment/verification/`: **20/20 face_detected agreement with
+RetinaFace** (RetinaFace itself missed 1 of the 20), single face each at 0.82-0.97
+confidence, and zero false positives on blank/noise/gray frames.
+
+After the swap, 50 simultaneous students through the full gate (face + audio):
+**2.0-2.4s wall time, 50/50 verified, e2e p95 ~2.1s** (DEV and UAT).
+
+Audio (`/detect-audio`, FFT-based VAD) was never the bottleneck at ~0.3s.
+
+`detect_faces()` (RetinaFace) is **deliberately unchanged** for `/detect-faces` —
+the async in-exam CV pipeline behind the proctoring report, whose thresholds are
+calibrated policy and which is not on any student's blocking path.
+
+**Worker count must stay 1**: each worker holds its own ~2.9GB RetinaFace model
+against a 5Gi container limit, so a second worker OOMs.
+
+> **Import-order trap (cost a UAT incident).** `mediapipe` must **never** be
+> imported at module scope in `face_detection.py`. Importing it into the process
+> *before* RetinaFace builds its model breaks that build with "A KerasTensor cannot
+> be used as input to a TensorFlow function" — retina-face constructs a Keras
+> functional model using raw `tf` ops on KerasTensors, and importing mediapipe
+> perturbs the TF/Keras global state dispatch relies on. (`tf.keras` is Keras 3.15.1
+> either way; only the **order** matters.) Verified: mediapipe-first -> build FAILS;
+> no mediapipe -> OK; RetinaFace-built-then-mediapipe -> OK.
+>
+> The failure is **silent**: `detect_faces()`'s callers swallow per-frame/per-key
+> exceptions and return `success:true` with `face_detected:false` for a real face,
+> so `/detect-faces` quietly reports "no face" for every snapshot. Caught on UAT via
+> `/health/ready` reporting `faceModel:"failed"`; PROD was never on that build.
+>
+> Guard rails now in place: mediapipe is imported lazily inside
+> `_build_fast_detector_locked()`, `warm_up_face_model()` builds RetinaFace *then*
+> imports mediapipe, and both are serialised behind a reentrant `_model_init_lock`
+> so a request racing startup blocks (~12s once, on a cold container) instead of
+> inverting the order. Same reason `ultralytics` is imported inside
+> `_get_yolo_model()`. **If you add another ML import here, put it after the
+> RetinaFace build and behind that lock.**
 
 ### Cold-start and readiness (changed 2026-08-10)
 
