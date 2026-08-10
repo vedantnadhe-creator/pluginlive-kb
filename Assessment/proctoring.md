@@ -112,8 +112,16 @@ Benchmarked against 20 real production clips from
 RetinaFace** (RetinaFace itself missed 1 of the 20), single face each at 0.82-0.97
 confidence, and zero false positives on blank/noise/gray frames.
 
-After the swap, 50 simultaneous students through the full gate (face + audio):
-**2.0-2.4s wall time, 50/50 verified, e2e p95 ~2.1s** (DEV and UAT).
+After the swap, measured through the full gate (face + audio), all verified,
+zero errors:
+
+| cohort | before | after |
+|---|---|---|
+| 10 students (PROD) | 25.2s p95 | ~1.1s p95 |
+| 50 students (PROD) | ~63s, last few timed out | **1.4s total, e2e p95 1.4s** |
+| 100 students (PROD) | not survivable | **1.9s total, e2e p95 1.6s** |
+
+DEV and UAT land at ~2.0-2.4s for 50 (single container, no replicas).
 
 Audio (`/detect-audio`, FFT-based VAD) was never the bottleneck at ~0.3s.
 
