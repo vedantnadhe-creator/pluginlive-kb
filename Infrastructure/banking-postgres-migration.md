@@ -81,6 +81,9 @@ Frontend cutover was 3 env vars, as planned: everything funnels through
 | `verify-load.py` | walks all 51 FKs looking for orphans |
 | `set-user-password.sh <mobile\|email> '<pw>'` | enables one imported account |
 
+Edge-function deviations live in `function-fixups/<name>/`, overlaid by `sync-functions.sh`:
+`main` (the JWT gate), `live-session-rsvp` (unbalanced brace) and `mcp` (hosted OAuth issuer).
+
 Upstream migration files are **never edited**. Deviations live as whole-file overrides in
 `fixups/`, so a repo pull cannot conflict and `diff` shows every change.
 
@@ -196,6 +199,31 @@ applied to hosted**, so hosted permitted the duplicates. Collapsed to the newest
 > its **predicate** — `profiles` has `UNIQUE(mobile) WHERE mobile <> ''`, and matching on `mobile
 > IS NOT DISTINCT FROM mobile` silently deleted two admin rows that both had `''`, rows the index
 > does not even cover.
+
+## ⚠ Edge functions were reachable with NO auth header (fixed 2026-08-10)
+
+The self-hosted `functions/main/index.ts` router dispatched **without verifying anything**. The
+hosted platform verifies a JWT on every function unless `config.toml` sets `verify_jwt = false`,
+and this repo sets it nowhere — so hosted requires a token and our stack required none.
+
+Verified exploitable: `POST /sb/functions/v1/seed-admin-user` with **no Authorization header**
+returned `200 {"ok":true}` and reset `admin@bankready.app` to a password **hardcoded in the repo**
+(`seed-admin-user/index.ts` lines 16-17). Anyone who could reach the host could take an admin
+session on a box holding 59 real people's PII.
+
+This is also how that account came to exist here at all: the 81-function boot test POSTs `{}` to
+every function, and `seed-admin-user` has no guard of its own, so the smoke test created it.
+
+**Fixed** in `function-fixups/main/index.ts`: HS256 signature + `exp` verification against
+`SUPABASE_JWT_SECRET` (added to the `functions` service in compose), default-deny, with a
+`PUBLIC_FUNCTIONS` allowlist kept in sync with `config.toml` (currently empty). Fails closed if the
+secret is unset. After the fix: no header → 401, forged signature → 401, all 81 functions still
+reachable with the app's own key.
+
+> **Parity, not a complete fix.** The anon key is itself a valid JWT and is public — it ships in the
+> JS bundle. Functions doing privileged work still need their own guard, the way `admin-bootstrap`
+> checks `x-bootstrap-token`. **`seed-admin-user` has no such guard and should be deleted or gated
+> upstream** — and because hosted also accepts the anon key, it is callable on PROD today.
 
 ## ⚠ Any signed-in user can read every profile (pre-existing)
 
