@@ -74,9 +74,30 @@ became the header's only child and got parked on the left (throwing the
 right-aligned Filters panel off the card edge); `.mc-header-right:only-child`
 carries a `margin-left: auto` to hold it on the trailing edge.
 
-Known gap: the Filters popover is assessment-scoped (Type / Schedule / Dept /
-Year, counted over *assessments*) and feeds the Schedule-wise table only, so
-selecting values there does nothing to the student rows.
+The Filters popover (Type / Schedule / Dept / Year) now filters Student-wise
+too, as of 2026-08-10 (`c3ce9d8` institute-node, `3fe44d8` frontend). `Schedule`
+is hidden in that view — recurring/one-time describes an assessment, not a
+student — everything else runs as a real SQL predicate against
+`/institutes/assessments/v2/students`, not a client-side re-filter of the
+page: the page and its `total` are already server-side, so filtering the
+returned rows in the browser would leave the count and paging lying about how
+many students actually match.
+
+- `depts` → the student's degree, or degree + one department
+- `years` → the student's passing year
+- `types` → sent at least one assessment of that type by this institute
+  (`EXISTS` against `assessment_assigned_students`, type name compared
+  letters-only so the UI's "AI Interview" matches the DB's "AI_Interview"
+  without a hand-maintained lookup)
+
+Encoding matches the dashboard's existing cohort params — `depts` a JSON array
+of `{deg, sec?}` (degree names can contain commas), `years`/`types`
+comma-separated — so both screens read the same query-string shape.
+
+Known gap: the popover's per-option counts are still ASSESSMENT counts (e.g.
+"2028 · 6" means 6 assessments), which reads oddly against a student roster,
+and a zero-assessment-count option is disabled — hiding a cohort that has
+students but no assessment of that shape. Not yet scoped per view.
 
 ### `statistics` is `jsonb` on DEV but `json` on UAT
 
