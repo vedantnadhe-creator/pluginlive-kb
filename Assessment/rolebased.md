@@ -10,10 +10,10 @@
 |---|---|
 | **Assessment Type** | `Role_Based` |
 | **Total Duration** | Admin-selected, **15–60 minutes** (default 30). Falls back to a question-count estimate when unset — see [Duration](#duration) |
-| **Sections** | MCQ (60%), Subjective/Written (25%), Video Response (15%) |
+| **Sections** | MCQ, Subjective/Written, Video Response, Coding — **all weighted equally** (see [Overall Score](#overall-score)) |
 | **Question Generation** | AI-powered (Gemini via FastAPI) |
 | **Scoring** | MCQ: auto-graded. Subjective + Video: AI-scored (Gemini/Groq) |
-| **Skill Combining** | 60% written + 40% video |
+| **Skill Combining** | Equal weight per section that scored the skill (`combineSkillScores`) |
 | **Speech-to-Text** | Deepgram for video transcription |
 | **Domain** | Always `Universal` |
 
@@ -21,13 +21,58 @@
 
 ## Assessment Structure
 
-| Section | Questions | Time | Weight | Scoring |
-|---------|-----------|------|--------|--------|
-| **Section A: MCQ** | 10–12 | 18 min | 60% | Auto-graded (correct option) |
-| **Section B: Written Responses** | 2 | 8 min (4 min each) | 25% | AI-scored (0–5 scale per skill) |
-| **Section C: Video Response** | 1 | 4 min | 15% | AI-scored (Deepgram STT + Gemini/Groq) |
+| Section | Questions | Time | Scoring |
+|---------|-----------|------|--------|
+| **Section A: MCQ** | 10–12 | 18 min | Auto-graded (correct option) |
+| **Section B: Written Responses** | 2 | 8 min (4 min each) | AI-scored (0–5 scale per skill) |
+| **Section C: Video Response** | 1 | 4 min | AI-scored (Deepgram STT + Gemini/Groq) |
+| **Section D: Coding** | optional | ~10 min/question | Test-case pass rate |
 
 The per-section times above are the indicative split of a 30-minute paper. The exam runs on **one whole-assessment countdown**, not per-section timers — see below.
+
+Question counts per section come from `assessment_config.question_config` (`mcqCount` / `subjectiveCount` / `videoCount` / `codingCount`); a section set to 0 generates no questions and is absent from scoring, the UI tables and the PDF entirely.
+
+---
+
+## Overall Score
+
+**Every section that produced a score carries the SAME weight** — the overall is a plain average of the section percentages. The old fixed **60 / 25 / 15** split was removed in `e0ee2e26` (2026-03-23) and no longer exists anywhere in the scoring path.
+
+```
+overall = Σ(section score) / (number of scored sections)
+        = Σ(section score × equal weight)
+```
+
+| Sections scored | Weight each |
+|---|---|
+| 1 | 100% |
+| 2 | 50% |
+| 3 | 33.33% |
+| 4 (with Coding) | 25% |
+
+So a 3-section paper with **MCQ 10%, Subjective 0%, Video 0%** scores **3.33%** overall — the MCQ result moves the total by its 33.33% share, nothing more.
+
+**A section the candidate skipped entirely still scores 0 and still counts in the denominator.** `reconstructRoleBasedAssessmentResponse` synthesises `{ skipped: true }` entries for every assigned question with no `student_answers` row (`67733ea5`, 2026-05-20), so an untouched Video section can't quietly vanish and hand its weight to MCQ. Attempts scored **before** that date can still show the old shape — e.g. UAT `2a58134a` has a 3-section paper with only an MCQ row, so its overall (36.36) is the raw MCQ score rather than 12.12. A section is only ever missing now when its **scorer failed** (the video/coding calculators catch and return `null`), which deliberately does not zero the candidate for our own AI outage.
+
+### Where the overall is computed
+
+Each service owns its copy — there is no shared module across the microservice boundary. All of them must stay on the equal-weight average:
+
+| Surface | Code |
+|---|---|
+| PDF report | `student-node` `Assessment.generateRoleBasedReport` |
+| Admin / institute tables + Excel export | `admin-node` `app/helpers/roleBasedSections.js` → `buildRoleBasedScores` |
+| TPO / corporate dashboards | `student-node` `app/models/TpoDashBoard.js` |
+| Institute v2 screens | `institute-node` `app/helpers/assessmentScoreSql.js` (`AVG(score)`) |
+| Corporate assessment student list | `institute-node` `StudentListInfo.getCorporateAssessmentStudents` |
+
+### The weight printed on the PDF (fixed 2026-08-10)
+
+Each section card on the report prints `Weight: n%`. That number used to be `Math.round(100 / sections)` with the **remainder handed to the last section**, so a 3-section report printed **33% / 33% / 34%** while the overall averaged at **33.33% each** — the report contradicted itself and Video looked heavier than MCQ for no reason. Reported by QA (Jershini): *"if MCQ weightage is 33% the overall should be 3.3%, now it is considering 33.33%"*.
+
+The split now comes from **`student-node/app/helpers/roleBasedWeights.js`** (`equalSectionWeights`), rounded to 2 dp — `33.33` for three sections, `25` for four — so the printed weight is the weight the average actually applies. Covered by `test/roleBasedWeights.spec.js`. **No change to how the overall is calculated.** Commit `6b762617`, DEV + UAT live 2026-08-10; **PROD pending**.
+
+The same sweep found `institute-node` `StudentListInfo.getCorporateAssessmentStudents` still applying the deleted `mcq*0.6 + subjective*0.25 + video*0.15` split and **ignoring Coding entirely** — MCQ 100 / Subj 0 / Video 0 read as **60.00** there against **33.33** on the candidate's own report. Now the equal-weight average, with Coding counted and surfaced as a Category Score tag (`30f8fa8`, DEV + UAT 2026-08-10, PROD pending). **Note this endpoint currently 500s before it reaches that code**: its very first query, `WHERE acm.assessment_corporate_map_id = $1`, compares a `uuid` column against a text-bound parameter and dies with Postgres `42883` (`operator does not exist: uuid = text`) — untouched since `c0c154f` (2026-03-11) and missing the `::uuid` cast the rest of the file uses. It has no live traffic, so **no user-visible number came from the stale 60/25/15 code**; fix the cast before treating this screen as a source of truth.
 
 ---
 
@@ -75,7 +120,7 @@ Commit `eb518bf` (authored 2026-08-07 on `Development`, reached UAT 2026-08-10 a
    - MCQ: auto-graded
    - Subjective: AI-scored via FastAPI (`calculate_role_based_subjective_score`)
    - Video: transcribed via Deepgram, then AI-scored via FastAPI (`calculate_role_based_video_score`)
-8. Skill scores combined (60% written + 40% video)
+8. Per-skill scores combined across the sections that assessed each skill — equal weight per section, redistributed over the ones actually present (`combineSkillScores`)
 9. Results stored in `roleBasedScores` table
 10. PDF report generated via Handlebars + Puppeteer
 
@@ -339,7 +384,8 @@ Gotchas:
 - **Admin-Set Duration** — `assessment_config.duration_minutes` is the source of truth for the countdown; when NULL (every pre-feature set) student-node estimates from question counts instead. Enforcement is client-side only. See [Duration](#duration).
 - **AI Scoring** — subjective and video responses are scored by AI (Gemini 2.5 Pro or Groq Llama 3.3 70B) with detailed per-skill feedback.
 - **Speech-to-Text** — video responses are transcribed using Deepgram before AI analysis.
-- **Skill Combining** — final per-skill score = 60% written assessment + 40% video assessment.
+- **Skill Combining** — final per-skill score = equal weight across whichever sections assessed that skill (MCQ / subjective / video / coding), the weight of an absent section redistributed over the rest. The old 60% written + 40% video split went with the 60/25/15 overall in `e0ee2e26`.
+- **Equal Section Weight** — the overall score is the plain average of the scored sections; the weight printed on each PDF section card (`33.33%` for three, `25%` for four) is that same weight. See [Overall Score](#overall-score).
 - **Video Upload Retry** — scoring waits up to 3 minutes for video uploads to complete before skipping.
 - **Skipped Sections Score 0, Never Vanish** — `reconstructRoleBasedAssessmentResponse` (`RoleBasedCalculations.js`) cross-references `assessment_question_map` against `student_answers`; any assigned question with no answer row is synthesized as `{ skipped: true }` so its section still gets scored (0%) instead of disappearing from `role_based_scores`/the report. This also covers the **whole-assessment-unanswered** case (candidate submits with zero answers anywhere, e.g. a coding-only assessment where they click Submit immediately) — earlier code short-circuited on `studentAnswers.length === 0` and returned `isEmpty: true`, which skipped the synthesis entirely and left **every** section (including Coding) with no DB row at all, i.e. a blank report despite `scoresCalculated: true`. Fixed 2026-07-17 (student-node `c0b13dbf`, promoted to UAT `ff31c5b2`) by removing that early return so the zero-answer case falls through to the same synthesis path as a partial skip.
 - **Retake Support** — the system detects retakes and stores both original and retake scores separately.
