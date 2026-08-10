@@ -85,14 +85,54 @@ Duration is **chosen by the admin at creation**, between **15 and 60 minutes** (
 | Admin UI (`AssessmentSelect.js`) | "Duration (minutes)" number input, `min=15 max=60 step=5`, default 30, rendered above Question Configuration in the `Role_Based` form. Sent as `duration` on both the broadcast and set-generation payloads |
 | admin-node intake | `broadcastHandler.createBroadcast` and `assessmentHandler.initiateRoleBasedGeneration` clamp with `Math.max(15, Math.min(60, parseInt(duration,10) \|\| 30))` and put `durationMinutes` on `generationPayload` |
 | Persistence | `generationPayload.durationMinutes` → `assessmentSetWorker` → `script/generateRoleBasedQuestions.js`, which writes `assessment_config.duration_minutes` alongside `question_config` |
-| student-node | `getRoleBasedAssessmentQuestions` selects `assessmentConfig.durationMinutes`; when set it is re-clamped to 15–60 and returned as `data.duration_minutes`. When **NULL** it falls back to the legacy estimate: `MCQ 1.5 / Subjective 5 / Video 3 / Coding 10` min per question, rounded up to the nearest 5, minimum 10 |
-| Assessment-React | `assessment.js` reads `props.questions.data.duration_minutes` (`|| 30`) and sets the countdown; unchanged by this feature — it simply receives the admin's number instead of the computed one |
+| Resolver (single source of truth) | `student-node/app/helpers/roleBasedDuration.js`. `computeDurationMinutes({ configuredMinutes, sectionCounts })` — configured value wins, clamped 15–60; otherwise the estimate `MCQ 1.5 / Subjective 5 / Video 3 / Coding 10` (unknown section 2) min per question, rounded up to the nearest 5, minimum 10. `resolveRoleBasedDurations(prisma, setIds)` does the same for many sets in two batched queries |
+| student-node — questions | `getRoleBasedAssessmentQuestions` calls `computeDurationMinutes` with its in-memory sections and returns `data.duration_minutes`. Drives the countdown |
+| student-node — list | `getActiveAssessments` calls `resolveRoleBasedDurations` for `Role_Based` rows that have a bound set and adds `duration_minutes` to each row. Drives the instruction screen. Wrapped in try/catch — a failure omits the field rather than failing the list |
+| Assessment-React — instruction | `RoleBasedassmt/instruction.js` renders `Duration - {assessment.duration_minutes} minutes`, falling back to "Duration - Varies by role set" when the field is absent |
+| Assessment-React — countdown | `assessment.js` reads `props.questions.data.duration_minutes` (`|| 30`) and pins it in `totalDurationRef` on first receipt |
+
+Both endpoints go through the same resolver, so the advertised duration and the
+countdown always agree. Verified on UAT 2026-08-10: sets resolving to 10 / 25 /
+30 / 40 / 55 minutes all render their real value.
 
 **Gotchas:**
 - The column is **nullable and back-compatible** — every set created before this feature has `duration_minutes = NULL` and keeps the old question-count estimate, so existing assessments are unaffected.
 - The estimate floor is **10** minutes but the admin-selected floor is **15**; a NULL-config set can therefore legitimately report a shorter duration than any admin could pick.
 - The timer remains **client-side only**. `submitAssessment` records `isAutoSubmitted` but student-node does **not** independently verify elapsed time against `duration_minutes`.
 - Duration does **not** change how many questions are generated — that is driven entirely by `question_config`. Setting 15 minutes on a 12-MCQ + 2-subjective + coding paper simply gives candidates less time for the same paper.
+- **Broadcast rows have no set bound yet**, so `getActiveAssessments` cannot resolve their duration and the instruction screen shows "Varies by role set" until the candidate starts. The **OTP invite flow** (`InviteAssessmentRunner`) builds its assessment object from the resolve/verify endpoint, which does not carry `duration_minutes` either, so it shows the same fallback.
+- **PROD is missing `assessment.assessment_config.duration_minutes`** (DEV and UAT have it). Any release carrying the resolver must run that migration on PROD first, or the Prisma select on `assessmentConfig.durationMinutes` errors and candidates cannot start a role-based assessment.
+
+---
+
+### Thank-you screen showed a bogus time, start screen a hardcoded 60 (fixed 2026-08-10, DEV + UAT)
+
+Two separate defects in `Assessment-React/src/modules/Assessments/Partials/RoleBasedassmt/`, both rooted in the same React lifecycle bug.
+
+**Root cause.** `instruction.js` renders `<Assessment questions={{ data: questionsFromRedux }} />` — a **new object literal on every render**. Saving an answer dispatches to Redux, the connected ancestor re-renders, instruction re-renders, the `questions` prop gets a new identity, and `assessment.js`'s `useEffect(..., [props.questions])` re-runs. That effect was unguarded, so on **every answer saved** it re-stamped `assessmentStartTime = Date.now()` and re-seeded `setTimeLeft(fullDuration)`.
+
+Consequences:
+
+| Symptom | Detail |
+|---|---|
+| Thank-you screen time wrong | `calculateTotalTime()` measured from the last reset, i.e. *time since the previous answer*. UAT rows: stored `3 / 2 / 94 / 173` s against real elapsed `129 / 182 / 658 / 181` s. PROD equally wrong |
+| `total_time_taken` corrupted | The same value is POSTed as `totalTakenTime` and written to `assessment_assigned_students.total_time_taken`, so **role-based reports and analytics were wrong**, not just the UI |
+| Countdown blipped | The re-seed bounced the visible timer back to full duration for up to a second on every answer |
+| Camera guard flapped | `useCameraGuard` is gated on `!!assessmentStartTime`, which kept toggling |
+
+**Fix.** Both timing values are pinned once in refs (`assessmentStartedAtRef`, `totalDurationRef`); `calculateTotalTime()` reads the ref — not state, so it is correct inside `handleSubmit`'s memoised closure — and caps elapsed at the allotted duration. Aptitude already had the equivalent `if (isAssessmentActive && !assessmentStartTime)` guard, which is why its numbers were sane.
+
+**Remaining-vs-taken convention.** The thank-you screens are **not consistent** across types, and this was left as-is apart from role-based:
+
+| Type | Value shown | Label |
+|---|---|---|
+| Aptitude, Communication, Hinglish, Behaviour | **Remaining** (`timeLeft` at submit) | `Timer :` |
+| Custom | **Time taken** (`totalAllotted - timeLeft`) | `⏱ Time Taken :` |
+| Role_Based | **Time taken** (pinned start → submit, capped) | `⏱ Time Taken :` |
+
+Role-based always intended time-taken (it is what lands in `total_time_taken`), so it was fixed and relabelled to match Custom. Standardising the other four is an open product decision.
+
+**Start screen.** `instruction.js` hardcoded "Duration - 60 minutes" while the countdown ran the per-set duration — a 6-MCQ set advertised 60 and ran 10. Now driven by `duration_minutes` from `getActiveAssessments`; see [Duration](#duration).
 
 ---
 
@@ -212,9 +252,9 @@ In a transaction:
 | File | Purpose |
 |------|--------|
 | `index.js` | Entry point — assessment name, ConfigCheck, BiometricCheck, Start button |
-| `instruction.js` | Instructions page — detailed rules for each section type (MCQ, written, video), fullscreen request, practice assessment support |
+| `instruction.js` | Instructions page — detailed rules for each section type (MCQ, written, video), fullscreen request, practice assessment support. Renders `Duration - {assessment.duration_minutes} minutes` from the list API, falling back to "Varies by role set" |
 | `assessment.js` | **Main assessment UI** — handles all 3 section types: MCQ option selection, written text areas, video recording. Collapsible sidebar with section grouping, per-question timer, violation detection (MAX_TAB_SWITCH_WARNINGS = 3). Supports markdown rendering |
-| `completion.js` | Thank-you page — exits fullscreen, shows "result being processed", supports practice vs regular messaging |
+| `completion.js` | Thank-you page — exits fullscreen, shows "result being processed", supports practice vs regular messaging. Header shows `⏱ Time Taken` (time spent, not remaining) |
 
 **Key behaviors in `assessment.js`:**
 - **Multi-section layout** — sidebar groups questions by section type (MCQ / Subjective / Video)
@@ -222,6 +262,7 @@ In a transaction:
 - **Subjective questions** — text area with scenario description, word limit guidance
 - **Video questions** — integrated video recording component, uploads to OCI Object Storage
 - **Per-question timing** — tracks `timeTaken` for each question
+- **Whole-assessment timing** — the start stamp and allotted duration are pinned once in refs (`assessmentStartedAtRef`, `totalDurationRef`). Do **not** move them back into unguarded `[props.questions]` effect state: the parent re-creates that prop object on every render, which is what corrupted `total_time_taken`
 - **Anti-cheat** — fullscreen enforcement, tab-switch detection (3 warnings → auto-submit)
 - **Practice mode** — supported via `isPractice` flag
 
