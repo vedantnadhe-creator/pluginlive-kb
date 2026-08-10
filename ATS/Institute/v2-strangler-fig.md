@@ -122,6 +122,20 @@ Both live in `institute-react/src/modules/Nav/navItems.js`. Two `accessLevel`
 gates in `modules/Nav/index.js` hard-code the v2 path — level 2 gets the entry,
 level 1 does not — so they must be updated together with the navItem.
 
+### Going the other way: v2's "Back to ATS"
+
+v2's sidebar has a **Back to ATS** link (`components/shell/Sidebar.tsx`,
+`data-v1-bridge`) — a plain same-origin hard nav out of `/v2`, no session
+change. It must point at **`/tpoDashboard`**, v1's real home: it is the first
+entry in `navItems.js`, it is where `AuthPage` sends anyone landing on `/`, and
+its `'Dashboard'` navTitle is explicitly whitelisted in `PermittedNavRoutes`
+(`utils/permissionsValidation.js`) so every access level can reach it.
+
+It briefly pointed at v1 `/dashboard` (fixed 2026-08-10). That route exists but
+is the internal placement/drive view (`modules/Dashboard`, sibling of
+`/dashboard/roles/:corpID`), is absent from v1's sidebar, and clicking it
+dumped users on `/students`. Don't confuse the two.
+
 **`onItemClick` must hard-navigate for `/v2/` paths.** `navigate(path)` is
 react-router's SPA navigate; it finds no match for `/v2/*` and renders v1's 404
 inside the v1 shell. The handler checks `path?.startsWith('/v2/')` and sets
