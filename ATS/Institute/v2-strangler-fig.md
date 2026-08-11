@@ -81,7 +81,49 @@ Verified on UAT against the schedule behind the report — "Communication -
 Schedules", 12–31 Aug 2026, 20 runs, 4 candidates — matching admin's row, and
 the row renders `RECURRING · 0/20 · Upcoming` and opens on Schedule.
 
-### Diagnosis maps are still badged ONE-TIME
+### Diagnosis maps fold into their schedule (2026-08-11)
+
+`abc15aa`/`589a466` institute-node, `6ab1a89` frontend. Shared helper
+`app/helpers/assessmentGrouping.js` holds the grouping so the assessments list
+and the dashboard cannot drift — both resolve the same group key.
+
+- Grouping key is **`(institute_id, assessment_type)`** — there is no FK, admin
+  deliberately withholds `scheduleId` from diagnosis maps, and this is the same
+  key admin uses to find and reuse them. `DISTINCT ON (type)` picks the newest
+  schedule when a type has several, so a shared diagnosis map is not counted
+  under every one.
+- No schedule of that type → the map keeps its own row, badged **`diagnosis`**
+  (a third `ScheduleType`) instead of the wrong `one_time`. This matters: 342
+  diagnosis maps exist on UAT and many institutes have no matching schedule, so
+  folding blindly would have deleted real, student-bearing assessments from the
+  UI.
+- The detail payload gains **`diagnosis`** — the Schedule tab's first child,
+  above the runs. Counted in **UNITS (map x student)**, not distinct students:
+  the same 4-student cohort sits on Assessment #1 and #2, which admin reports
+  as **8**, not 4. `status` is derived — ongoing until every unit is submitted.
+
+Three traps this hit, all worth remembering:
+
+1. **`GROUP BY akey, schedule_id` splits the group.** A folded group mixes
+   diagnosis maps (`schedule_id` NULL) with the series' occurrences, so grouping
+   by both produced two rows — one taking its title from a diagnosis map. That
+   is why the dashboard showed "Assessment #2" as a live one-time. Group by
+   `akey` alone and use `BOOL_OR(schedule_id IS NOT NULL)`.
+2. **Join the schedule on the GROUP key, not `schedule_id`.** When the parent
+   schedule hasn't run, the group is that schedule but every member has
+   `schedule_id` NULL, so joining on `schedule_id` lost the name and window.
+3. **A diagnosis map's ~10-year end date swallows the series window**, and its
+   presence makes the group exist so the not-yet-run branch must skip it
+   (`NOT EXISTS (SELECT 1 FROM occ WHERE occ.akey = sch.id)`) or the schedule
+   appears twice. `total_occ` falls back to
+   `jsonb_array_length(frequency_value)` so an unrun series still reads 0/20.
+
+Verified on UAT for the institute behind the report: the list collapses to one
+row (`Communication - Schedules`, Recurring, 0/20, 12–31 Aug, 4 students) and
+its Schedule tab opens on **Diagnosis · Ongoing · Assessment #1 1/4 ·
+Assessment #2 0/4 · 1/8** — matching admin exactly.
+
+### Superseded: diagnosis maps were badged ONE-TIME
 
 `schedule_id` NULL **and** `is_one_time` false means a **diagnosis** map — the
 practice assessment auto-created beside a real send (`StudentListInfo.js`
