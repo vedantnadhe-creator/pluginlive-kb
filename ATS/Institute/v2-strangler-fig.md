@@ -110,6 +110,83 @@ scored Aptitude attempt. Queries touching this column must cast explicitly:
 `jsonb_array_elements((ap.statistics::jsonb)->'categories')`. Assume the same
 split for any other json column until checked on both boxes.
 
+### `LEAST`/`GREATEST` ignore NULL — unscored attempts read as 100%
+
+Fixed 2026-08-11 (`af3fe69` institute-node). The shared score expression in
+`app/helpers/assessmentScoreSql.js` clamped with
+`GREATEST(0, LEAST(100, COALESCE(...)))`. Postgres' `LEAST`/`GREATEST` **skip
+null arguments**, so when no per-type score row existed the COALESCE returned
+NULL and the clamp returned **100**, not NULL.
+
+Every attempt still sitting in the calculation queue therefore scored a perfect
+100. On UAT a Communication attempt submitted at 12:02 IST showed **100% /
+CEFR C2** in the TPO dashboard until the scores landed a few minutes later, and
+until then it dragged the cohort's average score, median, avg-top-score,
+competency ladder and performance risk bands with it — students who had never
+sat the assessment at all also returned `pct = 100`.
+
+`SCORE_EXPR` now guards the COALESCE explicitly (`CASE WHEN <raw> IS NULL THEN
+NULL ELSE GREATEST(0, LEAST(100, <raw>)) END`). It is shared by
+`AssessmentDetailV2`, `DashboardV2` and `StudentWiseV2`, so all three were
+affected and all three are fixed by the one change. **Never clamp a nullable
+value with bare `LEAST`/`GREATEST`.**
+
+### `total_time_taken` is 0 on ~⅓ of submitted attempts
+
+The assessment player writes `assessment_assigned_students.total_time_taken`
+(seconds) and frequently writes 0 — 276 of 738 submitted attempts on UAT as of
+2026-08-11. "Avg time taken" and the per-student time column rendered a dash as
+a result.
+
+`TIME_TAKEN_EXPR` (same helper file) falls back to the wall clock between
+`assessment_started_at` and `submitted_at`, which tracks the recorded value
+closely wherever both exist. It stays NULL when neither source has anything, so
+a dash still means *unknown*, not *instant*. The underlying player bug is not
+fixed — read models compensate.
+
+### Communication reports speak in four skills, not eight exercises
+
+`communication_scores` holds one row per exercise (Audio Question, Dictation,
+Email Writing, Paragraph Reading, Question Based Response, Sentence Build,
+Sentence Completion, Video Response). Every report surface — v1's TPO dashboard,
+admin-node's PDF, the v2 student column and now the v2 student report drawer —
+displays the four language skills instead.
+
+The mapping and the roll-up live in `app/helpers/assessmentBands.js`
+(`COMM_SKILLS`, `groupCommSkills()`), imported by both `StudentWiseV2` and
+`AssessmentDetailV2` so the two cannot drift on what "Writing" contains:
+
+- **Reading** ← paragraph reading
+- **Writing** ← question based response, email writing, dictation, sentence
+  completion, sentence build
+- **Speaking** ← video response
+- **Listening** ← audio question
+
+A skill with no scored member section is omitted rather than shown as zero. Note
+v2 averages the *present* member sections, while student-node and admin-node
+divide the Writing components by a fixed 4 when computing their weighted
+composite — the composite weighting is deliberately not replicated in the
+breakdown display.
+
+### The report download is gated on a scored attempt
+
+`GET /institutes/assessments/v2/:id/students/report` returns
+`headline.reportAttemptId` — the latest attempt that is submitted **and** scored,
+else null. The drawer's download button generates from that id, is disabled
+while it is null, and explains why in its tooltip.
+
+Before 2026-08-11 the button was always live and fell back to
+`history.at(-1)`, so a TPO could download a PDF for a student who never sat the
+assessment (it rendered "not attempted") or for one whose scores had not been
+calculated yet. `.iconbtn` also had no `:disabled` style, so a dead action
+looked identical to a live one.
+
+Related: `headline.submitted` used to count *scored* attempts rather than
+submitted ones, and the drawer's Attempts block listed "Submitted" and
+"Attempted" — which for anyone who finished read "1 of 1" twice and implied a
+drop-off that never happened. The second row is now **Dropped off** (started,
+never submitted), matching the completion funnel's `droppedCount()`.
+
 ## Nav wiring (v1 → v2)
 
 Since 2026-08-06 the v1 sidebar routes as follows:
