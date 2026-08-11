@@ -200,6 +200,21 @@ merges (student-node also used PR #1519 and #1521 for earlier promotions).
 `corporate-react` is now part of this feature: the candidate drawer had to start
 sending a `roleId` before the backend could resolve a snapshot for it.
 
+**Deployed to UAT 2026-08-11** (`student-node` UAT `7b5ef8a8`, `corporate-react`
+UAT `af0a6cb0`), both via `~/auto_deploy.sh <app> UAT`. Verified after the swap:
+
+- `getById(id, roleId)` present in the running student image; both flags resolve
+  to `true`; no Prisma errors.
+- `corporate-react` bundle built on the UAT box — **0 DEV URLs**, UAT hosts baked
+  in (`api-std.uat`, `api-corp.uat`, …), and `?roleId=` present in the chunks.
+- End-to-end inside the deployed container against the UAT database: the drawer
+  returns the **frozen 80** with a `roleId` and the **live 70** without one.
+
+Note when verifying a corporate-react bundle: this image is nginx-based and
+serves from **`/usr/share/nginx/html`**, with chunks at the root — *not*
+`/app/build/static/js`. Grepping the wrong path returns "no DEV URLs" as a false
+negative.
+
 ---
 
 ## Environment state — as of 2026-08-11
