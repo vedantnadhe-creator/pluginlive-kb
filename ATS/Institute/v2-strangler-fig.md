@@ -126,15 +126,23 @@ level 1 does not — so they must be updated together with the navItem.
 
 v2's sidebar has a **Back to ATS** link (`components/shell/Sidebar.tsx`,
 `data-v1-bridge`) — a plain same-origin hard nav out of `/v2`, no session
-change. It must point at **`/tpoDashboard`**, v1's real home: it is the first
-entry in `navItems.js`, it is where `AuthPage` sends anyone landing on `/`, and
-its `'Dashboard'` navTitle is explicitly whitelisted in `PermittedNavRoutes`
-(`utils/permissionsValidation.js`) so every access level can reach it.
+change. It must point at **v1's ROOT (`/`)**, never a fixed page.
 
-It briefly pointed at v1 `/dashboard` (fixed 2026-08-10). That route exists but
-is the internal placement/drive view (`modules/Dashboard`, sibling of
-`/dashboard/roles/:corpID`), is absent from v1's sidebar, and clicking it
-dumped users on `/students`. Don't confuse the two.
+"The ATS home" is **access-level dependent, and only v1 knows the level**:
+
+- `routes/Components/AuthPage.js` sends `/` to `/tpoDashboard` for
+  `accessLevel` 1 or 3, and to `/students` otherwise.
+- `modules/Nav/index.js` drops `/tpoDashboard` from the rail entirely for
+  levels 0 and 2 — and level 2 is precisely the level that *gets* the v2
+  Assessment entry, so a large share of v2 users have no `/tpoDashboard` in
+  their nav at all. For them **`/students` is the correct ATS home.**
+
+So hard-coding either page strands half the users on something outside their
+nav. Two wrong targets were tried before landing on `/` (both 2026-08-10):
+`/dashboard` — the internal placement/drive view (`modules/Dashboard`, sibling
+of `/dashboard/roles/:corpID`), absent from v1's sidebar — and `/tpoDashboard`,
+which is right only for levels 1|3. Delegating to `/` keeps one source of truth
+in v1 and survives any change to the access rules.
 
 **`onItemClick` must hard-navigate for `/v2/` paths.** `navigate(path)` is
 react-router's SPA navigate; it finds no match for `/v2/*` and renders v1's 404
@@ -174,6 +182,23 @@ and the hook so they cannot drift again, and the hook normalises the response
 Telling the two apart when debugging: the cockpit's own failure is styled and
 inside the shell; a bare white page with a "Try again" button is the ROOT error
 boundary, i.e. something **threw during render** — a 502 alone never does that.
+
+## The cohort filter must reach every block, including the rail
+
+The dashboard toolbar's Degree-Dept / Passing-year selection is applied
+**server-side** — `institutes/dashboard/v2/*` take `depts` (JSON array of
+`{deg, sec?}`) and `years` (comma-separated), and `DashboardV2.buildCohort`
+turns them into one shared SQL predicate so every block agrees.
+
+`useSchedule(from, to, cohort)` takes the cohort as a **`&`-leading** fragment
+(it is appended after `from`/`to`), while `cohortQuery()` returns a `?`-leading
+standalone query string — hence the `.replace(/^\?/, "&")` at both call sites.
+
+The "This week" rail (`WeekRail`) silently omitted it until 2026-08-11, so the
+rail listed every occurrence while the blocks beside it were scoped to one
+cohort — the same screen showing two different answers. Verified after the fix:
+23 items → 2 on DEV, 26 → 6 on UAT when a passing year is applied. If another
+consumer of `useSchedule` appears, pass the cohort.
 
 ## Auth
 
