@@ -307,23 +307,41 @@ it correctly read **0 at risk**.
 Since 2026-08-11 attendance is judged only against occurrences whose window has
 ended, and there is a fourth, neutral band:
 
-| band | rule | label · sub |
-|---|---|---|
-| `pending` | nothing closed yet, no attempt | **Yet to attempt** · window still open |
-| `high` | attended ≤34% of what closed | **High risk** · missed most |
-| `moderate` | attended 34–99% of what closed | **Moderate risk** · missed some |
-| `engaged` | attended everything closed, or sat a still-open window early | **Fully engaged** · attended all |
+Bands are reported in the platform's **Consistency** vocabulary — the same words
+and cutoffs the Student-wise tab's consistency chip already used, so one student
+cannot read "Inconsistent" on one screen and "Moderate" on another:
 
-The old `sub` strings were thresholds pretending to be states — "missed a cycle"
-was wrong for anyone who missed two. All four bands share the tracked
-denominator so the donut still sums to 100%; the at-risk KPI counts `high`
-alone. `pending` renders `--color-neutral-300`; without that mapping it falls
-through to the primary blue and reads as a risk level.
+| band | rule | label · sub | colour |
+|---|---|---|---|
+| `high` | attended ≥80% of what closed | **High Consistency** · ≥80% attended | green |
+| `moderate` | attended 60–79% of what closed | **Moderate Consistency** · 60–79% attended | amber |
+| `inconsistent` | attended <60% of what closed | **Inconsistent** · <60% attended | red |
+| `pending` | nothing closed yet, no attempt | **Yet to attempt** · window still open | neutral |
+
+`pending` is orthogonal to that table rather than a fourth level of it: a student
+with no closed window has no attendance percentage at all. Dropping it would put
+a just-invited cohort straight back into red, which is the report this whole
+thread started from. Sitting a still-open window early counts as `high`.
+
+All four bands share the tracked denominator so the donut sums to 100%. The
+at-risk KPI counts the **red** band (`inconsistent`) — under this vocabulary
+`high` is the good one, so counting `high` would report the healthiest students
+as at risk.
+
+**`high` means opposite things in the two modes** — high RISK (red) on
+performance, high CONSISTENCY (green) on attempt rate. The frontend therefore
+keys colours per mode (`PERFORMANCE_COLORS` / `CONSISTENCY_COLORS` in
+`assessments/[id]/_constants.ts` and `dashboard/_components/StudentAtRisk.tsx`);
+the single shared `BAND_COLORS` map it replaced would paint the good band red.
+`pending` renders `--color-neutral-300` — without that entry it falls through to
+primary blue and reads as a level.
 
 One helper owns this: `app/helpers/assessmentBands.js`
 (`attemptBandOf` / `attemptRiskBands`), used by **both** `DashboardV2.js` and
 `AssessmentDetailV2.js`, which previously carried two copies of the arithmetic.
-`AssessmentDetailV2` also sends each student's `attemptBand`, because the
+`AssessmentDetailV2` also derives each student's `consistency` chip from that
+same helper (it used to run its own 80/60 arithmetic over a different
+denominator) and sends the band as `attemptBand`, because the
 analytics drawer was banding attendance client-side on entirely different
 cutoffs (`<40` / `<80`) — clicking a donut slice listed a different population
 than the slice counted. The same drawer filtered performance slices with the
