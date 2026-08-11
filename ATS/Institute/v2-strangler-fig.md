@@ -118,6 +118,15 @@ Three traps this hit, all worth remembering:
    appears twice. `total_occ` falls back to
    `jsonb_array_length(frequency_value)` so an unrun series still reads 0/20.
 
+**The roster must fold too.** `getStudents` still resolved the group with
+`loadOccurrences` alone, so a schedule whose runs hadn't fired had no maps and
+the Student-wise performance tab 404'd — "Couldn't load the student roster" —
+while the list beside it showed 4 students from the diagnosis maps. It now uses
+`loadGroupMaps` (occurrences + folded diagnosis), with diagnosis appended last
+so the series' own runs keep the 1..N numbering the trend sparkline depends on.
+If another consumer resolves a group, use `loadGroupMaps`, not
+`loadOccurrences`.
+
 Verified on UAT for the institute behind the report: the list collapses to one
 row (`Communication - Schedules`, Recurring, 0/20, 12–31 Aug, 4 students) and
 its Schedule tab opens on **Diagnosis · Ongoing · Assessment #1 1/4 ·
