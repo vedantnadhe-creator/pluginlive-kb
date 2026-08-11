@@ -121,6 +121,23 @@ of zeros has no geometry, so it now falls back to the **cohort** spread until
 the first completion lands, with the cap label naming which of the two is on
 screen. The empty state now means only what it says: nobody is assigned.
 
+### "End date" was blank until the series' first run fired
+
+The Schedule tab's **End date** card reads the LAST occurrence's `end` (its
+attempt-window close), deliberately not `assessment_schedules.schedule_end_date`
+— the two differ once validity extends past the final run. But
+`loadPendingSchedule` set every occurrence's `end: null` before the scheduler
+had fired a single run, so the card had nothing to read and showed "—" on every
+Upcoming series regardless of how far out its real close date was. Same root
+cause put "—" on each timeline row too ("12 Aug 2026 — —").
+
+Fixed by projecting `end` on unfired occurrences the same way the scheduler
+computes a real map's `end_time` (admin-node `Assessment.js`
+`updateAssessmentSchedule`): `start + assessment_validity_days`, end of day.
+Verified on "Communication - Schedules" (20 daily runs from 12 Aug 2026,
+14-day validity) — last occurrence now projects to **14 Sep 2026** instead of
+"—".
+
 ### Diagnosis maps fold into their schedule (2026-08-11)
 
 `abc15aa`/`589a466` institute-node, `6ab1a89` frontend. Shared helper
