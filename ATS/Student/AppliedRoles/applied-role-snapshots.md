@@ -117,6 +117,16 @@ function isAppliedSnapshotReadsEnabled() {
 Identical in both services. **Unset means off.** Only the literal string `true`
 (case-insensitive) enables it — `1` and `yes` do not.
 
+A second, independent flag gates payload-sourced capture (Phase 4), in
+`student-node` only, with the same parsing rule:
+
+```js
+APPLIED_SNAPSHOT_PAYLOAD_CAPTURE   // student-node, create-full only
+```
+
+The two are orthogonal. `READS` decides where role views read from; `PAYLOAD_CAPTURE`
+decides where a normalization-created application's snapshot is built from.
+
 ### Gotcha: env files are baked into the image at build time
 
 ```dockerfile
@@ -158,13 +168,18 @@ docker exec -w /app <container> node -e \
 | 1 | Capture at application time | Triggers + backlog handling |
 | 2 | Read from snapshots | Repoint candidate/application APIs, flag-gated |
 | 3 | Backfill and recovery | Backfill, reconciliation sweep, backlog monitoring |
-| 4 | UAT rollout | Migrations, backfill, deploy, enable, validate |
-| 5 | Production rollout | Same, with monitoring and rollback readiness |
-| 6 | Final cleanup | Remove flag fallback, retain monitoring |
+| 4 | Payload-sourced capture | Freeze from the create-full payload when normalization applies an EXISTING student |
+| 5 | UAT rollout | Migrations, backfill, deploy, enable, validate |
+| 6 | Production rollout | Same, with monitoring and rollback readiness |
+| 7 | Final cleanup | Remove flag fallback, retain monitoring |
 
-Phases 0–3 are code-complete and merged. Phase 4 (UAT) is complete as of
-2026-08-07; functional validation by testers is in progress. Phase 5 (PROD) has
-not started.
+Phases 0–4 are code-complete and merged. UAT is complete as of 2026-08-11 and
+carries all four build phases; functional validation by testers is in progress.
+PROD has not started.
+
+Note the numbering shifted on 2026-08-11: "Phase 4" in commit messages, the
+migration filename and PR titles means **payload-sourced capture**, not the UAT
+rollout it referred to before that date.
 
 ---
 
@@ -174,29 +189,42 @@ not started.
 |---|---|---|---|
 | `student-node` | `feat/applied-snapshot` | #1518 | 2026-08-07 |
 | `corporate-node` | `feat/applied-snapshot` | #1735 | 2026-08-07 |
+| `student-node` | `feat/applied-snapshot-payload` | #1520 | 2026-08-11 |
+| `student-node` | `fix/applied-snapshot-payload-json-null` | #1522 | 2026-08-11 |
+| `student-node` | `fix/candidate-drawer-snapshot` | #1524 | 2026-08-11 |
+| `corporate-react` | `fix/candidate-drawer-snapshot` | #1809 | 2026-08-11 |
 
-Both merged into `Development`, then promoted to `UAT` (student-node via PR
-#1519; corporate-node via a `Development` -> `UAT` merge).
+All merged into `Development`, then promoted to `UAT` via `Development` -> `UAT`
+merges (student-node also used PR #1519 and #1521 for earlier promotions).
+
+`corporate-react` is now part of this feature: the candidate drawer had to start
+sending a `roleId` before the backend could resolve a snapshot for it.
 
 ---
 
-## Environment state — as of 2026-08-07
+## Environment state — as of 2026-08-11
 
 | | DEV | UAT | PROD |
 |---|---|---|---|
 | Postgres | 17.10 | 16.14 | **14.22** |
 | Snapshot tables | yes | yes | **no** |
 | Triggers (ins/upd x 2 tables) | 4 enabled | 4 enabled | — |
-| Snapshots captured | 598 | **13,012** | — |
+| Phase 4 capture guard | yes | yes | **no** |
+| `capture_source = 'payload'` allowed | yes | yes | **no** |
+| Snapshots captured | 598 | **13,077** | — |
+| — by source | 596 backfill / 1 apply / 1 recovered | 13,012 backfill / 64 apply / **1 payload** | — |
 | Applied rows missing a snapshot | 0 | **0** | — |
 | Capture backlog (unresolved) | 0 | 0 | — |
 | Code deployed | yes | yes | no |
 | `APPLIED_SNAPSHOT_READS` | **true** | **true** | unset |
+| `APPLIED_SNAPSHOT_PAYLOAD_CAPTURE` | true (`.env.dev`) | **true** | unset |
 | Applied rows to backfill | done | done | **63,347** |
 
 DEV and UAT are both fully deployed with reads enabled. UAT backfill wrote 13,012
-snapshot rows against exactly 13,012 applied applications, all `capture_source =
-'backfill'`. Functional validation by testers is in progress.
+snapshot rows against exactly 13,012 applied applications. The single `payload`
+row (2026-08-11 10:20 UTC) is the first real normalization-created application to
+freeze from its sheet rather than from the stale profile — end-to-end proof that
+Phase 4 works in the live flow. Functional validation by testers is in progress.
 
 ### UAT rollout notes (2026-08-07)
 
@@ -374,16 +402,152 @@ the argument*, so the crash happened with the feature disabled too.
 
 ---
 
+## Phase 4 — payload-sourced capture (2026-08-11)
+
+### The problem
+
+`create-full` (`student-node app/handlers/common.js`) has three existing-student
+branches. Two refresh the live profile tables **before** inserting the role
+mapping, so the Phase 1 trigger captures current data:
+
+- `onboardingSource = 'INSTITUTE_ERP'` -> `updateExistingStudentData(...)`
+- corporate-only lead (`access_level = [2]` and `is_corporate`)
+
+The third — normalization sending an **existing** student to a **new** role —
+deliberately leaves the profile untouched ("an existing student owns their own
+data") and still creates the mapping with `is_applied = 1`. The trigger froze the
+**stale** profile while the values the form collected were discarded; they
+survived only as raw sheet JSON on `student_role_mapping.response_data`.
+
+On UAT that branch was **3,725 of 12,060** payload-sourced applications (31%).
+
+This was never a regression — the payload had always been discarded there. What
+the snapshot changed is that the divergence became **permanent**: previously a
+student correcting their profile fixed the recruiter's view; afterwards it stayed
+frozen at the stale value.
+
+### The mechanism
+
+`app/helpers/payloadSnapshot.js` builds the snapshot from the create-full payload
+and writes it **before** the mapping row exists. The Phase 4 migration makes an
+existing snapshot authoritative, so both mapping triggers no-op on their own —
+no session flag, and no cooperation needed from any of the 8+ other `is_applied`
+write paths.
+
+`student.capture_role_application_snapshot()` now filters incoming pairs, **once
+and up front**, to those with no `role_application_student` row. Filtering once
+is load-bearing: the first insert populates that table, so a per-insert
+`NOT EXISTS` would see its own row and skip the remaining three tables.
+
+### It also closed a pre-existing bug
+
+`ON CONFLICT DO NOTHING` protects three snapshot tables, but
+`role_application_education_profile` keys on `(student_id, role_id, id)` where
+`id` is the **source** row id. A capture re-run (`is_applied 1 -> -1`) therefore
+**appended** any education row added *after* the apply to a snapshot that is
+supposed to be frozen. The guard closes it.
+
+### Design rules
+
+| Rule | Why |
+|---|---|
+| Merge over live, never payload-only | The live tables carry columns no payload has — `institute_campus_id`, `status`, `updated_up` (NOT NULL, no default). A payload-only row fails to insert or blanks the campus, breaking the college filter. |
+| degree/stream overlay as a coherent pair | Normalization often sends degree text with no resolved `degree_id`. Text alone would leave the snapshot's degree disagreeing with the id the filters match on. |
+| Education merges by level, keeping the live row id | So a later trigger run collides on the PK instead of appending a second copy of the same qualification. |
+| Never throws | An apply must never fail for a snapshot. On failure the trigger captures live data — previous behaviour. |
+| No `materializeMissingMasterIds` | It mints master rows; widening that to a branch that never did it is the mechanism that once turned a stray `"81.0%"` into a live degree. |
+
+### Not backfillable
+
+The ~3,725 pre-Phase-4 applications keep their stale data permanently.
+`student_role_mapping.response_data` holds `rawJson` — raw sheet headers, not the
+mapped create-full payload — so there is nothing to reconstruct from on this side.
+Only the normalization service's own `normalized_data` could feed a backfill, and
+that is a separate project.
+
+---
+
+## Two defects found during UAT validation (2026-08-11)
+
+Both were found by testing the deployed build against real UAT data, not by unit
+tests. Worth reading before the PROD rollout — neither surfaces as an error.
+
+### 1. Payload capture failed on every candidate with an empty `Json?` column
+
+```
+Argument cvDetails for data.cvDetails must not be null. Please use undefined instead.
+Argument cvUrl ... viewedRoles ... restrictedReason ... responceData ...
+```
+
+Prisma rejects a plain `null` for a `Json?` field on create. A snapshot row is
+built by **copying the live row**, and a live row read back from Prisma carries
+`null` for every empty `Json?` column — so capture threw for any candidate whose
+CV fields were empty. **Phase 4 did nothing at all** until this was fixed.
+
+It failed **silently by design**: capture never throws, so it fell back to the
+trigger and froze the stale profile. There is no error in the logs.
+
+Fix (`student-node` #1522): `normalizeJsonNulls()` rewrites NULL `Json?` columns
+to `Prisma.DbNull` before the write — `DbNull` rather than dropping the key,
+because dropping it would let the column DEFAULT apply and the snapshot would
+stop mirroring the source row. `Json[]` list columns are excluded; they take `[]`.
+
+**Why testing missed it:** the unit fixtures were hand-built with only populated
+fields, and the DEV integration run passed by luck — that student's Json columns
+happened to be non-null on DEV and null on UAT.
+
+### 2. The candidate drawer read the live profile
+
+Reported symptom: editing a candidate's PG score changed what the corporate role
+view's drawer showed for an application submitted months earlier.
+
+```
+ViewStudentDrawer (corporate-react, Roles)
+  -> getCandidateDetails            actions.js
+  -> GET students/${studentId}      <- no roleId
+  -> common.getStudent -> Student.getById(id)
+  -> live current_course.average_marks
+```
+
+Phase 2 repointed the role-scoped sibling `getStudentWithQuestion(id, roleId)`,
+and the drawer was recorded as covered. This endpoint takes an id and nothing
+else — **without a roleId there is no `(student, role)` key to look a snapshot up
+by**, so the overlay could not fire even in principle. It was not a missed line;
+it was a site that had to gain role context first.
+
+Fix (`student-node` #1524 + `corporate-react` #1809): `getById(id, roleId)` takes
+an optional roleId and applies the same overlay; the route accepts it as a query
+param; corporate-react passes it from the seven role-scoped drawers.
+
+Verified byte-for-byte: with no `roleId`, `getById` returns an identical 32,389
+byte response to the pre-change code. The notification drawer and interviewer
+dashboard stay live deliberately — neither opens inside a role.
+
+`optoutType` is read **after** the overlay on purpose: it is operational status,
+not profile history.
+
+The querystring schema deliberately omits `additionalProperties: false`, unlike
+the others in that file — four frontends call `GET /students/:studentId`
+(corporate Roles and ATS, admin MetaDashboard, Assessment onboarding), and
+rejecting an undeclared param would 400 them.
+
+---
+
 ## Known gaps
 
-1. **DDL is not in version control.** The three SQL files live at
-   `/home/ubuntu/db-scripts-staging/applied-role-snapshot/` on the dev host
-   (copied out of `/tmp`, which is cleared on reboot). That directory is not a
-   git repo. Pushing them to DB-Scripts was **deliberately deferred** at the UAT
-   stage; it should happen before the PROD rollout, since
-   `grep -rl "PROD — pending"` over DB-Scripts is how the PROD migration order is
-   derived, and this feature is currently invisible to it. Function and procedure
-   bodies are also recoverable from a live DB via `pg_get_functiondef()`.
+1. ~~**DDL is not in version control.**~~ **Partly resolved 2026-08-11.** The
+   Phase 4 migration is in DB-Scripts at
+   `Applied Role Snapshot/20260811T063623Z__applied_role_snapshot_payload_capture.sql`
+   (commit `f173070`). The **first three are still not pushed** — they live only
+   at `/home/ubuntu/db-scripts-staging/applied-role-snapshot/` on the dev host,
+   which is not a git repo. Push them before the PROD rollout:
+   `grep -rl "PROD — pending"` over DB-Scripts is how PROD migration order is
+   derived, so PROD would currently be told to run Phase 4 against tables that
+   Phases 0–1 never created. Function and procedure bodies are also recoverable
+   from a live DB via `pg_get_functiondef()`.
+
+   Header state on the pushed file: `DEV — applied 2026-08-11`, `UAT — pending`
+   (**stale — it was applied to UAT on 2026-08-11**; flip it), `PROD — pending`.
 2. **No Prisma migration.** `prisma/schema-student.prisma` declares the five
    models with nothing in `prisma/migrations/`. `student-node`'s Dockerfile runs
    `npx prisma migrate deploy`, which will **not** create these tables — they
@@ -395,7 +559,12 @@ the argument*, so the crash happened with the feature disabled too.
    `export APPLIED_SNAPSHOT_READS=true` at line 49, and the UAT image built from
    it. Note it is **untracked** — env files are box-local in both services, so it
    exists only on that host and must be created again for any new environment.
-4. **PROD is on PG14.22** while dev/UAT are 17/16. Not a blocker for this feature
+4. **Eligibility still evaluates on live data.** A student who edits a score can
+   be re-evaluated against the new value even though the recruiter sees the frozen
+   one. Two sources of truth on one application. Deferred by decision, not
+   oversight — freezing eligibility for `is_applied = 1` was recommended and not
+   taken up.
+5. **PROD is on PG14.22** while dev/UAT are 17/16. Not a blocker for this feature
    (the DDL is PG14-safe), so the planned PG16 upgrade and this rollout are
    independent — do not couple them.
 
