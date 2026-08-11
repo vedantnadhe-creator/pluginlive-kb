@@ -240,6 +240,49 @@ assessment schedules, `b4c` student at-risk, `b4d` department distribution,
 `b4b` competency, `b6` year-on-year (only with 2+ years of data), plus the
 "This week" rail.
 
+### Student at-risk bands only judge windows that have CLOSED
+
+Both at-risk surfaces — the dashboard's `b4c` donut and the assessment detail
+page's Overview panel/KPI — used to band attendance on `taken / assigned`. A
+student invited an hour ago, window still open, nothing yet possible to miss,
+therefore landed in the same band as one who skipped two of three: a freshly
+invited college read **"High risk 4 | 100%"** while the performance card beside
+it correctly read **0 at risk**.
+
+Since 2026-08-11 attendance is judged only against occurrences whose window has
+ended, and there is a fourth, neutral band:
+
+| band | rule | label · sub |
+|---|---|---|
+| `pending` | nothing closed yet, no attempt | **Yet to attempt** · window still open |
+| `high` | attended ≤34% of what closed | **High risk** · missed most |
+| `moderate` | attended 34–99% of what closed | **Moderate risk** · missed some |
+| `engaged` | attended everything closed, or sat a still-open window early | **Fully engaged** · attended all |
+
+The old `sub` strings were thresholds pretending to be states — "missed a cycle"
+was wrong for anyone who missed two. All four bands share the tracked
+denominator so the donut still sums to 100%; the at-risk KPI counts `high`
+alone. `pending` renders `--color-neutral-300`; without that mapping it falls
+through to the primary blue and reads as a risk level.
+
+One helper owns this: `app/helpers/assessmentBands.js`
+(`attemptBandOf` / `attemptRiskBands`), used by **both** `DashboardV2.js` and
+`AssessmentDetailV2.js`, which previously carried two copies of the arithmetic.
+`AssessmentDetailV2` also sends each student's `attemptBand`, because the
+analytics drawer was banding attendance client-side on entirely different
+cutoffs (`<40` / `<80`) — clicking a donut slice listed a different population
+than the slice counted. The same drawer filtered performance slices with the
+donut's key names (`moderate`/`safe`) against the student rows' own
+(`medium`/`low`), so that drill-down matched **nothing**; `PERF_BAND_KEY` maps
+them.
+
+**Gotcha — `assessment_institute_map` has no `is_active` column.** Cancellation
+lives on `assessment_schedules`. Reading `aim.is_active` in the window_closed
+predicate 500'd the entire Assessment lens with Prisma **P2010 / SQLSTATE
+42703**; the fix joins the schedule and reads `COALESCE(sch.is_active, true)`
+(a standalone one-time map has no schedule row, hence the default). A cancelled
+schedule's runs must never count as missed.
+
 ## The dashboard must survive a failed BFF call
 
 `/api/dashboard/filters` used to answer its error fallback as **200** with
