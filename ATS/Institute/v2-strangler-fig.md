@@ -523,6 +523,29 @@ predicate 500'd the entire Assessment lens with Prisma **P2010 / SQLSTATE
 (a standalone one-time map has no schedule row, hence the default). A cancelled
 schedule's runs must never count as missed.
 
+### "Active" had two definitions on the same screen
+
+The season KPI card and the Active Assessment Schedules panel are served by
+different methods of `DashboardV2.js`, and they disagreed about the word:
+
+| surface | rule |
+|---|---|
+| KPI card (`getSummary`) | `is_active AND start <= now AND end >= now` |
+| Panel (`getAssessmentBlocks`) | `is_active AND end >= now` |
+
+So the panel counted assessments that existed but had **not opened yet**. On
+"Auguest college list fall" (UAT) that read **Active assessments 3** beside a
+donut of **7 active sent** — the four in the gap were all due to open later the
+same day, i.e. nothing a student could sit.
+
+Since 2026-08-11 both call `isWindowOpen(row, now)`: opened and not closed.
+Anything not yet open is Upcoming, matching `occurrencePhase()` and the
+assessments list. The panel's existing `showingRecent` fallback still covers a
+college with nothing open at all, so the block never goes silently empty.
+
+If the product ever wants "sent but not yet open" to count as active, change the
+predicate — not one caller.
+
 ## The dashboard must survive a failed BFF call
 
 `/api/dashboard/filters` used to answer its error fallback as **200** with
