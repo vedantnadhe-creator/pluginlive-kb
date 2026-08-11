@@ -407,7 +407,16 @@ portal, so the v2 cockpit covers assessments only. Removed with them: the
 `/api/dashboard/ats` BFF route, its corporate-node calls, and the plan-based
 upgrade lock.
 
-Blocks now rendered: `b1` needs-attention + 3 season KPIs, `b4a` active
+**`b1`'s action queue ("Needs attention today") is hidden as of 2026-08-11**, at
+the TPO's request while its Alert/Remind/Info rules are re-agreed. It is behind
+`SHOW_ACTION_QUEUE` in `NeedsAttention.tsx`, not deleted — the summary payload,
+the queue rules and the row rendering are all intact, so restoring it is a
+one-word edit. The season KPI cards that share the section stay visible
+(`.top-split` is a single-column grid, so they simply move up), and the
+section's `aria-label` switches to "Season summary" so assistive tech does not
+announce an action list that is not on the page.
+
+Blocks now rendered: `b1` needs-attention (queue hidden) + 3 season KPIs, `b4a` active
 assessment schedules, `b4c` student at-risk, `b4d` department distribution,
 `b4b` competency, `b6` year-on-year (only with 2+ years of data), plus the
 "This week" rail.
