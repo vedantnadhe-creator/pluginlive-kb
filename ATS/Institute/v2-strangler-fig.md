@@ -141,13 +141,51 @@ many students actually match.
 - `depts` → the student's degree, or degree + one department
 - `years` → the student's passing year
 - `types` → sent at least one assessment of that type by this institute
-  (`EXISTS` against `assessment_assigned_students`, type name compared
-  letters-only so the UI's "AI Interview" matches the DB's "AI_Interview"
-  without a hand-maintained lookup)
+  (`EXISTS` against `assessment_assigned_students`); the UI sends **display
+  labels**, resolved to the DB `type_name` by `dbTypeFor()` — see below
 
 Encoding matches the dashboard's existing cohort params — `depts` a JSON array
 of `{deg, sec?}` (degree names can contain commas), `years`/`types`
 comma-separated — so both screens read the same query-string shape.
+
+#### The Type filter sends display labels, not DB type names
+
+Fixed 2026-08-11 (`337950c` institute-node, `b61ac1d` frontend). The filter's
+options come from the assessments list's own `TYPE_LABEL` map
+(`lib/assessments/format.tsx`), so the value that reaches the API is what the
+TPO sees on screen. Comparing those letters-only against `type_name` is a
+**coincidence** that holds for `Role-based`/`Role_Based` and fails silently
+otherwise:
+
+| UI label | letters-only | DB `type_name` | letters-only | matched? |
+|---|---|---|---|---|
+| Custom | `custom` | `Custom_Assessment` | `customassessment` | **no** |
+| AI mock | `aimock` | `AI_Interview` | `aiinterview` | **no** |
+| Role-based | `rolebased` | `Role_Based` | `rolebased` | yes |
+
+Filtering by Custom or AI mock therefore returned an **empty roster with no
+error**. Verified on UAT institute `1f78e8f3`: `types=Custom` → 0 where
+`types=Custom_Assessment` → 20.
+
+`dbTypeFor()` in `StudentWiseV2.js` now resolves a label to its `type_name`
+first, via a map derived from `TYPE_LABELS` so a new bucket stays in sync
+automatically, plus one explicit alias for **"AI mock"** — the assessments list
+labels `AI_Interview` "AI mock" while Student-wise labels the same type
+"AI Interview", and both must filter. Unknown values fall through to their own
+letters-only form, so `Behavior` / `Hinglish` / `Tech_*` and any type added
+later keep working without an entry.
+
+#### Doughnut buckets (`TYPE_KEYS`)
+
+`Aptitude · Communication · AI Interview · Role-based · Custom`. Custom was
+added 2026-08-11 — a student sent one saw it counted in taken/sent but absent
+from the breakdown, while the list's legend directly above already read
+"Custom 1". Colours must be kept in step in **three** places: `TYPE_KEYS` /
+`TYPE_LABELS` (institute-node `StudentWiseV2.js`), `AssessmentType`
+(`lib/types/studentWise.ts`) and `TYPE_COLORS`
+(`assessments/_components/StudentWiseTable.tsx`, matching
+`lib/assessments/format.tsx`). Types outside the set still count toward
+taken/sent, they just get no slice.
 
 Known gap: the popover's per-option counts are still ASSESSMENT counts (e.g.
 "2028 · 6" means 6 assessments), which reads oddly against a student roster,
