@@ -189,6 +189,50 @@ row (`Communication - Schedules`, Recurring, 0/20, 12–31 Aug, 4 students) and
 its Schedule tab opens on **Diagnosis · Ongoing · Assessment #1 1/4 ·
 Assessment #2 0/4 · 1/8** — matching admin exactly.
 
+### The detail page scopes diagnosis by cohort, not by type (2026-08-11)
+
+`f81cf64` institute-node. The section above describes the **list's** grouping,
+which is `DISTINCT ON (assessment_type)` by construction. The assessment
+**detail page** inherited that key and it is wrong there: a college with several
+recurring assessments of one type has one diagnosis pair *per send*, and keying
+on type alone showed **all of them on every series**. On UAT, "Prabhakar Apt
+Testing Medium Diff" listed ~16 `Assessment #1/#2` rows spanning 29 Jun – 11 Aug
+— seven other aptitude series' baselines — and the units headline counted them
+all (`8 / 32`).
+
+`DIAG_OWNER_CTE` in `assessmentGrouping.js` recovers the missing link. There is
+still no FK, so the **cohort is the evidence**: admin creates the diagnosis pair
+in the same operation as the send and assigns it the send's students, so a map
+belongs to the schedule whose `student_lists.students_data` roster its assigned
+students came from. Ties (the same cohort re-sent) break on creation proximity —
+`ABS(schedule.created_at − map.start_time)`, since a map's `start_time` is
+midnight of the day it was created. `loadDiagnosis` (the panel) and
+`loadGroupMaps` (the roster) both join through it.
+
+Conservation is the invariant to check: across DEV's 61 college
+Communication/Aptitude schedules, rendered diagnosis rows went **1902 → 545**,
+and 545 is exactly the number of diagnosis maps that carry students — every map
+appears under exactly one series, none lost. The UAT college above holds 14
+aptitude diagnosis maps and its 7 schedules now show 2 each.
+
+Two things this deliberately does **not** do:
+
+- **A map matching no roster is attributed to nothing** and shows on no series.
+  Guessing a parent is what this replaces.
+- **One owner per map, not many.** Attributing a map to every schedule whose
+  roster it matches would keep the panel alive when admin *reuses* an existing
+  pair for a re-sent student (1 of 61 DEV schedules loses its panel this way),
+  but it collapses straight back into the original bug when a TPO sends to the
+  same full student list every month — the normal usage pattern.
+
+Still on the old key: the **assessments list and dashboard** (`DIAG_PARENT_CTE`
+/ `GROUP_KEY`), so the newest series of a type still counts every diagnosis map
+of that type in its list row. Same helper can be swapped in there.
+
+The durable fix is a real `parent_schedule_id` on `assessment_institute_map`,
+written by admin-node when it creates the pair, backfilled with the rule above —
+at which point the whole inference can be deleted.
+
 ### Superseded: diagnosis maps were badged ONE-TIME
 
 `schedule_id` NULL **and** `is_one_time` false means a **diagnosis** map — the
