@@ -81,6 +81,34 @@ Verified on UAT against the schedule behind the report — "Communication -
 Schedules", 12–31 Aug 2026, 20 runs, 4 candidates — matching admin's row, and
 the row renders `RECURRING · 0/20 · Upcoming` and opens on Schedule.
 
+### An Upcoming schedule still has a cohort to break down
+
+`loadPendingSchedule` (the fallback for a recurring schedule the scheduler has
+not fired yet — no `assessment_institute_map` rows) used to return
+`departments: []` and `audience: []`, so **Completion analysis · By department**
+was blank and the Summary's **Assigned to** read "—" on every Upcoming
+assessment. It was reported as "Department wise Completion analysis is not
+showing".
+
+It has the data: `assessment.student_lists.students_data` carries each
+candidate's degree, department and passing year — the same JSON the scheduler
+will hand to the assign call — and the function already read that row to count
+the cohort. Since 2026-08-11 it groups it: departments get the cohort size with
+`completed: 0`, and audience rows are rebuilt the way the run path builds them.
+
+**Roster entries are not one shape.** The scheduler writes objects
+(`degree: { degreeName }`, `department: { streamName }`); older and
+bulk-uploaded lists write plain strings. `pickName` in `AssessmentDetailV2.js`
+accepts either — a shape mismatch should cost one label, not the whole
+breakdown.
+
+The frontend had the mirror-image bug: `DeptPie` sized its slices by `completed`
+and showed "No completed attempts to break down by department yet" whenever
+every department was at zero — i.e. every assessment nobody has sat yet. A pie
+of zeros has no geometry, so it now falls back to the **cohort** spread until
+the first completion lands, with the cap label naming which of the two is on
+screen. The empty state now means only what it says: nobody is assigned.
+
 ### Diagnosis maps fold into their schedule (2026-08-11)
 
 `abc15aa`/`589a466` institute-node, `6ab1a89` frontend. Shared helper
