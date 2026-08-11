@@ -93,6 +93,7 @@ as Node crons in `script/scheduler.js`.
 |---|---|---|
 | `app/helpers/appliedSnapshot.js` | both | Flag gate, join/overlay helpers |
 | `app/models/StudentRoleMapping.js` | student-node | Candidate reads repointed |
+| `app/models/Student.js` | student-node | `getStudentWithQuestion` overlay (candidate drawer) — see the incident below |
 | `script/appliedSnapshotBacklogCron.js` | student-node | Backlog drain + reconciliation sweep |
 | `script/scheduler.js` | student-node | Registers both crons |
 | `app/models/DriveRoleCandidateMap.js` | corporate-node | Recruiter candidate lists |
@@ -298,6 +299,78 @@ snapshot tables do use `student_id`.
 Set `APPLIED_SNAPSHOT_READS` to anything other than `true` (or remove it) and
 redeploy. All read paths revert to live data. The tables and triggers can stay —
 capture is harmless on its own.
+
+---
+
+## Incident: the Phase 2 overlay duplicated every new student (2026-08-10 → 2026-08-11, UAT)
+
+Phase 2 (`ac842702`) put the candidate-drawer overlay in the wrong function of
+`student-node/app/models/Student.js`. It landed in `create()` instead of
+`getStudentWithQuestion(id, roleId)`:
+
+```js
+const student = await prisma.student.create(buildCreateArgs(OPTIONAL_CREATE_SECTIONS));
+const withSnapshot = await appliedSnapshot.overlayStudentRecord(prisma, student, roleId); // no roleId in scope
+```
+
+`create()` has no `roleId`, so **every** student create threw
+`ReferenceError: roleId is not defined` — *after* the insert had already
+committed. `create()`'s `catch` cannot tell a failed insert from a failed
+post-insert step, so it fell into its degraded fallback and created the account a
+**second** time without `currentCourse`, `resume` or `educationProfile`. Result,
+per candidate:
+
+- a complete but **orphaned** student row (has `current_course`, no auth user), and
+- a **degraded twin** that `createPublicStudent` returns, so the auth user, the
+  system resume and every downstream assignment bind to it.
+
+Symptom seen by testers: a scheduled assessment's candidate list
+(`POST /assessment/getDiagnosisDataForASchedule`, admin **Assessment → Diagnosis**)
+showed **Degree & Department as `-`** for some candidates and correct for others.
+The list keys students by email; with two rows per email, whichever twin the
+Prisma `findMany` returned last won the map. The uploaded roster was never at
+fault — `assessment.student_lists.students_data` had the degree, `degreeId` and
+`streamId` all along. Excel export, filters and anything else reading
+`currentCourse` are affected the same way.
+
+Nothing enforces this at the DB level: **`student.student_personal_profile.primary_email`
+has no unique index**, which is why two accounts per email are possible at all
+and why the `P2002` branch in `Student.create()` never fires.
+
+- **Blast radius:** UAT only, ~20 students created between 2026-08-10 06:33 (when
+  the build reached UAT) and 2026-08-11. DEV ran the same code with no student
+  creations in the window; PROD never had it.
+- **Fix:** `student-node` `b998c122` — overlay removed from `create()` (a student
+  being created has no applied-role snapshot, so it was a no-op even when it did
+  not throw) and moved into `getStudentWithQuestion`, where `roleId` exists.
+  Keeping `create()`'s `try` around the insert alone is what makes the degraded
+  fallback safe. Deployed DEV + UAT 2026-08-11.
+- **Data repair:** `~/scripts/backfill_tpoduat_twins_uat.sql` — per email, move
+  `current_course` and `resume` from the orphan onto the live account, then delete
+  the drained orphan (its `student_personal_profile` goes with it via
+  `ON DELETE CASCADE`, which frees the duplicate email). Guarded: aborts unless
+  the live twin owns exactly one auth user, the orphan owns none, and the orphan
+  carries nothing beyond `current_course`/`resume`. Run so far for campus
+  `442b8476-…` (Jay Jalaram Talimi Snatak Mahavidyalaya) only — 4 students.
+  The remaining ~16 UAT students from other campuses are still duplicated.
+
+**Detection query** — degree-less students that have a same-email twin with a course:
+
+```sql
+SELECT p.primary_email, s.id, s.institute_campus_id, s.created_at
+FROM student.students s
+JOIN student.student_personal_profile p ON p.student_id = s.id
+LEFT JOIN student.current_course c ON c.student_id = s.id
+WHERE c.student_id IS NULL AND s.deleted_at IS NULL
+  AND EXISTS (SELECT 1 FROM student.student_personal_profile p2
+              JOIN student.current_course c2 ON c2.student_id = p2.student_id
+              WHERE lower(p2.primary_email) = lower(p.primary_email)
+                AND p2.student_id <> s.id);
+```
+
+Note the flag is irrelevant here: `overlayStudentRecord` returns early when
+`APPLIED_SNAPSHOT_READS` is off, but the `ReferenceError` fires while *evaluating
+the argument*, so the crash happened with the feature disabled too.
 
 ---
 
