@@ -41,6 +41,61 @@ Service unit: `/etc/systemd/system/institute-react-v2.service` (`next start`,
 
 Everything else is still v1.
 
+## A recurring schedule is invisible until it runs — unless you union it in
+
+The scheduler writes `assessment_institute_map` rows only **when it fires**
+(`assessment_schedules.last_run_at`). A schedule created for a future start date
+therefore owns **zero occurrences**, and since the v2 list is built entirely
+from `assessment_institute_map` it was missing from `/v2/assessments` outright —
+while admin (`admin.<env>/assessment`) already listed it as **Upcoming**.
+
+What the TPO saw instead were the **diagnosis** maps that sit alongside it
+(`schedule_id` NULL, `is_one_time` false — see below), badged `ONE-TIME`. That
+reads exactly like "my recurring assessment is showing as one-time", which is
+how it was reported. The two are unrelated rows.
+
+Fixed 2026-08-11 (`2cff4ee` institute-node, `40498dc` frontend). The list
+`UNION ALL`s in schedules with no maps yet, straight from
+`assessment_schedules`:
+
+| list field | source |
+|---|---|
+| title | `schedule_name` |
+| type | `assessment_type` (values match `assessment_type.type_name`) |
+| scheduleType | always `recurring` |
+| start / end | `schedule_start_date` / `schedule_end_date` |
+| rec `[run, total]` | `[0, jsonb_array_length(frequency_value)]` — the planned run dates |
+| assigned | `jsonb_array_length(student_lists.students_data::jsonb)` |
+
+`students_data` needs the **`::jsonb` cast** — json on some environments, jsonb
+on others, the same split as `aptitude_scores.statistics`.
+
+Opening one used to 404: `AssessmentDetailV2.getOverview` returns null when
+`loadOccurrences` is empty. It now falls back to `loadPendingSchedule`, which
+serves the schedule's own plan and sets **`meta.pending`**; the detail view
+lands on the **Schedule** tab, since an Overview of zeroed charts says nothing.
+An id that is not this institute's schedule still returns null, so unknown ids
+404 as before.
+
+Verified on UAT against the schedule behind the report — "Communication -
+Schedules", 12–31 Aug 2026, 20 runs, 4 candidates — matching admin's row, and
+the row renders `RECURRING · 0/20 · Upcoming` and opens on Schedule.
+
+### Diagnosis maps are still badged ONE-TIME
+
+`schedule_id` NULL **and** `is_one_time` false means a **diagnosis** map — the
+practice assessment auto-created beside a real send (`StudentListInfo.js`
+states this outright; admin's `Assessment.js` deliberately withholds
+`scheduleId` from them). They are recognisable by the "Assessment #N" name and a
+~10-year window.
+
+v1 excludes them from its list. v2 keeps the ones that have assigned students
+(the `EXISTS` branch in the list SQL) and, because `scheduleType` is derived
+solely from `schedule_id IS NOT NULL`, badges them **One-time** — contradicting
+their own `is_one_time = false`. Platform-wide that is **565 maps** (vs 900
+genuinely recurring and 90 genuinely one-time). Unresolved: either hide them
+like v1, or badge them "Diagnosis".
+
 ## Manage Assessments — the two views
 
 A segmented control above the table swaps **two separate table components**
