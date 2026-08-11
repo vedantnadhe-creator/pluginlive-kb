@@ -435,6 +435,9 @@ cannot read "Inconsistent" on one screen and "Moderate" on another:
 | `inconsistent` | attended <60% of what closed | **Inconsistent** · <60% attended | red |
 | `pending` | nothing closed yet, no attempt | **Yet to attempt** · window still open | neutral |
 
+`pending` carries **no sub-label** — "Yet to attempt" already says it, and the
+donut legend omits an empty sub rather than rendering a stray dash.
+
 `pending` is orthogonal to that table rather than a fourth level of it: a student
 with no closed window has no attendance percentage at all. Dropping it would put
 a just-invited cohort straight back into red, which is the report this whole
@@ -465,6 +468,15 @@ than the slice counted. The same drawer filtered performance slices with the
 donut's key names (`moderate`/`safe`) against the student rows' own
 (`medium`/`low`), so that drill-down matched **nothing**; `PERF_BAND_KEY` maps
 them.
+
+**The Student-wise tab carried the same premise until 2026-08-11.** Its
+per-student `risk` escalated `notStarted && windowOpen && sent > 0` to High
+risk, so a candidate invited that morning sat flagged red beside a genuine low
+scorer — and diagnosis maps have ~10-year windows, so "still open" is close to
+permanent. Risk is a judgement about PERFORMANCE and needs a score or a missed
+window to stand on: those rows now return `risk: null`, which the UI already
+renders as "—" and counts under the Risk filter's "Not assessed" (`s.risk ?? "na"`).
+`absent` — sent, window closed, never sat — stays High risk.
 
 **Gotcha — `assessment_institute_map` has no `is_active` column.** Cancellation
 lives on `assessment_schedules`. Reading `aim.is_active` in the window_closed
