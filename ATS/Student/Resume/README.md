@@ -195,3 +195,48 @@ newest `started_in`; the response is an **array of arrays**, one inner array per
   names match no branch in the grouping loop, so the second one is silently omitted
   from the response. Also pre-existing, also pinned by a test; the one-line fix is
   noted as a `ponytail:` comment in `promotionSorting.js`.
+
+---
+
+## Corporate master sync on profile save (`PUT /students/{id}`)
+
+`updateStudent` (`student-node/app/handlers/common.js`) appends the free-text
+**function / industry / role** values a student types into their work experience,
+projects and internships to corporate's master lists, so they become selectable for
+everyone afterwards. Nine calls in total — three fields × three resume sections —
+all via `CorporateService` (`app/services/CorporateService.js`) against corporate-node:
+
+| Field | Endpoint (corporate-node) |
+|---|---|
+| `function` | `POST /corporate/crud/studentfunctions` |
+| `industry` | `POST /corporate/crud/studentindustry` |
+| `role` | `POST /corporate/crud/studentdesignations` |
+
+Each call fires only when the value **changed** relative to the stored row, matched
+**by array index** (`studentData.resume.workExperience[index]`), not by `id`.
+
+### Gotchas
+
+- **These calls are not fire-and-forget — a failure fails the whole profile save.**
+  They are plain `await`s with no try/catch, so any non-2xx from corporate propagates
+  out of the handler and the student's entire `PUT /students/{id}` returns that error.
+- **An empty body 400'd every save.** Until 2026-08-11 the work-experience `function`
+  branch tested only `experience.function != existing?.function`, with no truthiness
+  check (the `industry` and `role` branches beside it already had one). A work-experience
+  row that arrived with **no `function` key at all** made that true (`undefined !=
+  "Android Testing"`), so it posted `{ name: undefined }` — and **axios drops undefined
+  keys when it serialises**, sending a literal `{}` (`Content-Length: 2`). corporate's
+  `postFunctionsmasterSchema` (`app/routes/functionMaster.js` → `app/schemas/functionMaster.js`)
+  has `required: ["name"]`, so it answered `400 "body must have required property 'name'"`
+  and the student could not save their profile at all. Seen on UAT with student
+  `f52913ac-28d1-4c39-9ac8-c7f95c0ca534`.
+- **The projects branch compared the wrong field.** Same block used
+  `project?.function != existingProject?.project` — `.function` against `.project` —
+  and was likewise unguarded, so it would post the same empty body as soon as a project
+  row carried a title.
+- **Fixed 2026-08-11** by routing all nine call sites through
+  `shouldSyncMaster(next, previous)` (`student-node/app/helpers/masterSync.js`,
+  tests in `test/masterSync.spec.js`): sync only a **non-blank string** that actually
+  changed. The `trim()` also stops whitespace-only names, which corporate accepts
+  happily, from becoming permanent junk rows in the master lists — the same
+  self-appending-master problem seen with degree/stream masters.
