@@ -1,6 +1,6 @@
 # Banking Job Readiness: hosted Supabase → PluginLive PostgreSQL (UAT)
 
-**Status (2026-08-10): DONE on UAT, with real production data. Deployed at commit `8877a68`.**
+**Status (2026-08-11): DONE on UAT, with real production data. Deployed at commit `a91fbbc`.**
 `banking.uat.pluginlive.com` runs entirely on PluginLive infrastructure. Verified in a real
 browser: **zero requests to `*.supabase.co`**, zero 4xx/5xx from the API layer, admin login works
 and the console renders live counts (61 candidates, 106 quizzes, 17 assessments taken).
@@ -33,14 +33,14 @@ could read.
 
 | | |
 |---|---|
-| Tables (public) | 117 |
-| RLS-enabled | 117 / 117 |
-| RLS policies | 303 public + 23 storage |
-| Functions / triggers / FKs / indexes | 173 / 26 / 51 / 844 |
+| Tables (public) | 119 |
+| RLS-enabled | 119 / 119 |
+| RLS policies | 343 public + 23 storage |
+| Functions / FKs | 173 / 50 |
 | Storage buckets | 10 (created by the migrations, **empty**) |
 | Realtime publication | 17 tables, `REPLICA IDENTITY FULL` |
 | Edge functions | **82** deployed, **82 boot clean** (81 until `request-password-reset` arrived 2026-08-10) |
-| Rows | **15,472** across 46 tables (1,584 seeded + 13,904 from the hosted CSV export) |
+| Rows | **16,106** across 48 populated tables |
 | auth.users | 61 — 59 reconstructed from the export, **passwordless by design** |
 
 ## Architecture
@@ -83,6 +83,24 @@ Frontend cutover was 3 env vars, as planned: everything funnels through
 
 Edge-function deviations live in `function-fixups/<name>/`, overlaid by `sync-functions.sh`:
 `main` (the JWT gate), `live-session-rsvp` (unbalanced brace) and `mcp` (hosted OAuth issuer).
+
+## Deployment 2026-08-11 — `a91fbbc`
+
+Advanced UAT by 47 commits from `8877a68` to `a91fbbc`. Applied all 22 migrations from
+`20260811014830` through `20260812021000` transactionally after a `pg_dump` backup. These repair
+the schema contracts for learning paths, AI Coach/practice, coding challenges, RAG, videos,
+projects, proctoring analytics, practice plans, student learning, and the merged admin module
+catalog. Grants and the PostgREST schema cache were refreshed afterward.
+
+The MCP fixup was rebased onto the new `@lovable.dev/mcp-js@0.26.2` / Zod 4 generated bundle;
+without that, the whole-file overlay would have silently rolled the deployed MCP function back to
+the older 0.23.0 implementation. It now changes only the OAuth issuer to the self-hosted origin.
+
+Verification: 82/82 edge functions boot clean; no-auth function request returns 401; all 50 current
+foreign keys have zero orphan rows; seven containers are running; anonymous and admin browser E2E
+pass with no `*.supabase.co` traffic or API 4xx/5xx. Unit suite: 275/282 pass; the seven failures
+are upstream test-catalog drift in `adminTabsAccessDenied` and `menuRbacReconciliation`, unchanged
+by the self-hosted patches.
 
 Upstream migration files are **never edited**. Deviations live as whole-file overrides in
 `fixups/`, so a repo pull cannot conflict and `diff` shows every change.
