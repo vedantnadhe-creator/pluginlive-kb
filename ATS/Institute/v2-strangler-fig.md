@@ -96,6 +96,18 @@ will hand to the assign call — and the function already read that row to count
 the cohort. Since 2026-08-11 it groups it: departments get the cohort size with
 `completed: 0`, and audience rows are rebuilt the way the run path builds them.
 
+**Settings come from `assessment_config` before the first run.** The same
+fallback hardcoded `proctoring: false` and `sections: []`, so the Schedule tab
+reported **Proctoring: Off** on a schedule created with it **On** — on UAT that
+was every one of the 32 not-yet-run college schedules, all of which have
+`allowProctoring = true`. Once a run exists the value is dynamic
+(`Boolean(head.allow_proctoring)` off the occurrence's map); before it there is
+no map to read, so `loadPendingSchedule` now reads `allowProctoring` and
+`enabledSections` from `assessment_schedules.assessment_config` — what admin
+stored at creation and what the scheduler will stamp onto each map. The column
+is jsonb everywhere, but the value is parsed defensively: one driver handing
+back text should not silently blank the whole panel.
+
 **Roster entries are not one shape.** The scheduler writes objects
 (`degree: { degreeName }`, `department: { streamName }`); older and
 bulk-uploaded lists write plain strings. `pickName` in `AssessmentDetailV2.js`
