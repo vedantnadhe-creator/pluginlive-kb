@@ -1139,6 +1139,20 @@ This bit `aiInterviewInviteAPI.js` and blanked the whole app on DEV and again on
 
 ---
 
+## Admin Corporate Assessment Dashboard — Total Score (fixed 2026-08-11)
+
+Separate surface from the corp-ATS drive list below: the admin-react **Corporate Assessment Dashboard** candidate table (`POST /students/assessments/corporate/student-list/:corporateId` → `TpoDashBoard.getStudentListForCorporateAssessment`).
+
+That endpoint scores per assessment type and had **no `AI_Interview` branch**, so every AI interview candidate returned `totalScore: null` and the Total Score column showed `-`, even for interviews with a finalized `ai_interview_scores` row.
+
+- Because `ai_interview_scores` has **no Prisma relation back to the assignment** (the graph is `assessment_assigned_students` → `ai_interview_sessions` → `ai_interview_scores`), the rows are fetched in one batched query by `assessment_assigned_id` and indexed by `student-node` `app/helpers/aiInterviewDashboardScore.js` (`indexAiInterviewScores`, latest row wins).
+- `totalScore` = `overall_score` (already 0–100), rounded to 2 dp; sorting by score works because the sort pass now also selects the assignment `id`.
+- A finalized score row counts as **calculated** even when `scores_calculated` is still false — same rule as the report-availability check in `common.js`, since that flag can lag the scoring pipeline.
+- `sectionScores` stays **null** here: `parameter_scores` is 0–5 qualitative ratings, not percentages.
+- A candidate who answered **0 questions** still shows `-` — those sessions are flagged `interviewIncomplete` and never get a score row. Correct behavior, not a bug.
+
+See [admin-frontend.md](admin-frontend.md) § Corporate Assessment Dashboard for the frontend side.
+
 ## Corporate ATS Candidate List Surfacing
 
 When an `AI_Interview` assessment is mapped to a (drive, role, round) cell via the cell-assessment mapping (`assessment_corporate_map.mapped_to`), the corp-ATS candidate list (`POST /corporates/drive/:driveId/role/:roleId/candidate/list`) renders **one column per round**: **Overall Score** (a single 0–100 number).
