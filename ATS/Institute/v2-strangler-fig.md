@@ -533,18 +533,23 @@ different methods of `DashboardV2.js`, and they disagreed about the word:
 | KPI card (`getSummary`) | `is_active AND start <= now AND end >= now` |
 | Panel (`getAssessmentBlocks`) | `is_active AND end >= now` |
 
-So the panel counted assessments that existed but had **not opened yet**. On
-"Auguest college list fall" (UAT) that read **Active assessments 3** beside a
-donut of **7 active sent** — the four in the gap were all due to open later the
-same day, i.e. nothing a student could sit.
+So the same college ("Auguest college list fall", UAT) read **Active
+assessments 3** beside a donut of **7 active sent** — the four in the gap were
+all due to open later the same day.
 
-Since 2026-08-11 both call `isWindowOpen(row, now)`: opened and not closed.
-Anything not yet open is Upcoming, matching `occurrencePhase()` and the
-assessments list. The panel's existing `showingRecent` fallback still covers a
-college with nothing open at all, so the block never goes silently empty.
+Both now share `isActiveAssessment(row, now)` = **not expired and not
+cancelled**, which is the definition the assessments **list screen already
+shipped**: its `STATUS_GROUP` map (`assessments/_constants.ts`) files
+`scheduled` — the design's "Upcoming" — under the `active` tab beside `live`
+and `aboutToExpire`, which is why that college reads "All 7 / Active 7 /
+Expired 0" there.
 
-If the product ever wants "sent but not yet open" to count as active, change the
-predicate — not one caller.
+**Whether a window has opened yet is a STATUS (Ongoing vs Upcoming), not what
+makes an assessment active.** Worth remembering — the first pass at this
+unified on the stricter rule and moved the panel 7 -> 3, which contradicted the
+list; the correction went the other way (`ba61301` then `161d114`). Verified:
+panel, donut and KPI all read 7 for that college, matching the list's Active
+tab.
 
 ## The dashboard must survive a failed BFF call
 
