@@ -632,6 +632,40 @@ cohort — the same screen showing two different answers. Verified after the fix
 23 items → 2 on DEV, 26 → 6 on UAT when a passing year is applied. If another
 consumer of `useSchedule` appears, pass the cohort.
 
+## Passing year is derived in IST, never UTC
+
+`student.current_course.ended_on` is epoch **millis of an IST wall-clock date**.
+A 2027 batch is stored as midnight IST on 1 Jan 2027 = `1798741800000` =
+**2026-12-31 18:30 UTC**. Every Postgres in the estate runs `TimeZone = UTC`, so
+the year must be read back in the timezone it was written in:
+
+```sql
+-- WRONG (shipped until 2026-08-12): renders the instant in UTC
+to_char(to_timestamp(cc.ended_on / 1000), 'YYYY')
+-- CORRECT
+to_char(to_timestamp(cc.ended_on / 1000) AT TIME ZONE 'Asia/Kolkata', 'YYYY')
+```
+
+The UTC form bucketed every batch whose `ended_on` landed on a 1 Jan **one year
+early** — PROD's TPO Dashboard offered "2026" in the Passing-year filter for
+students who are the 2027 batch (679 students on that boundary, ~3.9k on the
+2026 one). Nothing looked broken because `buildCohort`'s **predicate** used the
+same expression, so picking a year matched the same wrong bucket and the counts
+were self-consistent; only the label was wrong. Only 1-Jan-IST rows move — IST
+is ahead of UTC and never crosses back over 31 Dec, so a daytime `ended_on`
+keeps its year either way.
+
+The expression lives once in `institute-node/app/helpers/cohortSql.js` as
+`PASSING_YEAR_EXPR` and is imported by all four v2 models (`DashboardV2`,
+`AssessmentV2`, `AssessmentDetailV2`, `StudentWiseV2`) — filter options, the
+cohort predicate and every row's displayed `year` must stay on the same
+definition. Fixed 2026-08-12 (`22b54f3`), DEV + UAT; **PROD pending**.
+
+The legacy v1 institute surfaces still carry the UTC form — `Reports.js:185`,
+`iReports.js` (584/695/763/998) — and `StudentListInfo.js` filters by a raw
+epoch range instead of a year expression, so v1 reports can disagree with v2 by
+a year for the same student.
+
 ## Auth
 
 There is **no middleware auth check** — the JWT lives in `localStorage`, which
