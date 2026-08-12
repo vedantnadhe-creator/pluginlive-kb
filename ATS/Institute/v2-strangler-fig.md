@@ -615,6 +615,43 @@ Telling the two apart when debugging: the cockpit's own failure is styled and
 inside the shell; a bare white page with a "Try again" button is the ROOT error
 boundary, i.e. something **threw during render** — a 502 alone never does that.
 
+## A lazily-enabled fetch hook must not report "no data" as failure
+
+`useAssessmentStudents(id, enabled)` is lazy — the roster is only fetched once
+the Student-wise tab is opened. It seeded its state with `loading: enabled`, but
+**`useState`'s initialiser only runs on mount**, and on mount the tab is still
+Overview, so `loading` was pinned to `false` for the life of the component.
+
+Opening the tab flips `enabled` to true, yet the effect that starts the fetch
+runs only *after* that render paints. That frame therefore reported "not
+loading, no data", and `AssessmentDetailView`'s ternary
+(`loading ? skeleton : error || !data ? errorCard : table`) took its only
+remaining branch: **"Couldn't load the student roster" was shown for the WHOLE
+fetch**, then swapped for the real table once it landed. Reported from PROD
+mobile as "shows this for few seconds and then shows data". Nothing had failed;
+the state had no way to say *not yet*, and the skeleton branch sitting right
+there was unreachable.
+
+Fixed 2026-08-12 (`6b42580`) — anything unresolved while enabled IS loading:
+
+```ts
+if (enabled && !state.data && !state.error) return { ...state, loading: true };
+```
+
+Seeding `loading: true` in the effect instead would still leave one painted
+frame on the error card, so derive it on the way out, not inside the effect.
+The loading `<section>` also carries `aria-busy` + a label, so the state is
+announced rather than visual-only.
+
+The sibling hooks (`useAssessments`, `useDashboardSummary`,
+`useDashboardAssessment`) are always-enabled and seed `loading: true`, so they
+never had this. **Any new lazily-gated hook does** — treat "unresolved while
+enabled" as loading, or the consumer will paint an error for a healthy fetch.
+
+Still open: `AnalyticsDrawer` receives only `data`, so while the roster loads it
+renders an empty table reading "Showing 0 of 0 assigned" instead of a loading
+state. Thread `loading` into it when that component is next touched.
+
 ## The cohort filter must reach every block, including the rail
 
 The dashboard toolbar's Degree-Dept / Passing-year selection is applied
