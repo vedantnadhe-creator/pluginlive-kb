@@ -160,6 +160,35 @@ same tuning PG17 had (lives in `postgresql.auto.conf` on the DB VM):
 parity was exact (8,169,122 rows across 263 tables), so `REINDEX` /
 `VACUUM ANALYZE` were not needed.
 
+## Client versions as of 2026-08-12 (supersedes the 2026-06-16 list above)
+
+| Service | Development | UAT | PROD (`release-v1.37`) |
+|---|---|---|---|
+| `corporate-node` | **5.22.0** (was 4.16.2 until 2026-08-12) | 5.22.0 | 5.22.0 |
+| `student-node` | `^4.10.1` → 4.16.2 | same | same |
+| `institute-node` | 5.22.0 | 5.22.0 | 5.22.0 |
+| `admin-node` | `~6.19.0` → 6.19.3 | same | same |
+
+`corporate-node` went to 5.22.0 on UAT/PROD on 2026-08-11 (`chore(prisma): upgrade UAT
+client to 5.22.0` — pins plus dropping the now-GA `filteredRelationCount` preview
+feature and the audit client's `engineType = "binary"`), but **`Development` was left on
+4.16.2**, so DEV ran a different major than every other environment for a day.
+
+**Why the drift is dangerous — Prisma 4 coerces, Prisma 5 rejects.** `resume`-style
+type mismatches that DEV accepts silently become hard 500s on PROD. Live case
+(2026-08-12): `corporate-node/app/helpers/interview.js` passed `new Date(linkExpireAt)`
+into `studentInterviewMap.linkExpireAt`, which is `String?` → `link_expire_at` **TEXT**.
+Prisma 4.16.2 coerced the `Date` (the ~1,900 stored values are ISO strings written that
+way since 2023); Prisma 5.22.0 answers
+`Argument linkExpireAt: Invalid value provided. Expected String or Null, provided DateTime`
+and, because the write is a `createMany`, the **whole batch fails** — scheduling an
+external-link assessment interview with a link-validity date was broken on PROD while
+DEV looked fine. Fixed by sending `new Date(x).toISOString()`; DEV was then aligned to
+5.22.0 so the two environments agree.
+
+Checking a version: `docker exec <container> node -p "require('/app/node_modules/@prisma/client/package.json').version"`
+on DEV/UAT, `kubectl -n api exec <pod> -- …` the same command on PROD.
+
 ## PROD follow-up (pending)
 
 Note: UAT standardized on **PG16** (2026-06-16), not 17 — revisit the PROD target

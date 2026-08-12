@@ -261,3 +261,27 @@ Each call fires only when the value **changed** relative to the stored row, matc
   changed. The `trim()` also stops whitespace-only names, which corporate accepts
   happily, from becoming permanent junk rows in the master lists — the same
   self-appending-master problem seen with degree/stream masters.
+
+---
+
+## Cleared resume sections and Json columns (`PUT /students/{id}`)
+
+`Student.update` (`student-node/app/models/Student.js`) writes the profile as one
+nested `studentPersonalProfile.update` covering `studentPersonalProfile`, `student`,
+`currentCourse` and `resume`.
+
+- **Clearing a section 500'd the whole save.** Prisma refuses a literal `null` on a
+  Json column — a nullable Json field wants `Prisma.JsonNull`, and a `Json[]` list
+  cannot be nulled at all. The profile screen sends `null` for a section the candidate
+  cleared (`resume.workExperience` being the usual one), which surfaced verbatim to the
+  UI as `Argument workExperience for data.student.update.resume.update.workExperience
+  must not be null`. Fixed 2026-08-12: `jsonNullSafe(model, payload)` reads Prisma's
+  DMMF for the target model and converts a `null` on a Json field to `Prisma.JsonNull`
+  (a `Json[]` list is left untouched, so a stray null cannot wipe an array). Non-Json
+  nulls — `degree`, `dob`, `noOfArrears` — still pass straight through. Applied to all
+  four payload sections, so it also covers `markSheetUrl`, `marks`, `skills`,
+  `preferredJobLocation`, `cvDetails`.
+- The earlier `markSheetUrl`/`tcUrl` → `JsonNull` cleaning in this method never took
+  effect: it was written into a `manupuletdData` object the query never read. That dead
+  object has been removed; the side-effecting `updateSkillsForCurrentCourse` /
+  `processResume` calls it wrapped are kept.
