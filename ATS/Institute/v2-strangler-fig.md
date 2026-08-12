@@ -694,6 +694,16 @@ at-risk KPI counts the **red** band (`inconsistent`) — under this vocabulary
 `high` is the good one, so counting `high` would report the healthiest students
 as at risk.
 
+As of 2026-08-12 (`120fff9` Development, `0efa419` UAT), the dashboard's
+Performance and Attempt-rate populations are restricted to the institute's
+**current, non-deleted student roster** through student → campus → institute
+membership. Assessment assignment rows are historical and survive student
+deletion or campus moves; using their distinct emails directly made the donut
+larger than Student-wise (Swadha Foundation showed 180 tracked against 177
+students). Attempt rate now uses the current roster members who have assessment
+history, and Performance is the scored subset of that same population. The
+historical Assessments-sent/taken KPIs deliberately retain assignment history.
+
 **`high` means opposite things in the two modes** — high RISK (red) on
 performance, high CONSISTENCY (green) on attempt rate. The frontend therefore
 keys colours per mode (`PERFORMANCE_COLORS` / `CONSISTENCY_COLORS` in
