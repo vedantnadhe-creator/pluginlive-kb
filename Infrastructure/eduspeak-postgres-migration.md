@@ -370,3 +370,75 @@ rejected; `outbox-dispatch` edge function 200; `eduspeak.uat.*` 301s.
 Rollback: `/etc/nginx/sites-available/eduspeak-uat.conf.bak-*`, `~/eduspeak-sb/.env.bak-*`,
 `~/frontend/eduspeak-india-react/frontend/.env.uat.bak-*` on the UAT box, plus the previous image
 `eduspeakreact:deacd151-fix`.
+
+---
+
+## 2026-08-12 — Convex curriculum master catalogue loaded into `eduspeak_uat`
+
+pilvidya was handed a "Supabase SQL dump" that is in fact a **Convex JSONL export**
+(`static-masters-data-dump.zip` and `prod-export-final.zip`, byte-identical for the six master
+collections). It carries the curriculum catalogue that the Supabase-derived schema never had a
+place for.
+
+### What the export actually contains
+
+| Collection | Rows | Notes |
+|---|---|---|
+| `boards` | 13 | CBSE, ICSE, NIOS + 10 state boards; each with `classes[]` and `subjects[]` |
+| `subjects` | 942 | board × class × subject, with chapter count and weightage |
+| `topics` | 5,075 | real NCERT chapter names, learning objectives, prerequisites |
+| `questions` | 24,000 | 4,800 each of MCQ / TRUE_FALSE / FILL_BLANK / SHORT_ANSWER / LONG_ANSWER |
+| `questionSets` | 600 | 120 each of PRACTICE / QUIZ / UNIT_TEST / MOCK_TEST / BOARD_EXAM |
+| `videos` | 30,450 | 5,075 topics × 2 languages (`en-IN`, `hi-IN`) × 3 |
+| **total** | **61,080** | 100% referential integrity, zero duplicate `_id` |
+
+The other 21 collections in `prod-export-final` (assessments, subscriptions, practiceSessions,
+paymentHistory, streaks, topicMastery, messages, …) are **all empty**. The only non-master rows are
+7 Convex auth users — 4 anonymous, 3 email-OTP (`prakash.chinnadurai@gmail.com`,
+`alwar.consulting.services@gmail.com`, `prakash@example.com`) — with no password material and no
+associated data. They were deliberately **not** imported: they would be dead identities in GoTrue.
+
+### Where it landed
+
+Six additive tables in `public`, one per collection, every source field preserved —
+`boards`, `subjects`, `topics`, `questions`, `question_sets`, `videos`. Schema:
+`DB-Scripts/EduSpeak Postgres Migration/20260812T171000Z__pilvidya_curriculum_masters.sql`.
+Loader: `~/pilvidya-data-import/load_masters.py` on the DEV box.
+
+Primary keys are **`uuid5(6f1b4d2a-1f4e-5c8b-9a3d-70f2c1e4b8a1, convex_id)`**. That is the trick
+that makes this cheap: cross-collection references resolve in the loader with no lookup round-trip,
+and the upsert is on `convex_id`, so re-running the load updates instead of duplicating (proven —
+a second run left all six counts identical). `boards` went 210 → 216 public tables; ~80 MB on disk,
+almost all of it `questions` (40 MB) and `videos` (34 MB).
+
+RLS is on for all six: read for `authenticated` only (**`anon` revoked**), write for admins via the
+existing `has_role(auth.uid(),'admin')`. Verified through PostgREST, not just in SQL — anon **401**
+on every table, non-admin SELECT 200 / INSERT **403**, admin INSERT 201 / DELETE 204.
+
+Field-level verification: all 61,080 rows compared attribute-by-attribute against the source JSONL
+(`~/pilvidya-data-import/verify_masters.py`) — 0 missing, 0 extra, **0 field mismatches**. All six
+foreign-key relationships (including `question_sets.topic_ids[]`) have 0 orphans.
+
+### What was deliberately NOT done, and why
+
+The two live application tables were left untouched: `question_bank` (2,238 rows) and `topic_media`
+(52 rows). Projecting the export into them is a one-command follow-up, held back because the
+**content is template-generated placeholder data**, and both surfaces are user-facing:
+
+- All 24,000 `correct_answer` values are literally `"Option 1 for <topic> (MCQ)"` /
+  `"Answer for <topic> (LONG_ANSWER)"`; `source` is `"AI Generated"` on every row. `TeacherPortal`
+  loads the bank as `order(created_at desc).limit(50)` with no `validation_status` filter, so
+  24,000 new rows would **take over the teacher's default view** of a 2,238-row real bank.
+- All 30,450 `video_url` values are YouTube **search** links (`youtube.com/results?search_query=…`),
+  only **341 distinct**, and every `thumbnail_url` is literally `.../vi/placeholder/...`.
+  Projection would create ~10,150 `topic_media` rows against a table that currently holds 52.
+- `question_bank.board` is filtered by the app through `normalizeBoard()`, whose `BoardType` is only
+  `cbse | icse | state | ib`. All 10 state boards **and NIOS** collapse into one bucket the app
+  cannot tell apart — so board fidelity survives only in `public.boards`.
+
+Related pre-existing bug worth knowing: `normalizeBoard()` returns `"state"`, but 75 existing
+`question_bank` rows are stored as `"state board"` — those rows are unreachable by the app's own
+board filter today.
+
+Backup taken before the load:
+`~/pilvidya-data-import/backups/eduspeak_uat-pre-masters-20260812T170953Z.dump`.
