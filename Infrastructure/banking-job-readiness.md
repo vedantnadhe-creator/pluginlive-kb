@@ -78,12 +78,30 @@ inventory; every one is marked with a comment naming the reason.
 `package-lock.json` also shows modified after an install; that one is disposable
 (`git checkout -- package-lock.json`).
 
-### `ELEVENLABS_API_KEY` is not set — AI coach voice falls back to browser TTS
+### `ELEVENLABS_API_KEY` — SET on UAT since 2026-08-12; AI coach speaks in real voices
 
-The `elevenlabs-tts` function added in `bade695` degrades correctly: no key → `503 {"error":
-"ElevenLabs is not connected to this project"}`, and `src/lib/ttsClient.ts` falls back to
-`window.speechSynthesis`. So voice works, at browser quality, in the selected language.
-`~/banking-sb/functions-secrets.env` is still deliberately empty — see the migration doc.
+`~/banking-sb/functions-secrets.env` (mode `600`) now holds `ELEVENLABS_API_KEY`. It is the **first
+and only** third-party secret populated on this stack; the other 13 are still absent.
+
+**`env_file` is read at container create, so `docker restart` does NOT pick up a new secret.** Use:
+
+```bash
+cd ~/banking-sb && docker compose up -d functions   # recreates the container
+docker exec banking-sb-functions sh -c 'echo $ELEVENLABS_API_KEY' | cut -c1-7   # verify, masked
+```
+
+Verified end to end with the exact payload `ttsClient.ts` sends
+(`{text, language: lang.code, voiceId: lang.voiceId}`): **15/15 languages return real MP3**
+(`ID3` header, ~30–50 KB for a short line, 225 KB for a paragraph), each with its own voice from
+`src/lib/indianLanguages.ts`. Every voice id in that file is valid on this account. Distinct
+sha256 per request — no caching artefacts.
+
+No frontend rebuild is needed for this: the key is server-side only.
+
+**Cost note:** ElevenLabs bills per character, so every spoken AI-coach reply now draws credits.
+Before this key existed the function returned `503 {"error": "ElevenLabs is not connected to this
+project"}` and `ttsClient.ts` fell back to `window.speechSynthesis` — that fallback is still the
+behaviour if the key is removed or the account runs out of credits, so the feature fails soft.
 
 - nginx (`/etc/nginx/sites-enabled/banking-react.conf`) serves `dist/` as static files directly — no service/container restart needed, nginx picks up the new build immediately. Because there is no container swap, a failed build leaves a **half-updated live site** — back `dist/` up before building.
 - `.env` holds the backend URL + anon key; `VITE_*` vars are baked in at build time. **On UAT these
