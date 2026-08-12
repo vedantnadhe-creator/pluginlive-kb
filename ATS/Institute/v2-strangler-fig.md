@@ -189,6 +189,42 @@ row (`Communication - Schedules`, Recurring, 0/20, 12–31 Aug, 4 students) and
 its Schedule tab opens on **Diagnosis · Ongoing · Assessment #1 1/4 ·
 Assessment #2 0/4 · 1/8** — matching admin exactly.
 
+### One merged Diagnosis row, matching v1 (2026-08-11)
+
+`fd520a2` institute-node, `977aa5c` frontend. The Schedule tab rendered a
+`DIAGNOSIS ASSESSMENTS` sub-header plus one row per map (`Assessment #1`,
+`#2`). **Production v1 shows one row.** Read the legacy payload before
+changing this — diagnosis is *not* in `assessmentDetails` at all:
+
+```
+GET /institutes/studentListInfo/getschedulesInfo?entityType=college&instituteId=…&type_name=Communication
+  totalCandidates: 6,  totalListCandidates: 6,
+  diagnosisCompleted: 6,        <- distinct STUDENTS
+  totalDiagnosisTaken: 12,      <- UNITS (6 × 2)
+  diagnosisStatus: "Completed",
+  assessmentDetails: [ {attemptNumber:1, assigned:6, taken:2}, … ]   <- runs only
+```
+
+`ExpandableContent.js` synthesises the row from those three scalars —
+`totalDiagnosisTaken / (totalListCandidates × 2)` = **12 / 12**, no date, no
+children — and `assessmentDetails` supplies `Schedule 1  2/6`, `Schedule 2
+4/6`. v2 now renders the same shape.
+
+The count stays in **units**, which is why 6 candidates read 12; a trailing
+`6 students × 2` explains it. Derive that from `sent / students`, **not**
+`maps.length` — a group can hold four maps that each student sat only two of
+(real DEV case: 99 students, 4 maps, 198 units), and it stays silent when the
+division isn't exact rather than rounding.
+
+Two API changes this needed:
+
+- `loadDiagnosis` returns `students` / `studentsDone` (distinct people) beside
+  `sent` / `taken` (units) — the same split v1 carries as `diagnosisCompleted`
+  beside `totalDiagnosisTaken`. The drawer lists one row per person, so without
+  it the header read "Showing 6 of 12 assigned".
+- `getStudents` accepts a **comma-separated** `occurrence`, so the merged row
+  opens the union of its maps. A single id behaves exactly as before.
+
 ### The detail page scopes diagnosis by cohort, not by type (2026-08-11)
 
 `f81cf64` institute-node. The section above describes the **list's** grouping,
