@@ -739,6 +739,65 @@ The legacy v1 institute surfaces still carry the UTC form — `Reports.js:185`,
 epoch range instead of a year expression, so v1 reports can disagree with v2 by
 a year for the same student.
 
+## The student report drawer is type-aware, because the assessments are
+
+`1849b06` institute-node, `f557091` frontend (DEV backend + UAT both, 2026-08-12).
+
+The drawer was assembled from generic `.panel` / `.drawer-stats` blocks while the
+design's own vocabulary — `.rj-grid` / `.rj-cell` / `.rep-card` / `.brk-row` /
+`.sch-row` / `#procPop` — was **already ported into `assessment-detail.css` and
+simply unused**. Check that file before writing new markup for any v2 drawer;
+the class is usually already there.
+
+**The breakdown card is per type, and each type stores its parts elsewhere.**
+`AssessmentDetailV2.loadBreakdown(type, attemptId)` returns
+`{name, score, weight}`:
+
+| Type | Components | Source | Weight |
+|---|---|---|---|
+| Communication | Reading / Writing / Speaking / Listening | section rows → `groupCommSkills` | share of RAW sections |
+| Aptitude | Quantitative / Logical Reasoning / Critical Reasoning | `aptitude_scores.statistics->'categories'` | share of the paper's marks |
+| Custom_Assessment | its own sections | `custom_assessment_scores.section_wise_stats` | share of marks |
+| Role_Based | its own sections | `role_based_scores` | equal per section |
+| AI_Interview | **none** | — | card is dropped |
+
+The old query only ever hit `communication_scores`/`role_based_scores`, so
+**Aptitude and Custom silently had no breakdown at all**.
+
+The weights are real, not an even split. Communication and Role_Based headlines
+are `AVG(score)` over section rows (`SCORE_JOINS`), so a component's weight is
+its share of those rows — Writing rolls up five exercises and genuinely
+outweighs Reading's one (63% vs 13% on a full paper). Aptitude and Custom weight
+by marks. `apportion()` rounds largest-remainder so they sum to exactly 100, and
+`Σ(weight × score)` lands on the headline: verified against PROD attempts at
+69.44 vs 69.53 and 31.96 vs 32.20, the gap being integer rounding. **If you add
+a type, give it a weight that reproduces its headline** — the card prints both,
+so an invented weight is a visible lie.
+
+**`timeline[]` is every occurrence, not just the ones sat.** `history` only has
+rows the student was ASSIGNED, which cannot distinguish "sat 3 of 6" from "only
+invited to 3". The timeline walks `occRows` and folds the attempt on:
+`not_enrolled` (no assignment row — the run predates them joining the batch, NOT
+a miss), `upcoming`, `in_progress`, `missed` (window closed, no attempt),
+`completed`.
+
+**Ladder labels are shared, so they move everywhere at once.** `headline.level`
+and the new `headline.levelBand` ("90+", "60–75") both come from
+`assessmentBands` — the drawer, the roster's Achieved Level column and the
+Competency ladder are one label set by design. Two ladder changes shipped with
+this: Communication now reads `C2 (Advanced)` rather than a bare `C2`, and the
+DEFAULT ladder (Role_Based / AI_Interview / Custom / Behavior) takes the
+design's **40/55/70/85** cutoffs instead of an even 20-point split, under which
+35% read as "Developing" while the same 35 is a fail everywhere else. Nothing
+filters on the level string (the column sorts by score), so this is display-only
+— but it is not drawer-local.
+
+Proctoring is **not** a body card: it lives in the popover behind the head's
+shield (red via `.iconbtn.flagged`, plus the `.rep-warn` band), so the body stays
+about the assessment. `#procPop` is widened to 384px — our verdict is a phrase
+("Needs review"), not the design's one-word Good/Bad, and heading + chip + close
+needed exactly 360 inside a 360px box.
+
 ## Auth
 
 There is **no middleware auth check** — the JWT lives in `localStorage`, which
