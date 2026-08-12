@@ -189,6 +189,114 @@ row (`Communication - Schedules`, Recurring, 0/20, 12–31 Aug, 4 students) and
 its Schedule tab opens on **Diagnosis · Ongoing · Assessment #1 1/4 ·
 Assessment #2 0/4 · 1/8** — matching admin exactly.
 
+### Counting: assessments, not people (2026-08-12)
+
+`5fa5787` `0f64d52` institute-node, `2889378` `06a49ae` frontend. Three screens
+each reported "sent / taken" as a headcount and disagreed with one another.
+The rule now, everywhere: **one `assessment_assigned_students` row is one
+assessment sent**, and `taken` counts a started-but-unsubmitted attempt, which
+is what v1's `assessmentsTaken` does.
+
+- **Assessments list · Completion** counted students who had attempted at
+  least once, so a 46-run series read 90% eight runs in. Now `units_taken /
+  units_sent` — 52% (430/820) for the PROD row that read 89%.
+- **Dashboard · Assessments sent / taken** summed each assessment's DISTINCT
+  STUDENT count *across assessments*, which is neither figure: a student in
+  five assessments counted five times, and a 78-run series counted once per
+  student rather than 78. Swadha Foundation read **684** against **10,089**
+  actually sent. That is also why the card never matched the table under it.
+- **Dashboard · Active Assessment Schedules completion** moved with it, so the
+  rows sum toward the card. The headcount survives on the cell's hover.
+
+Expect percentages to FALL wherever a long series runs (Swadha 79% → ~24%).
+That is the honest number; the old one measured "students who ever showed up".
+
+### A series is described by its schedule, not by what has fired (2026-08-12)
+
+`5fa5787` institute-node. The scheduler writes an `assessment_institute_map`
+per run *as it fires*, and every figure on the list row was derived from those
+rows alone — so a 46-run series eight runs in looked like a finished 8-run
+series that closed on run 8.
+
+  end_time   `GREATEST(schedule_end_date, last occurrence end)`. GREATEST, not
+             the schedule date alone: the final run's attempt window
+             legitimately closes after `schedule_end_date`. NULLs are ignored
+             by GREATEST, so one-time and diagnosis groups fall through to
+             their own maps.
+  total_occ  `GREATEST(fired, planned)` — 8 fired of 46 read "8/8 sent", which
+             contradicts an end date eight months out.
+
+PROD's two 46-run series at `fed210db` read *30 May 2026 → 11 Aug 2026,
+Expired, 9/9*; they run to **30 Apr 2027**. v1's `getschedulesInfo` reports
+`endDate 2027-04-30` and 46 runs for the same schedules, which is the check to
+use if this ever looks wrong again.
+
+Also `e236443`: an assessment **nobody was ever assigned** is dropped from the
+list and therefore from every count on the screen (they are all derived
+client-side from that one payload). Exactly two exist on PROD, both at
+`9c6c42d5`, both reading "0 students · 0/0 · 0%".
+
+### Achieved Level is the graded level, not a score band (2026-08-12)
+
+`57e317b` institute-node. The column never read `resulting_cefr`. It
+re-derived a level from the AVERAGE SCORE through the CEFR ladder, so a
+student averaging 76.87% printed **C1** while every attempt they submitted was
+graded **B2**. The ladder is a difficulty scale over a percentage; it is not a
+progression level and must not be shown as one.
+
+`levelOf(ladder, cefr, pct)` in `assessmentBands.js` reports the graded level
+when there is one and falls back to the band only when there is not, so
+Aptitude and Role_Based — which have no CEFR — are untouched. It takes the
+most recent **graded** attempt, not the most recent attempt: not every
+submission is graded, and a student whose final sitting is ungraded must not
+lose the level they hold. Levels get LOWER for graded students; that is the
+correction, not a regression.
+
+The report drawer had the same bug plus its own: it read `cefr` off `profile`,
+which is picked for the student's NAME and lands on an arbitrary occurrence,
+so `student.cefr` came back null even for students who hold a grade.
+
+### Proctoring is usually absent, and that is the data (2026-08-12)
+
+Measured before changing anything, and worth re-measuring before anyone
+"fixes" this again: the earliest proctored submission platform-wide is
+**2026-07-01**. For `fed210db` — May 226 submissions / **0** reports, June 380
+/ **0**, July 258 / **258**. Reading only the latest attempt hides **nothing**
+(0 of 1503 student-series pairs on PROD), so there is no verdict to recover
+for anything older; the pipeline simply was not filing them.
+
+The roster therefore also returns `proctored` (was the run set to proctor at
+all), and the drawer says **"No report"** vs **"Not proctored"** instead of one
+ambiguous dash. Deliberately not "Awaiting review" — for a May attempt nothing
+is coming.
+
+### The hover cards had CSS but no driver (2026-08-12)
+
+`3e398c0` frontend. `assessment-detail.css` and `manage-assessments.css` have
+carried the full `.tt` atom from the start — card, caret, `--tt-arrow-x`,
+`data-flip`, `.tt-proc` — with a comment reading *"JS reads the target's
+`data-tip` and positions this pill next to the trigger"*. **That JS was never
+ported.** Every hover card in v2 rendered nothing: the Score breakdown, the
+proctoring card, the list's completion bar.
+
+`Tip.tsx` is that missing half — portalled, `position: fixed` so the drawer's
+scroll container and the table's `overflow:auto` cannot clip it, flips
+above/below, closes on scroll/resize/Escape, works on keyboard focus. It takes
+ReactNode rather than the design's `data-tip` HTML string, because that string
+would mean injecting student names and emails as HTML.
+
+Alongside it: Communication's score breakdown reports the **four language
+skills** rather than the eight raw exercises it is stored as — which also
+repaired the Student-wise tab's expandable columns, since
+`SCORE_SUB_CATEGORIES` already expected exactly
+`["Speaking","Listening","Reading","Writing"]` and had been matching against
+exercise names, showing "—" for everyone.
+
+`sentAt` is per student now (the merged Diagnosis row spans several maps and
+has no single window, so Sent read "—" for every row), and the drawer sorts on
+Sent/Taken and on Score — rows with no value sink to the bottom in BOTH
+directions, since an unscored student is "no result yet", not a zero.
+
 ### Progress trend shows improvement only (2026-08-11)
 
 `8b6dfa3` frontend. The Student-wise table's **Progress trend** column drew a
