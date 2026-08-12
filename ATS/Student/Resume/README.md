@@ -196,6 +196,27 @@ newest `started_in`; the response is an **array of arrays**, one inner array per
   from the response. Also pre-existing, also pinned by a test; the one-line fix is
   noted as a `ponytail:` comment in `promotionSorting.js`.
 
+### The resume preview does not use this endpoint
+
+`student-react` fetches `/promotion` into `promotionData` (`modules/Resume/actions.js`)
+and passes it to `WorkExpSection`, but that component ignores it and groups
+`studentDetails.resume.workExperience` — the flat, complete list — **client-side**
+instead, in `groupByEmployer` (`src/modules/Resume/Style/WorkExpSection.js`). Same
+employer = same `corporateId` when it is a real corporate record, otherwise the same
+`organization` name (trimmed, case-insensitive); an entry with no company name groups
+alone. Grouping locally keeps the entry-dropping gotcha above out of the student's own
+resume view, and keeps the pending-TPO-approval merge (which matches by entry `id`)
+working on the raw list. The sibling component in `Assessment-React` still renders
+`promotionData.workExperience` directly.
+
+- **Every company after the first was hidden (fixed 2026-08-12, UAT).** The card prints
+  one company header per group and lists that group's positions as a role timeline, but
+  a flat list was wrapped as a single group (`[approvedWorkExp]`), so a student with two
+  employers saw only the first company's name with the other's role hanging underneath
+  it, and the header duration summed both stints. Introduced 2026-07-10 with the
+  pending-approval merge (`af022a1a`); `isGrouped` never fires because `resume.workExperience`
+  is stored flat (array of objects), never as an array of arrays.
+
 ---
 
 ## Corporate master sync on profile save (`PUT /students/{id}`)
