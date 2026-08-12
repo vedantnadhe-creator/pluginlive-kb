@@ -231,6 +231,7 @@ The non-standard-type candidate list is served by **admin-node `Assessment.getAs
   - `renderCustomAssessmentScoreCards()`: shows gained/total marks and percentage
   - `renderBehaviorScoreCards()`: existing behavior score display
 - Report download routes to type-specific PDF generator
+- Download/Export triggers across institute-react (CandidateList, DiagnosisList, StudentsTable, Reports `ExportPopup`) are rage-click guarded since August 2026 — see `download-button-guard.md`. `StudentReport`'s own download keeps its pre-existing `downloadingReport` state.
 
 ---
 

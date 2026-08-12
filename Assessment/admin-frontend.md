@@ -45,7 +45,7 @@
 `InstituteAssessmentDetails.js` powers the per-assessment detail page for **every** assessment type. Two data paths:
 - **Scheduled** communication/aptitude → `fetchSpecificAssessmentStudentList` (student-node).
 - **Everything else** (one-time, Role_Based, Custom, Behavior, technical, AI_Interview) → `fetchStudentsByStatus` → admin-node `getAssessmentDetails`. This call now passes the CandidateList filters (degree/department/specialization + `status`) and `paginate: true`, so the detail shows the **Status column + Degree/Department/Specialization/Status filters for all types** (CEFR/Aptitude/Consistency remain communication/aptitude-only). Server pagination via `pagination.totalCount` fixes the old "Showing 10 of 10" on a 15-student assessment (all students reachable + pager restored).
-- **Export** (`CandidateList` → `exportStudentData`) reflects the active degree/dept/spec/status/search filters and exports the full filtered list (status `'sent'`), not just the visible page.
+- **Export** (`CandidateList` → `exportStudentData`) reflects the active degree/dept/spec/status/search filters and exports the full filtered list (status `'sent'`), not just the visible page. Since August 2026 the Export/Download triggers are rage-click guarded — see `download-button-guard.md`; the handler must **return** its dispatch promise or the guard silently stops working.
 
 `CandidateList` status-filter popover: the checkbox previously toggled twice (row `onClick` + `Checkbox onChange` both fired) so only the **label** click registered; fixed with `onClick={e => e.stopPropagation()}` on the checkbox.
 
