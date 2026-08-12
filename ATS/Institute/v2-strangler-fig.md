@@ -798,6 +798,43 @@ about the assessment. `#procPop` is widened to 384px — our verdict is a phrase
 ("Needs review"), not the design's one-word Good/Bad, and heading + chip + close
 needed exactly 360 inside a 360px box.
 
+The trend plots `timeline[].cohortAvg` as a muted dashed series beside the
+student's line. A rising line says nothing on its own — the batch may have risen
+with it, or the student may be climbing while everyone else climbs faster.
+`TrendChart` takes an optional index-aligned `peer` array (its three other
+callers pass nothing and are unchanged), and the drawer builds BOTH series off
+`timeline` rather than `history`, so an occurrence the student was never sent
+keeps its slot instead of shifting the cohort line sideways.
+
+### Every hook must run before `if (!email) return null`
+
+The drawer blanked the whole screen on open with **React #310** — "Rendered more
+hooks than during the previous render". The outside-click and popover-reset
+effects had been added *after* that early return, so the component ran one hook
+while closed and three once opened; React tore the tree down and
+`app/global-error.tsx` took over, which is why it looked like a dead white page
+rather than a drawer error. Fixed in `ceff917`.
+
+Two things worth carrying forward:
+
+- **`eslint` did not catch it** (`rules-of-hooks` stayed silent on hooks placed
+  after an early `return`), so a green lint is not evidence here. What did catch
+  it: a throwaway client page under `src/app/<name>/` that mounts the component
+  with `email=null` and flips it after 60ms — the exact transition — driven by
+  headless chromium listening for `pageerror`. It reproduces on the broken
+  commit and passes on the fix. Route folders starting with `_` are **private**
+  in the App Router and 404, and the page needs `.env.local` present or
+  `lib/auth.ts` throws at module scope.
+- **Prefer deriving over resetting.** The popover now tracks WHICH student it is
+  open for (`procOpenFor === email`) instead of a boolean reset by an effect, so
+  changing student closes it for free — one less hook, and one less render pass.
+
+The report payload's list fields are normalised on arrival
+(`sections` / `history` / `timeline` / `proctoring.signals`). The drawer is
+portaled with no boundary of its own, so a single `.map` on an undefined field
+escapes to the root error boundary and blanks the screen the same way — and a
+frontend deployed ahead of its backend is enough to cause it.
+
 ## Auth
 
 There is **no middleware auth check** — the JWT lives in `localStorage`, which
