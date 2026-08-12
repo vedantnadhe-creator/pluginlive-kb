@@ -92,9 +92,38 @@ So `fastapi-ai-engine` writes its own durable ledger, a **superset** of LiteLLM 
 
 ## Assessment scoring model (2026-08-12)
 
-`gemini-2.5-pro` was retired from assessment scoring: Aptitude, Communication (incl. the deepgram/video/score paths), Hinglish, Role_Based and AI-Interview `score-final` now all request the **`gemini-3-flash-preview`** model group (23 call sites, commit `8aae021`, on UAT via `555f8f4`). The exact group name matters — plain `gemini-3-flash` is not registered and 404s.
+`gemini-2.5-pro` was retired from assessment scoring: Aptitude, Communication (incl. the deepgram/video/score paths), Hinglish, Role_Based and AI-Interview `score-final` now all request the **`gemini-3-flash-preview`** model group (21 call sites across 9 files, commit `8aae021`, on UAT via `555f8f4`, deployed to UAT 2026-08-12). The exact group name matters — plain `gemini-3-flash` is not registered and 404s.
 
-**Caveat on UAT:** because of the invalid-key fallback documented above, requests for `gemini-3-flash-preview` on UAT are currently served by `gemini-2.5-flash`. Assessment scoring there is therefore running on 2.5-flash, a weaker model than the 2.5-pro it replaced, until that model row's key is fixed on the UAT gateway. Question generation was already affected before this change, since it already used the same group.
+**The `gemini-3-flash-preview` key was invalid on BOTH DEV and UAT** (the silent-fallback gotcha above): the group was registered but its stored key returned `API_KEY_INVALID`, so every request was quietly served by `gemini-2.5-flash`. Fixed on both envs on 2026-08-12 by copying the working encrypted `api_key` from the `gemini-2.5-pro` row within the same LiteLLM DB — the blob is encrypted with the instance's salt, so a same-DB copy decrypts correctly and needs no plaintext key:
+
+```sql
+UPDATE "LiteLLM_ProxyModelTable" t
+SET litellm_params = jsonb_set(t.litellm_params::jsonb, '{api_key}',
+      (SELECT (s.litellm_params::jsonb)->'api_key' FROM "LiteLLM_ProxyModelTable" s
+       WHERE s.model_name='gemini-2.5-pro'))
+WHERE t.model_name='gemini-3-flash-preview';
+```
+
+The router picks the change up within ~60s (DB poll), no restart needed. Both envs verified serving `model-group: gemini-3-flash-preview` with `attempted-fallbacks: 0`. **PROD is untouched and still has the stale key** — fix it there before any PROD rollout, or assessment scoring silently drops to 2.5-flash.
+
+**Gotcha — Gemini 3 Flash spends output budget on thinking.** A scoring call with a tight `max_tokens` can return `content: null` (a 300-token structured-output call came back empty; 800 was fine). The swapped call sites set no `max_output_tokens`, so they are unaffected — but do not add a tight cap to them.
+
+## Cross-provider fallback: OpenAI gpt-5.6-luna (2026-08-12)
+
+DEV + UAT now chain every Gemini group out to OpenAI so a full Google outage still serves. The in-provider hop to `gemini-2.5-flash` stays first (cheaper, same account, absorbs single-model blips without crossing providers); `gpt-5.6-luna` is the last resort:
+
+```yaml
+fallbacks:
+  - gemini-3-flash-preview: ["gemini-2.5-flash", "gpt-5.6-luna"]
+  - gemini-2.5-flash: ["gpt-5.6-luna"]
+  - gemini-2.5-pro: ["gemini-2.5-flash", "gpt-5.6-luna"]
+  - gemini-2.5-flash-lite: ["gemini-2.5-flash", "gpt-5.6-luna"]
+  - gemini-2.0-flash: ["gemini-2.5-flash", "gpt-5.6-luna"]
+```
+
+`router_settings` lives in `config.yaml`, so this needs `docker restart litellm` (unlike DB-managed models). Luna was chosen over Terra/Sol because the primary is now a Flash-tier model: Luna is $0.20/$1.20 per 1M tokens vs `gemini-3-flash-preview`, where Terra ($2/$12) and Sol ($5/$30) would be a large cost jump on the failure path.
+
+**NOT YET FUNCTIONAL — OpenAI billing is inactive.** The only valid OpenAI key on the estate (`api/form-data-normalization/.env`) authenticates and lists all 132 models including `gpt-5.6-luna`, but every completion returns `billing_not_active` ("Your account is not active"). The chain is wired correctly and reaches Luna — verified by forcing the route — it just dies at the provider. Nothing is degraded meanwhile: Gemini serves normally and `gemini-2.5-flash` remains a working intermediate fallback. Activate billing (or swap in a funded key via the dashboard) to make it live. PROD has no OpenAI fallback configured.
 
 ### Joining a cost back to a candidate / corporate / institute
 
