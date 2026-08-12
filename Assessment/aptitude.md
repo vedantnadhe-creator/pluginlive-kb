@@ -553,6 +553,30 @@ Use this after fixing scoring/level bugs to recalculate all historical data.
 
 Per-assessment views (`getStudentListForAssessment`) scope progression queries by `assessmentAssignedId` — ensuring the level shown is for that specific assessment, not the student's latest level. Total candidate views (`getStudentListForTpoDashboard`) use latest-by-email.
 
+#### Sections absent from the exam are hidden, not shown as 0 (DEV + UAT 2026-08-12; PROD pending)
+
+Since topic selection binds (see *Topic selection* above), an admin can build a paper from only **some** of the three sections — e.g. Logical + Quantitative, no Critical Reasoning. A section with no topics selected supplies no questions, so `aptitude_scores.statistics.categories` simply **has no entry** for it (the category map is built by walking the questions actually in the set).
+
+The `sectionScores` builders in `getStudentListForAssessment` used to collapse that absence to `0`:
+
+```js
+critical: findCat("critical") ? getPercentage(...) : 0   // ← reported "scored 0"
+```
+
+which made the report and the candidate-list column claim the student scored **0 in a section that was never on the paper**. They now return `null` instead, so *absent* is distinguishable from a genuine 0 (a real 0 means the section was present with `total_marks > 0`):
+
+```js
+critical: findCat("critical") ? getPercentage(...) : null
+```
+
+Consumers:
+- **institute-react `CandidateList`** — the `['Critical','Quantitative','Logical']` column list is filtered to sections where at least one row has a non-null score, so an unused section's **column disappears** entirely.
+- **`StudentReport` modal score cards** — already skipped `null`/`undefined` keys, so the card now hides automatically.
+- **PDF report** — was never affected: `generateAptitudePDFReport` renders `statistics.categories` directly (both the "Detailed Section Analysis" table and the progression table), and an absent section is simply not in that array.
+- The section-sort comparator already coerced `null` → `NEGATIVE_INFINITY`, so sorting is unaffected.
+
+> The **corporate** builder (`getStudentListForCorporateAssessment`) still has the legacy `: 0` default — the corporate frontend renders sections differently and was out of scope for this fix.
+
 ---
 
 ## Database Tables (Key)

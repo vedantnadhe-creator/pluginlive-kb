@@ -8,10 +8,11 @@ Self-hosted **LiteLLM** proxy that fronts all LLM calls for the platform: one Op
 |---|---|---|---|
 | DEV | `https://dev.pluginlive.com/ai-gateway` | `…/ai-gateway/v1` | `http://172.17.0.1:4000/v1` |
 | UAT | `https://uat.pluginlive.com/ai-gateway` | `…/ai-gateway/v1` | `http://172.17.0.1:4000/v1` |
-| PROD | not deployed | — | — |
+| PROD | `https://ai-gateway.prod.pluginlive.com/ai-gateway/ui/` | `…/ai-gateway/v1` | `http://litellm/v1` (in-cluster) |
 
 - Dashboard login is the LiteLLM UI (username `pluginlive`; password + master key in `~/litellm/secrets.env` on each box).
-- Runtime: `litellm` container (`ghcr.io/berriai/litellm:main-stable`, port 4000, published on `127.0.0.1` for nginx and `172.17.0.1` for sibling containers) + `litellm-db` Postgres. Config `~/litellm/config.yaml`; served under `SERVER_ROOT_PATH=/ai-gateway`; nginx route in `static-website.conf`.
+- Runtime **DEV/UAT**: `litellm` container (`ghcr.io/berriai/litellm:main-stable`, port 4000, published on `127.0.0.1` for nginx and `172.17.0.1` for sibling containers) + `litellm-db` Postgres. Config `~/litellm/config.yaml`; served under `SERVER_ROOT_PATH=/ai-gateway`; nginx route in `static-website.conf`.
+- Runtime **PROD**: K8s namespace `api` — `litellm` + `litellm-postgres` deployments, manifests in `~/pl-oks-cluster/api-ns/litellm/`. Apps connect **in-cluster** at `http://litellm/v1`; the public ingress exists only for the UI. Only `GEMINI_API_KEY` is configured — router fallbacks map `gpt-*` / `llama-*` to `gemini-2.5-flash`. Query gateway spend directly with `kubectl -n api exec -i deploy/litellm-postgres -- psql -U litellm -d litellm`.
 
 ## What routes through it
 
@@ -38,3 +39,47 @@ Services opt in via env vars `LITELLM_PROXY_URL` + `LITELLM_VIRTUAL_KEY` (defaul
 ## Observability
 
 PostHog `$ai_generation` analytics continue in parallel (the gateway integration preserves the PostHog-wrapped clients). The LiteLLM dashboard adds per-key cost/usage and request logs.
+
+## Cost tracking — the `ai_usage` ledger
+
+**The LiteLLM dashboard alone cannot answer "what did this assessment cost".** Three reasons:
+
+1. Spend is keyed by **virtual key = service**, so it reports that `fastapi-ai-engine` spent $X, never that it was AI Interview.
+2. `LiteLLM_SpendLogs` retention is short, so historical averages are not retrievable from it.
+3. **STT/TTS never traverse the gateway** — Deepgram, ElevenLabs, Sarvam, Azure and Google TTS spend is invisible to it.
+
+Point 3 dominates. On a measured AI Interview turn, speech cost **$0.00631** against **$0.000052** of LLM — a gateway-only report misses roughly **99%** of the real spend.
+
+So `fastapi-ai-engine` writes its own durable ledger, a **superset** of LiteLLM spend.
+
+- **Table:** `ai_usage.ai_usage_ledger`, one row per paid AI call, plus views `ai_usage.v_module_daily_cost` (cost per IST day / module / modality / provider) and `ai_usage.v_module_attempt_cost` (attempts measured, avg / median / max cost per attempt, per module).
+- **Live on:** DEV, UAT (`uat_pluginlive`) and PROD (`prod_pluginlive` on the live PG16 host `10.0.6.104`) since **2026-08-12**. Schema is in the `DB-Scripts` repo under `AI Usage Cost Tracking`.
+- **Module attribution is derived from the router prefix** (`/ai-interview` → `AI_Interview`), and the names deliberately match `assessment.assessment_type.type_name`, so the ledger joins straight to assessment data. One middleware covers every router — no per-router edits.
+- **LLM cost is never computed locally.** It is read from LiteLLM's `x-litellm-response-cost` response header (`cost_source='gateway'`, exact). STT/TTS rows are priced from a published rate card (`cost_source='rate_card'`, list price × measured quantity).
+- **Default-OFF.** Tracking writes only when `AI_USAGE_DATABASE_URL` is set (plus optional `AI_USAGE_ENV`). It never blocks a request and never raises into one — rows go through a bounded queue flushed by a background thread. Set on UAT in `.env.uat`; on PROD in the `fast-api-config` ConfigMap.
+- Docs live with the code at `fastapi-ai-engine/docs/ai-usage-tracking.md`.
+
+### Joining a cost back to a candidate / corporate / institute
+
+```
+ai_usage_ledger.attempt_id (text)
+  = assessment.assessment_assigned_students.assessment_assigned_id (uuid)
+      -> assessment_corporate_map -> corporate.corporates
+      -> assessment_institute_map -> institute.institutes
+      -> primary_email -> student.student_personal_profile -> student.students
+```
+
+For AI Interview, `attempt_id` may be the interview session id instead — resolve via `assessment.ai_interview_sessions.id -> assessment_assigned_id`. `attempt_id` is text, so always guard the cast with `attempt_id ~ '^[0-9a-fA-F-]{36}$'`.
+
+### Known gaps (state these when reporting a total)
+
+- **No ledger history before 2026-08-12.** For earlier LLM-only spend use `LiteLLM_SpendLogs`, and say that speech is excluded from that number.
+- **Not every row carries an `attempt_id`.** Communication and Hinglish scoring endpoints already receive `assessment_assigned_id`; AI Interview and Role_Based do not yet (the fix is frontend-side — append `?assessment_assigned_id=<id>`). Those rows still count toward module totals but cannot be attributed to a candidate or drive.
+- **`resume-parser` and `jdparser` bypass both sources** — they call Gemini directly with a raw key, so their cost appears only in Google Cloud billing.
+- `x-litellm-call-id` is **not** `LiteLLM_SpendLogs.request_id`; use it for tracing, not as a join key.
+
+### Querying it
+
+On PROD, use the read-only helper `/home/ubuntu/scripts/prod-aicost-query.sh` on the builder box (140.245.25.134). It targets the **live PG16 host `10.0.6.104`** and wraps every query in `BEGIN READ ONLY … ROLLBACK`. **Do not use `prod-readonly-query.sh`** for this — it still points at `10.0.2.105`, the frozen pre-cutover PG14 box, which has no `ai_usage` schema.
+
+The **AI Cost Analyst** agent in the OliBot dashboard's Agents tab wraps all of the above conversationally: per-candidate, per-corporate-drive, per-institute and per-module spend, cost per completed candidate, and cost-efficiency comparisons. It is PROD-scoped and read-only (`whatsapp-engineer/agents/ai-cost-analyst/`).
