@@ -36,6 +36,7 @@ nvm use 20 && npm install && npm run build
 |---|---|---|---|
 | 2026-08-09 | `6c0429b` | `20260808045623` (as idempotent fixup) | 41 commits; date-fns repin removed the need for `--legacy-peer-deps` |
 | 2026-08-10 | `8877a68` | `20260810100000_admin_subscription_rbac_menu_access` | 18 commits; adds **Subscriptions & Access** and **RBAC & Reports** to the admin nav; edge functions 81 → 82 (`request-password-reset`) |
+| 2026-08-12 | `bade695` | **none** | 9 commits; multilingual AI coach; edge functions 82 → 83 (`elevenlabs-tts`). Ships **three upstream defects** — see *Upstream defects in the 2026-08-12 release*. One needed a local patch to avoid data loss. |
 
 `20260810100000` needed **no fixup** — it is `ALTER COLUMN … SET DEFAULT` plus a distinct-union
 `UPDATE`, so it is naturally idempotent. Effect on UAT: per-admin `allowed_tabs` went 56 → 58 and
@@ -47,8 +48,12 @@ new migrations or edge functions needs those applied too, or the new UI calls ta
 do not exist yet:
 
 ```bash
-# 1. preserve the self-hosted patches across the pull (.env + adminErrorLogger.ts)
-git stash push -- .env src/lib/adminErrorLogger.ts && git merge --ff-only origin/main && git stash pop
+# 1. preserve the self-hosted patches across the pull. As of 2026-08-12 there are FOUR files,
+#    not two -- see "Local patches carried on the UAT checkout" below. `git stash push` with an
+#    incomplete list silently drops the omitted patch on the next pull.
+git stash push -- .env src/lib/adminErrorLogger.ts \
+  src/components/pil-admin/LearningPathsManager.tsx src/hooks/useLearningPaths.ts \
+  && git merge --ff-only origin/main && git stash pop
 # 2. any NEW migration -> add an idempotent copy in ~/banking-sb/fixups/ and apply just that file,
 #    then re-run sql/03_grants.sql and SIGUSR1 banking-sb-rest to reload PostgREST's schema cache.
 #    Do NOT re-run the whole replay: it would re-execute data backfills against real data.
@@ -57,6 +62,28 @@ git stash push -- .env src/lib/adminErrorLogger.ts && git merge --ff-only origin
 ```
 
 If that `git pull` 403s, the org GitHub token has expired — see `Infrastructure/github-access.md` (the checkout's `origin` URL carries its own token, so the credential store alone is not enough).
+
+### Local patches carried on the UAT checkout
+
+These live **only** on the UAT box as uncommitted working-tree changes. `git status` is the
+inventory; every one is marked with a comment naming the reason.
+
+| File | Why | Drop when |
+|---|---|---|
+| `.env` | self-hosted backend URL + locally-signed keys | never (UAT-specific) |
+| `src/lib/adminErrorLogger.ts` | hardcoded hosted URL broke the fetch-interceptor matchers | upstream derives it from env |
+| `src/components/pil-admin/LearningPathsManager.tsx` | upstream `2e0fdfb` deletes the learning path on save | upstream fixes the remap |
+| `src/hooks/useLearningPaths.ts` | same remap, read side | upstream fixes the remap |
+
+`package-lock.json` also shows modified after an install; that one is disposable
+(`git checkout -- package-lock.json`).
+
+### `ELEVENLABS_API_KEY` is not set — AI coach voice falls back to browser TTS
+
+The `elevenlabs-tts` function added in `bade695` degrades correctly: no key → `503 {"error":
+"ElevenLabs is not connected to this project"}`, and `src/lib/ttsClient.ts` falls back to
+`window.speechSynthesis`. So voice works, at browser quality, in the selected language.
+`~/banking-sb/functions-secrets.env` is still deliberately empty — see the migration doc.
 
 - nginx (`/etc/nginx/sites-enabled/banking-react.conf`) serves `dist/` as static files directly — no service/container restart needed, nginx picks up the new build immediately. Because there is no container swap, a failed build leaves a **half-updated live site** — back `dist/` up before building.
 - `.env` holds the backend URL + anon key; `VITE_*` vars are baked in at build time. **On UAT these
@@ -103,6 +130,117 @@ Then headless-load the page (`playwright-core` lives in `~/browser-mcp/node_modu
 A `localhost:9999` string in the bundle is expected — it comes from vendor code (`undici`'s mock-agent and the `supabase-js` UMD build), not app code.
 
 **Expected-noise gotcha:** on load you will see three Supabase REST calls to `/rest/v1/{assessments,profiles,modules}` report `net::ERR_ABORTED` in devtools. They are **not** failures — each returns HTTP 200 first and is then aborted by the app's own `AbortController`/React StrictMode cleanup. Log the `response` event, not just `requestfailed`, before chasing these.
+
+## Upstream defects in the 2026-08-12 release (`bade695`)
+
+Three separate problems shipped in these 9 commits. All were found during the deploy; one was
+patched locally, two are reported and left as upstream's call.
+
+### 1. `2e0fdfb` "Fix database schema errors" DELETES learning paths — patched locally
+
+The commit remapped `learning_path_assignments` → `learning_paths` in four places. Assignments are
+a **different entity**, and one of those places is the edit-save path:
+
+```js
+// upstream, LearningPathsManager.tsx handleSave()
+await supabase.from("learning_paths").update({...}).eq("id", pathId);   // update the path
+await supabase.from("learning_path_modules").delete().eq("path_id", pathId);
+await supabase.from("learning_paths").delete().eq("id", pathId);        // ...then DELETE it
+```
+
+Editing and saving any learning path deletes it. It fails **silently**: there is no FK from
+`learning_path_modules`, and neither that call nor the follow-up assignment insert checks `.error`,
+so the code reaches `toast.success("Learning path updated")` with the row already gone. 11 real
+learning paths on UAT were exposed to this, one admin click each.
+
+Reverted on the UAT checkout in `LearningPathsManager.tsx` (2 spots) and `useLearningPaths.ts`
+(2 spots), each marked `LOCAL PATCH (2026-08-12)`. `learning_path_assignments` exists here with
+exactly the columns the code inserts (`path_id, college, department, degree`). **Drop the patch
+once upstream fixes it.**
+
+### 2. The same commit points 4 admin queries at columns that do not exist
+
+Also part of `2e0fdfb`, but read-only, so it was **left as shipped**. It remaps `rbac_*` → `admin_*`
+and `quiz_question_bank` → `assessment_questions`, and **23 of the selected columns do not exist**
+on the new tables. Every column the *old* code selected does exist on the *old* tables, so this is a
+regression against this schema, not a fix:
+
+| Frontend now queries | Result | What it replaced |
+|---|---|---|
+| `admin_tab_permissions(id, role_code, menu_key, menu_label, actions, scope)` | **400** | `rbac_role_permissions` — **142 rows** |
+| `admin_tab_permissions(id, user_id, menu_key, action, effect, reason, created_at)` | **400** | `rbac_user_permission_exceptions` — 0 rows |
+| `admin_audit_log(id, actor_name, action, entity_type, entity_id, reason, occurred_at)` | **400** | `rbac_audit_log` — 2 rows |
+| `admin_audit_log(id, user_id, tenant_name, menu_key, …)` | **400** | `rbac_menu_access_log` — 0 rows |
+
+`admin_tab_permissions` really has `(user_id, allowed_tabs, updated_by, updated_at, created_at, role)`;
+`admin_audit_log` has `(id, actor_user_id, action, target_user_ids, details, created_at)`.
+
+Visible effect: **Admin → RBAC & Reports → Permission Matrix renders empty** (the header counts come
+from `profiles`/`user_roles`, which still work). `rowsOrEmpty()` swallows the error into `[]`, so
+there is no crash and no toast — only a `console.warn` and a 400 in the nginx log. `QuestionBankViewer`
+is hit the same way via the non-existent `assessment_questions.metadata`.
+
+These four 400s are the **only** non-2xx `/sb/` responses in a full authenticated admin walkthrough.
+Expect them until upstream fixes the mapping; don't chase them as a stack problem.
+
+### 3. `bade695` "Update MCP function bundle" cannot run anywhere — pinned via fixup
+
+Upstream replaced the 174-line inlined `supabase/functions/mcp/index.ts` with an 8-line stub whose
+entry import is a **Windows absolute path** passed as an `npm:` specifier:
+
+```ts
+import mcp from "npm:C:\\Users\\Prakash\\OneDrive\\Documents\\Default Project\\bankingjobreadiness\\src\\lib\\mcp\\index.ts";
+```
+
+The Lovable Vite plugin regenerated it on a Windows dev machine and baked in that machine's local
+path. Proof it cannot resolve on any other host:
+
+```
+$ docker exec banking-sb-functions edge-runtime bundle --entrypoint .../mcp/index.ts
+Error: failed to create the graph
+Caused by: npm package 'C:\Users\Prakash\...\index.ts' does not exist.
+```
+
+`~/banking-sb/function-fixups/mcp/index.ts` now **pins the last working bundle** and says so at the
+top. Note the general hazard: `function-fixups/` entries are *whole files*, so a fixup that outlives
+its reason silently reverts upstream work on the next `sync-functions.sh`. Diff each fixup against
+the repo after a pull that touches it.
+
+### `edge-runtime bundle` is the side-effect-free way to check all functions
+
+Better than probing endpoints, which can fire real work (`seed-admin-user` resets the admin
+password; MSG91/Twilio send real messages). `bundle` builds the full module graph without executing
+anything, and it is what caught defect 3:
+
+```bash
+docker exec banking-sb-functions sh -c '
+for d in /home/deno/functions/*/; do
+  edge-runtime bundle --entrypoint "$d/index.ts" --output /tmp/b.eszip -q >/tmp/err 2>&1 \
+    || { echo "FAIL: $(basename $d)"; tail -3 /tmp/err; }
+done'
+```
+83/83 resolve as of 2026-08-12. Note `OPTIONS` is **not** a boot probe — the dispatcher
+short-circuits it before spawning a worker.
+
+## `mcp` is broken on the self-hosted stack (not fixable in the app)
+
+Independent of the bundle regression above, the `mcp` function cannot serve on this stack.
+
+`@lovable.dev/mcp-js` rejects a non-https `auth.issuer` at module init. The fixup derived it from
+`Deno.env.get("SUPABASE_URL")`, which inside `banking-sb-functions` is the **internal** origin
+`http://gateway:80` — so every call died with `500 function worker failed`
+(`auth.issuer must use https://`). This had been broken since the migration; earlier "all functions
+boot clean" checks did not catch it because a resolvable module graph is not a working function.
+
+Repointed to the public origin (`SUPABASE_PUBLIC_URL`, defaulting to
+`https://banking.uat.pluginlive.com/sb`). The worker crash is gone, but it now returns a clean
+`500 {"error":"oauth configuration error"}`, because **self-hosted GoTrue serves no OAuth discovery
+document** — both `/.well-known/oauth-authorization-server` and `/.well-known/openid-configuration`
+404, and our GoTrue mints tokens with **no `iss` claim** at all (`GOTRUE_JWT_ISSUER` unset). Hosted
+Supabase provides those endpoints; that is the gap.
+
+Fixing it means serving a discovery document at that well-known path (e.g. a static JSON via nginx)
+— a deliberate change, not a redeploy step. The app UI does not use `mcp`; nothing else is affected.
 
 ## Backend (Supabase) — separate deploy step, not covered by the frontend build
 
