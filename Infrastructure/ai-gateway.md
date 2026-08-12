@@ -36,6 +36,36 @@ Services opt in via env vars `LITELLM_PROXY_URL` + `LITELLM_VIRTUAL_KEY` (defaul
 - **Rotate / change a provider API key**, add models, mint virtual keys: LiteLLM dashboard → Models / Keys (live, no redeploy) for DB-managed models. Models defined in `config.yaml` are read-only in the UI; change those by editing `config.yaml` and `docker restart litellm`.
 - **Gotcha:** the wildcard `"*"` model entry mis-routes bare `gemini-*` names to **Vertex AI** ("default credentials not found"). Every Gemini model an app uses must be registered explicitly with the `gemini/` prefix in `config.yaml`.
 
+### Gotcha: a bad key on one model is SILENT — router fallbacks hide it
+
+Each DB-managed model row stores its **own** API key, and the keys can drift apart between model rows and between environments. When a model's key is invalid, the call does **not** surface an error to the app — LiteLLM's router fallback quietly serves the request from a different model, so the caller gets a normal 200 and never learns it was downgraded.
+
+**Live example (UAT, found 2026-08-12).** `gemini-3-flash-preview` and `gemini-2.5-flash` were registered with *different* keys. The `gemini-3-flash-preview` key was invalid, so every request for it failed auth and fell back:
+
+```
+x-litellm-model-group:      gemini-2.5-flash          # asked for gemini-3-flash-preview
+x-litellm-attempted-fallbacks: 1
+```
+
+DEV was healthy at the same moment (`model-group: gemini-3-flash-preview`, `attempted-fallbacks: 0`), so this is **per-environment** and will not show up in DEV testing.
+
+**How to detect it.** A fallback is only visible in the response headers, or by forcing the real error:
+
+```bash
+# Does the model actually serve, or is it being substituted?
+curl -sD- -o/dev/null -X POST http://127.0.0.1:4000/v1/chat/completions \
+  -H "Authorization: Bearer $VKEY" -H 'Content-Type: application/json' \
+  -d '{"model":"<model>","messages":[{"role":"user","content":"hi"}],"max_tokens":5}' \
+  | grep -iE 'model-group|attempted-fallbacks'
+
+# Surface the underlying provider error instead of the fallback
+... -d '{"model":"<model>", ..., "num_retries":0, "fallbacks":[]}'
+```
+
+Health-check every model group after any key rotation — `/v1/models` only proves a model is *registered*, not that its key works, and the ledger's `model` column records what actually answered (the fallback), not what was requested.
+
+Note the stored `api_key` in `LiteLLM_ProxyModelTable` is **encrypted**, and `/model/info` masks it, so keys cannot be compared by reading the DB — compare behaviour, not values.
+
 ## Observability
 
 PostHog `$ai_generation` analytics continue in parallel (the gateway integration preserves the PostHog-wrapped clients). The LiteLLM dashboard adds per-key cost/usage and request logs.
@@ -58,6 +88,13 @@ So `fastapi-ai-engine` writes its own durable ledger, a **superset** of LiteLLM 
 - **LLM cost is never computed locally.** It is read from LiteLLM's `x-litellm-response-cost` response header (`cost_source='gateway'`, exact). STT/TTS rows are priced from a published rate card (`cost_source='rate_card'`, list price × measured quantity).
 - **Default-OFF.** Tracking writes only when `AI_USAGE_DATABASE_URL` is set (plus optional `AI_USAGE_ENV`). It never blocks a request and never raises into one — rows go through a bounded queue flushed by a background thread. Set on UAT in `.env.uat`; on PROD in the `fast-api-config` ConfigMap.
 - Docs live with the code at `fastapi-ai-engine/docs/ai-usage-tracking.md`.
+- **Reading the `model` column:** it records the model that *answered*, taken from the response, not the one the code asked for. If a router fallback fired (see the silent-fallback gotcha above), the ledger shows the substitute. That makes the ledger a useful way to spot fallbacks — a module whose rows show an unexpected model is being silently downgraded.
+
+## Assessment scoring model (2026-08-12)
+
+`gemini-2.5-pro` was retired from assessment scoring: Aptitude, Communication (incl. the deepgram/video/score paths), Hinglish, Role_Based and AI-Interview `score-final` now all request the **`gemini-3-flash-preview`** model group (23 call sites, commit `8aae021`, on UAT via `555f8f4`). The exact group name matters — plain `gemini-3-flash` is not registered and 404s.
+
+**Caveat on UAT:** because of the invalid-key fallback documented above, requests for `gemini-3-flash-preview` on UAT are currently served by `gemini-2.5-flash`. Assessment scoring there is therefore running on 2.5-flash, a weaker model than the 2.5-pro it replaced, until that model row's key is fixed on the UAT gateway. Question generation was already affected before this change, since it already used the same group.
 
 ### Joining a cost back to a candidate / corporate / institute
 
