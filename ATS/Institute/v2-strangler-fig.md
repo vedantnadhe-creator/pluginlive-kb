@@ -189,6 +189,26 @@ row (`Communication - Schedules`, Recurring, 0/20, 12–31 Aug, 4 students) and
 its Schedule tab opens on **Diagnosis · Ongoing · Assessment #1 1/4 ·
 Assessment #2 0/4 · 1/8** — matching admin exactly.
 
+### Progress trend shows improvement only (2026-08-11)
+
+`8b6dfa3` frontend. The Student-wise table's **Progress trend** column drew a
+red sparkline and a negative delta for any student whose score had gone
+backwards. Product decision: the column reports improvement and stays silent
+otherwise — a declining student now renders the same neutral `—` as one
+without enough history (`Sparkline.tsx`, `(delta ?? 0) < 0`).
+
+Deliberate boundaries, so nobody "restores" the wrong thing later:
+
+- `trendDelta` in the payload is **unchanged**. Sorting by Progress trend still
+  orders on the real figure, and no student leaves the table — the row, score
+  and risk band are all still there. Only the cell is suppressed.
+- The column is **not** re-coloured to claim improvement that didn't happen.
+  Hiding a decline is a product call; reporting it as a gain would be false.
+
+With nothing red reachable, the two-colour branch and the `.spark-delta.down`
+variant were deleted rather than left as dead code — `down` no longer appears
+in the shipped bundle, which is the quickest way to verify a deploy took.
+
 ### One merged Diagnosis row, matching v1 (2026-08-11)
 
 `fd520a2` institute-node, `977aa5c` frontend. The Schedule tab rendered a
