@@ -201,10 +201,22 @@ Error: failed to create the graph
 Caused by: npm package 'C:\Users\Prakash\...\index.ts' does not exist.
 ```
 
-`~/banking-sb/function-fixups/mcp/index.ts` now **pins the last working bundle** and says so at the
-top. Note the general hazard: `function-fixups/` entries are *whole files*, so a fixup that outlives
-its reason silently reverts upstream work on the next `sync-functions.sh`. Diff each fixup against
-the repo after a pull that touches it.
+**But this file is a build artifact, not source.** `vite.config.ts` loads `mcpPlugin()` from
+`@lovable.dev/mcp-js/stacks/supabase/vite`, which **regenerates
+`supabase/functions/mcp/index.ts` on every `npm run build`** from `src/lib/mcp/index.ts`, baking
+`projectRef` in from `VITE_SUPABASE_PROJECT_ID`. Two consequences:
+
+* Our own build **overwrites** the Windows stub with a correct inlined bundle, so the committed
+  breakage never reaches the stack — *provided you build before syncing functions*. The documented
+  4-step order (functions at 3, frontend at 4) is backwards for this one file; run
+  `sync-functions.sh` again after the build, or accept the fixup below as the thing that ships.
+* That file showing as `modified` in `git status` after a build is **normal**, not a hand patch.
+  Do not add it to the stash list.
+
+`~/banking-sb/function-fixups/mcp/index.ts` pins a known-good bundle and wins over both versions.
+Note the general hazard: `function-fixups/` entries are *whole files*, so a fixup that outlives its
+reason silently reverts upstream work on the next `sync-functions.sh`. Diff each fixup against the
+repo after a pull that touches it.
 
 ### `edge-runtime bundle` is the side-effect-free way to check all functions
 
