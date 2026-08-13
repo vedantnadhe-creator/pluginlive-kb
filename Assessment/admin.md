@@ -118,6 +118,12 @@ Returns a buffer for download.
 
 **Supports:** College and Corporate
 
+**Columns are per assessment type.** A fixed base block (Session Name, Name, Email, ID, Phone, Sent Date, Start Date, End Date, Status, Delivery Status, Delivery Issue) is followed by type-specific score columns, then Proctoring Status when proctoring is enabled.
+
+For **Aptitude**, the first type-specific column is **Time Taken** (`mm:ss`), ahead of Overall % / Critical Reasoning % / Quantitative % / Logical Reasoning %. It is read from `assessment.assessment_assigned_students.total_time_taken` — seconds, stamped by `submitAssessment` in student-node *before* score calculation — selected in both the college and corporate candidate queries and carried through each row as `totalTimeTakenSeconds`. Formatted by the shared `_fmtMmSs()` helper, which renders a **blank cell** (not `00:00`) for anyone who never submitted, so an empty cell means "no attempt" rather than "instant attempt". Same format as the `Time Taken` column in the institute schedules workbook (`_scheduleSheetColumns`).
+
+Other types record time on the same column but do not surface it here; only Aptitude has the export column.
+
 ---
 
 ## Subscription Management

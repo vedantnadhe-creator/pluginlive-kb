@@ -590,6 +590,7 @@ Consumers:
 | `assessment_set` | Generated question pack with `difficulty` level |
 | `assessment_question_map` | Maps questions to assessment sets |
 | `assessment_assigned_students` | Per-student assignment (tracks `isMinusSystem`, `totalTakenTime`) |
+| ↳ `total_time_taken` | Seconds the attempt took. Written by `submitAssessment` **before** `calculateAptitudeScore` runs (the calculation reads it back). Surfaced as a `Time Taken` (`mm:ss`) column in both the admin results export and the institute/TPO export — see `Assessment/admin.md` and `Assessment/institute.md`. NULL for candidates who never submitted. |
 | `student_answers` | Individual question responses with `answerText` and `timeTaken` |
 | `aptitude_scores` | Aggregated scores with full `statistics` JSON (sections, topics, difficulty breakdown) |
 | `aptitude_topic_progress` | Per-student adaptive state: `AssessmentLevelOfStudent`, `LevelOfStudent`, `MaxLevelOfStudent`, `topicInfo` |

@@ -188,7 +188,15 @@ customAssessmentScores: true
 | Role_Based | `roleBasedScores[]` | Average of section scores | Dynamic from `section.sectionName` (e.g., mcq, subjective, video) |
 | Custom | `customAssessmentScores[0]` | `percentage` field | `gainedMarks`, `totalMarks`, `percentage`, `sectionWiseStats` |
 
-**Response includes:** `assessmentType` field (`mapData.assessmentType.typeName`) for frontend type detection.
+**Response includes:** `assessmentType` field (`mapData.assessmentType.typeName`) for frontend type detection, and `timeTakenSeconds` — the attempt's `total_time_taken` (seconds) selected as `totalTakenTime` alongside the assignment. Null when the candidate never submitted.
+
+### `exportExcelOfStudentListForAssessment()` (Excel export of the above)
+
+Re-runs `getStudentListForAssessment` with `pageSize: 'NA'` (all rows, no pagination) and builds the sheet with ExcelJS. Base columns mirror the on-screen table (Candidate Name, Email, Degree, Department, Progression Level, Assmt. Taken On, Taken / Sent, Total Score), then type-specific columns, then Proctoring.
+
+For **Aptitude** the type-specific block opens with **Time Taken** (`mm:ss`) before Critical / Quantitative / Logical. It is filled from `timeTakenSeconds` via the `_fmtMmSs()` helper on `TpoDashBoard`, and is set **independently of `sectionScores`** — the clock lives on the assignment, not the score row, so gating it on scores would blank it. Unattempted candidates render `-`, matching the rest of that sheet. Only Aptitude gets the column; Communication and AI Interview keep their existing section/parameter columns.
+
+> The equivalent column in the admin results export renders a **blank** cell rather than `-` for a non-attempt — each export follows its own sheet's convention. See `Assessment/admin.md`.
 
 ### `getStudentListForCorporateAssessment()` (Corporate method, lines ~2237-2658)
 
