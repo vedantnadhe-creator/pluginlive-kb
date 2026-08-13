@@ -9,7 +9,7 @@
 | Property | Value |
 |---|---|
 | **Assessment Type** | `Aptitude` |
-| **Total Questions** | 30 MCQs |
+| **Total Questions** | 25, 30, or 40 MCQs (duration/config dependent) |
 | **Proficiency Levels** | Beginner, Learner, Competent, Advanced |
 | **Difficulty Levels** | Easy, Medium, Hard |
 | **Negative Marking** | Optional (configurable per assessment) |
@@ -49,6 +49,35 @@ Per the approved **Aptitude Question Blueprint**, each topic is pinned to one or
 - **Seating Arrangement** intentionally sits in **both** medium (linear) and hard (circular) bands. **Analogy** and **Data Sufficiency** are intentionally dropped (rows omitted; questions retained).
 - Config panel `GET /assessment/getAptitudeConfig` reads the band table (falls back to the count table pre-seed).
 - Migration: DB-Scripts `Aptitude Config Revamp/20260717T081421Z__aptitude_topic_band_config.sql`.
+
+#### 30-minute / 25-question blueprint (DEV + UAT 2026-08-13; PROD pending)
+
+The 30-minute option is an explicit document-driven blueprint, not a scaled
+30Q paper. It uses the existing `assessment.aptitude_topic_band_config` table;
+no additional config table was introduced. Each `(sub_section_id, difficulty)`
+row has three editable counts: `questions_25_easy`, `questions_25_medium`, and
+`questions_25_hard`, where the suffix is the overall exam level.
+
+| Exam level | Easy questions | Medium questions | Hard questions |
+|---|---:|---:|---:|
+| Easy | 13 | 7 | 5 |
+| Medium | 7 | 13 | 5 |
+| Hard | 8 | 8 | 9 |
+
+Every level totals 25 questions with the same section split: Quantitative
+**10**, Logical Reasoning **9**, Critical Reasoning **6**. The allocator reads
+the exact per-topic counts from the config rows and refuses to return a partial
+25Q blueprint; the existing full-paper fallback remains available during a
+partially migrated deployment. Adaptive regeneration recognizes an original
+25-question set and preserves that length and the approved difficulty mix.
+
+Admin creation behavior:
+- Institute aptitude is fixed at **30 minutes / 25 questions**.
+- Corporate aptitude offers **30, 45, or 60 minutes**.
+- Changing difficulty does not discard the admin's selected topics.
+
+Schema/config migration: `admin-node/migrations/20260813T120000Z__add_25q_aptitude_blueprint.sql`
+(DEV + UAT applied 2026-08-13; PROD pending).
 
 ### Topic selection — admin picks the sub-topics (DEV + UAT 2026-08-05; PROD pending)
 
@@ -95,7 +124,17 @@ Negative marking is **optional** — controlled by the `isMinusSystem` flag set 
 
 ### Difficulty Distribution (auto-generated per level)
 
-Distribution depends on test length (30-Q / 45-min or 40-Q / 60-min). Mix: Easy 60/30/10, Medium 30/50/20, Hard 20/50/30. (`student-node/app/models/Assessment.js` ~line 3366.)
+Distribution depends on test length. The 25Q / 30-minute vectors are explicitly
+approved in the blueprint; 30Q / 45-minute and 40Q / 60-minute sets retain the
+standard percentage mixes. (`student-node/app/models/Assessment.js`.)
+
+**25-question set:**
+
+| Set difficulty | Easy | Medium | Hard |
+|---------------|------|--------|------|
+| Easy set | 13 | 7 | 5 |
+| Medium set | 7 | 13 | 5 |
+| Hard set | 8 | 8 | 9 |
 
 **30-question set:**
 
@@ -196,7 +235,7 @@ flowchart TD
 - Admin selects **assessment type** = `Aptitude`
 - Configures: name, dates, sections (Quantitative/Logical/Critical), subtopics, difficulty, negative marking, proctoring
 - Supports **one-time** and **scheduled** distribution
-- `renderAptitudeTopics()` hoists the section cards, `TopicSelectionModal` and the selection summary **above** the institute/corporate branch, so both flows share one picker; only the surrounding config differs (institute is fixed at 45 min / 30 Q, corporate chooses a duration). See *Topic selection* above.
+- `renderAptitudeTopics()` hoists the section cards, `TopicSelectionModal` and the selection summary **above** the institute/corporate branch, so both flows share one picker; only the surrounding config differs (institute is fixed at 30 min / 25 Q, corporate chooses 30, 45, or 60 minutes). See *Topic selection* above.
 - Two sites used to overwrite the admin's picks with every topic — the save path and `handleDifficultyLevelChange` (so changing difficulty **after** picking topics silently discarded them). Both now fill in only what the admin did not choose, so an untouched form still defaults to every section and topic.
 
 #### Backend — `Assessment.js` → `assignAptitudeAssessment()`
