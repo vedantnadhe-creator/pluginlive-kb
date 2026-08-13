@@ -930,6 +930,20 @@ design's **40/55/70/85** cutoffs instead of an even 20-point split, under which
 filters on the level string (the column sorts by score), so this is display-only
 — but it is not drawer-local.
 
+### Level lists order by score band, never alphabetically
+
+The analytics drawer's **Level** filter was a `Set` over the students in
+arrival order, so it read "A2, B2, B1, C1, A1" (`d84e8f9`, 2026-08-13). It now
+orders by the LOWEST score seen in each band, which reproduces the ladder
+exactly — a level *is* a score band, the bands partition the score line, so
+everyone in a lower band scores below everyone in a higher one.
+
+Do not sort the names: that only works for CEFR. Aptitude puts "Advanced"
+before "Beginner" alphabetically, and the DEFAULT ladder
+(Novice/Developing/Proficient/Advanced/Expert) is worse. Any new level list
+must order by band, and there is exactly one such list today — keep it that way
+or the two will drift.
+
 ### The dashboard's filters and freshness stamp live in the TOP BAR
 
 `d389a03`. Two deviations, both fixed 2026-08-13:
