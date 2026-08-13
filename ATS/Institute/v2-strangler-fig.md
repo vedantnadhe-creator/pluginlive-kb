@@ -965,6 +965,47 @@ design's **40/55/70/85** cutoffs instead of an even 20-point split, under which
 filters on the level string (the column sorts by score), so this is display-only
 — but it is not drawer-local.
 
+### "How long is this assessment?" has no single answer
+
+`79095d2` institute-node, `37de5e6` frontend (2026-08-13). The schedule card's
+figure is the **sit-time** ("45 / min"), NOT the attempt window
+(`assessment_validity_days`, how many days it stays open) — the two were
+conflated before this. `app/helpers/assessmentDuration.js` resolves it, and it
+has to ask a different question per type:
+
+| Type | Source |
+|---|---|
+| Aptitude | the set's question count: **30 Q → 45 min, 40 Q → 60 min** (admin-node's own `difficultyConfigsByLength`) |
+| Communication | **fixed 30 min** |
+| AI_Interview | `ai_interview_config.interview_duration` — **SECONDS**, the only genuinely per-assessment value in wide use |
+| Role_Based | `assessment_config.duration_minutes` — set for a few sets, null for most |
+| Custom_Assessment, Behavior | not resolved → null |
+
+Two things to know before touching it:
+
+- **Aptitude and Communication are platform CONSTANTS**, enforced by the student
+  player's own instruction screens (`Assessment-React`
+  `.../aptitudeassmt/instruction.js` "Duration - 45 mins",
+  `.../Communicationassmt/instruction.js` "Duration - 30 mins"). They are
+  duplicated in the helper because the TPO app cannot reach the player's
+  constants — **if the player's numbers change, the helper must change with
+  them.** On PROD 5033 of 5067 aptitude maps carry the standard 30 questions, so
+  45 min is right for almost all of them.
+- **`assessment_config.duration_minutes` does not exist on PROD** — the
+  migration never ran there (DEV and UAT have it). It is read as
+  `(to_jsonb(ac) ->> 'duration_minutes')::int`, which yields NULL where the
+  column is absent instead of erroring, so one env's schema drift cannot take
+  the endpoint down. **Use that idiom for any column that is not on every env.**
+
+Custom_Assessment is deliberately unresolved: its `time_in_minutes` sits on
+`custom_assessment_config` per SECTION (`custom_section_id`), and
+`custom_sections.entity_id` is the INSTITUTE, not the set — so a total means
+summing only the sections a set actually uses. Not worth chasing for 39 PROD
+maps, and a plausible-but-wrong duration is worse than none.
+
+Anything unresolved returns null and the rail falls back to the window, then to
+the assigned count, so no card loses its figure.
+
 ### Degrees are abbreviated on lists, never in filters
 
 `8134844` institute-node, `6153322` frontend (2026-08-13). Lists show
