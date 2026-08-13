@@ -136,6 +136,39 @@ Role-based always intended time-taken (it is what lands in `total_time_taken`), 
 
 ---
 
+### Invites said "on the scheduled date" and omitted the deadline (fixed 2026-08-13, DEV + UAT)
+
+Role-Based OTP invites reached candidates reading *"The Role Based Assessment for the machine_learning role has been scheduled with demo corporate on **the scheduled date**"* over WhatsApp, and the invite **email carried no deadline line at all**. One missing value, two symptoms.
+
+**Root cause — the deadline was read from the wrong place.** `admin-node/app/helpers/assessmentInviteEmail.js` needs an `endDate` label:
+
+- WhatsApp: `buildWhatsappTemplateComponents` maps it onto body param `{{5}}`, defaulting to the literal string `"the scheduled date"` when falsy. Meta rejects a blank body param, so *some* text is required — the placeholder is the intended last resort, not a bug in itself.
+- Email: `buildHtml`'s `deadlineLine` renders `""` when it is falsy, so "Please complete the assessment by …" simply disappears.
+
+Every other assessment type passes an IST-formatted label. Role_Based derived it from **`assessment_set_groups.group_config.endDate`**, which is nullable — the admin assign form never validated the schedule for this type (see below), so an empty End Date was persisted as `null`.
+
+`AssessmentSetGroupService.assignSetGroup` then made it worse in a way that hid the problem:
+
+1. `combineDateTime(config.endDate, config.endTime)` returns `null` if **either** part is missing.
+2. The assessment map is created with `endTime: endDateTime || Date.now() + 30d` — so a **real, enforced deadline exists**, silently invented, that nobody chose.
+3. But the invite was still handed the `null` config value, not the map's `end_time`.
+
+Both assign paths were affected identically — the async one (`configSnapshot.endDate`, consumed by `assignmentWorker.processNotify` as `cfg.endDateLabel || primary.endDate || cfg.endDate`) and the sync one (`processStudentsForAssessment({ endTime })` in `script/generateRoleBasedQuestions.js`).
+
+Confirmed on UAT: job `718a0ffe` (2026-08-06 11:33:01Z = 5:03 PM IST, role `machine_learning`, `isOtpInvite: true`) had `config_snapshot.endDate = NULL`; its group `0eb35dce` held `{"endDate": null, "endTime": "23:59"}` and its map carried the fabricated `end_time = 2026-09-05 11:33`.
+
+**Fix.**
+
+- **`AssessmentSetGroupService.js`** now resolves an `effectiveEndTime` from the deadline **actually stored on the assessment map** — the value it just wrote when creating the map, or read back via `findUnique({ select: { endTime: true } })` when the group already had one (that pre-existing case could also disagree with `group_config` outright). A single `endDateLabel`, formatted `DD MMM YYYY, hh:mm A` like every other type, feeds the async `configSnapshot` (as a new `endDateLabel` key, which the worker already prefers first), the sync `processStudentsForAssessment({ endTime })` call, and the portal reminder's `assessment_data.end_date` — so the invite, the reminder and the runner can no longer quote three different dates. The async path previously emitted a bare `YYYY-MM-DD`, which was inconsistent with every other type even when it was populated.
+- **`admin-react` `AssessmentSelect.js`** — new `validateRoleBasedSchedule()` called from **both** `handleSave` and `handleInstructionsSave`. Role_Based short-circuits `validateForm()` in both (it only checked role/skills/seniority, on the assumption the other had already validated), which is why the schedule was never checked for this type. Broadcasts stay exempt from the end-of-window fields, mirroring `validateForm`'s non-scheduled branch.
+- **Both silent failure modes now log:** a warning when a map's window is fabricated, and a warning when the WhatsApp placeholder fires.
+
+`admin-node` `aacbcc5`, `admin-react` `5ac3c59d`. DEV + UAT 2026-08-13. **PROD pending.**
+
+Note: existing groups already saved with `endDate: null` are fixed by this without a backfill — the label is now derived from the map, which always has a usable `end_time`.
+
+---
+
 ### Coding starter code must not solve the question (2026-08-07, promoted to UAT 2026-08-10)
 
 Generated coding questions were shipping **starter code that already contained the solution** (or part of it), so a candidate could pass the test cases without writing anything. `fastapi-ai-engine` `QuestionGeneration/Role_Specific/question_generator.py` now enforces this on both sides:

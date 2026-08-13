@@ -133,6 +133,18 @@ Communication candidate. `{{4}}` is also why it cannot be the global default: `d
 comes from the interview config and is null for every other type (it defaults to 25 rather than
 emitting a blank param, which Meta rejects).
 
+**The deadline param must be supplied by the caller.** Meta rejects a blank body param, so a
+missing `endDate` becomes the literal string `"the scheduled date"` — which renders to the
+candidate as *"has been scheduled with Acme on the scheduled date"*, i.e. indistinguishable
+from a broken template. It is a last resort, **not** a substitute for passing a real label:
+every call site is expected to pass one formatted `DD MMM YYYY, hh:mm A`. Role_Based shipped
+this placeholder to real candidates until 2026-08-13 because its assign flow read the deadline
+from a nullable config field instead of the assessment map — see
+`Assessment/rolebased.md`. The fallback now logs a warning when it fires, so the next
+occurrence is greeted by a log line rather than a screenshot. The same missing value also
+blanks the invite email's "Please complete the assessment by …" line, since `buildHtml`
+renders `deadlineLine` as `""` when it is falsy.
+
 Overrides: `WA_ASSESSMENT_TEMPLATE` for the default, `WA_ASSESSMENT_TEMPLATE_AI_INTERVIEW` for
 the AI Interview slot — so one type can be rolled back without touching the others. Templates
 are **WABA-scoped** and DEV/UAT/PROD share one WABA, so an approved template is usable in every
