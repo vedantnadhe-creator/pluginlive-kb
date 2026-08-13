@@ -442,3 +442,113 @@ board filter today.
 
 Backup taken before the load:
 `~/pilvidya-data-import/backups/eduspeak_uat-pre-masters-20260812T170953Z.dump`.
+
+---
+
+## 2026-08-13 — app rolled forward to `0f347d74` (111 commits)
+
+Pulled `deacd151` → `0f347d74`. Backups first: `pg_dump -Fc` on the DEV box at
+`~/pilvidya-data-import/backups/eduspeak_uat-predeploy-20260813T055338Z.dump`, image tagged
+`eduspeakreact:predeploy-20260813T055338Z`, and `.env.uat` + the local-patch diff saved to
+`~/pilvidya-predeploy-20260813T055338Z/` on the UAT box.
+
+### Local patches: one retired, two still needed
+
+- **`StudentDashboard.tsx` `GraduationCap` import — now fixed upstream.** The patch documented in
+  the 2026-08-06 section can be dropped; upstream imports it correctly. Nothing to re-apply.
+- **`vite.config.ts` `allowedHosts` still does NOT list `pilvidya.uat.pluginlive.com`** upstream —
+  it lists only the dev and old `eduspeak.uat` hosts. This patch **must** be re-applied on every
+  pull or the vite preview server 403s every route while `/sb/*` still looks healthy.
+- **`public/schema.sql` still ships DEV URLs** upstream; patch re-applied. (The three remaining
+  `eduspeak.uat.pluginlive.com` strings in that file are `cron.schedule` URLs and are inert —
+  neither `pg_cron` nor `pg_net` is installed here.)
+
+### Upstream shipped a build-breaking missing file
+
+`AdminDashboard.tsx:42` does `import RolePlanAssignmentView from "@/components/admin/RolePlanAssignmentView"`
+and renders it at `:1349` for the `role-plans` tab, but **that file has never existed in any commit
+or branch** — `git log --all -- 'frontend/src/components/admin/RolePlanAssignmentView*'` returns
+nothing and `git ls-files` has no match. `vite build` fails outright with
+`Could not load .../RolePlanAssignmentView: ENOENT`, so **no bundle is produced at all** — this is a
+hard stop, not a runtime bug like the `GraduationCap` one.
+
+Unblocked with a local placeholder component at the same path that renders a "not available in this
+build" card. It is **not upstream**; delete it as soon as the real file is committed. The admin
+`role-plans` tab therefore shows that notice instead of the role/plan assignment UI. Everything
+else in the console is unaffected — the backing edge function (`admin-manage-users`, which gained
+`ASSIGNMENT_ROLES` / `normalizeAssignmentFilters` / `pickAssignmentRole` in this release) is
+deployed and waiting for the real view.
+
+### Database
+
+All **8 new migrations applied clean, zero failures**, in filename order. Pre-checks that mattered:
+
+| Migration | Risk | Pre-check result |
+|---|---|---|
+| `20260812152243` | bare `CREATE TABLE topic_practice_progress` (no `IF NOT EXISTS`) | table absent → safe |
+| `20260812160816` | new `plan_menu_catalog_role_check CHECK (role IN ('student','teacher','parent'))` | existing roles are exactly those three → safe |
+| `20260813040037` | `ALTER TYPE app_role ADD VALUE 'parent'` inside a `DO` block | PG16 allows it in a transaction → applied |
+
+Net: 210 → **217 tables**, 494 → **523 policies**, 35 functions. New: `topic_practice_progress`,
+`student_curriculum_progress`, `assessment_assignments.due_at`, `parent_profiles.plan_override`,
+`app_role.parent`.
+
+**Re-ran `03_grants.sql` and `05_sensitive_columns.sql`** after the batch, as required. Note that
+`03_grants.sql` is blanket and re-grants `anon SELECT` on every public table — including the six
+curriculum master tables added on 2026-08-12, which must stay anon-free. They were re-revoked
+immediately afterwards. **Any future migration batch must repeat that re-revoke.**
+
+**Restart the pools after a migration batch.** The first admin sign-in straight after the batch
+returned `Database error querying schema` even though `idle_session_timeout=0` is set on all four
+service roles; the immediate retry succeeded. Stale pooled connections, same class of symptom as
+the 2026-08-06 finding, different cause.
+
+### Upstream re-opened permissive RLS — harmless here, dangerous on hosted
+
+`20260812000000_fix_missing_columns_and_rpc_access.sql` adds five policies with unrestricted
+`true` predicates and no `TO` clause, all **new in this release**: `Public can read/insert/update
+student profiles` and `Anyone can insert/update progress`. The app's own
+`security-regression-scan` edge function flags them (53 criticals total).
+
+On our stack they are **not exploitable**, because grants — not policies — are the binding
+constraint. Verified live with the anon key:
+
+| Probe | Result |
+|---|---|
+| `GET student_profiles.password_hash` | **401** |
+| `GET student_profiles.active_session_token` | **401** |
+| `PATCH student_profiles` | **401** |
+| `POST user_roles` (role escalation) | **401** |
+| `GET boards / topics / questions` (masters) | **401** |
+
+`anon` holds only *column-level* SELECT on `student_profiles` (19 columns, excluding the two
+sensitive ones) — that is `05_sensitive_columns.sql` doing its job. On the hosted project, where
+`anon` gets blanket table grants, those same policies would be wide open.
+
+The other 6 criticals (`rls_disabled` on `user_roles`, `profiles`, `institutes`, `institute_users`,
+`question_bank`, `student_progress`) are **pre-existing, not caused by this deploy** — confirmed by
+diffing `ENABLE ROW LEVEL SECURITY` in the pre-deploy dump. `anon` has SELECT-only on all six, so
+the exposure is read, not write; writes are refused.
+
+### Verification
+
+| Check | Result |
+|---|---|
+| Migrations | **8/8 clean** |
+| Edge functions | 112 synced, **0 boot failures** (66×200, 28×400, 14×401, 2×403) |
+| Bundle | no `*.supabase.co`, no `*.dev.pluginlive.com`, `/sb` base baked in |
+| Routes (headless Chromium) | 5 anon + 3 authed, all render |
+| Page errors / failed requests | **0 / 0** |
+| Requests to hosted Supabase | **0** |
+| `/sb` responses ≥ 400 | **0** |
+| Admin login | works → `/dashboard`, console renders live data (33 students with names, boards, scores) |
+| Student login (`student-authenticate-profile`) | `ok:true` for 9000000001 and 9000000003 |
+| Curriculum masters | 24,000 questions / 30,450 videos / 5,075 topics intact, 0 FK orphans |
+
+The snap `chromium` on both boxes refuses to launch from an ssh cgroup
+(`is not a snap cgroup for tag snap.chromium.chromium`). Use playwright's own build at
+`~/.cache/ms-playwright/chromium-1208/chrome-linux/chrome`. Harness:
+`~/pilvidya-data-import/e2e.cjs` on the DEV box.
+
+Rollback: `docker run` `eduspeakreact:predeploy-20260813T055338Z` on port 3008; the previous
+container is still on the box, stopped, as `eduspeakreact-old-20260813T055338Z`.
