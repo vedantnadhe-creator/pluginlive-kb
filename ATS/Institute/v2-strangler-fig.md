@@ -704,6 +704,30 @@ students). Attempt rate now uses the current roster members who have assessment
 history, and Performance is the scored subset of that same population. The
 historical Assessments-sent/taken KPIs deliberately retain assignment history.
 
+### Competency axes cannot be summed into a headcount
+
+Fixed 2026-08-13 (`f729856` Development, `fa3a4e7` UAT; frontend `7042ee1`).
+The `b4b` **Distribution by Competency** radar carries one axis per assessment
+type, and each axis's `students` is the count of DISTINCT students with a
+scored attempt of that type. The "All types" caption added those three numbers
+together, which counts anyone assessed on two types twice — Swadha Foundation
+read **312 students** against a roster of 177.
+
+`buildCompetency` now also returns `competency.students`: one count per student
+with at least one scored attempt, so it equals `risk.totalAssessed` by
+construction and the two cards on the same screen finally agree. Verified on
+DEV — an institute whose axes sum to 39 has 23 distinct students.
+
+The per-type ladders are unaffected: a ladder's rows partition that one type's
+students, so those DO sum. The frontend hides the caption when `students` is
+absent rather than falling back to the old sum, so an older institute-node
+shows no figure instead of a wrong one — deploy the API first or together.
+
+The radar's number is the cohort's **mean score, 0–100**, on that type (the
+mean of each student's per-type average). The tooltip used to print a bare
+`Current 45`; it reads `Avg. score 45/100` with a matching legend, because the
+panel is titled "competency" and an unlabelled 45 reads as a level.
+
 **`high` means opposite things in the two modes** — high RISK (red) on
 performance, high CONSISTENCY (green) on attempt rate. The frontend therefore
 keys colours per mode (`PERFORMANCE_COLORS` / `CONSISTENCY_COLORS` in
