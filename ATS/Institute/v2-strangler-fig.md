@@ -1038,6 +1038,30 @@ Student-list roster values are master objects in many schedules — use
 renders `[object Object]`. A folded Diagnosis keeps the parent schedule name in
 its title and carries `kind: diagnosis` for the separate Diagnosis tag.
 
+### Diagnosis results average the baseline PAIR
+
+`66cabbb` institute-node, `49fa524` frontend (2026-08-13). The Diagnosis drawer
+is one row per student across both baseline maps, so its result must also be one
+combined diagnosis result. Do not use `SCORE_EXPR` here: that averages the raw
+Communication section rows, and do not take the latest attempt's breakdown.
+Use the canonical formula already shipped by student-node `Reports.js`:
+
+- Writing = average of four applicable exercises: Email Writing **or**
+  Dictation, plus QBR, Sentence Completion and Sentence Build;
+- attempt total = Reading 20% + Listening 10% + Speaking 40% + Writing 30%;
+- each displayed skill and the total are averaged across the two submitted
+  diagnosis attempts;
+- Assigned level is `assessment_sets.cefr_level`; Progression level is the
+  stored `assessment_assigned_students.resulting_cefr`, widened through the
+  shared Communication ladder;
+- Diagnosis proctoring retains the legacy operational contract: any invalid
+  `proctoring_logs` row makes the pair Bad; all logs valid makes it Good.
+
+Verified on UAT schedule `0d4c315a`: A1, 52.43%, A1 (Beginner), Reading 46.97%,
+Listening 75%, Speaking 39.5%, Writing 65.79%, Good. The diagnosis-only table
+shows those fields as columns; ordinary occurrence drawers keep their existing
+Sent/Taken, Score, Proctoring and Status columns.
+
 Do not revert the date filter to window overlap (`start < to AND end >= from`)
 or use `coversDay` in the calendar views. Those are valid for answering "what
 can a student still take today?", but this UI answers "what was scheduled on
