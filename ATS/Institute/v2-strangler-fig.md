@@ -1029,6 +1029,15 @@ Calendar placement is now event-based:
 - `end` remains the run's close time for card metadata, but it no longer drives
   which day groups render the event.
 
+Follow-up `cd6ea8e`/`bb6350d`: projected rows have no map yet, but Communication
+and Aptitude sit-times are platform constants, so they must still carry **30
+min** and **45 min** respectively. The full agenda's left figure reads
+`durationMinutes` first (then window as fallback), matching the dashboard rail.
+Student-list roster values are master objects in many schedules — use
+`degreeName` / `streamName`, not `String(value)`, or the audience chip literally
+renders `[object Object]`. A folded Diagnosis keeps the parent schedule name in
+its title and carries `kind: diagnosis` for the separate Diagnosis tag.
+
 Do not revert the date filter to window overlap (`start < to AND end >= from`)
 or use `coversDay` in the calendar views. Those are valid for answering "what
 can a student still take today?", but this UI answers "what was scheduled on
