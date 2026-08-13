@@ -238,9 +238,11 @@ WHERE assessment_assigned_id = '<uuid>';
 
 ## Per-environment status
 
-- **DEV** — channel-queue code pushed to `Development` at `a487a27e` on
-  2026-08-13; `email_events` migration must be applied before enabling it.
-- **UAT** — original single email-queue implementation deployed; cron enabled.
-  The independent WhatsApp queue change is not promoted yet. Worker running
-  (`[Reminder] worker started (concurrency=10, rate=20/1000ms)`).
+- **DEV** — channel-queue code on `Development` at `a487a27e`; `email_events`
+  migration applied and verified 2026-08-13. Code was pushed, not redeployed as
+  part of this promotion.
+- **UAT** — channel-queue code promoted as `7b856cf6`, migration applied, and
+  admin-node deployed 2026-08-13. Both workers verified running:
+  `[Reminder] ... rate=20/1000ms` and `[Reminder:WhatsApp] ... rate=5/1000ms`.
+  Cron `assessment_auto_reminder` enabled at `2026-08-13 15:42:07 UTC`.
 - **PROD** — pending (code + migration).
