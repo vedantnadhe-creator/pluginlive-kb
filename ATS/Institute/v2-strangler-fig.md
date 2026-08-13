@@ -1006,6 +1006,35 @@ maps, and a plausible-but-wrong duration is worse than none.
 Anything unresolved returns null and the rail falls back to the window, then to
 the assigned count, so no card loses its figure.
 
+### The calendar is milestones, not open windows
+
+`7616f3f` institute-node, `0280293` frontend (2026-08-13). The dashboard rail
+and Full schedule used to place a map on **every day its attempt window
+covered**. Diagnosis maps stay open for roughly ten years, so the two baseline
+maps appeared twice on every day, both renamed to the parent schedule. A
+five-run schedule that had not fired yet had the opposite problem: it appeared
+zero times because future runs do not have `assessment_institute_map` rows yet.
+
+Calendar placement is now event-based:
+
+- the two baseline maps collapse to one **Diagnosis** milestone on their
+  creation/start date;
+- every scheduled run appears once, on its own start date;
+- future runs are projected from `assessment_schedules.frequency_value`, the
+  concrete ordered run-date list the scheduler itself uses;
+- the recurring figure is the event's position in that full list (`1 of 5`,
+  `2 of 5`, ...), not the number of map rows that happen to have fired so far;
+- a real map replaces its projected row by `(schedule_id, calendar date)`, so
+  the cron firing cannot create a duplicate;
+- `end` remains the run's close time for card metadata, but it no longer drives
+  which day groups render the event.
+
+Do not revert the date filter to window overlap (`start < to AND end >= from`)
+or use `coversDay` in the calendar views. Those are valid for answering "what
+can a student still take today?", but this UI answers "what was scheduled on
+this date?". The API payload carries `kind: diagnosis | run` so both calendar
+surfaces render the Diagnosis tag without guessing from a map name.
+
 ### Degrees are abbreviated on lists, never in filters
 
 `8134844` institute-node, `6153322` frontend (2026-08-13). Lists show
