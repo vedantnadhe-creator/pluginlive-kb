@@ -974,6 +974,20 @@ silently matches nothing. So the map is served once from
 stamped onto each row: one map cannot be mistaken for a key, nine extra row
 fields eventually would.
 
+The dashboard's **Active Assessment Schedules** row was the one list that kept
+truncating after the change (`534d2b1`): it rendered the payload's server-built
+`audienceLabel`, which carries the full name. It now builds its own label from
+`audience[0]`, like every other "Assigned to". `audienceLabel` is marked
+**@deprecated rather than deleted** — dropping a payload field would blank that
+cell for the minutes between the backend and frontend restarts. Render from
+`audience`, never from it.
+
+Worth knowing when reading that column: the label is `degree + " " + department`,
+so "Master Of Human Resource Development Management" is NOT one degree — it is
+`Master Of Human Resource Development` + `Management`, and it now reads
+"MHRD Management". A tooltip that looks like an unmatched degree may just be the
+two fields run together.
+
 Filters deliberately keep full names for a second reason: a dropdown is where a
 TPO goes to *find* a degree, and "BAF" / "BAFI" / "BBI" are far harder to scan
 than the words.
