@@ -1114,6 +1114,28 @@ Live UAT verification on group `5b64952a` / student
 0%); the download returns HTTP 200, `application/pdf`, two A4 pages, with all
 three report points present in extracted text.
 
+#### Recurring PDF follows the established PluginLive report pattern
+
+`7a1fd11` frontend (2026-08-13; UAT merge `832a2bb`) restyles the dedicated
+series PDF to match the existing one-time assessment report supplied as the
+visual reference. The calculation and consolidated timeline are unchanged.
+
+- the real PluginLive logo leads the A4 document;
+- assessment title, type, candidate metadata and date use the same centered
+  hierarchy as the established report;
+- the overall score sits in a large pale-grey panel with the blue headline;
+- proctoring uses a bordered status panel and compact signal cells;
+- Aptitude or Communication component averages use red score cards and
+  progress rules;
+- the performance trend and schedule table continue on printable pages with
+  a restrained PluginLive footer and page count.
+
+Keep the footer at `y <= 774` with the current A4 margin. PDFKit applies the
+bottom margin even when text has an explicit coordinate; placing the footer at
+`y = 786` generated two additional blank pages containing only page numbers.
+The checked preview is two A4 pages and preserves the consolidated Diagnosis
+plus `#N` schedule sequence.
+
 Do not revert the date filter to window overlap (`start < to AND end >= from`)
 or use `coversDay` in the calendar views. Those are valid for answering "what
 can a student still take today?", but this UI answers "what was scheduled on
