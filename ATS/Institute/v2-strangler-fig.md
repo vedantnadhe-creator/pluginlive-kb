@@ -169,6 +169,17 @@ Three traps this hit, all worth remembering:
 2. **Join the schedule on the GROUP key, not `schedule_id`.** When the parent
    schedule hasn't run, the group is that schedule but every member has
    `schedule_id` NULL, so joining on `schedule_id` lost the name and window.
+   **This one recurred** — `getSchedule` (the "This week" rail / full Schedule
+   page) selected `sch.assessment_validity_days` (joined on `aim.schedule_id`)
+   without the `gsch` fallback title/`is_recurring` already use, so every
+   diagnosis-folded row's window silently read NULL and the rail's figure slot
+   fell through to "N assigned" instead — reported as "add assessment duration
+   here" against a recurring Communication series where most visible rows
+   *were* its diagnosis baseline. Fixed `2063568` (2026-08-13):
+   `COALESCE(sch.assessment_validity_days, gsch.assessment_validity_days)`.
+   **Any new field read off `sch` in one of these grouped queries needs the
+   same `gsch` fallback, or it will quietly break for every diagnosis-folded
+   row** — this is the second time this exact shape of bug has shipped.
 3. **A diagnosis map's ~10-year end date swallows the series window**, and its
    presence makes the group exist so the not-yet-run branch must skip it
    (`NOT EXISTS (SELECT 1 FROM occ WHERE occ.akey = sch.id)`) or the schedule
