@@ -75,6 +75,12 @@ Admin creation behavior:
 - Institute aptitude is fixed at **30 minutes / 25 questions**.
 - Corporate aptitude offers **30, 45, or 60 minutes**.
 - Changing difficulty does not discard the admin's selected topics.
+- The admin configuration summary maps duration to question-count config as
+  `30→25`, `45→30`, `60→40`; the 30-minute category summary therefore displays
+  Quantitative **10**, Logical **9**, Critical **6**.
+- Assessment React recognizes an exact 25-question paper as **30 minutes** for
+  both the displayed allocation and countdown timer. Other 16–30 question
+  legacy sets remain 45 minutes.
 
 Schema/config migration: `admin-node/migrations/20260813T120000Z__add_25q_aptitude_blueprint.sql`
 (DEV + UAT applied 2026-08-13; PROD pending).
