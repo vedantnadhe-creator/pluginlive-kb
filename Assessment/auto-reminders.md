@@ -51,20 +51,21 @@ suppression list and drag sender reputation down with it.
 scheduler.js  (hourly, '0 * * * *')
   └─ cron_config gate → cron_locks mutex
        └─ AutoReminderService.sweepDueReminders()
-            ├─ claimDueBatch()   — atomic claim, 200 rows per round-trip
-            └─ enqueue           — one job per candidate
-                 └─ queue: assessment-reminder
-                      └─ reminderWorker  (concurrency 10, limiter 20/sec)
-                           └─ ReminderSendService.sendReminder()
+            └─ transaction: claim + durable email_events channel rows
+                 └─ ReminderDispatchService
+                      ├─ assessment-reminder (email, 20/sec)
+                      └─ assessment-reminder-whatsapp (WhatsApp, 5/sec)
 ```
 
 | File (admin-node) | Role |
 |---|---|
 | `script/scheduler.js` | Registers job `assessment_auto_reminder` |
-| `app/service/AutoReminderService.js` | Due-query, atomic claim, batched enqueue |
-| `app/service/ReminderSendService.js` | Render + send (no queue import — unit testable) |
-| `app/queues/reminderWorker.js` | BullMQ transport, rate limit |
-| `app/queues/setup.js` | `assessment-reminder` queue |
+| `app/service/AutoReminderService.js` | Due-query and atomic claim + channel staging transaction |
+| `app/service/ReminderDispatchService.js` | Durable `email_events` dispatch and stale-row recovery |
+| `app/service/ReminderSendService.js` | Independent email and WhatsApp send functions |
+| `app/queues/reminderWorker.js` | Email BullMQ worker and rate limit |
+| `app/queues/reminderWhatsappWorker.js` | WhatsApp BullMQ worker, retries and rate limit |
+| `app/queues/setup.js` | Email and WhatsApp reminder queues |
 | `app/models/Assessment.js` | Resets the cursor on re-invite |
 
 Hourly rather than daily so each candidate's 24h clock runs from *their* last
@@ -88,15 +89,14 @@ Three layers, because a duplicate here is a duplicate email to a real candidate:
    re-evaluate the CTE's predicates once the row lock is taken, so `status` and
    `auto_reminder_count` are asserted again on the row actually being written.
 
-**Claim-then-enqueue.** The cursor advances in the *same statement* that selects
-the row, before any job exists. That makes a reminder **at-most-once**: a crash
-between claim and enqueue costs one nudge. The inverse (send, then record) would
-re-mail everyone after any crash. For candidate-facing email, a missed nudge is
-much cheaper than looking like spam.
-
-If the enqueue itself fails, the claim is already spent — the affected
-`assessment_assigned_id`s are logged explicitly, because resetting
-`auto_reminder_count` for those ids is the only way to recover them.
+**Durable channel dispatch (2026-08-13).** The cursor and one `email_events`
+dispatch row per eligible channel are committed in the same transaction. Redis
+enqueue happens afterwards. If Redis or a worker is unavailable, the pending or
+stale row is re-enqueued by the worker process; the unique key
+`(assignment, category, reminder_number, channel)` prevents duplicate logical
+jobs. Email and WhatsApp retry independently, so retrying one never resends the
+other. The old fire-and-forget WhatsApp call is explicitly suppressed for this
+automated path.
 
 ## Load bounding
 
@@ -106,6 +106,8 @@ If the enqueue itself fails, the claim is already spent — the affected
 | Rows per hourly tick | 2000 | `AUTO_REMINDER_MAX_PER_TICK` |
 | Emails/sec (global, Redis-backed) | 20 | `REMINDER_RATE_MAX` |
 | Worker concurrency | 10 | `REMINDER_CONCURRENCY` |
+| WhatsApp/sec (global, Redis-backed) | 5 | `REMINDER_WHATSAPP_RATE_MAX` |
+| WhatsApp concurrency | 5 | `REMINDER_WHATSAPP_CONCURRENCY` |
 
 One job per **candidate**, not per assessment — that is what makes the BullMQ
 limiter a true emails/sec ceiling across all pods. Per-assessment jobs would
@@ -143,6 +145,12 @@ Every outcome is written to `email_events` with category `assessment_reminder`,
 in the same shape the manual reminder writes — so the DELIVERY column and the
 candidate funnel treat automated and manual sends identically. See
 `email-delivery-tracking.md`.
+
+For an eligible corporate OTP/no-login reminder, the cron stages two durable
+rows: email and WhatsApp. Institute, portal-login, unsubscribed, and no-phone
+candidates stage email only. Queue lifecycle (`pending`, `queued`, `processing`,
+`retrying`, `completed`) and retry metadata live on the durable row; each actual
+provider attempt remains an ordinary accepted/failed audit row.
 
 ## Schema
 
@@ -230,7 +238,9 @@ WHERE assessment_assigned_id = '<uuid>';
 
 ## Per-environment status
 
-- **DEV** — deployed 2026-08-06, cron disabled.
-- **UAT** — deployed 2026-08-06, cron disabled. DB migrated, worker running
+- **DEV** — channel-queue code pushed to `Development` at `a487a27e` on
+  2026-08-13; `email_events` migration must be applied before enabling it.
+- **UAT** — original single email-queue implementation deployed; cron enabled.
+  The independent WhatsApp queue change is not promoted yet. Worker running
   (`[Reminder] worker started (concurrency=10, rate=20/1000ms)`).
 - **PROD** — pending (code + migration).
