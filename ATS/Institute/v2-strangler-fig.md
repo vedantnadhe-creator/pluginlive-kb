@@ -1059,8 +1059,12 @@ Use the canonical formula already shipped by student-node `Reports.js`:
 
 Verified on UAT schedule `0d4c315a`: A1, 52.43%, A1 (Beginner), Reading 46.97%,
 Listening 75%, Speaking 39.5%, Writing 65.79%, Good. The diagnosis-only table
-shows those fields as columns; ordinary occurrence drawers keep their existing
-Sent/Taken, Score, Proctoring and Status columns.
+keeps the established compact columns: the combined score is one **Avg score
+(%)** cell and its existing hover contains Assigned Level, Avg Score,
+Progression Level and the four skills. Do not expand those metrics into table
+columns. The only diagnosis-specific visible column is **Diagnosis Status**,
+shown as submitted baselines out of assigned baselines (`0/2`, `1/2`, `2/2`).
+Ordinary occurrence drawers keep their existing Status column.
 
 Do not revert the date filter to window overlap (`start < to AND end >= from`)
 or use `coversDay` in the calendar views. Those are valid for answering "what
