@@ -930,6 +930,25 @@ design's **40/55/70/85** cutoffs instead of an even 20-point split, under which
 filters on the level string (the column sorts by score), so this is display-only
 — but it is not drawer-local.
 
+### The dashboard's filters and freshness stamp live in the TOP BAR
+
+`d389a03`. Two deviations, both fixed 2026-08-13:
+
+- The design's **`Updated <time> IST` stamp** was missing entirely, although its
+  CSS (`.head-stamp`, the live dot, the `is-loading` spinner, the
+  reduced-motion and small-screen rules) was already ported and unused.
+  `PageChrome` now carries a `stamp` slot that `Topbar` renders beside the
+  title. The value is the LATER of the two dashboard payload fetch times — the
+  screen is only as current as its slowest block — formatted in Asia/Kolkata,
+  because the label says IST and formatting a viewer's local clock while calling
+  it IST would be a lie. While either block is in flight it shows the design's
+  `Data loading` state rather than a stale time.
+- The **cohort filters** sat in a `.dash-toolbar` strip invented below the
+  header. The shell already renders page-chrome `actions` into `.topbar-group`
+  (the design's own slot), so they were handed over and the strip — markup and
+  CSS — is gone. `usePageChrome` moved from `dashboard/page.tsx` into
+  `DashboardView`, which owns the filter and load state both slots need.
+
 Proctoring is **not** a body card: it lives in the popover behind the head's
 shield (red via `.iconbtn.flagged`, plus the `.rep-warn` band), so the body stays
 about the assessment. `#procPop` is widened to 384px — our verdict is a phrase
@@ -998,8 +1017,25 @@ DEV-built bundle carries `*.dev.pluginlive.com` and would silently send UAT user
 to DEV. Verify before swapping:
 
 ```bash
-grep -rho '[a-z-]*\.dev\.pluginlive\.com' .next/static .next/server | sort | uniq -c   # must be empty
+find .next/static .next/server -name '*.js' -o -name '*.css' \
+  | xargs grep -ho '[a-z-]*\.dev\.pluginlive\.com' | sort | uniq -c   # must be empty
 ```
+
+**Exclude `*.map`, or the check cries wolf.** Source maps preserve source
+*comments*, and two comments in this repo mention `dev.pluginlive.com` while
+explaining the trap — including the one in `src/lib/auth.ts`, which trips the
+very grep it describes. A bare `grep -r` over `.next/` therefore reports a leak
+on every clean UAT build (seen 2026-08-13). Maps are not executed and not served
+to the browser, so scan the `.js`/`.css` only. A guard that fires on every build
+gets ignored, which is how a real leak would get through.
+
+To confirm positively rather than by absence, check what IS baked in:
+
+```bash
+grep -rhoE 'https://[a-z-]+\.(uat\.)?pluginlive\.com' .next/static --include='*.js' | sort -u
+```
+
+On UAT that should name only `*.uat.pluginlive.com` hosts.
 
 Never add a `?? 'https://...dev...'` fallback for one of these vars — it is not a
 runtime default, it is a literal baked into every bundle, and it defeats the grep
@@ -1016,7 +1052,8 @@ git pull origin UAT
 corepack prepare pnpm@10.33.0 --activate     # pnpm, NOT npm — the repo has pnpm-lock.yaml
 pnpm install --frozen-lockfile
 rm -rf .next && pnpm build
-grep -rho '[a-z-]*\.dev\.pluginlive\.com' .next/static .next/server   # must be empty
+find .next/static .next/server -name '*.js' -o -name '*.css' \
+  | xargs grep -ho '[a-z-]*\.dev\.pluginlive\.com'   # must be empty (skip *.map — see above)
 sudo systemctl restart institute-react-v2
 ```
 
