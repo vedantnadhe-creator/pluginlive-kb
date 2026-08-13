@@ -954,6 +954,50 @@ design's **40/55/70/85** cutoffs instead of an even 20-point split, under which
 filters on the level string (the column sorts by score), so this is display-only
 — but it is not drawer-local.
 
+### Degrees are abbreviated on lists, never in filters
+
+`8134844` institute-node, `6153322` frontend (2026-08-13). Lists show
+"B.COM"; filters keep "Bachelor Of Commerce".
+
+The short form comes from **`institute.degrees.short_form`** — the same column
+the legacy TPO report exports use, so v2 abbreviates a degree exactly the way
+admin and the downloads already do. Do NOT derive an acronym in code: an
+algorithm reads "Bachelor Of Commerce" as "BOC" and everyone else reads it as
+"B.COM".
+
+**The degree string is a LABEL and a KEY.** `DashboardV2.buildCohort` (and
+`StudentWiseV2`) match `DEGREE_EXPR` against the full name, and the Degree-Dept
+filter sends that name back as its value — shorten the value and the filter
+silently matches nothing. So the map is served once from
+`GET /institutes/dashboard/v2/degree-short-forms` and applied by the client at
+**render time**; payloads keep sending full names. That is also why it is not
+stamped onto each row: one map cannot be mistaken for a key, nine extra row
+fields eventually would.
+
+Filters deliberately keep full names for a second reason: a dropdown is where a
+TPO goes to *find* a degree, and "BAF" / "BAFI" / "BBI" are far harder to scan
+than the words.
+
+Coverage: the master is polluted (~4.4k rows, mostly junk from the
+self-appending create path) but only ~213 carry a short form, and only exact
+lowercased-name matches are looked up, so the junk is inert. Of the 36 degrees
+that actually reach the TPO screens, **33 resolve**; the rest fall back to the
+full name (`Unknown`, `Bachelor's`, `Post Graduate Diploma` — fixable by adding
+short forms to those master rows, a data change, not code).
+
+Gotchas worth keeping:
+
+- Short forms are stylistically inconsistent in the master (`M.B.A`, `B.COM`,
+  `B.Sc`, `B.Tech`, `BBA`). Shown verbatim on purpose — normalising would make
+  the screen disagree with the report export.
+- `ELEVENTH` (the largest single group on PROD) maps to `11`. Correct — it is a
+  school class, not a degree — but it reads oddly under a "Degree" heading.
+- Every shortened label keeps the full name in `title`, and the **CSV export
+  keeps full names**: an export is data, not UI.
+- The map is cached 10 min in institute-node and once per page load in the
+  client; a failed load answers `{}` and every caller falls back to the full
+  name, so the abbreviation can never take a list down.
+
 ### Level lists order by score band, never alphabetically
 
 The analytics drawer's **Level** filter was a `Set` over the students in
