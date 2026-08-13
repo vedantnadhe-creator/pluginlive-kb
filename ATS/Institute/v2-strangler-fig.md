@@ -1066,6 +1066,18 @@ columns. The only diagnosis-specific visible column is **Diagnosis Status**,
 shown as submitted baselines out of assigned baselines (`0/2`, `1/2`, `2/2`).
 Ordinary occurrence drawers keep their existing Status column.
 
+### Aptitude roster score hover comes from `statistics.categories`
+
+`3fa8731` institute-node (2026-08-13). The occurrence drawer's hover is shared,
+but it only renders when `StudentRow.sections` is populated. Communication and
+Role_Based have section-score tables; Aptitude does not, so its icon was absent.
+`loadAttemptSections` now also unnests
+`aptitude_scores.statistics::jsonb->'categories'` and returns each category's
+clamped `100 * gained_marks / total_marks` percentage. Keep the explicit
+`::jsonb`: the column is json on UAT and jsonb on DEV. This supplies Critical
+Reasoning, Logical Reasoning and Quantitative to the existing hover without a
+frontend-specific Aptitude path.
+
 Do not revert the date filter to window overlap (`start < to AND end >= from`)
 or use `coversDay` in the calendar views. Those are valid for answering "what
 can a student still take today?", but this UI answers "what was scheduled on
