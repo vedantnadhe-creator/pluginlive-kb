@@ -78,6 +78,43 @@ In PROD these live in the `auth-api-config` ConfigMap (mounted at `/app/.env` on
 
 ## Assessment invites over WhatsApp (corporate, opt-in)
 
+### Dynamic corporate deadline copy and invite/reminder intent (DEV, 2026-08-14)
+
+Corporate assessment communications now calculate a short candidate-facing CTA
+from the assessment map's deadline in the IST wall-clock frame. More than 36h
+remaining renders `Complete it by tomorrow at 12 PM`; at or below 36h it uses
+the real deadline with `today` / `tomorrow` and preserves non-zero minutes. An
+expired deadline suppresses the send. The common formatter is
+`admin-node/app/helpers/candidateDeadline.js`; do not compare the map value as an
+honest UTC instant.
+
+Invite and reminder are explicit intents in `assessmentInviteEmail.js`. Email
+reminders now have reminder subjects/headings/body copy instead of reusing the
+invite voice. AI Interview still reads `interview_duration` from its DB config,
+converts seconds to minutes, and falls back to 25 only when the value is absent.
+
+Four new Meta UTILITY templates are prepared in code but must be approved before
+their env vars are switched:
+
+| Intent/type | Template |
+|---|---|
+| generic invite | `corporate_assessment_invite_deadline_v1` |
+| generic reminder | `corporate_assessment_reminder_deadline_v1` |
+| AI Interview invite | `corporate_ai_interview_invite_deadline_v1` |
+| AI Interview reminder | `corporate_ai_interview_reminder_deadline_v1` |
+
+Safe rollout variables are `WA_ASSESSMENT_INVITE_TEMPLATE`,
+`WA_ASSESSMENT_REMINDER_TEMPLATE`, `WA_AI_INTERVIEW_INVITE_TEMPLATE`, and
+`WA_AI_INTERVIEW_REMINDER_TEMPLATE`. Until those are set, the existing active
+templates remain selected, and their date-only parameter contract is preserved;
+the full dynamic sentence is supplied only to one of the four new names. This is
+the rollback boundary—do not edit or replace the existing Meta templates in
+place.
+
+Code: admin-node `1c62039`, user-management-node `0261107`, both pushed to
+`Development`. Meta creation/approval and the post-approval env switch remain
+operational follow-ups.
+
 Corporate assessment invites send a **WhatsApp reminder alongside the invite email**
 (admin-node; DEV + UAT as of 2026-08-03, PROD pending).
 
