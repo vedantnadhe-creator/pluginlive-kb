@@ -552,3 +552,31 @@ The snap `chromium` on both boxes refuses to launch from an ssh cgroup
 
 Rollback: `docker run` `eduspeakreact:predeploy-20260813T055338Z` on port 3008; the previous
 container is still on the box, stopped, as `eduspeakreact-old-20260813T055338Z`.
+
+## 2026-08-14 — Pilvidya redeployed to `84d5a78b`
+
+Advanced Pilvidya UAT by 21 commits from `0f347d74` to `84d5a78b`. Upstream now includes the real
+609-line `RolePlanAssignmentView`, so the temporary placeholder was retired. The three remaining
+UAT patches (`vite.config.ts` allowed host, `public/schema.sql` self-hosted URLs, and the
+`DashboardHub.tsx` local adjustment) reapplied cleanly.
+
+Applied `20260813050000_security_hardening_school_scoped.sql` transactionally with one self-hosted
+compatibility correction: PostgreSQL has no `min(uuid)`, so `MIN(sp.school_id)` was replaced in the
+deployment copy by `(array_agg(sp.school_id ORDER BY sp.school_id))[1]`. Upstream was not edited.
+The migration scopes student progress and transport access by user/school and restricts security-
+definer helpers. Re-ran `03_grants.sql` and `05_sensitive_columns.sql`, then re-revoked anon access
+to all six curriculum-master tables. The 61,080 imported master rows remain intact.
+
+Synced the TTS, translation, question-generation and secret-management functions. Important
+operational correction: a raw `rsync --delete` removed the stack-only `functions/main` dispatcher,
+causing temporary 502s. It was restored from the predeploy functions snapshot and must be excluded
+from future syncs, like Banking's sync script does. After restoration, recent function logs show
+zero boot errors and `status-public-api` returns 200.
+
+Verification: image `eduspeakreact:84d5a78b` built with route-manifest checks passing and is live;
+both sites return 200; all Pilvidya stack containers are up. Browser E2E passed five anonymous
+routes, admin login, and three authenticated routes with 0 page errors, 0 failed requests, 0
+hosted Supabase requests, and 0 `/sb` responses >=400. Full DB backup:
+`~/pilvidya-data-import/backups/eduspeak_uat_predeploy_20260814T044541Z.dump` on the DEV box.
+Rollback image: `eduspeakreact:predeploy-20260814T044541Z`; prior container retained as
+`eduspeakreact-old-20260814T044541Z`.

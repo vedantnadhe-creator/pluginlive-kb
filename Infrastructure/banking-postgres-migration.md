@@ -318,3 +318,23 @@ Pre-cutover `dist/` and `.env` are kept on the UAT box as
 `~/bankingjobreadiness/dist.bak-premigration-*` and `.env.bak-premigration-*`; the nginx conf as
 `banking-react.conf.bak-premigration-*`. Restore those three and reload nginx to go back to hosted
 Supabase. To remove the new infrastructure entirely: `cd ~/banking-sb && docker compose down -v`.
+
+## 2026-08-14 — redeployed to `3b12b94`
+
+Advanced Banking UAT by 22 commits from `bade695` to `3b12b94`. Applied the two new migrations
+(`20260813131604` and `20260813163337`) transactionally as `banking_owner`, refreshed grants, and
+synced 83 edge functions with all three self-hosted overlays (`main`, `live-session-rsvp`, `mcp`).
+The release adds the AI Coach thread/message persistence RPCs and tightens leaderboard/profile
+read policies. The AI Coach tables were already present, so their idempotent migration refreshed
+the surrounding functions, privileges, and indexes without changing existing data.
+
+The MCP overlay was rebased onto the newly regenerated upstream bundle and now changes only its
+OAuth issuer to the public self-hosted `/sb/auth/v1` origin. The ElevenLabs secret remained in the
+server-side functions environment. A full DB dump, `dist/`, and `.env` rollback snapshot were
+saved with stamp `20260814T044019Z`.
+
+Verification: production build passed under Node 20; all seven stack containers are up; both the
+site and self-hosted APIs respond; unauthenticated `seed-admin-user` remains 401; browser checks
+passed anonymous and authenticated/admin routes with zero `*.supabase.co` traffic and zero `/sb`
+4xx/5xx after login. The only `supabase.co` string in the bundle is the previously documented,
+click-only `api.supabase.com` management tool.
