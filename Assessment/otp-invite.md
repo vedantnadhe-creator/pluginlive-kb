@@ -93,6 +93,8 @@ The `/s/<code>` link remains the public email URL and the code resolver still mi
 
 Legacy single-assessment links continue to use `/assessment/start/<signed-ticket>` unchanged. The v2 Next.js app proxies invite resolution and `/public/assessment-otp/{request,resend,verify}` through same-origin Route Handlers; after verification it stores the scoped `assessment:run` JWT and assignment context in the established `assessment_invite_*` session keys. The assessment list/content remains mocked until the next migration phase, but OTP authentication is live.
 
+The Mix & Match landing summary is live as of the same DEV rollout. Candidate-scoped `GET /students/mix-match/summary` in student-node derives the group exclusively from the `sub` assignment in the `assessment:run` JWT and also matches the token email; the browser cannot choose another group or candidate. It returns the group title, totals, and each member assignment's ID, set, type, status, real question count, and configured/derived duration. Assessment React v2 exposes it only through `GET /candidate-assessment-journey/v2/api/assessment/summary` and renders these values on the assessment overview screen. Question counts come from set mappings (or AI Interview `max_questions`); Custom/Role Based/AI durations use their persisted configs, while types without a persisted duration are explicitly derived using the documented admin-review estimates.
+
 ## SMS channel — OTP also texted via MSG91 (2026-07-09)
 
 The **same** verification OTP is now also delivered by **SMS via MSG91**, as a **best-effort second channel** alongside the email. Email remains the source of truth; SMS never blocks or fails the request.
