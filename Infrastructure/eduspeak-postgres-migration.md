@@ -580,3 +580,16 @@ hosted Supabase requests, and 0 `/sb` responses >=400. Full DB backup:
 `~/pilvidya-data-import/backups/eduspeak_uat_predeploy_20260814T044541Z.dump` on the DEV box.
 Rollback image: `eduspeakreact:predeploy-20260814T044541Z`; prior container retained as
 `eduspeakreact-old-20260814T044541Z`.
+
+### 2026-08-14 — ElevenLabs primary + Gemini TTS fallback enabled
+
+`ELEVENLABS_API_KEY`, `ELEVENLABS_PIL_API_KEY`, and `GEMINI_API_KEY` are set server-side in
+`~/eduspeak-sb/functions-secrets.env` (mode tightened from `664` to `600`). The global
+`public.app_secrets.GEMINI_API_KEY` row was also updated because Pilvidya resolves database secrets
+before environment variables. The functions container was force-recreated after the changes.
+
+Verified ElevenLabs directly (`audio/mpeg`, non-empty MP3) and Gemini directly through
+`ai-coach-tts` with `provider: "gemini"` (`audio/wav`, non-empty audio). During validation an older
+invalid Gemini key in `app_secrets` initially masked the valid environment value and caused a
+silent fall-through to ElevenLabs; updating the database-level secret resolved it. Secret values
+are not stored in this repo.

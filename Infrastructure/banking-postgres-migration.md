@@ -338,3 +338,11 @@ site and self-hosted APIs respond; unauthenticated `seed-admin-user` remains 401
 passed anonymous and authenticated/admin routes with zero `*.supabase.co` traffic and zero `/sb`
 4xx/5xx after login. The only `supabase.co` string in the bundle is the previously documented,
 click-only `api.supabase.com` management tool.
+
+### 2026-08-14 — ElevenLabs primary + Gemini TTS fallback enabled
+
+`ELEVENLABS_API_KEY` and `GEMINI_API_KEY` are set server-side in
+`~/banking-sb/functions-secrets.env` (mode `600`). The functions container was force-recreated so
+Compose reloaded the env file. Verified ElevenLabs directly (`audio/mpeg`, non-empty MP3) and
+forced an ElevenLabs failure with an invalid per-request voice id; the same endpoint automatically
+returned Gemini `audio/wav` with non-empty audio. Secret values are not stored in this repo.
