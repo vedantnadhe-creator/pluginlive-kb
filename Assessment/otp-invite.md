@@ -85,6 +85,14 @@ Note the `is_otp_invite = false` counterpart: that reminder goes to UMS `assessm
 
 The invite URL is built from `process.env.ASSESSMENT_FE_BASE_URL` (admin-node helper `app/helpers/assessmentInviteEmail.js`). Each environment **must** set this — the helper falls back to `https://assessment.dev.pluginlive.com` if unset, so a UAT or PROD container without the var silently sends candidates to DEV. UAT value: `https://assessment.uat.pluginlive.com`. PROD value: `https://assessment.pluginlive.com`.
 
+### Mix & Match enters the v2 candidate journey (DEV, 2026-08-14)
+
+The `/s/<code>` link remains the public email URL and the code resolver still mints the short-lived signed invite ticket. At resolution time, admin-node now detects `mix_match_group_id` on the owning institute/corporate map and redirects only those assignments to:
+
+`/candidate-assessment-journey/v2?inviteToken=<signed-ticket>`
+
+Legacy single-assessment links continue to use `/assessment/start/<signed-ticket>` unchanged. The v2 Next.js app proxies invite resolution and `/public/assessment-otp/{request,resend,verify}` through same-origin Route Handlers; after verification it stores the scoped `assessment:run` JWT and assignment context in the established `assessment_invite_*` session keys. The assessment list/content remains mocked until the next migration phase, but OTP authentication is live.
+
 ## SMS channel — OTP also texted via MSG91 (2026-07-09)
 
 The **same** verification OTP is now also delivered by **SMS via MSG91**, as a **best-effort second channel** alongside the email. Email remains the source of truth; SMS never blocks or fails the request.
