@@ -90,25 +90,32 @@ flowchart TD
 
 #### Queued accent/topic set generation (2026-07-31, DEV + UAT)
 
-A Communication assign only needs to **generate** a set when the pool can't serve it — a **non-default listening accent** or a **free-text topic** (a topic that isn't a registered `assessment_domain`, which resolves `domainId` to `Universal`). Everything else is pool-picked.
+A Communication assign **generates** a set whenever the pool can't serve the requested configuration — a **non-default listening accent**, a **free-text topic** (a topic that isn't a registered `assessment_domain`, which resolves `domainId` to `Universal`), or simply **no complete set at the requested CEFR level** in that accent's pool. Everything else is pool-picked.
 
 That generation used to run **inline inside the admin's assign HTTP request**, before the job row existed: an LLM call plus Google TTS for the whole set. The request blocked for the entire generation, no progress was visible anywhere, and any failure became a bare 500 with nothing to retry.
 
 It now runs on the **existing `assessment-prepare-set` stage** of the assignment queue, the same machinery role-based set generation uses:
 
 - `admin-node/app/models/Assessment.js` → `assignCommunicationAssessmentAsync` emits a spec instead of materializing. Only **pre-generated questions from the UI preview** are still materialized inline (they're already in hand — a DB write, no LLM call).
-- Generator kinds registered in `admin-node/app/queues/setGenerators/communicationSetGenerator.js`:
-  - `communication-main` / `communication-diagnosis` — pool-pick only, never call an LLM
-  - `communication-generate` / `communication-generate-diagnosis` — pick-or-generate
+- Generator kinds registered in `admin-node/app/queues/setGenerators/communicationSetGenerator.js` — **all four are pick-or-generate** since 2026-08-17:
+  - `communication-main` / `communication-generate` → one set
+  - `communication-diagnosis` / `communication-generate-diagnosis` → two distinct sets
+  - The `-generate` names are kept only to mark requests where generation was near-certain up front (free-text topic / non-default accent) so the progress UI can say so, and so in-flight jobs keep resolving. They no longer mean "the other kinds refuse to generate" — `communication-main` was pool-pick-only until 2026-08-17 and would throw *"top up the pool"* on a total miss.
 - The job sits in state **`preparing`** until the prepare-set barrier completes, then `orchestrate` resumes and fans items out. **No invite email goes out before the set is bound.**
 - Failures now retry via BullMQ, and `assignmentRecovery` resumes a job stuck in `preparing` (re-dispatching only still-missing specs).
 
-**Two guarantees enforced before an existing set is reused** (`pickCompleteSet`):
+**Three guarantees enforced before an existing set is reused** (`pickCompleteSet` → `buildPoolWhere`, `admin-node/app/helpers/communicationSetSelection.js`):
 
-1. **Covers every required section** — via `findFirstCompleteAssessmentSet` → `filterCompleteAssessmentSets`, which requires every enabled section group to be present. A **freshly generated** set is now checked the same way (`assertCoversRequiredSections`); a short LLM response throws so the prepare-set job retries rather than binding an assessment missing a whole skill group.
-2. **Not already sat by this cohort** — set ids already assigned to any candidate in this assign are excluded. This was previously `primaryEmail: { in: studentEmails }`, which is **exact-case in Prisma**, against a column that genuinely holds mixed-case addresses (rosters re-uploaded with different casing). Verified on DEV: for a stored `jenijef420+Rolebased1tym@gmail.com` the exact-case filter matched **0** rows against the lowercased roster value, so a candidate could be handed a set they had already sat. Now one indexed `lower(primary_email) = ANY(...)` lookup collects the seen set ids and excludes them — also cheaper than an N-clause insensitive OR for a large cohort. **This fix also hardens the pre-existing `communication-main`/`communication-diagnosis` pool-pick paths, which had the same hole.**
+1. **Pitched at the requested CEFR level** — the pool filter *always* carries `cefrLevel`, so a miss is a miss and the caller generates at that level. It is never widened to "any level". A set is pitched **at** a level and a candidate's reported band can never exceed it, so binding a B1 request to an A2 set silently caps every result at A2.
 
-**Reuse:** generated sets are stored with their `accent` and land in that accent's own pool, so a second `en-US` assign reuses the first's set instead of paying for another LLM + TTS run. A **free-text topic never reuses** — its `domainId` fell back to `Universal`, so pool-picking would silently drop the admin's topic.
+   > **PROD incident, 2026-08-17 — 25 corporate candidates issued an A2 paper on a B1 request.** A KNACK RCM assign requested **B1 + `en-US`**. The `en-US` pool held two B1 sets (`f27e8a34…`, `de9082f0…`, generated 24/30 Jul) but **both were missing every Writing sub-section**, so `filterCompleteAssessmentSets` rejected them. `pickCompleteSet` then re-ran the lookup **without** the CEFR filter and bound the newest complete `en-US` set — which was **A2**. `assessment_assignment_jobs.config_snapshot.prepare.specs.main.cefrLevel` read `"B1"` while `sets.main` pointed at the A2 set, so the job row is the fastest way to spot this. The same fallback hit a second map the same day (37 candidates, also B1). Fixed by removing the widening query; the 25 candidates were rebound to a freshly generated complete B1/`en-US` set before the window opened. **The two incomplete July `en-US` B1 sets are still `is_active = true` on PROD and should be deactivated** — they can never be picked for a full assessment, they only ever caused the fallback.
+
+2. **Covers every required section** — via `findFirstCompleteAssessmentSet` → `filterCompleteAssessmentSets`, which requires every enabled section group to be present. A **freshly generated** set is now checked the same way (`assertCoversRequiredSections`); a short LLM response throws so the prepare-set job retries rather than binding an assessment missing a whole skill group.
+3. **Not already sat by this cohort** — set ids already assigned to any candidate in this assign are excluded. This was previously `primaryEmail: { in: studentEmails }`, which is **exact-case in Prisma**, against a column that genuinely holds mixed-case addresses (rosters re-uploaded with different casing). Verified on DEV: for a stored `jenijef420+Rolebased1tym@gmail.com` the exact-case filter matched **0** rows against the lowercased roster value, so a candidate could be handed a set they had already sat. Now one indexed `lower(primary_email) = ANY(...)` lookup collects the seen set ids and excludes them — also cheaper than an N-clause insensitive OR for a large cohort. **This fix also hardens the pre-existing `communication-main`/`communication-diagnosis` pool-pick paths, which had the same hole.**
+
+**Reuse:** generated sets are stored with their `accent` and `cefr_level` and land in that accent's own pool, so a second assign at the **same accent *and* level** reuses the first's set instead of paying for another LLM + TTS run — while a different level generates rather than substituting. A **free-text topic never reuses** — its `domainId` fell back to `Universal`, so pool-picking would silently drop the admin's topic.
+
+Because every kind can now generate, the spec built in `assignCommunicationAssessmentAsync` always carries `topic`, `isFreeTextTopic` and `createdBy` (previously only the `-generate` kinds did). Without `topic`, a generating `communication-main` for a registered non-Universal domain would produce Universal content stored under that domain's id.
 
 **Diagnosis pair** now gets **two distinct sets**. The old inline path bound the *same* materialized set to both Assessment #1 and #2, making the second sitting a re-run of the first.
 
