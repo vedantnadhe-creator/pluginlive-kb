@@ -664,3 +664,36 @@ authenticated reads of `student_profiles.approval_status`, `teacher_profiles.app
 MP3 (ElevenLabs). Browser E2E passed `/`, `/student`, `/teacher`, `/admin`, `/status` with 0 page
 errors, 0 hosted Supabase requests, and 0 `/sb` 4xx/5xx. The bundle's only `supabase.co` match is
 the literal input placeholder `https://project.supabase.co` in `DatabaseConfigPanel.tsx`.
+
+### 2026-08-17 (later) — redeployed to `94a80e32`
+
+Advanced Pilvidya UAT by 8 commits from `3cf91104` to `94a80e32`. **No migrations in this
+release** — it is a frontend change plus one new edge function, so this was a function sync and a
+frontend rebuild only. Image `eduspeakreact:94a80e32` built on the UAT box with
+`--build-arg ENVIRONMENT=uat`; route-manifest check passed all five required routes. Rollback image
+`eduspeakreact:rollback-20260817T110924Z`, prior container retained as
+`eduspeakreact-old-20260817T110924Z`, DB dump and `.env.uat`/functions snapshot in
+`~/pilvidya-predeploy-20260817T110924Z/`.
+
+The release adds bulk student upload: `AdminStudentBulkUpload` at `/admin/students/bulk`,
+`AdminBulkStudentUploadView`, a reworked `TeacherPortal`, and the edge function
+`teacher-bulk-upload-students` (116 functions now deployed). The three local patches survived the
+pull unchanged and the stack-only `functions/main` dispatcher was again excluded from the
+`rsync --delete`.
+
+`teacher-bulk-upload-students` is **not** affected by the `student_profiles` column allow-list
+documented above: it requires an `Authorization` header, verifies the caller holds the `teacher`
+role via `user_roles`, then performs every `student_profiles` read and insert through a
+`service_role` client, which bypasses RLS and column privileges. It inserts `display_name`,
+`mobile_number`, `class_level`, `school_name`, `location`, `board` and `school_id` only — note it
+sets **no `password_hash`**, so bulk-uploaded students cannot sign in through
+`student-authenticate-profile` until a password is set separately. `approval_status` falls to its
+`approved` default.
+
+Verification: unauthenticated call returns 401 `Missing Authorization header`; authenticated as
+`teacher@pilvidya.in`, an empty roster returns 400 and a malformed row returns
+`{"inserted":0,"duplicates":0,"invalid":1}`, so validation and the dedupe path work without writing
+test rows — `student_profiles` still holds 37 rows. All Pilvidya containers up, zero function boot
+errors, `/sb/rest/v1` and `/sb/auth/v1/settings` 200, and the 2026-08-17 approval-column grant
+still resolves. Browser E2E passed `/`, `/student`, `/teacher`, `/admin`, `/status` and the new
+`/admin/students/bulk` with 0 page errors, 0 hosted Supabase requests, and 0 `/sb` 4xx/5xx.
