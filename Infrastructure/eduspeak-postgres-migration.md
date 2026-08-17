@@ -593,3 +593,74 @@ Verified ElevenLabs directly (`audio/mpeg`, non-empty MP3) and Gemini directly t
 invalid Gemini key in `app_secrets` initially masked the valid environment value and caused a
 silent fall-through to ElevenLabs; updating the database-level secret resolved it. Secret values
 are not stored in this repo.
+
+## 2026-08-17 — redeployed to `3cf91104`
+
+Advanced Pilvidya UAT by 110 commits from `84d5a78b` to `3cf91104`, applying five new migrations
+and syncing 115 edge functions. Image `eduspeakreact:3cf91104` built on the UAT box with
+`--build-arg ENVIRONMENT=uat`; route-manifest check passed all five required routes. Prior
+container retained as `eduspeakreact-old-20260817T083719Z`, rollback image
+`eduspeakreact:rollback-20260817T083719Z`, DB dump and `.env.uat`/functions snapshot in
+`~/pilvidya-predeploy-20260817T083719Z/`.
+
+The three local patches (`vite.config.ts` `preview.allowedHosts`, the `DashboardHub` role-badge
+guard, `public/schema.sql`) survived the pull; `vite.config.ts` auto-merged because upstream only
+touched the PWA icon hunk. The stack-only `functions/main` dispatcher was again excluded from the
+`rsync --delete`, per the 2026-08-14 lesson.
+
+**Dumping this database needs `pluatadmin`, not `eduspeak_owner`.** All 217 public tables are owned
+by `pluatadmin`, so `pg_dump` as `eduspeak_owner` fails at `LOCK TABLE ... IN ACCESS SHARE MODE`.
+
+### A privilege gap between two of the new migrations broke student approval reads
+
+`20260815033259` (security hardening) **replaces** `student_profiles`' table-level SELECT for
+`authenticated` with a fixed column allow-list, to keep `password_hash` and session tokens out of
+reach. `20260817031435` then adds five approval columns — and they were never added to that
+allow-list. The result on this stack:
+
+```
+set role authenticated; select approval_status from public.student_profiles;
+ERROR:  permission denied for table student_profiles     -- 42501
+```
+
+`teacher_profiles` is unaffected because it kept table-level SELECT, so its later approval columns
+were covered automatically. The client cannot degrade around this: `isMissingStudentApprovalColumn`
+in `StudentEntry.tsx` only recognises `42703`/`PGRST204` *missing column* errors, and a 42501
+permission denial mentions neither the column nor a schema-cache miss — so the student entry flow
+hard-errors instead of falling back. Fixed by granting SELECT on the five approval columns
+(`approval_status`, `approval_requested_at`, `approved_at`, `approved_by_role`, `approval_note`) to
+`authenticated`. Any future migration adding a `student_profiles` column must extend that grant.
+
+### The other four migrations
+
+`20260816053411` adds `assessments.due_at`, backfills `student_question_history.created_at` from
+`answered_at` (61 rows), and adds two indexes — fully idempotent. `20260817031435` /
+`20260817082618` add the student/teacher approval columns, defaulting existing rows to `approved`.
+`20260816124641` **resets a real account's password** (`prakash.chinnadurai@gmail.com`) to a value
+committed in plaintext upstream; it needs `pgcrypto` in the `extensions` schema, which this stack
+has. That account exists here, so the reset took effect — it is the platform-admin login, and its
+new password now matches what upstream publishes.
+
+### Edge-function auth posture
+
+The self-hosted `functions/main` dispatcher performs **no JWT verification**, unlike hosted
+Supabase, where `verify_jwt` defaults to true. Sensitive functions guard themselves and were
+confirmed to return 401 unauthenticated: `database-dump`, `admin-manage-users`,
+`admin-dashboard-data`, `teacher-register`, `udise-plus-export`. `parent-dashboard` is also safe —
+it uses its own `requireParentSession` token check rather than the JWT.
+
+Seven LLM-backed generators have **no auth check at all** and are callable by anyone who can reach
+the host: `curriculum-generate`, `iep-goal-suggest`, `lesson-plan-generate`, `mock-test`,
+`rubric-generate`, `rubric-mastery-suggest`, `timetable-generate`. On hosted Supabase the platform's
+default JWT gate covers them; self-hosted, that protection is simply absent. The exposure is LLM
+spend rather than data. Not changed in this deploy — adding a dispatcher-level gate (as Banking has)
+risks breaking the pre-session student/parent auth flows and should be done deliberately.
+
+Verification: all Pilvidya containers up; `/sb/rest/v1` and `/sb/auth/v1/settings` 200; zero
+function boot errors; both new functions (`teacher-register`, `student-question-history-record`)
+load and return 401 unauthenticated. Admin login succeeds with the migration-set password, and
+authenticated reads of `student_profiles.approval_status`, `teacher_profiles.approval_status` and
+`assessments.due_at` all return 200 through PostgREST. `ai-coach-tts` returns a 495 KB ID3/MPEG
+MP3 (ElevenLabs). Browser E2E passed `/`, `/student`, `/teacher`, `/admin`, `/status` with 0 page
+errors, 0 hosted Supabase requests, and 0 `/sb` 4xx/5xx. The bundle's only `supabase.co` match is
+the literal input placeholder `https://project.supabase.co` in `DatabaseConfigPanel.tsx`.

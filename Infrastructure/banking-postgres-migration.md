@@ -346,3 +346,57 @@ click-only `api.supabase.com` management tool.
 Compose reloaded the env file. Verified ElevenLabs directly (`audio/mpeg`, non-empty MP3) and
 forced an ElevenLabs failure with an invalid per-request voice id; the same endpoint automatically
 returned Gemini `audio/wav` with non-empty audio. Secret values are not stored in this repo.
+
+## 2026-08-17 — redeployed to `f0eb7b4`
+
+Advanced Banking UAT by 6 commits from `3b12b94` to `f0eb7b4`. **No migrations in this release.**
+Synced 83 edge functions with all three self-hosted overlays (`main`, `live-session-rsvp`, `mcp`);
+only `ai-personal-coach` changed. Rebuilt the frontend on the UAT box under Node 20. Rollback
+snapshot (DB dump, `dist/`, `.env`) stamped `20260817T083228Z`.
+
+The four local patches (`.env`, `adminErrorLogger.ts`, and the two learning-path files that fix the
+edit-saves-then-deletes bug) were stashed across the pull and restored cleanly; upstream touched
+none of them. The working-tree edit to `supabase/functions/mcp/index.ts` was discarded again — the
+`function-fixups/mcp` overlay already carries the self-hosted issuer change.
+
+### The AI coach was never actually reaching a provider
+
+`ttsClient.ts` switched from `supabase.functions.invoke` to a raw `fetch` at
+`${VITE_SUPABASE_URL}/functions/v1/elevenlabs-tts`, and now sends `{text, language}` without a
+client-supplied `voiceId`. It still sends `Authorization` and `apikey`, so the JWT gate is
+unaffected. Verified against the new payload shape: HTTP 200, `provider: elevenlabs`, 40 KB MP3.
+
+Two separate defects made `ai-personal-coach` unusable on this stack. Both are fixed.
+
+**1. A keyless database row short-circuited the provider chain.** `_shared/llm.ts` builds its
+provider list as `[...db rows from llm_provider_configs, ...envFallbacks]`, where the env fallbacks
+sit at priority 1000+. The `gemini` row in `llm_provider_configs` (priority 10) had an **empty**
+`api_key`, so Google answered `400 "Please pass a valid API key"`. 400 is not in the
+`[401, 402, 403, …retryable]` continue-list, so `callLlmChatCompletion` **returned immediately** and
+never reached the env fallbacks — meaning the working `GEMINI_API_KEY` in
+`functions-secrets.env` was dead code for chat, while still working for TTS. Fixed by writing the
+key into the `gemini` row's `api_key`. The `openai` and `nvidia` rows are still keyless; they only
+add latency because their 401s are in the continue-list.
+
+**2. Neither nginx layer disabled response buffering, so SSE never flushed.** The coach replies
+`text/event-stream` with 3s keep-alive heartbeats. Both the host `banking-react.conf` and the stack
+`~/banking-sb/gateway.conf` set `proxy_request_buffering off` (request bodies) but **not**
+`proxy_buffering off` (responses), so nginx held every chunk until the edge isolate hit its
+wall-clock limit — the client saw a 277s hang, then a 504. Added `proxy_buffering off` +
+`proxy_cache off` to the host `location /sb/functions/` and to the gateway's `/functions/v1/`
+(which was also expanded from a one-liner to a block with `proxy_http_version 1.1`).
+Backups: `banking-react.conf.bak-20260817T*` and `gateway.conf.bak-20260817T*`.
+
+Result: first byte **49 ms**, complete Gemini-streamed answer in **1.9 s**, down from 277 s → 504.
+
+### Known schema drift surfaced by the coach (pre-existing, not from this release)
+
+The coach logs these and degrades rather than failing, so its context is quietly incomplete:
+`ai_coach_audit_log.thread_id`, `coding_submissions.status`, and `assessment_attempts.total` do not
+exist on this stack. Worth reconciling against the hosted schema.
+
+Verification: 83 functions synced, container clean; unauthenticated `seed-admin-user` still 401;
+site 200; bundle has no hosted `*.supabase.co` data-plane URL (the only match is the previously
+documented click-only `api.supabase.com` management tool in `AdminSecurityMigration.tsx`); browser
+E2E passed anonymous routes plus admin sign-in at `/login/admin` into a fully rendered admin
+console, with 0 page errors, 0 hosted Supabase requests, and 0 `/sb` 4xx/5xx.
