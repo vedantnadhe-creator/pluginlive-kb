@@ -16,6 +16,8 @@ After OTP verification, the browser stores a candidate-scoped `assessment:run` J
 - `GET /students/mix-match/assessment/:assessmentAssignedId/questions`
 - `POST /students/mix-match/assessment/:assessmentAssignedId/submit`
 - `POST /students/mix-match/assessment/:assessmentAssignedId/save-response`
+- `POST /students/mix-match/assessment/:assessmentAssignedId/proctoring/image`
+- `POST /students/mix-match/assessment/:assessmentAssignedId/proctoring/events`
 - `POST /students/mix-match/assessment/:assessmentAssignedId/upload-audio`
 - `POST /students/mix-match/assessment/:assessmentAssignedId/upload-video`
 - `POST /students/mix-match/ai-interview/:assessmentAssignedId/start`
@@ -136,6 +138,21 @@ Both were found in `assessment.student_answers` on DEV and are fixed in the shar
 - **Sentence Build** stored the drag handles' ids (`"…-item-1 …-item-0"`) because the reorder answer keeps ids rather than words. v1 saves the arranged content, which is what the scorer compares against.
 - **Recordings** stored `{"durationSec":3}` as the answer text, overwriting the row the upload had already written with the real storage key.
 
+### Proctoring
+
+Report-only, as in v1: nothing warns, interrupts or auto-submits, and the whole runner is inert unless the invite carried `allowProctoring`. Two streams, at v1's cadences:
+
+- **Snapshots** — a hidden camera sampled every **13s**, uploaded as multipart to `POST /students/mix-match/assessment/:id/proctoring/image`. Lands in `assessment.proctoring_snapshots` (`snapshot_key`, joined to `proctoring_logs`).
+- **Events** — batched and flushed every **30s**, plus on submit and teardown (`keepalive`, so a closing page does not drop the last batch), to `POST /students/mix-match/assessment/:id/proctoring/events`. Lands in `assessment.proctoring_events`.
+
+Snapshots follow whichever part is open when they fire. The event envelope must match what the report scores: `{ type, source, startMs, endMs, durationMs, severity, confidence, evidenceObjectKey, meta }`, with `startMs` relative to the start of the sitting.
+
+Only **`tab_hidden`** and **`fullscreen_exit`** are reported — the signals the screen genuinely observes. v1's gaze, head-turn and no-face events come from a MediaPipe FaceLandmarker collector loaded from CDN, which v2 does not run; emitting them without it would put unearned findings into a report a human acts on.
+
+Both upstream endpoints (`/students/assessments/proctoring/{image,events}`) take the assignment **from the request body and never check ownership** — safe for a logged-in student, not for an invite token scoped to one group. The candidate routes verify membership first. The snapshot route cannot rewrite a streamed multipart body, so it passes the verified id out-of-band and `uploadImage` prefers `req.proctoringAssignmentId` over the form field. Verified on DEV: no auth `401`, another candidate's assignment `403`, own assignment `200` with rows written.
+
+Note `studentId` is optional upstream and deliberately so — OTP-invite candidates have no portal student id, and requiring it used to 400 them and skip proctoring entirely.
+
 ### Submit payload per type
 
 Each type is scored from a different shape, so the runner builds a different payload per part. These live in `assessment-react-v2/src/lib/examShapes.ts`, which imports only types so the transforms are unit-tested without a browser.
@@ -169,6 +186,6 @@ A combined final submission is blocked until AI Interview is complete. Every oth
 
 ## DEV deployments
 
-- `student-node` commits `e60c67b2`, `9f7dfca5`, `1f43c573`
-- `assessment-react-v2` commits `4602376`, `c70bee7`, `d1822b4`, `b7c78b4`, `da1432a`, `518203e`, `936a10d`, `6fafe50`, `8b0d903`, `2b5c9b3`
+- `student-node` commits `e60c67b2`, `9f7dfca5`, `1f43c573`, `b6eeeb63`
+- `assessment-react-v2` commits `4602376`, `c70bee7`, `d1822b4`, `b7c78b4`, `da1432a`, `518203e`, `936a10d`, `6fafe50`, `8b0d903`, `2b5c9b3`, `19fe1e4`
 - `admin-react-v2` commits `741a9b4`, `c17e420`
