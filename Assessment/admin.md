@@ -142,29 +142,124 @@ Other types record time on the same column but do not surface it here; only Apti
 | `getSubscribedCorporateStates()` | States for subscribed corporates |
 | `getSubscribedCorporateCities({ state })` | Cities for subscribed corporates |
 | `getSubscribedCorporateCompaniesByCity({ city })` | Corporate companies by city |
-| `assignSubscription(entityId, assessmentTypes, entityType, subscriptionType, tokenLimit, durationDays, accessLevel, practiceDegreeSets)` | Creates or updates a subscription record. Sets per-type `tokenLimit` (via a `tokenLimits` map), `durationDays`, `subscriptionType` (trial/subscribed), `accessLevel`, `practiceDegreeSets`. **Skips the update for any type whose limit/tier is unchanged**, so editing one type's quota no longer rewrites `start_date`/`end_date` for every other subscribed type. |
+| `assignSubscription(entityId, assessmentTypes, entityType, subscriptionType, tokenLimit, durationDays, accessLevel, practiceDegreeSets, roleBasedTokenLimit, tokenLimits, whatsappNotificationEnabled, options)` | Creates or updates a subscription record. Sets per-type `tokenLimit` (via a `tokenLimits` map), `durationDays`, `subscriptionType` (trial/subscribed), `accessLevel`, `practiceDegreeSets`. Trailing `options = { contractStartDate, contractEndDate, unlimitedTypes }` writes the entity's contract window (upsert on the partial unique index) and the per-type `is_unlimited` flags. **Skips the update for any type whose limit/tier/unlimited flag is unchanged**, so editing one type's quota no longer rewrites `start_date`/`end_date` for every other subscribed type — *unless* an explicit contract window was supplied, which always refreshes every row's mirrored dates. |
 
 ---
 
-## Assessment Quota Enforcement
+## Assessment Access Enforcement — contract window + quota
 
-Quota is stored per entity **and per assessment type** in `assessment.subscribed_institutes` / `assessment.subscribed_corporates` (`token_limit`, `tokens_used`). `remaining = max(token_limit - tokens_used, 0)`.
+There are **two independent gates**, always evaluated in this order. Both live in
+the same helper per service (`app/helpers/assessmentQuota.js` in student-node and
+admin-node) and are called at every chokepoint.
+
+### Gate 1 — contract window (`assessment.entity_contracts`)
+
+One row per entity: `entity_type` (`institute` | `corporate`), `entity_id`,
+`start_date`, `end_date`, `is_active`. A partial unique index
+`entity_contracts_active_entity_idx (entity_type, entity_id) WHERE is_active`
+guarantees **one live contract per entity**, so the admin save upserts with
+`ON CONFLICT (entity_type, entity_id) WHERE is_active`.
+
+While the window is closed, **everything for that entity is locked** — no
+assignment, no scheduling, and no candidate can start *any* assessment type,
+**practice included**. This deliberately overrides the per-type quota: an
+expired contract blocks even a type with credits left.
+
+**Both bounds are optional and each is enforced only when set:**
+
+| `start_date` | `end_date` | Behaviour |
+|---|---|---|
+| set | set | locked outside `[start, end]` |
+| NULL | set | open until `end`, then locked |
+| set | NULL | locked until `start`, then never expires |
+| NULL | NULL | no contract gate (identical to having no row) |
+| *no row at all* | | no contract gate — the legacy path every pre-existing entity is on |
+
+The `entity_contracts_window_check CHECK (end_date > start_date)` is
+**NULL-tolerant**, so it still rejects an inverted window while allowing a
+half-open one.
+
+Status codes returned: `SUBSCRIPTION_EXPIRED` and `CONTRACT_NOT_STARTED`
+(HTTP **403** at attempt time, **400** at assign time).
+
+**An attempt already `INPROGRESS` is never gated** — a contract that lapses
+mid-test lets the candidate finish. Both gates only ever fire on the
+`PENDING → INPROGRESS` transition, which is also why a resume is never blocked.
+
+**There is deliberately no backfill.** `subscribed_*` rows carry auto-generated
+`now() + 365 days` windows that nothing ever enforced; seeding contracts from
+them would instantly lock out every entity whose window had silently lapsed.
+An empty `entity_contracts` table is therefore the feature's off switch.
+
+### Gate 2 — per-type token quota
+
+Quota is stored per entity **and per assessment type** in `assessment.subscribed_institutes` / `assessment.subscribed_corporates` (`token_limit`, `tokens_used`, `is_unlimited`). `remaining = max(token_limit - tokens_used, 0)`.
 
 - **No subscription row for a type ⇒ unlimited** (all guards are a no-op).
+- **`is_unlimited = true` ⇒ never blocks on credits.** `tokens_used` **still increments**, so usage stays reportable for an unlimited type. This is the only way to express "no cap" while keeping the counter.
 - **`token_limit = 0` ⇒ explicitly blocked** (0 remaining), **not** unlimited. (Previously `0` was misread as unlimited — fixed at all three enforcement sites.)
+- Only the exhausted type is locked; the entity's other types stay available.
 
 **Consumption is at ATTEMPT time** — the central gate in student-node (`app/helpers/assessmentQuota.js`) decrements when a student starts a one-time or scheduled assessment. **Practice attempts are never counted.** Role_Based one-time broadcast is the bind-time exception (charged when the set is bound).
 
-**Assign-time pre-flight guard** — `admin-node/app/helpers/assessmentQuota.js` → `assertAssignQuota` throws `QUOTA_EXHAUSTED` (HTTP 400, with structured `code / remaining / required / assessmentType`) when `batchSize > remaining`. It does **not** decrement (the per-student attempt-time cap is the hard limit); it only refuses to over-assign a batch. Wired at every chokepoint, before any rows/jobs are created:
+> **Why this is a shared helper and not Fastify middleware.** The attempt-time
+> gate runs *inside* the same transaction as the `PENDING → INPROGRESS` claim and
+> holds `SELECT … FOR UPDATE` on the subscription row across check → claim →
+> consume. A `preHandler` runs before the handler with no transaction, so two
+> simultaneous starts would both pass and both consume, over-spending past the
+> limit. The contract half alone could be middleware; the credit half cannot.
+
+### Candidate-facing status
+
+`GET /students/subscription/status/:studentId` (student-node) returns
+`{ status, isLocked, message, endDate, daysToExpiry, expiringSoon, reportsLocked, lockedTypes[] }`.
+It resolves the student's own institute **plus every corporate that has assigned
+them anything**, and a lock on any of them wins. It is deliberately separate from
+the assessment list because the banner must still render when that list comes
+back **empty** — which is exactly what a closed contract can produce.
+
+Rows from `getActiveAssessments` additionally carry `subscriptionLocked`,
+`subscriptionLockCode` and `subscriptionLockReason` for per-card greying.
+
+Copy adapts to the entity: *"Your **institute's** subscription ended … contact
+your **placement office**"* vs *"Your **company's** … contact your **recruiter**"*.
+
+Both reader paths **fail open** — a lookup error reports "unlocked" and logs,
+because the hard gate is what protects correctness and a failed banner lookup
+must never invent a lock the API would not apply.
+
+**Two flags are wired but switched off**, so enabling either is a one-line change:
+`LOCK_REPORTS_ON_EXPIRY = false` (reports/scores stay readable after expiry;
+already threaded through to `status.reportsLocked`) and
+`EXPIRY_WARNING_DAYS = null` (`daysToExpiry` / `expiringSoon` are already
+returned; set a number to switch the pre-expiry warning on).
+
+**Assign-time pre-flight guard** — `admin-node/app/helpers/assessmentQuota.js` → `assertAssignQuota` checks the **contract window first** (throwing `SUBSCRIPTION_EXPIRED` / `CONTRACT_NOT_STARTED`, HTTP 400 — this runs even for a zero-size batch, since the contract locks every type regardless of credits), then throws `QUOTA_EXHAUSTED` (HTTP 400, with structured `code / remaining / required / assessmentType`) when `batchSize > remaining`. `is_unlimited` types skip the batch check. It does **not** decrement (the per-student attempt-time cap is the hard limit); it only refuses to over-assign a batch. Wired at every chokepoint, before any rows/jobs are created:
   - `assignAssessment` (all direct types — Aptitude, Communication, Behavior, Custom, …).
   - `assignRoleBasedAssessment` (Role_Based uses its **own** endpoint — it needs its own guard).
   - `AssessmentSetGroupService` (Role_Based async queue, before `createJob`/enqueue).
   - `scheduleAssessment` (schedule creation — rejects immediately instead of failing silently at night).
   - Nightly `AssessmentSchedulerService` (re-checks at trigger time).
 
-**Reading saved quota (prefill on revisit)** — `GET /assessment/getInstituteSubscriptionQuota` returns the stored `token_limit`/`tokens_used` per type. It takes **either** `institute_id` (campus id is resolved to the parent institute) **or** `corporate_id` (used directly — corporates have no campus). Omit `assessment_type` to get all types (`{ quotas[], totalLimit, totalUsed, totalRemaining }`); pass it for a single type. Reads `subscribed_institutes` or `subscribed_corporates` accordingly. (Corporate support was added so the Feature Access screen prefills saved limits/usage on revisit for corporates, not just institutes.)
+**Reading saved quota (prefill on revisit)** — `GET /assessment/getInstituteSubscriptionQuota` returns the stored `token_limit`/`tokens_used`/`isUnlimited` per type **plus the entity's `contract`** (`{ startDate, endDate, isLocked, code, message, daysToExpiry, expiringSoon }`). It takes **either** `institute_id` (campus id is resolved to the parent institute) **or** `corporate_id` (used directly — corporates have no campus). Omit `assessment_type` to get all types (`{ quotas[], contract, totalLimit, totalUsed, totalRemaining, hasUnlimited }`); pass it for a single type. Unlimited rows are **excluded from the totals** — their `token_limit` is inert, so counting it would report a cap that does not exist.
 
-**Frontend** — admin-react `CreateAssessment` catches the 400 and renders a **"Assessment Quota Exhausted"** popup (`Modal.error`) showing Type / Remaining / Required when `error.code === 'QUOTA_EXHAUSTED'`; a generic error popup otherwise. The Feature Access → institute/corporate screen shows one mandatory per-type limit table (Role_Based merged in) and prefills existing limits/usage on revisit for **both** institutes and corporates.
+**Frontend** — admin-react `CreateAssessment` catches the 400 and renders a **"Assessment Quota Exhausted"** popup (`Modal.error`) showing Type / Remaining / Required when `error.code === 'QUOTA_EXHAUSTED'`; a generic error popup otherwise.
+
+The Feature Access → institute/corporate screen (`AssignSubscription/index.js`) carries:
+- an **optional Contract Period** range picker (antd v4, so **moment** not dayjs) with `allowEmpty={[true, true]}` so a half-open window can be entered, an inline alert when the window being saved is already closed or not yet started, and independent pre-fill of each bound on edit. It renders for **corporates as well as institutes**;
+- a per-type **Unlimited** switch that disables the credit input and shows remaining as `∞`. A type only needs a limit when it is *not* marked unlimited.
+
+`assignSubscription` accepts `contractStartDate`, `contractEndDate` and
+`unlimitedTypes[]`; **either bound may stand alone**, and omitting both leaves the
+saved window untouched. Dates are sent as the full inclusive local day (a contract
+ending "16 Aug" stays open all of 16 Aug). Supplied bounds are **mirrored into the
+`subscribed_*` rows** so `MetaDashboard` renewals reporting (which reads
+`subscribed_*.end_date`) stays truthful; a bound left open falls back to the legacy
+`now` / `now + durationDays` there, because those columns are `NOT NULL`.
+
+Student-react greys locked cards (disabled **Locked** button with lock icon,
+tooltip and reason line — colour is never the only signal) and shows a banner
+fed by the subscription-status endpoint via the `useSubscriptionStatus` hook.
 
 **Selectable types in Feature Access** — Behavior, Communication, Cognitive, Tech_MCQ, Tech_CODING, Aptitude, Role_Based, Custom_Assessment and **AI_Interview**. The list is declared in **two places that must stay in sync**: the admin-react picker (`AssignSubscription/index.js`, `assessmentTypes` memo) and the **Fastify body schema** `assignSubscriptionSchema.body.properties.assessmentTypes.items.enum` in `admin-node/app/schemas/assessment.js`. Adding a type to the picker alone makes the save fail at the route boundary with `400 FST_ERR_VALIDATION — body/assessmentTypes/<n> must be equal to one of the allowed values`, before the handler ever runs — exactly what happened to AI_Interview (picker updated 2026-08-05, schema enum fixed 2026-08-06, DEV+UAT). **No DB change is involved:** `assessment.assessment_type` is a **table**, not a Postgres enum, it already carries an `AI_Interview` row, and `assignSubscription` resolves types by name with `mode: "insensitive"`, then writes the raw array into `corporate.corporates."subscriptionType"` (jsonb). The schema enum is the only allow-list. `Hinglish` is in the schema enum but deliberately **not** in the picker.
 
