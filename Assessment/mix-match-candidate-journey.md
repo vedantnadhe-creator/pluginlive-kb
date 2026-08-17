@@ -65,6 +65,27 @@ Skills expand as follows (`src/lib/assessments/communicationSections.ts`, mirror
 - **Custom Assessment cannot be floated from v2 yet.** It needs `sectionConfigurations` pointing at sections already persisted with their questions, and the wizard still holds both client-side under generated ids with no endpoint to save them. The BFF now refuses it with that reason — previously it sent the draft shape, admin-node threw `No valid section configurations provided`, and the **whole group** failed, taking every other type with it.
 - **Aptitude sub-topics are all-or-nothing per topic.** Production opens a sub-topic modal per topic card; v2 has no such modal, so choosing a topic sends every selectable sub-topic under it. Critical Reasoning has only 7, so selecting it alone is refused by the BFF for falling under the 10 minimum.
 
+### Communication sections with missing media
+
+Listening audio and question images live in Oracle object storage and are presigned per request. When the object is gone the API **still returns the section**: `getAudioURL` throws `NotFound` and the error is swallowed to `audioUrl: null`, while `generatePreSignedURLImage` signs without checking existence at all, so it returns a URL that 404s on fetch. Candidates got a listening question with no audio, a dictation with nothing to transcribe, and an image question with no image.
+
+The runner now drops a section whose required media the API did not resolve — Audio Question without `audioUrl`, Dictation missing audio on any sentence, Question Based Response without `imageUrl` — and an image that fails to load renders an explanatory panel instead of a broken tile. Sections needing no media are never dropped. If every section drops, the part fails with "No Communication questions are available for this assignment."
+
+Sets generated around 2026-03-31 on DEV have DB rows pointing at audio/image objects that are no longer in the bucket; sets from 2026-06 presign fine. A set that looks fine in the admin UI can therefore still serve a half-empty paper — check the objects, not just the question count.
+
+### Sub-question text is not always the question
+
+Two sections carry the *answer* in their sub-question text, so it must never be used as the prompt:
+
+- **Dictation** — `sentence` is the sentence to transcribe. Printing it as the question handed the candidate the answer.
+- **Sentence Completion** — `sentence` is the fill-in-the-blank surface, so using it as the question rendered the same line twice.
+
+Both use a fixed instruction from `SECTION_PROMPTS` instead (`src/lib/examShapes.ts`).
+
+### Video Response is filmed
+
+Video Response maps to `communicationMode: "speaking"`, which captures camera **and** microphone and uploads under `kind=video`. The runner shows a live camera preview while filming and asks for camera permission by name — without the preview it was indistinguishable from an audio answer.
+
 ### Submit payload per type
 
 Each type is scored from a different shape, so the runner builds a different payload per part. These live in `assessment-react-v2/src/lib/examShapes.ts`, which imports only types so the transforms are unit-tested without a browser.
@@ -99,5 +120,5 @@ A combined final submission is blocked until AI Interview is complete. Every oth
 ## DEV deployments
 
 - `student-node` commits `e60c67b2`, `9f7dfca5`
-- `assessment-react-v2` commits `4602376`, `c70bee7`, `d1822b4`, `b7c78b4`
+- `assessment-react-v2` commits `4602376`, `c70bee7`, `d1822b4`, `b7c78b4`, `da1432a`
 - `admin-react-v2` commit `741a9b4`
