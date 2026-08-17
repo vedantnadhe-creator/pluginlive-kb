@@ -513,6 +513,30 @@ Encoding matches the dashboard's existing cohort params — `depts` a JSON array
 of `{deg, sec?}` (degree names can contain commas), `years`/`types`
 comma-separated — so both screens read the same query-string shape.
 
+#### Switching view clears search and filters (2026-08-17)
+
+`80bf3e8` frontend. The two views share **one** search box and **one** Filters
+popover, but not their meaning: Schedule-wise searches assessment *titles* in
+the already-loaded list, Student-wise searches *names and emails* server-side
+against a different resource. Carrying a query across the toggle asked "which
+students are named Aptitude" and showed an empty table with nothing to explain
+it. Filters had the mirror problem — the popover hides fields the target view
+does not offer (`schedule`), so a condition could outlive the switch with its
+chip no longer on screen.
+
+`AssessmentsView.changeView` calls `clearAll()` and then switches, **only when
+the view actually changes** — re-clicking the tab you are already on must not
+wipe work in progress.
+
+`clearAll()` also resets `debounced`, not just `search`. Student-wise queries
+the server on the debounced value, so leaving it set for the remaining 200ms
+fired one request for the search being abandoned, with a flash of the wrong
+rows before the real query landed.
+
+The **status tabs are deliberately not reset** — they are a separate control,
+exist only in Schedule-wise, and are visibly highlighted when you return, so
+the current selection explains itself.
+
 #### The Type filter sends display labels, not DB type names
 
 Fixed 2026-08-11 (`337950c` institute-node, `b61ac1d` frontend). The filter's
