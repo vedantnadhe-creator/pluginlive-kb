@@ -88,6 +88,8 @@ Each field has two flags:
 ## Key Features
 
 - **Field-level granularity:** Each profile field can independently require approval
+  (the student sees a red "Data Verification Pending" icon beside each affected field —
+  see `ATS/Student/Resume/` for the `pendingFields` guard convention)
 - **Freeze after verification:** Lock fields once approved to prevent re-editing
 - **Bulk approve:** Approve multiple pending requests at once
 - **Student resume management:** View and edit resumes during approval flow

@@ -112,6 +112,41 @@ where the 10th/12th fallback branch was `MMM YYYY` too.
 
 ---
 
+## Education "Data Verification Pending" icon (student-react)
+
+The red `ExclamationCircleFilled` beside an education field label marks a value the
+student changed that is **awaiting TPO approval** (see `ATS/Institute/TPOApproval/`).
+It is rendered per field in
+`src/modules/Onboarding/Register/Education/EducationFormPartial.js`, which despite its
+path is the form used by the **My Resume → Education drawer** — both
+`Resume/DrawerComponents/EducationDetails/EducationalDrawer.js` and
+`EducationalModal.js` import it.
+
+**The guard must test that the key is present in `pendingFields`, never `?.value`:**
+
+```js
+!isNew && pendingFields?.university !== undefined && <PendingIcon />   // correct
+!isNew && pendingFields?.university?.value !== null && <PendingIcon /> // WRONG
+```
+
+A field with nothing awaiting verification is **absent** from `pendingFields` (which
+defaults to `{}`), so `?.value` is `undefined` — and `undefined !== null` is `true`.
+Seven guards used that form and therefore lit the icon for **every** student with no
+pending changes at all, including non-subscription students who never enter the
+approval workflow: `university` ×2, `historyOfArrears` ×2, `marks`/`averageMarks` ×2,
+`noOfArrears`. Fixed 2026-08-17; the other ~24 guards in the file already used
+`!== undefined`.
+
+Symptom to recognise: icons on University / History of Arrears / Marks (percentage)
+but **not** on State / City / College Name / Year — the split is exactly which guard
+form each field used.
+
+Beware the near-duplicate `Onboarding/Register/EducationNew/EducationFormPartial.js`,
+which solves the same problem with a `hasFieldPending()` helper and renders its icon
+**before** the label. Confirm which file you are looking at before editing.
+
+---
+
 ## Resume Resolution & PDF Generation (bulk download)
 
 Both bulk-download handlers (`bulkResumeDownload`, `bulkResumeDownloadJobRoles` in
