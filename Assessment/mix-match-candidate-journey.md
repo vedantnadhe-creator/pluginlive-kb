@@ -34,6 +34,37 @@ As of 2026-08-17, the v2 combined runner serves live questions for every assessm
 - Custom: `sections[]`, with question and option artwork rendered from the signed `question_image_url` / `option_image_url` the API resolves.
 - Role Based: `sections[]` mapped onto the surface each needs — MCQ Question to single-select, Subjective Question to free text, Video Response to the recording surface, Coding Question to the code editor. Taken section by section, as in v1.
 
+## How each type gets its questions at assign time
+
+The runner can only serve what assignment created, and each type sources its questions differently. The Mix & Match wizard (`admin-react-v2`, `POST /api/assessments/mix-match`) must therefore send a different payload per part; `assignMixMatchAssessment` runs each one through the normal single-assessment dispatcher.
+
+| Type | Where questions come from | What the assign payload must carry |
+| --- | --- | --- |
+| Communication | a pre-generated set, picked by CEFR level + domain + accent | `cefrLevel`, `accent`, `responseLanguage`, `enabledSections` |
+| Behaviour | a pre-made active set for the stream's domain | `assessmentDomain` (Engineering / Management) |
+| Aptitude | composed at assign time from sub-topics | `aptitudeSubtopics` — **sub-topic IDs, at least 10** |
+| Role Based | generated at assign time from the role | `roleName`, `skills`, `seniority`, `jobDescription`, `industry_domain`, `questionConfig` |
+| AI Interview | none stored — asked live, turn by turn | `interviewConfig` |
+| Custom | admin-authored sections, questions uploaded ahead of time | `sectionConfigurations` with **persisted** `section_id`s |
+
+### enabledSections is two different vocabularies
+
+This is what served candidates an empty Communication paper. The wizard picks the four **skills** — Reading / Listening / Speaking / Writing — but student-node filters the assigned set by each question's **question section**: `Paragraph Reading`, `Audio Question`, `Video Response`, `Question Based Response`, `Email Writing`, `Dictation`, `Sentence Completion`, `Sentence Build`. Storing skill names on the assignment map matches nothing, so every question is filtered out and the API returns `communications: []`.
+
+Skills expand as follows (`src/lib/assessments/communicationSections.ts`, mirroring v1's `SECTION_GROUP_MAP`):
+
+- Reading → Paragraph Reading
+- Listening → Audio Question
+- Speaking → Video Response
+- Writing → Question Based Response, Email Writing, Dictation, Sentence Completion, Sentence Build
+
+**All four selected must store `[]`**, not the expansion: an empty list means "no filter", so any section the map does not enumerate is still served. Existing DEV maps holding skill names were cleared to `[]`.
+
+### Known gaps
+
+- **Custom Assessment cannot be floated from v2 yet.** It needs `sectionConfigurations` pointing at sections already persisted with their questions, and the wizard still holds both client-side under generated ids with no endpoint to save them. The BFF now refuses it with that reason — previously it sent the draft shape, admin-node threw `No valid section configurations provided`, and the **whole group** failed, taking every other type with it.
+- **Aptitude sub-topics are all-or-nothing per topic.** Production opens a sub-topic modal per topic card; v2 has no such modal, so choosing a topic sends every selectable sub-topic under it. Critical Reasoning has only 7, so selecting it alone is refused by the BFF for falling under the 10 minimum.
+
 ### Submit payload per type
 
 Each type is scored from a different shape, so the runner builds a different payload per part. These live in `assessment-react-v2/src/lib/examShapes.ts`, which imports only types so the transforms are unit-tested without a browser.
@@ -69,3 +100,4 @@ A combined final submission is blocked until AI Interview is complete. Every oth
 
 - `student-node` commits `e60c67b2`, `9f7dfca5`
 - `assessment-react-v2` commits `4602376`, `c70bee7`, `d1822b4`, `b7c78b4`
+- `admin-react-v2` commit `741a9b4`
