@@ -123,9 +123,10 @@ screen. The empty state now means only what it says: nobody is assigned.
 
 ### "End date" was blank until the series' first run fired
 
-The Schedule tab's **End date** card reads the LAST occurrence's `end` (its
-attempt-window close), deliberately not `assessment_schedules.schedule_end_date`
-— the two differ once validity extends past the final run. But
+The Schedule tab's **End date** card used to read the LAST occurrence's `end`
+(its attempt-window close) — since 2026-08-17 it reads `meta.end`, which is
+`GREATEST(schedule_end_date, last occurrence end)`; see "…and so is the DETAIL
+page's Schedule tab" below for why. The rest of this section still applies. But
 `loadPendingSchedule` set every occurrence's `end: null` before the scheduler
 had fired a single run, so the card had nothing to read and showed "—" on every
 Upcoming series regardless of how far out its real close date was. Same root
@@ -246,6 +247,43 @@ Also `e236443`: an assessment **nobody was ever assigned** is dropped from the
 list and therefore from every count on the screen (they are all derived
 client-side from that one payload). Exactly two exist on PROD, both at
 `9c6c42d5`, both reading "0 students · 0/0 · 0%".
+
+### …and so is the DETAIL page's Schedule tab (2026-08-17)
+
+`a0bae26` institute-node, `3ea00ea` institute-react-v2. The correction above
+was made on the **list** only. The detail page kept deriving its Schedule tab
+from the minted `assessment_institute_map` rows, so PROD's `80ac6fb1` Aptitude
+series — **45 planned runs to 30 Apr 2027**, nine minted — read *Total
+scheduled 9 · Current schedule 9/9 · 0 still to run · End date 11 Aug 2026*.
+
+`AssessmentDetailV2.loadPlannedRuns` now reads the rest of the plan off
+`assessment_schedules.frequency_value` and appends it to `occurrences` as
+**projected** upcoming runs, dated by the same `projectedRunEnd` (start +
+`assessment_validity_days`, end of day) the scheduler uses for a real map:
+
+- **Matched on the IST day**, not the instant. One series carries both
+  `18:31Z` (IST midnight, older runs) and `00:01Z` (newer) start times, so
+  only the day a run lands on is comparable to a bare plan date.
+- **Only runs after the last one that fired AND not already past.** A plan
+  date the scheduler passed over is never going to run; DEV has several
+  stalled series (76 planned, 51 minted, plan ended April) that would
+  otherwise sprout dozens of "upcoming" runs dated months ago.
+- **Skipped entirely when the schedule is inactive** — a cancelled series has
+  no runs ahead of it whatever its plan still says.
+- **Projected runs are excluded from the unit totals.** They have assigned
+  nobody, and counting their target cohort would sink the completion KPI by
+  the length of the plan.
+- `meta.end` folds in `schedule_end_date` (same `GREATEST` semantics as the
+  list), and the frontend's End date card reads `meta.end` rather than the
+  last occurrence's `end`.
+
+The two Overview trends (`ProgressTrend`, `ScheduleWiseTrend`) plot **minted
+runs only** — ~45 empty future points squeezed the runs that had happened into
+the left fifth of the axis.
+
+Verified on UAT `0cc47667` (Communication - Schedules): 6 minted + 14
+projected = 20, `cycle [6,20]`, status **live**, completion still `0/24` units
+off the minted runs alone.
 
 ### Achieved Level is the graded level, not a score band (2026-08-12)
 
