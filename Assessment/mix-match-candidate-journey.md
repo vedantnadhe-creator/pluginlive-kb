@@ -86,6 +86,31 @@ Both use a fixed instruction from `SECTION_PROMPTS` instead (`src/lib/examShapes
 
 Video Response maps to `communicationMode: "speaking"`, which captures camera **and** microphone and uploads under `kind=video`. The runner shows a live camera preview while filming and asks for camera permission by name — without the preview it was indistinguishable from an audio answer.
 
+### The AI Interview speaks in ElevenLabs
+
+The interviewer's questions are spoken by the ElevenLabs voice the admin chose, **not** by the browser's `speechSynthesis` — that read every question in whatever voice the candidate's OS shipped.
+
+The chain: the admin picks a voice in the wizard → its **ElevenLabs `voice_id`** is sent as `interviewConfig.voiceId` at assign → stored on `ai_interview_config.voice_id` → returned as `voiceId` by `POST /students/mix-match/ai-interview/:id/start` → the runner posts `{ text, voice }` to its own `/api/assessment/ai-interview/tts`, which proxies FastAPI `/ai-interview/tts` and streams back `audio/mpeg`.
+
+The two curated voices (ElevenLabs Creator tier) are:
+
+| Voice | `voice_id` |
+| --- | --- |
+| Payal (default) | `CpLFIATEbkaZdJr01erZ` |
+| Anika | `RABOvaPec1ymXz02oDQi` |
+
+Samples for the admin picker live at `…/pl-uat-public-docs/ai-interview/voice-samples/{payal,anika}.mp3`. Placeholder ids like `"payal"` must never be stored — the speech endpoint cannot resolve them.
+
+`FASTAPI_URL` is a **server-side** var on `assessment-react-v2` (v1's `REACT_APP_FASTAPI_URL`), read at request time by the proxy route, so it is not baked into the bundle. The typing reveal is only a floor: audio decides when the candidate may answer, and if speech fails the response still opens rather than stalling.
+
+### Full screen is a condition of sitting, not a button
+
+The runner requests full screen as the attempt opens. Browsers only grant that during a user gesture, so when the automatic request is refused the guard dialog covers the exam until the candidate clicks — it now appears whenever full screen is inactive, not only after they leave it.
+
+### Interview evaluation parameters come from the model
+
+The wizard's "AI Suggestion based on Role" calls `POST /ai-interview/suggest-parameters` on admin-node (which forwards to the FastAPI engine), through the BFF route `/v2/api/assessments/ai-interview/suggest-parameters`. It answers `data.parameters[]` of `{id, name, description, weight, min_pass_rating}`; the wizard takes the first five names and weights, and only splits 100 evenly if the engine omits weights. Note the admin-node route is **not** auth-gated upstream, though the BFF still requires an admin session.
+
 ### Submit payload per type
 
 Each type is scored from a different shape, so the runner builds a different payload per part. These live in `assessment-react-v2/src/lib/examShapes.ts`, which imports only types so the transforms are unit-tested without a browser.
@@ -120,5 +145,5 @@ A combined final submission is blocked until AI Interview is complete. Every oth
 ## DEV deployments
 
 - `student-node` commits `e60c67b2`, `9f7dfca5`
-- `assessment-react-v2` commits `4602376`, `c70bee7`, `d1822b4`, `b7c78b4`, `da1432a`
-- `admin-react-v2` commit `741a9b4`
+- `assessment-react-v2` commits `4602376`, `c70bee7`, `d1822b4`, `b7c78b4`, `da1432a`, `518203e`
+- `admin-react-v2` commits `741a9b4`, `c17e420`
