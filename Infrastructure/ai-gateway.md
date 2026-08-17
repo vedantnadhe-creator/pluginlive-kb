@@ -17,14 +17,14 @@ Self-hosted **LiteLLM** proxy that fronts all LLM calls for the platform: one Op
 ## What routes through it
 
 - **LLM / chat calls** — Gemini, OpenAI, Groq. Routing is by **model name**; the calling service authenticates with a **virtual key** (per service: `fastapi-ai-engine`, `form-data-normalization`, …), and the real provider keys live on the gateway.
-- **Image generation** — Google **Imagen** (`imagen-4.0-fast-generate-001`, `imagen-4.0-generate-001`, registered `gemini/imagen-4.0-*`). Called via the OpenAI-schema `/v1/images/generations` endpoint; tracked in `LiteLLM_SpendLogs` as `aimage_generation` (~$0.02/image). Used by Assessment communication/hinglish "Question Based Response" question generation.
+- **Image generation** — **`gemini-2.5-flash-image`** (registered `gemini/gemini-2.5-flash-image`), **~$0.0387/image**. Called via the OpenAI-schema `/v1/images/generations` endpoint; tracked in `LiteLLM_SpendLogs` as `aimage_generation` and in `ai_usage.ai_usage_ledger` as `modality='image'`. Used by Assessment communication/hinglish "Question Based Response" question generation. **Replaced Imagen on 2026-08-17** — see below.
 - **Excluded — embeddings.** `pg-vector-api-service` / Chroma embeddings (`text-embedding-004`, `gemini-embedding-001`, `text-embedding-3-small`) stay native — routing them would change vector dimensions and corrupt existing vector stores.
 - **Excluded — STT/TTS** (Deepgram, ElevenLabs, Azure Speech): not routable through this gateway.
 
 Services opt in via env vars `LITELLM_PROXY_URL` + `LITELLM_VIRTUAL_KEY` (default-off — unset = native provider calls, unchanged behaviour).
 
 ### Currently routed
-- `fastapi-ai-engine` (Assessment: communication / hinglish / aptitude / role / AI-interview / resume-match LLM calls, **plus Imagen image generation** for communication/hinglish Question-Based-Response questions) — DEV + UAT. Image gen routes through `utils/portkey_gateway.build_image_client()` → `QuestionGeneration/Communication/image_generation_google.py` (gateway-first, native `google.genai` fallback only when `LITELLM_*` env unset).
+- `fastapi-ai-engine` (Assessment: communication / hinglish / aptitude / role / AI-interview / resume-match LLM calls, **plus image generation** via `gemini-2.5-flash-image` for communication/hinglish Question-Based-Response questions) — DEV + UAT + PROD. Image gen routes through `utils/portkey_gateway.build_image_client()` → `QuestionGeneration/Communication/image_generation_google.py` (gateway-first, native `google.genai` fallback only when `LITELLM_*` env unset).
 - `form-data-normalization` (candidate-data normalization LLM disambiguation) — DEV + UAT. NOTE: only the main `datanormalization` API container is redeployed by `auto_deploy`; the `datanormalization-worker` / `-cron` siblings run a separate image and are not yet on the gateway.
 - `pg-vector-api-service` (entity-normalizer LLM disambiguation/pincode) — code ready, gated; embeddings excluded.
 - `resume-parser` (CV parsing — the `parseResume` / `parseResumeAndUpload` Gemini calls behind `form-data-normalization`'s CV ingest) — UAT (container `resumeparser`, port 5011). Routed via a tiny google-genai-compatible shim (`USING API/gateway_client.py`) using `requests`, not the OpenAI SDK. Gateway env passed at `docker run` (`-e LITELLM_PROXY_URL=http://172.17.0.1:4000/v1 -e LITELLM_VIRTUAL_KEY=…`), not baked into the image. Manual build/run (not in `auto_deploy`): `cd ~/api/Resume_parser/"USING API" && docker build -t resumeparser:api . && docker stop/rm + docker run`.
@@ -35,6 +35,24 @@ Services opt in via env vars `LITELLM_PROXY_URL` + `LITELLM_VIRTUAL_KEY` (defaul
 
 - **Rotate / change a provider API key**, add models, mint virtual keys: LiteLLM dashboard → Models / Keys (live, no redeploy) for DB-managed models. Models defined in `config.yaml` are read-only in the UI; change those by editing `config.yaml` and `docker restart litellm`.
 - **Gotcha:** the wildcard `"*"` model entry mis-routes bare `gemini-*` names to **Vertex AI** ("default credentials not found"). Every Gemini model an app uses must be registered explicitly with the `gemini/` prefix in `config.yaml`.
+
+### Imagen retirement, 2026-08-17 — image generation outage
+
+Google shut down all three Imagen 4 GA models (`imagen-4.0-fast-generate-001`, `imagen-4.0-generate-001`, `imagen-4.0-ultra-generate-001`) on their published retirement date, **2026-08-17**. Every request began returning:
+
+```
+404 "This model models/imagen-4.0-fast-generate-001 is no longer available."
+```
+
+Question generation treats a failed image as fatal, so communication/hinglish `generate-questions` returned **HTTP 503 "Assessment cannot be generated right now. Image generation failed…"**. Imagen is retired as a product line; the replacement is the Gemini multimodal image family ("Nano Banana").
+
+**Fix:** `gemini-2.5-flash-image` — the cheapest of that family — registered as `gemini/gemini-2.5-flash-image` on **DEV, UAT and PROD**, and `IMAGE_MODEL` in `QuestionGeneration/Communication/image_generation_google.py` pointed at it. LiteLLM maps this Gemini model onto the OpenAI `/v1/images/generations` schema, so **the call path did not change — only the model name**. `IMAGE_MODEL` is now env-overridable so the next forced retirement is a config change, not a redeploy.
+
+**Cost:** ~$0.0387/image vs ~$0.02 for the retired `imagen-4.0-fast` — per-image cost roughly doubles. A measured one-set Communication generation totals **$0.1675** (image $0.0775, TTS $0.0596, LLM $0.0304).
+
+**PROD was already broken, differently.** PROD's gateway had **no imagen model registered at all** (its `config.yaml` lists only the Gemini chat models; the sole DB-managed model was `gpt-5-mini`). Image requests therefore fell through the `'*'` wildcard to **Vertex AI** and failed on missing ADC — so PROD image generation was failing independently of, and for longer than, the retirement. Registered on PROD via `POST /model/new` (PROD has `store_model_in_db: true`), which needs **no restart** and so caused no gateway downtime for other services.
+
+**Alternative tiers** if quality needs raising: `gemini-3.1-flash-image` (~$0.067/image at 1K) or `gemini-3-pro-image` (~$0.134/image). Both are registered nowhere yet.
 
 ### Gotcha: a bad key on one model is SILENT — router fallbacks hide it
 
@@ -89,6 +107,9 @@ So `fastapi-ai-engine` writes its own durable ledger, a **superset** of LiteLLM 
 - **Default-OFF.** Tracking writes only when `AI_USAGE_DATABASE_URL` is set (plus optional `AI_USAGE_ENV`). It never blocks a request and never raises into one — rows go through a bounded queue flushed by a background thread. Set on UAT in `.env.uat`; on PROD in the `fast-api-config` ConfigMap.
 - Docs live with the code at `fastapi-ai-engine/docs/ai-usage-tracking.md`.
 - **Reading the `model` column:** it records the model that *answered*, taken from the response, not the one the code asked for. If a router fallback fired (see the silent-fallback gotcha above), the ledger shows the substitute. That makes the ledger a useful way to spot fallbacks — a module whose rows show an unexpected model is being silently downgraded.
+- **Phase split:** `ai_usage.v_module_phase_cost` splits a module's spend into `generation` / `scoring` / `delivery` / `other`, derived from the request path. Question generation is a one-off authoring cost amortised over every candidate who takes the set, and is the **only** phase that spends on image generation; scoring and delivery recur per candidate. Applied DEV + UAT 2026-08-17; **PROD pending** (reporting-only, nothing depends on it).
+- **Thread pools drop attribution.** `contextvars` are not inherited by worker threads, so any paid call handed to `run_in_executor` was recorded as `Unattributed` — this included `_gemini_json`, the AI-Interview's main LLM helper (question-gen, score-turn, score-final), plus aptitude and role-based question generation. On UAT `Unattributed` was the single largest cost group before the fix. Fixed with `carry_context()` in `utils/ai_usage/context.py`; **wrap any new executor-offloaded AI call with it** or its cost loses attribution silently.
+- **Failed image generation is recorded as a zero-cost error row.** A retired or unavailable image model spends nothing, so a cost-only report looks healthy while generation is broken — exactly the 2026-08-17 Imagen outage. Watch `error_count` in the phase view, not just cost.
 
 ## Assessment scoring model (2026-08-12)
 
