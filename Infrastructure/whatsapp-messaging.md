@@ -76,9 +76,45 @@ WA_TEMPLATE_NAMESPACE=ab150d99_86d0_4d64_a278_7f77da79ec0b
 
 In PROD these live in the `auth-api-config` ConfigMap (mounted at `/app/.env` on `auth-node`, namespace `api`); in DEV/UAT they are in the service's `.env`/`.env.<env>` (untracked, per-environment).
 
+## Managing templates without the panel (MSG91 API)
+
+`MSG91_AUTHKEY` alone is enough to create templates, submit them to Meta, and read
+approval status — no MSG91 panel login and no Meta token. Our Meta token is dead for the
+current WABA (`GraphMethodException` on phone-id `102162976151114`, which belongs to the
+retired direct-Graph WABA), so Graph API is not an option for this.
+
+The endpoint names are not guessable and the docs render client-side, so scrape them:
+`curl -sL https://docs.msg91.com/whatsapp/<page> | grep -oE "api/v5/whatsapp[a-zA-Z0-9/_-]*"`.
+
+**List templates + Meta approval status**
+
+```bash
+curl -s -H "authkey: $MSG91_AUTHKEY" \
+  https://control.msg91.com/api/v5/whatsapp/get-template-client/916380485173
+```
+
+The number is a **path segment** — `?integrated_number=` returns 404. Response gives every
+template's `status` (`approved` / `pending` / `rejected`), `rejection_reason`, `category`,
+Meta `id`, and the literal approved body in `code[].text`. This is the only reliable way to
+answer "is template X live?" — the answer is not in any repo.
+
+**Create a template and submit it to Meta**
+
+```bash
+POST https://api.msg91.com/api/v5/whatsapp/client-panel-template/
+{"integrated_number":"916380485173","template_name":"...","language":"en",
+ "category":"UTILITY","button_url":false,
+ "components":[{"type":"BODY","text":"...","example":{"body_text":[["sample1",...]]}}]}
+```
+
+GET on that path returns 405; it is POST-only. Returns `template_id` immediately with
+"creation in process"; approval came back in well under an hour for UTILITY. Working script:
+`/home/ubuntu/create_wa_templates.py` (validates ascending `{{n}}` and sample/variable count
+before it sends anything).
+
 ## Assessment invites over WhatsApp (corporate, opt-in)
 
-### Dynamic corporate deadline copy and invite/reminder intent (DEV, 2026-08-14)
+### Dynamic corporate deadline copy and invite/reminder intent (DEV + UAT, 2026-08-17)
 
 Corporate assessment communications now calculate a short candidate-facing CTA
 from the assessment map's deadline in the IST wall-clock frame. More than 36h
@@ -93,27 +129,44 @@ reminders now have reminder subjects/headings/body copy instead of reusing the
 invite voice. AI Interview still reads `interview_duration` from its DB config,
 converts seconds to minutes, and falls back to 25 only when the value is absent.
 
-Four new Meta UTILITY templates are prepared in code but must be approved before
-their env vars are switched:
+Four Meta UTILITY templates carry this copy. All four were submitted 2026-08-17
+and **approved by Meta the same day**, category retained as `UTILITY`:
 
-| Intent/type | Template |
-|---|---|
-| generic invite | `corporate_assessment_invite_deadline_v1` |
-| generic reminder | `corporate_assessment_reminder_deadline_v1` |
-| AI Interview invite | `corporate_ai_interview_invite_deadline_v1` |
-| AI Interview reminder | `corporate_ai_interview_reminder_deadline_v1` |
+| Intent/type | Template | Meta ID |
+|---|---|---|
+| generic invite | `corporate_assessment_invite_deadline_v1` | 2547612762369170 |
+| generic reminder | `corporate_assessment_reminder_deadline_v1` | 1070698069181721 |
+| AI Interview invite | `corporate_ai_interview_invite_deadline_v1` | 2096031501050807 |
+| AI Interview reminder | `corporate_ai_interview_reminder_deadline_v1` | 1075056545056176 |
 
-Safe rollout variables are `WA_ASSESSMENT_INVITE_TEMPLATE`,
+**Meta rejects a body whose `{{n}}` do not first appear in ascending order.**
+Two PRD sentences had to be reworded to satisfy this — the generic invite now
+reads "You have been invited to complete the {{2}} for the {{3}} role at {{4}}"
+(the PRD led with the company) and the AI reminder reads "your AI-powered
+interview with {{2}} for the {{3}} role". Neither moved a parameter: the
+positional contract still matches `WHATSAPP_TEMPLATES` exactly. If a future
+template needs reordering, reword the sentence — renumbering the params
+silently scrambles the delivered message with no error anywhere.
+
+Rollout variables are `WA_ASSESSMENT_INVITE_TEMPLATE`,
 `WA_ASSESSMENT_REMINDER_TEMPLATE`, `WA_AI_INTERVIEW_INVITE_TEMPLATE`, and
-`WA_AI_INTERVIEW_REMINDER_TEMPLATE`. Until those are set, the existing active
-templates remain selected, and their date-only parameter contract is preserved;
-the full dynamic sentence is supplied only to one of the four new names. This is
-the rollback boundary—do not edit or replace the existing Meta templates in
-place.
+`WA_AI_INTERVIEW_REMINDER_TEMPLATE`, **now set on DEV and UAT**. Unset means the
+legacy templates stay selected with their date-only parameter contract; the full
+CTA sentence goes only to the four names above, gated by the
+`usesFullDeadlineSentence` set in `assessmentInviteEmail.js`. Rollback is
+commenting out the affected line and restarting — per intent and per assessment
+family, no rebuild. Do not edit or replace the legacy Meta templates in place;
+they are the rollback floor.
 
-Code: admin-node `1c62039`, user-management-node `0261107`, both pushed to
-`Development`. Meta creation/approval and the post-approval env switch remain
-operational follow-ups.
+Env lives in the **box** env file that the deploy bakes (`admin-node/.env` on
+DEV, `.env.uat` on UAT), not in `docker run -e` — a `-e`-only flag is dropped by
+the next rebuild.
+
+**PROD is not switched.** The templates are WABA-scoped so they already exist
+there; only the four env vars are missing.
+
+Code: admin-node `242a36a` (UAT) / `c80c79a` (Development), user-management-node
+`3d404a7` (UAT) / `0261107` (Development).
 
 Corporate assessment invites send a **WhatsApp reminder alongside the invite email**
 (admin-node; DEV + UAT as of 2026-08-03, PROD pending).
@@ -148,7 +201,9 @@ silently skipped for those flows for every type. `sendAssessmentInviteWhatsapp` 
 to `COALESCE(aas.contact_number, spp.contact_number)` — the same source the `/s/` resolver uses
 for the SMS OTP phone claim. No phone anywhere → silently skipped, by design.
 
-**Template — selected per assessment type.** Param order is pinned to the template name in
+**Template — selected per assessment type _and intent_.** Since 2026-08-17 `resolveTemplateName(assessmentType, intent)` picks on both axes; the table below is the
+legacy/rollback set, and DEV+UAT now resolve to the four
+`corporate_*_deadline_v1` names documented above. Param order is pinned to the template name in
 `WHATSAPP_TEMPLATES` (Meta fixes the `{{n}}` count per template, so the two must travel
 together). An unknown name falls back to the 6-param builder rather than sending a malformed
 message.
