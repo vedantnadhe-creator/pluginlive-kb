@@ -15,6 +15,7 @@ After OTP verification, the browser stores a candidate-scoped `assessment:run` J
 - `GET /students/mix-match/summary`
 - `GET /students/mix-match/assessment/:assessmentAssignedId/questions`
 - `POST /students/mix-match/assessment/:assessmentAssignedId/submit`
+- `POST /students/mix-match/assessment/:assessmentAssignedId/save-response`
 - `POST /students/mix-match/assessment/:assessmentAssignedId/upload-audio`
 - `POST /students/mix-match/assessment/:assessmentAssignedId/upload-video`
 - `POST /students/mix-match/ai-interview/:assessmentAssignedId/start`
@@ -111,6 +112,30 @@ The runner requests full screen as the attempt opens. Browsers only grant that d
 
 The wizard's "AI Suggestion based on Role" calls `POST /ai-interview/suggest-parameters` on admin-node (which forwards to the FastAPI engine), through the BFF route `/v2/api/assessments/ai-interview/suggest-parameters`. It answers `data.parameters[]` of `{id, name, description, weight, min_pass_rating}`; the wizard takes the first five names and weights, and only splits 100 evenly if the engine omits weights. Note the admin-node route is **not** auth-gated upstream, though the BFF still requires an admin session.
 
+### Answers are saved per question, not only at submit
+
+v1 writes every answer as the candidate gives it, via `POST /students/assessments/saveResponse` with `{ payload: { questionId, answer, assessment_assigned_id, timeTaken } }`. The Mix & Match runner does the same through `POST /students/mix-match/assessment/:id/save-response`, debounced and best-effort — the final submit still sends the whole attempt, so this is the recovery copy, not the record of truth. Without it a browser that dies mid-test loses everything.
+
+The scoped route exists rather than reusing the student one because `saveResponse` trusts whatever `assessment_assigned_id` the body carries. That is safe for a logged-in student, who only holds their own token; an invite token is scoped to one group, so membership is checked before the answer is stored. Verified: a token for one candidate saving to another's assignment gets `403 Assessment is not part of this Mix & Match invite`.
+
+Answer shape per type — the same values the submit sends, so the two cannot disagree:
+
+| Type | `answer` |
+| --- | --- |
+| Communication, sub-question | `{ subQuestionId, selectedOption }` |
+| Communication, single-response (Email Writing, Question Based Response) | the plain value |
+| Aptitude, Behaviour | the option **text** |
+| Role Based | option **id** (MCQ), trimmed text (subjective), `{code, language, test_results}` JSON (coding) |
+
+Not sent through this path: **recordings** (the media upload already writes the row, with a storage key this endpoint has no field for), **Role Based video**, and **Custom Assessment** — `saveResponse` throws `Unsupported assessment type: custom_assessment`, which is why Custom stores only at submit.
+
+### Two answer values that were unscoreable
+
+Both were found in `assessment.student_answers` on DEV and are fixed in the shared value transform:
+
+- **Sentence Build** stored the drag handles' ids (`"…-item-1 …-item-0"`) because the reorder answer keeps ids rather than words. v1 saves the arranged content, which is what the scorer compares against.
+- **Recordings** stored `{"durationSec":3}` as the answer text, overwriting the row the upload had already written with the real storage key.
+
 ### Submit payload per type
 
 Each type is scored from a different shape, so the runner builds a different payload per part. These live in `assessment-react-v2/src/lib/examShapes.ts`, which imports only types so the transforms are unit-tested without a browser.
@@ -144,6 +169,6 @@ A combined final submission is blocked until AI Interview is complete. Every oth
 
 ## DEV deployments
 
-- `student-node` commits `e60c67b2`, `9f7dfca5`
-- `assessment-react-v2` commits `4602376`, `c70bee7`, `d1822b4`, `b7c78b4`, `da1432a`, `518203e`
+- `student-node` commits `e60c67b2`, `9f7dfca5`, `1f43c573`
+- `assessment-react-v2` commits `4602376`, `c70bee7`, `d1822b4`, `b7c78b4`, `da1432a`, `518203e`, `936a10d`, `6fafe50`, `8b0d903`, `2b5c9b3`
 - `admin-react-v2` commits `741a9b4`, `c17e420`
