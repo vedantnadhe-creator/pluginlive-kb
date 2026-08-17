@@ -1363,6 +1363,56 @@ Never add a `?? 'https://...dev...'` fallback for one of these vars — it is no
 runtime default, it is a literal baked into every bundle, and it defeats the grep
 above. `src/lib/auth.ts` throws when `NEXT_PUBLIC_LOGIN_URL` is missing instead.
 
+### PROD does not use the public API hosts (2026-08-17)
+
+`6fc89c5`. There is no `STUD_API_URL` on the boxes, so `src/lib/api/studentApi.ts`
+**derives** the student-node host from `INST_API_URL` — deriving cannot bake a
+DEV hostname into a UAT bundle the way a literal fallback would. Three shapes,
+and the third is the one that bit:
+
+    api-inst.dev.pluginlive.com       →  api-std.dev.pluginlive.com
+    api-inst.uat.pluginlive.com       →  api-std.uat.pluginlive.com
+    api-inst.pluginlive.com           →  api-stud.pluginlive.com    ← "stud"
+    institute-node.api.svc.cluster…   →  student-node.api.svc.cluster…
+
+**PROD runs on k8s and talks service-to-service**, so its deployment env is
+in-cluster DNS, not the public host:
+
+```
+kubectl -n frontend get deploy institute-react-v2 \
+  -o jsonpath='{range .spec.template.spec.containers[0].env[*]}{.name}={.value}{"\n"}{end}'
+INST_API_URL=http://institute-node.api.svc.cluster.local
+```
+
+That matched neither public branch, so the resolver returned null and the BFF
+short-circuited **before calling student-node at all**: `500 {"message":"Export
+service is not configured"}` on every export (series, occurrence, diagnosis) and
+`"Report service is not configured"` on the single-student PDF — four dead
+actions, PROD only, DEV and UAT fine. The error names a config problem, not a
+student-node or DB problem; nothing ever reached them.
+
+PROD was unblocked first with an explicit override, which the resolver returns
+verbatim ahead of any derivation:
+
+```bash
+kubectl -n frontend set env deployment/institute-react-v2 \
+  STUD_API_URL=http://student-node.api.svc.cluster.local
+```
+
+**That override lives outside any manifest.** `~/autodeploy.sh` deploys with
+`kubectl set image`, which preserves it, but a manifest re-apply would drop it
+and PROD would break again — which is why the derivation now also understands
+`institute-node.<rest>` → `student-node.<rest>`, carrying namespace and cluster
+suffix through, and needs no env var on any box.
+
+Probe from inside the pod when this looks wrong again — 404 on `/` still proves
+DNS, service and port are good, since these APIs have no root route:
+
+```bash
+kubectl -n frontend exec deploy/institute-react-v2 -- \
+  wget -qS -O /dev/null http://student-node.api.svc.cluster.local/
+```
+
 ## Deploying v2
 
 Not in `auto_deploy.sh` (that script only knows the numbered v1 services).
@@ -1393,6 +1443,15 @@ Two traps worth naming, both hit on 2026-08-10:
   `Restart=always`; a hand-started process grabs the port and leaves
   `systemctl status` stuck in `activating` with `MainPID 0` forever — the app
   serves fine but is unsupervised and will not come back after a reboot.
+  `institute-react-v2.service` exists on **both DEV and UAT** (DEV also has
+  `admin-react-v2` and `corporate-react-v2` units). The failure is quieter than
+  the note above suggests: `Restart=always` means killing the process brings it
+  straight back on the *new* build, so a following `nohup next start` just dies
+  with `EADDRINUSE` and the site looks perfectly healthy — the deploy worked, but
+  not for the reason you think, and the log fills with a crash you did not cause.
+  Confirm with `systemctl status` that `Main PID` is the process on the port, and
+  that `Active: since` is later than `stat -c %y .next/BUILD_ID` (seen 2026-08-17).
+  On DEV, plain `systemctl` fails with *"Failed to connect to bus"* — use `sudo`.
 
 ## Order of operations when flipping a nav entry
 
