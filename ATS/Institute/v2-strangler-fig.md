@@ -223,6 +223,23 @@ is what v1's `assessmentsTaken` does.
 Expect percentages to FALL wherever a long series runs (Swadha 79% → ~24%).
 That is the honest number; the old one measured "students who ever showed up".
 
+**The dashboard column was deleted by accident on 2026-08-13 and restored on
+2026-08-17** (`92d413f`). `44fc75b` — "align dropdown behavior with design
+system" — touched five files; four were genuine dropdown work and the fifth
+stripped the `<th>` and the whole `<td>` (mini bar, percentage, `taken / sent`
+sub-line) out of `ActiveAssessments.tsx`. Nothing in that commit's subject
+relates to this table.
+
+The tell that a UI element was dropped rather than retired: the CSS survives
+with nothing to style. `dashboard.css` still carried `.ar-tbl .comp`,
+`.mini-bar` and `.a-sub`, the `ActiveAssessment` type still declared
+`completionPct` / `unitsTaken` / `unitsSent` / `completed` / `assigned`, and
+institute-node still returned every one of them — so nothing but the markup had
+been removed. Restoring was a straight revert of that file's hunk, and the
+result is byte-identical to `44fc75b^` because that commit was the last to
+touch the file. **Check `git log -S"<label>" -- <file>` before rebuilding a
+"missing" column from scratch.**
+
 ### A series is described by its schedule, not by what has fired (2026-08-12)
 
 `5fa5787` institute-node. The scheduler writes an `assessment_institute_map`
