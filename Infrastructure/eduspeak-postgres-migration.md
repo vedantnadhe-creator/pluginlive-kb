@@ -697,3 +697,37 @@ test rows — `student_profiles` still holds 37 rows. All Pilvidya containers up
 errors, `/sb/rest/v1` and `/sb/auth/v1/settings` 200, and the 2026-08-17 approval-column grant
 still resolves. Browser E2E passed `/`, `/student`, `/teacher`, `/admin`, `/status` and the new
 `/admin/students/bulk` with 0 page errors, 0 hosted Supabase requests, and 0 `/sb` 4xx/5xx.
+
+### 2026-08-17 (third) — redeployed to `45705df5`
+
+Advanced Pilvidya UAT by 6 commits from `94a80e32` to `45705df5`. **No migrations** — a function
+sync and a frontend rebuild. Image `eduspeakreact:45705df5`, route manifest 5/5. Rollback image
+`eduspeakreact:rollback-20260817T130013Z`, prior container `eduspeakreact-old-20260817T130013Z`,
+DB dump and snapshots in `~/pilvidya-predeploy-20260817T130013Z/`.
+
+Two changes: "Fixed bulk import approvers" reworks `teacher-bulk-upload-students`, and "Fixed logo
+duplication in app" touches `AppLayout.tsx` and `PluginLiveLogo.tsx`.
+
+The bulk-upload function now stamps each inserted student with `approval_status: 'approved'`,
+`approved_at`, `approved_by_role` (`teacher` or `admin`) and `approval_note`, and inherits
+`school_name` / `location` / `board` / `plan_override` from the uploading teacher's profile when the
+CSV omits them — with a case-insensitive match so a school typed in different casing still collapses
+to the teacher's own school rather than creating a parallel one. `plan_override` falls back to the
+teacher's most recent `teacher_subscriptions.plan` when the profile has none.
+
+This still does **not** interact with the `student_profiles` column allow-list: every read and
+write goes through the `service_role` client, which bypasses RLS and column privileges, and
+`20260815033259` granted `ALL` on the table to `service_role`. Preconditions verified before the
+sync: `teacher_subscriptions` has `teacher_profile_id` / `plan` / `started_at`, `student_profiles`
+has all five approval columns plus `plan_override`, and `service_role` holds INSERT.
+
+The `password_hash` gap noted in the previous entry is unchanged — bulk-uploaded students are now
+explicitly approved but still have no credential, so they cannot sign in through
+`student-authenticate-profile` until one is set.
+
+Verification: 116 functions synced, dispatcher intact, zero boot errors; unauthenticated call 401;
+authenticated as `teacher@pilvidya.in` a malformed row returns
+`{"inserted":0,"duplicates":0,"invalid":1}`, so the new approver path runs without writing test rows
+— `student_profiles` still holds 37. Approval columns still readable by `authenticated` (the
+2026-08-17 grant holds). Browser E2E passed all six routes with 0 page errors, 0 hosted Supabase
+requests, 0 `/sb` 4xx/5xx; each page renders a single logo mark, consistent with the duplication fix.
