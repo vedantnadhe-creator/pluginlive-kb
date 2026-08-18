@@ -448,3 +448,46 @@ returns 200 — this is the call that would have failed on the type mismatch —
 `seed-admin-user` still 401, the AI coach still answers from a real provider at ~50 ms first byte,
 and browser E2E passed anonymous routes plus admin sign-in into a fully rendered console with 0
 page errors, 0 hosted Supabase requests, 0 `/sb` 4xx/5xx.
+
+## 2026-08-18 (later) — redeployed to `6119771`
+
+Advanced Banking UAT by 24 commits from `1a0547f` to `6119771`, applying two migrations — both
+clean, no fixup needed. 83 functions synced (none changed), frontend rebuilt under Node 20.
+Rollback snapshot (DB dump, `dist/`, `.env`) stamped `20260818T164920Z`.
+
+`20260818153658` adds `institutes.default_plan_code`, three onboarding columns on `profiles`, and
+backfills `onboarding_source='institute'` for existing institute-linked profiles. `20260818160720`
+tries to (re)create `public.students` and grants/policies/indexes around it, plus a new
+`institute_subscriptions` table. `students` already existed with a superset of the migration's
+columns (created earlier in this stack's history, not by this app-repo migration), so `CREATE TABLE
+IF NOT EXISTS` correctly skipped it — confirmed row count unchanged (1) before/after.
+
+**Lesson from yesterday's `PGRST202` incident applied**: PostgREST was fully restarted
+(`docker restart banking-sb-rest`), not signaled with `kill -HUP 1`. Logs confirm the new objects
+were picked up (Relations 126→127, Relationships 51→52) — verified through the log line itself
+this time, not inferred.
+
+### A real, pre-existing gap surfaced while reviewing this migration — not introduced today
+
+`public.students` has had two policies, `students authenticated read` (`USING (true)`) and
+`students authenticated write` (`USING (true) WITH CHECK (true)`), both `FOR ALL`/`FOR SELECT TO
+authenticated` with no per-row restriction — any authenticated session, not just admins, can read
+and write **every** student's row, not only their own. This predates `20260818160720`.
+
+That migration adds `Students read own row` / `update own row` / `insert own row` (self-or-admin)
+policies — but since Postgres RLS OR-combines permissive policies for the same command, and the old
+`USING (true)` policies are still present, the new restriction has **no actual effect**. Any
+authenticated user can still read/write any row.
+
+Not fixed in this deploy — dropping the old permissive policies is a data-access decision, not a
+mechanical migration-replay step, and needs confirmation there's no legitimate reason (e.g. some
+staff/institute view) currently relying on the open read. `students.password` is `NULL` for the one
+existing row, so there is no live plaintext-password exposure today, but the column and the open
+policy both exist and the risk activates the moment that column is populated. Flagged to the user
+directly.
+
+Verification: unauthenticated `seed-admin-user` still 401; `institute_subscriptions` and
+`institutes.default_plan_code` both reachable through PostgREST (200); the `submit_payment_request`
+fix from the previous incident still holds end-to-end (real insert, cleaned up after); browser E2E
+passed anonymous routes plus admin sign-in into a fully rendered console, 0 page errors, 0 hosted
+Supabase requests, 0 `/sb` 4xx/5xx.
