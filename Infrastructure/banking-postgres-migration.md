@@ -400,3 +400,51 @@ site 200; bundle has no hosted `*.supabase.co` data-plane URL (the only match is
 documented click-only `api.supabase.com` management tool in `AdminSecurityMigration.tsx`); browser
 E2E passed anonymous routes plus admin sign-in at `/login/admin` into a fully rendered admin
 console, with 0 page errors, 0 hosted Supabase requests, and 0 `/sb` 4xx/5xx.
+
+## 2026-08-18 — redeployed to `1a0547f`
+
+Advanced Banking UAT by 4 commits from `f0eb7b4` to `1a0547f`, applying one migration via a fixup.
+83 edge functions synced with all three overlays; frontend rebuilt under Node 20. Rollback
+snapshot (DB dump, `dist/`, `.env`) stamped `20260818T113108Z`.
+
+`adminErrorLogger.ts` was modified upstream for the first time since we patched it — it now
+suppresses expected auth failures (wrong password, stale refresh token) instead of raising a global
+toast and an admin log entry, and clears the stale `sb-*-auth-token` key. That lands in a different
+hunk from our `VITE_SUPABASE_URL` derivation, so the stash auto-merged and both changes are live.
+
+### The new migration cannot be replayed as shipped — see the fixup
+
+`20260818080751` ("Added plans backend and storage") adds `subscription_plans`, the manual
+`payment_requests` flow, `profiles.subscription_*`, five RPCs and the `payment-proofs` storage
+policies. It needs three corrections on this stack, now in
+`~/banking-sb/fixups/20260818080751_*.sql` and recorded in DB-Scripts as
+`Banking Supabase to Postgres/20260818T113853Z__banking_payment_rpc_selfhost_corrections.sql`:
+
+1. **It aborts.** Upstream `20260713153000` already created
+   `admin_list_payment_requests()` returning a `students jsonb` column, and `CREATE OR REPLACE`
+   cannot change an OUT row type — `cannot change return type of existing function`. The file
+   replays as one transaction, so everything in it rolled back. Fixed with an explicit `DROP
+   FUNCTION` first.
+2. **It would have silently degraded the admin UI.** `PaymentVerification.tsx` calls this RPC first
+   and only falls back to a table select on error, rendering `r.students?.name / .email / .mobile`.
+   Upstream's replacement returns `student_name` / `student_email` and drops `students`, so the
+   payment list would show a truncated uuid and a blank email with no error surfaced. The fixup
+   returns the superset — the new columns *and* `students` — joining `public.students` for `mobile`,
+   which has no equivalent on `profiles`, exactly as the superseded function did.
+3. **It fails at call time.** `payment_requests.amount_inr` is `numeric` here, but
+   `admin_list_payment_requests()` and `list_my_payment_requests()` both declare it `integer`,
+   which raises "structure of query does not match function result type" on invocation. Cast to
+   `::integer` in both; amounts are whole rupees so it is lossless.
+
+Note `payment_requests` already existed with an older shape (`candidate_id`, `name`, `email`,
+`amount`, `plan`, `verified_by`, …) plus the newer columns, and held 0 rows — so this release is a
+second, overlapping payments implementation rather than a fresh one.
+
+Verification: `subscription_plans` seeded with 4 plans (free/beginner/advanced/enterprise);
+`profiles` gained the three subscription columns; all five RPCs present; 2 `payment-proofs` storage
+policies created (the bucket already existed). Through PostgREST, `rpc/admin_list_payment_requests`
+returns 200 — this is the call that would have failed on the type mismatch — and
+`subscription_plans` is readable by `anon` for the pricing page. Site 200, unauthenticated
+`seed-admin-user` still 401, the AI coach still answers from a real provider at ~50 ms first byte,
+and browser E2E passed anonymous routes plus admin sign-in into a fully rendered console with 0
+page errors, 0 hosted Supabase requests, 0 `/sb` 4xx/5xx.

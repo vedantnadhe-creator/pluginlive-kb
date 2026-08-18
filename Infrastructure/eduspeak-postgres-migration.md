@@ -731,3 +731,41 @@ authenticated as `teacher@pilvidya.in` a malformed row returns
 — `student_profiles` still holds 37. Approval columns still readable by `authenticated` (the
 2026-08-17 grant holds). Browser E2E passed all six routes with 0 page errors, 0 hosted Supabase
 requests, 0 `/sb` 4xx/5xx; each page renders a single logo mark, consistent with the duplication fix.
+
+### 2026-08-18 — redeployed to `aefb9cf5`
+
+Advanced Pilvidya UAT by 30 commits from `45705df5` to `aefb9cf5`, applying three migrations. 116
+functions synced (only `admin-manage-users` changed), image `eduspeakreact:aefb9cf5`, route
+manifest 5/5. Rollback image `eduspeakreact:rollback-20260818T113553Z`, prior container
+`eduspeakreact-old-20260818T113553Z`, snapshots in `~/pilvidya-predeploy-20260818T113553Z/`.
+
+The release adds admin user creation, a static PWA manifest, a language-button visibility fix, and
+an `admin-manage-users` 400 fix. All three migrations applied clean, no fixup needed.
+
+**`20260817135623` looks alarming but is a no-op here.** It loops every `public` table and, where
+`authenticated` holds no table-level SELECT/INSERT/UPDATE/DELETE, grants all four. The worry was
+that it would blow away the `student_profiles` column allow-list from `20260815033259` and make
+`password_hash` readable again. It does not: `information_schema.role_table_grants` returns a row
+when the grantee holds the privilege on *any column*, so the column-level grants satisfy the guard
+and the table is skipped. Measured before applying — 0 tables of 217 would have received new
+grants — and confirmed after: SELECT is still the 18-column allow-list (13 hardened + the 5
+approval columns), and `set role authenticated; select password_hash from student_profiles` still
+returns `permission denied for table student_profiles`.
+
+**Pre-existing, unrelated to this release:** `authenticated` does hold table-level
+`INSERT, UPDATE, DELETE, TRUNCATE, TRIGGER, REFERENCES` on `student_profiles`, including write
+access to `password_hash`. Confirmed against the pre-deploy dump — the grants are byte-identical
+before and after, so nothing today caused it; `20260815033259` only ever revoked SELECT. Writes are
+still filtered by RLS, and `20260817135722` now adds `student_self_update`, which lets a teacher
+update any student matching their `school_id` *or* their `school_name` (case-insensitive) — so a
+teacher can write to those rows' `password_hash`. Worth tightening deliberately; not changed here.
+
+`20260817135722` also adds `current_teacher_school_name()` and rewrites `student_self_select` /
+`student_self_update` to match students by school name as well as `school_id`, which is what makes
+bulk-uploaded students visible to the uploading teacher. `20260817135739` revokes that helper from
+`anon` — verified: `anon` cannot execute it.
+
+Verification: all containers up, zero function boot errors, admin login OK, `admin-manage-users`
+401 unauthenticated and 200 with `action: list` as admin, approval columns still readable,
+`student_profiles` still 37 rows. Browser E2E passed all six routes with 0 page errors, 0 hosted
+Supabase requests, 0 `/sb` 4xx/5xx.
