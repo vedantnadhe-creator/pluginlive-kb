@@ -81,6 +81,43 @@ Mirrors the corporate RolePage archive flow, but scoped to **institute-published
 
 ---
 
+## Role Float Notifications (publish / update)
+
+When a TPO publishes or updates a role, `NewJobRole/RolesForm/index.js` → `notificationTrigger()` fans out to the candidates returned by `getInEligibleCandidates(roleId)` (`roleReceivingCandidates`) across three channels:
+
+| Channel | Endpoint | Notes |
+|---------|----------|-------|
+| Email | `POST /notification/bulkEmail` (auth service) | via `sendNotificationBulkEmail` in `modules/Students/actions.js` |
+| In-app | `sendInAppNotification` | tagged `Role`, deep-links to the role |
+| WhatsApp | `POST /notification/bulkWhatsapp` | templates `tpo_application_create` / `tpo_application_updated` |
+
+Ineligible candidates receive a parallel email + `tpo_role_update_ineligible` WhatsApp pair from the same function.
+
+### Email is sent in batches of 50
+
+The email body is rendered per recipient with `ReactDOMServer.renderToString` (~7KB each), so a role floated to a few hundred students builds a very large array. A real 309-student float produced a single **2.25MB** request, which is rejected with **413** at *two* independent 1MB ceilings:
+
+- **nginx** `client_max_body_size` — defaults to 1MB, and `sites-enabled/auth-node.conf` sets no override (unlike `admin-node.conf` / `fast-api.conf`, which set `50M`). This layer rejects first, returning nginx HTML rather than a JSON error.
+- **Fastify** `bodyLimit` — defaults to 1MB; `user-management-node/index.js` sets no override. Returns `FST_ERR_CTP_BODY_TOO_LARGE`.
+
+Because `sendNotificationBulkEmail` swallows errors, this failed **silently**: no student received the mail and the UI still reported success.
+
+`sendNotificationBulkEmail` now chunks the array into `BULK_EMAIL_BATCH_SIZE = 50` recipients per request (matching the batch size corporate-node already uses in `bulkUploadInviteCandidates`) and issues the chunks concurrently. 309 recipients → 7 requests of ~380KB each, comfortably under both ceilings. Chunking lives in the shared action, so every bulk-email caller (JobRoles, Drive, ViewAndConfirm, ConfirmDrive) inherits it. Non-array payloads pass through unchanged.
+
+Note the payload is intentionally **not** de-duplicated: every record carries its own copy of the identical rendered body, so the wire format is unchanged.
+
+### Candidates without a usable mobile number are filtered out
+
+`candidate.contact_number` may be null, blank, or a non-string (numeric). Calling `.replace()` on it threw inside the WhatsApp payload `.map()`, and because `notificationTrigger` is invoked without `await`/`.catch()`, the throw surfaced only as an unhandled rejection. The effect was all-or-nothing: **one** student missing a number meant **nobody** received the WhatsApp message.
+
+Candidates whose number yields fewer than 10 digits are now dropped before the map — on both the eligible and ineligible paths — and the value is coerced with `String()` so a numeric field cannot throw.
+
+### Known gap
+
+Email and WhatsApp send failures are still swallowed (`catch (error) {}`), so a failed batch remains invisible to the TPO. Any future growth in per-recipient body size should be checked against the 1MB ceilings above.
+
+---
+
 ## Key Features
 
 - **Job category filter:** `jobCategory` param (e.g., PLACEMENT)

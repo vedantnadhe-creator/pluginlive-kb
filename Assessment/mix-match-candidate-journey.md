@@ -161,6 +161,8 @@ The admin builds a field list in the wizard; the candidate fills it in at `/asse
 
 - **Storage** — `assessment.pre_assessment_forms` (one row per group, `fields` is the admin's `FormField[]` verbatim) and `assessment.pre_assessment_responses` (one row per candidate per form, upserted on re-submit). Migration `20260818T063235Z__pre_assessment_registration.sql`.
 - **Admin** — `admin-react-v2` sends `preAssessmentForm: { fields }` as a **top-level** field of the Mix & Match payload, not as a part, since registration is not an assessment. `assignMixMatchAssessment` writes it against the new group.
+**Routing to it.** The overview decides whether a float has pre-assessment steps from the **real** form and the interview's resume policy. It used to call `preStages` on the demo `?pre=` scenario config, so an invited candidate's authored form was never consulted and the step silently never appeared.
+
 - **Candidate** — both routes take the candidate from the scoped token and the float from that candidate's own assignment, so there is no id to tamper with: an invite can only ever read or write its own float's form. Answers already on file come back with the form and take precedence over the local draft, so returning to a half-finished registration shows what was actually submitted.
 
 Before this, the wizard collected the field list and `partFor` returned `null` for it, so the config never left the browser and the candidate journey fell back to its `?pre=` scenario mock. That mock still drives the demo route, which has no invite to ask.
@@ -176,6 +178,25 @@ The resume screen follows the AI Interview's `resumePolicy` (`mandatory` / `opti
 ### Finishing is the candidate's call
 
 Finish is always available. It used to be disabled until every part was complete and refused outright while the AI Interview was unfinished; the confirm dialog already lists what is unanswered, which is where that belongs rather than in a button that cannot be pressed.
+
+### The readiness check verifies, it does not just ask permission
+
+The device check used to confirm only that camera and microphone permission had been granted. It now asks the same FastAPI engine v1's `BiometricCheck` uses:
+
+- **Face** — `POST /proctoring/verify-frame` with `{student_id, frame_number, image_data, min_confidence}` → `face_detected`. Uses MediaPipe (`detect_face_fast`), not RetinaFace: this is the gate every candidate hits, so it needs liveness, not landmarks.
+- **Voice** — `POST /proctoring/detect-audio` with `{student_id, audio_data}` → `audio_detected`. Needs 3+ seconds, so the check records ~3.5s.
+
+Both are proxied through `/api/assessment/verify/{face,audio}` so `FASTAPI_URL` stays server-side, and both return a flat `{ ok }`.
+
+**An engine that cannot answer leaves the permission result standing.** A timeout, a 502 or a missing token resolves to `unchecked`, never `failed` — a service blip must not become a locked door in front of a candidate. Only a positive "no face" / "no voice" downgrades the check.
+
+### Leaving the exam
+
+Browsers no longer let a page choose the wording of an unload prompt, so the consequence is stated next to the timer where the candidate is already looking, and `beforeunload` raises the browser's own confirmation while an attempt is live. The listener is dropped once `finalSubmitted` is set, so the completion page never argues about leaving.
+
+### The completion page is a dead end, deliberately
+
+It used to offer a Done button that routed to `/` — the sign-in screen — where a candidate who had just submitted could enter an email, take a fresh OTP and walk back into a finished assessment. The invite session is now cleared on arrival and there is no button: nothing leads anywhere that can reopen the sitting.
 
 ### Submit payload per type
 
@@ -211,6 +232,6 @@ A combined final submission is blocked until AI Interview is complete. Every oth
 ## DEV deployments
 
 - `student-node` commits `e60c67b2`, `9f7dfca5`, `1f43c573`, `b6eeeb63`, `5fd5e9d7`, `69470352`
-- `assessment-react-v2` commits `4602376`, `c70bee7`, `d1822b4`, `b7c78b4`, `da1432a`, `518203e`, `936a10d`, `6fafe50`, `8b0d903`, `2b5c9b3`, `19fe1e4`, `071666e`, `d2484f1`
+- `assessment-react-v2` commits `4602376`, `c70bee7`, `d1822b4`, `b7c78b4`, `da1432a`, `518203e`, `936a10d`, `6fafe50`, `8b0d903`, `2b5c9b3`, `19fe1e4`, `071666e`, `d2484f1`, `52e0aa1`
 - `admin-react-v2` commits `741a9b4`, `c17e420`, `892f520`, `5e44c23`
 - `admin-node` commit `8d04f84`
