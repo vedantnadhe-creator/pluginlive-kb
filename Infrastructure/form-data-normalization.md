@@ -1149,6 +1149,52 @@ LinkedIn-sourced candidate gets a populated work history / education without a r
 > rows keep the blob until re-normalized; their `perm_*_id` are already correct so a targeted
 > `perm_city`/`perm_state` text update from the master also fixes them.
 >
+> **Gotcha — a shared STATE overwrote the permanent CITY (fixed 2026-08-18, UAT `17c9ad7`).**
+> The write-back documented above is only as good as the id it writes back from. In
+> `_resolve_and_store_all_ids` the permanent block reused the current address's resolved ids
+> whenever **either** the city **or** the state matched — and reused them as a *bundle*:
+> `if same_city or same_state: perm_city_id = city_id; perm_state_id = state_id; ...`. Sharing a
+> state is the ordinary case for a candidate applying locally, so **"current Chennai / permanent
+> Tirunelveli, both Tamil Nadu"** took the current **city's** id, and the canonical name write-back
+> then rewrote `permanent_city` as `"Chennai"` before the create-full payload was ever built. The
+> candidate's permanent city was destroyed upstream of everything that reads it.
+>
+> Seen on UAT as *"the address doesn't change"*: a candidate who applied to role A, then came back
+> through the Tally form for role B with a new permanent address, had the **old** city recorded
+> against role B. It looked intermittent because rows whose sheet left `Permanent Address - State`
+> as `N/A` didn't match on state and so resolved their permanent city correctly.
+>
+> Reuse is now decided **per field**, in the module-level `permanent_ids_from_current()`
+> (`workers/normalization_worker.py`, unit-tested in `tests/test_permanent_address_reuse.py`):
+> permanent city matches → the whole `(city, state, country)` tuple applies; only the state matches →
+> keep state/country and resolve the city separately; nothing matches → resolve each separately. When
+> the city is resolved separately its own state wins, so city and state stay coherent.
+>
+> **Downstream reads change** — they had been consuming the duplicated current city:
+> `corporate-node/app/models/eligiblityCertriaFilter.js` (recruiter permanent city/state filter **and**
+> its `DISTINCT perm_city_id, perm_city` dropdown) and `admin-node/app/models/MetaDashboard.js`
+> (`corr_city OR perm_city` matching, `COUNT(DISTINCT perm_state) AS state_coverage`, grouping by
+> `perm_state`). Candidates previously unfindable by their real permanent city become findable.
+> Forward-only: existing rows keep the value they were given, and an already-frozen applied-role
+> snapshot is **not** repaired by a re-run (`ON CONFLICT DO NOTHING` — see
+> [Applied-Role Snapshots](../ATS/Student/AppliedRoles/applied-role-snapshots.md)).
+>
+> **Deploy gotcha:** `deploy.sh` (ID 20) rebuilds `datanormalization:api` but recreates **only** the
+> `datanormalization` API container. `datanormalization-worker` and `datanormalization-cron` keep
+> running the old image, and the **worker** is what executes `_resolve_and_store_all_ids` — so
+> `auto_deploy.sh form-data-normalization` alone reports success and changes nothing. Recreate all
+> three together:
+> ```bash
+> cd ~/api/form-data-normalization
+> docker rm -f datanormalization-worker datanormalization-cron
+> docker run -itd --name datanormalization-worker --restart unless-stopped --env-file .env \
+>   --log-opt tag="service_name={{.Name}}" datanormalization:api python main.py worker
+> docker run -itd --name datanormalization-cron   --restart unless-stopped --env-file .env \
+>   --log-opt tag="service_name={{.Name}}" datanormalization:api python main.py cron
+> ```
+> Verify with `docker exec <c> grep -c permanent_ids_from_current /app/workers/normalization_worker.py`
+> on all three. Same rule on PROD, where a mixed worker version previously produced ERP orphans.
+>
 > **Gotcha — résumé `started_in`/`ended_in` emitted in a format student-react can't parse (fixed
 > 2026-07-17, UAT `905723e`).** The four date-bearing résumé sections `map_to_final_schema` builds —
 > `resume.workExperience`, `resume.internships`, `resume.projects`, `resume.courses` — format their
