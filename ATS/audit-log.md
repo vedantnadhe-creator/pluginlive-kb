@@ -4,7 +4,8 @@
 > tenant. Admin sees it as **Audit Log**; Corporate and Institute see it as
 > **Activity Log**.
 >
-> **Status:** DEV + UAT (2026-08-07). PROD pending.
+> **Status:** DEV + UAT (2026-08-07; entity/actor names and onboarding events
+> 2026-08-18). PROD pending.
 
 ## Where the data lives
 
@@ -63,6 +64,82 @@ deliberately different from the rest of these services, where handlers take
 `instituteCampusId` from the URL — for an audit trail that would let any
 authenticated user read another tenant's history by editing the path. A token
 with no tenant scope gets `403`, not an unfiltered list.
+
+## Who and What are shown as names, not ids
+
+The table stores **ids** — an id is the record of fact, and an audit row must
+never appear to change because someone later renamed a role or edited a profile.
+Names are resolved when a page is **rendered**, which also means existing rows
+gain names with no backfill.
+
+| Column | Source | Where |
+|---|---|---|
+| **Who** (`actorName`) | one batched read of `user_management.users` per page | `admin-node` only (`app/models/AuditActor.js`) |
+| **Entity** (`entityLabel`) | one batched read per entity type per page | all three services (`app/models/AuditEntity.js`) |
+
+The entity resolver only fills rows whose `entity_label` is **null**. A label a
+call site captured at write time is what the entity was called at the time and
+always wins.
+
+What each service can name (2026-08-18):
+
+| Service | Entity types resolved |
+|---|---|
+| `admin-node` | assessment, subscription (college *or* company), corporate, institute, job_role, student_list |
+| `corporate-node` | job_role, drive |
+| `institute-node` | job_role, drive, institute, campus |
+
+Notes that matter when adding a type:
+
+- The masters are **not consistent about id type** — `institute.institutes`,
+  `corporate.corporates` and `corporate.job_roles` key on `text`, while
+  `assessment.assessment_institute_map` and `assessment.student_lists` key on
+  `uuid`. Match the column's own type or the query either errors (`operator does
+  not exist: text = uuid`) or stops using the index.
+- A subscription row stores only the **subscriber id**, and that is a college or
+  a company depending on the screen, so both masters are searched.
+- A drive has no name of its own; it is labelled from
+  `institute."institute_campus_jobRole_drive_map"` as `role_name — drive #N`.
+- Resolution **never throws**. A failed lookup leaves the label null and the UI
+  falls back to the id, because the audit log is the screen people reach for
+  when other things are broken.
+- The frontends render `entityLabel || entityId`, so adding a type is a backend
+  change only.
+
+On UAT this took the trail from 74 unlabelled rows to 172 of 173 labelled; the
+one that stays blank is `audit_log.exported`, which has no entity.
+
+## Portal attribution: who did it, not who wrote it
+
+`portal` records the portal the action was **initiated from**, not the service
+that wrote the row. Several Admin screens are served by other services, so those
+call sites pass `portal: PORTALS.ADMIN` explicitly and override the service
+default:
+
+| Action | Written by | Filed under |
+|---|---|---|
+| `corporate.created` | `corporate-node` | ADMIN |
+| `institute.created` | `institute-node` | ADMIN |
+| `degree.created`, `department.created` | `institute-node` | ADMIN |
+| `course.created` | `institute-node` | INSTITUTE |
+
+`tenantId` stays the new company/college, so the tenant's own Activity Log shows
+its creation too. There is **one row per action** — the Admin trail is unscoped
+and reads every portal's rows, so a second copy would only double-count in a
+table where nothing can be corrected later.
+
+Onboarding events were added on 2026-08-18: `corporate.created` was not audited
+anywhere before that, and `institute.created` was filed under INSTITUTE and read
+`entityLabel` from an `instituteName` field that neither the created record nor
+the request body has, so it stored a null label. The corporate row is written
+only after the admin user is created, because the handler deletes the corporate
+when that step fails.
+
+**A new action must be added to the taxonomy of every service that names it** —
+`app/helpers/auditActions.js`. `audit()` is fire-and-forget and turns an unknown
+action into a log line, so a taxonomy miss produces **no row at all**, silently.
+`admin-node` also carries actions it never writes, because its `/audit/actions`
+feeds the Action filter for the whole trail.
 
 ## Two gotchas that cost a day
 
