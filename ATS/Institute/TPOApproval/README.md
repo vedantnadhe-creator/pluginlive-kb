@@ -89,7 +89,10 @@ Each field has two flags:
 
 - **Field-level granularity:** Each profile field can independently require approval
   (the student sees a red "Data Verification Pending" icon beside each affected field —
-  see `ATS/Student/Resume/` for the `pendingFields` guard convention)
+  see `ATS/Student/Resume/` for the `pendingFields` guard convention). Note that
+  `GET /students/:id/pending-data` seeds its response with a `currentCourse` object of
+  six **explicit nulls** even when nothing is pending, so "key present" never means
+  "awaiting approval" — consumers must also check the value.
 - **Freeze after verification:** Lock fields once approved to prevent re-editing
 - **Bulk approve:** Approve multiple pending requests at once
 - **Student resume management:** View and edit resumes during approval flow

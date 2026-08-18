@@ -122,28 +122,60 @@ path is the form used by the **My Resume → Education drawer** — both
 `Resume/DrawerComponents/EducationDetails/EducationalDrawer.js` and
 `EducationalModal.js` import it.
 
-**The guard must test that the key is present in `pendingFields`, never `?.value`:**
+### `GET /students/:id/pending-data` always returns a null scaffold
+
+This is the trap. `student-node/app/handlers/tpoApprovalHandler.js` seeds its response
+with a fixed `currentCourse` object **whether or not anything is pending**:
 
 ```js
-!isNew && pendingFields?.university !== undefined && <PendingIcon />   // correct
-!isNew && pendingFields?.university?.value !== null && <PendingIcon /> // WRONG
+currentCourse: {
+  averageMarks: null, noOfArrears: null, historyOfArrears: null,
+  university: null, specialisation: null, marks: null
+}
 ```
 
-A field with nothing awaiting verification is **absent** from `pendingFields` (which
-defaults to `{}`), so `?.value` is `undefined` — and `undefined !== null` is `true`.
-Seven guards used that form and therefore lit the icon for **every** student with no
-pending changes at all, including non-subscription students who never enter the
-approval workflow: `university` ×2, `historyOfArrears` ×2, `marks`/`averageMarks` ×2,
-`noOfArrears`. Fixed 2026-08-17; the other ~24 guards in the file already used
-`!== undefined`.
+Those keys are only overwritten by real `currentCourse.*` approval requests, so a
+student with **zero** rows in `student.student_profile_approval_requests` still
+receives all six as explicit `null`. Any consumer that treats "key present" or
+"not undefined" as "pending" will light the icon for every student on the platform.
 
-Symptom to recognise: icons on University / History of Arrears / Marks (percentage)
-but **not** on State / City / College Name / Year — the split is exactly which guard
-form each field used.
+### Both halves of the guard are required
+
+Four copies of the `pendingFields` builder walk that payload
+(`EducationalDrawer.js`, `EducationalModal.js`, `Resume/Style/EducationSection.js`,
+`Onboarding/Register/EducationNew/index.js`). Each must skip nulls —
+
+```js
+pendingCurrentCourse[fieldName] !== undefined && pendingCurrentCourse[fieldName] !== null
+```
+
+— otherwise it mints `{ value: null }` entries **and** sets `_requestId = 'pending'`,
+which also lights the card-header icon in `EducationalDetail.js`.
+
+The per-field guards then go through one helper, which checks the key **and** a real
+value. Checking only one half has shipped as a bug in each direction:
+
+```js
+const hasPending = (...names) =>
+  !isNew && names.some(n => pendingFields?.[n]?.value !== undefined
+                         && pendingFields?.[n]?.value !== null)
+```
+
+| guard | fails when | shipped |
+|---|---|---|
+| `pendingFields?.x?.value !== null` | key is **missing** — `undefined !== null` is `true` | before 2026-08-17 |
+| `pendingFields?.x !== undefined` | key present with a **null** value (the scaffold) | 2026-08-17, reverted 2026-08-18 |
+| `?.value` present **and** non-null | — | current, 2026-08-18 |
+
+**Symptom to recognise:** icons on University / History of Arrears / Marks (percentage)
+/ Current Arrears but **not** on State / City / College Name / Year / Degree /
+Department. That split is exactly the six scaffold keys (`specialisation` has no icon
+site), and it is the fingerprint of a null-value regression rather than a data problem
+— check the scaffold before hunting for approval rows.
 
 Beware the near-duplicate `Onboarding/Register/EducationNew/EducationFormPartial.js`,
-which solves the same problem with a `hasFieldPending()` helper and renders its icon
-**before** the label. Confirm which file you are looking at before editing.
+which solves the same problem with its own `hasFieldPending()` helper and renders the
+icon **before** the label. Confirm which file you are looking at before editing.
 
 ---
 
