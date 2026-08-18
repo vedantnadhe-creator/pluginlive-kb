@@ -18,6 +18,8 @@ After OTP verification, the browser stores a candidate-scoped `assessment:run` J
 - `POST /students/mix-match/assessment/:assessmentAssignedId/save-response`
 - `POST /students/mix-match/assessment/:assessmentAssignedId/proctoring/image`
 - `POST /students/mix-match/assessment/:assessmentAssignedId/proctoring/events`
+- `GET  /students/mix-match/pre-assessment`
+- `POST /students/mix-match/pre-assessment`
 - `POST /students/mix-match/assessment/:assessmentAssignedId/upload-audio`
 - `POST /students/mix-match/assessment/:assessmentAssignedId/upload-video`
 - `POST /students/mix-match/ai-interview/:assessmentAssignedId/start`
@@ -153,6 +155,28 @@ Both upstream endpoints (`/students/assessments/proctoring/{image,events}`) take
 
 Note `studentId` is optional upstream and deliberately so — OTP-invite candidates have no portal student id, and requiring it used to 400 them and skip proctoring entirely.
 
+### Pre-Assessment Registration
+
+The admin builds a field list in the wizard; the candidate fills it in at `/assessment/start` before the sitting. The form belongs to the **group**, not a part — it is collected once per float however many assessments it contains.
+
+- **Storage** — `assessment.pre_assessment_forms` (one row per group, `fields` is the admin's `FormField[]` verbatim) and `assessment.pre_assessment_responses` (one row per candidate per form, upserted on re-submit). Migration `20260818T063235Z__pre_assessment_registration.sql`.
+- **Admin** — `admin-react-v2` sends `preAssessmentForm: { fields }` as a **top-level** field of the Mix & Match payload, not as a part, since registration is not an assessment. `assignMixMatchAssessment` writes it against the new group.
+- **Candidate** — both routes take the candidate from the scoped token and the float from that candidate's own assignment, so there is no id to tamper with: an invite can only ever read or write its own float's form. Answers already on file come back with the form and take precedence over the local draft, so returning to a half-finished registration shows what was actually submitted.
+
+Before this, the wizard collected the field list and `partFor` returned `null` for it, so the config never left the browser and the candidate journey fell back to its `?pre=` scenario mock. That mock still drives the demo route, which has no invite to ask.
+
+### The resume step is the AI Interview's call
+
+The resume screen follows the AI Interview's `resumePolicy` (`mandatory` / `optional` / `not_required`), surfaced on the summary — **not** a `file` field on the registration form. The interview is the only part that reads a resume, so a float without one, or with the policy set to `not_required`, no longer asks for a document nobody will open.
+
+### Duration is a sum of what is known
+
+`totalDurationMinutes` used to require *every* part to have a configured duration, so one unknown blanked the whole total: the candidate saw no duration and the runner fell back to a hard-coded 60-minute clock regardless of the sitting. It now sums the parts that have one, with `durationPartial` flagging that the real sitting is at least that long.
+
+### Finishing is the candidate's call
+
+Finish is always available. It used to be disabled until every part was complete and refused outright while the AI Interview was unfinished; the confirm dialog already lists what is unanswered, which is where that belongs rather than in a button that cannot be pressed.
+
 ### Submit payload per type
 
 Each type is scored from a different shape, so the runner builds a different payload per part. These live in `assessment-react-v2/src/lib/examShapes.ts`, which imports only types so the transforms are unit-tested without a browser.
@@ -186,6 +210,7 @@ A combined final submission is blocked until AI Interview is complete. Every oth
 
 ## DEV deployments
 
-- `student-node` commits `e60c67b2`, `9f7dfca5`, `1f43c573`, `b6eeeb63`
-- `assessment-react-v2` commits `4602376`, `c70bee7`, `d1822b4`, `b7c78b4`, `da1432a`, `518203e`, `936a10d`, `6fafe50`, `8b0d903`, `2b5c9b3`, `19fe1e4`
-- `admin-react-v2` commits `741a9b4`, `c17e420`
+- `student-node` commits `e60c67b2`, `9f7dfca5`, `1f43c573`, `b6eeeb63`, `5fd5e9d7`, `69470352`
+- `assessment-react-v2` commits `4602376`, `c70bee7`, `d1822b4`, `b7c78b4`, `da1432a`, `518203e`, `936a10d`, `6fafe50`, `8b0d903`, `2b5c9b3`, `19fe1e4`, `071666e`, `d2484f1`
+- `admin-react-v2` commits `741a9b4`, `c17e420`, `892f520`, `5e44c23`
+- `admin-node` commit `8d04f84`
