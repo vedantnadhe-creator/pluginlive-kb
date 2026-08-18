@@ -157,7 +157,9 @@ Note `studentId` is optional upstream and deliberately so — OTP-invite candida
 
 ### Pre-Assessment Registration
 
-The admin builds a field list in the wizard; the candidate fills it in at `/assessment/start` before the sitting. The form belongs to the **group**, not a part — it is collected once per float however many assessments it contains.
+The admin builds a field list in the wizard; the candidate fills it in at `/assessment/start` before the sitting.
+
+**The overview decides whether that route is reached at all.** It originally called `preStages` on the *demo scenario* config, so an invited candidate's real form was never consulted and registration silently never appeared. It now fetches the float's actual form and the interview's resume policy, and routes on what the float carries. The form belongs to the **group**, not a part — it is collected once per float however many assessments it contains.
 
 - **Storage** — `assessment.pre_assessment_forms` (one row per group, `fields` is the admin's `FormField[]` verbatim) and `assessment.pre_assessment_responses` (one row per candidate per form, upserted on re-submit). Migration `20260818T063235Z__pre_assessment_registration.sql`.
 - **Admin** — `admin-react-v2` sends `preAssessmentForm: { fields }` as a **top-level** field of the Mix & Match payload, not as a part, since registration is not an assessment. `assignMixMatchAssessment` writes it against the new group.
@@ -166,6 +168,29 @@ The admin builds a field list in the wizard; the candidate fills it in at `/asse
 - **Candidate** — both routes take the candidate from the scoped token and the float from that candidate's own assignment, so there is no id to tamper with: an invite can only ever read or write its own float's form. Answers already on file come back with the form and take precedence over the local draft, so returning to a half-finished registration shows what was actually submitted.
 
 Before this, the wizard collected the field list and `partFor` returned `null` for it, so the config never left the browser and the candidate journey fell back to its `?pre=` scenario mock. That mock still drives the demo route, which has no invite to ask.
+
+### The readiness check verifies a face and a voice, not just permission
+
+The device check used to mark Camera and Microphone "ok" the moment `getUserMedia` resolved — true of a lens pointed at a wall or a muted mic. It now asks the same engine v1's `BiometricCheck` uses, proxied through `/api/assessment/verify/[kind]` so the engine URL stays server-side:
+
+| Check | Upstream | Passes on |
+| --- | --- | --- |
+| Camera | `POST /proctoring/verify-frame` | `success && face_detected` |
+| Microphone | `POST /proctoring/detect-audio` | `success && audio_detected` |
+
+`detect-audio` needs a few seconds of speech before it can judge a human voice, so the mic row records a ~3.5s sample while showing "Say a few words…".
+
+An engine that cannot answer — unreachable, 5xx, or no invite token on the demo route — returns `unchecked`, which **leaves the permission result standing**. A service blip must never become a locked door in front of a candidate who is ready to sit.
+
+Requires `FASTAPI_URL` (server-side only, v1's `REACT_APP_FASTAPI_URL`).
+
+### Leaving mid-test
+
+`beforeunload` raises the browser's own confirmation while an attempt is live, dropped once it is submitted so the completion page never argues about leaving. No site can choose that prompt's wording — every major engine has shown fixed text since 2016 — so the consequence is also stated in plain sight next to the timer: *"Don't reload or close this tab — your assessment will be submitted as it stands."*
+
+### The completion page is a dead end, deliberately
+
+It used to offer a Done button routing to `/`, which is the sign-in screen: a candidate who had just submitted could enter their email, take a fresh OTP and walk back into a finished assessment. The invite and candidate sessions are now cleared on arrival and the button is gone, so neither it nor the back button leads anywhere that can reopen the sitting.
 
 ### The resume step is the AI Interview's call
 
