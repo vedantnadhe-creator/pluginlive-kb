@@ -18,7 +18,7 @@ Self-hosted **LiteLLM** proxy that fronts all LLM calls for the platform: one Op
 
 - **LLM / chat calls** — Gemini, OpenAI, Groq. Routing is by **model name**; the calling service authenticates with a **virtual key** (per service: `fastapi-ai-engine`, `form-data-normalization`, …), and the real provider keys live on the gateway.
 - **Image generation** — **`gemini-2.5-flash-image`** (registered `gemini/gemini-2.5-flash-image`), **~$0.0387/image**. Called via the OpenAI-schema `/v1/images/generations` endpoint; tracked in `LiteLLM_SpendLogs` as `aimage_generation` and in `ai_usage.ai_usage_ledger` as `modality='image'`. Used by Assessment communication/hinglish "Question Based Response" question generation. **Replaced Imagen on 2026-08-17** — see below.
-- **Excluded — embeddings.** `pg-vector-api-service` / Chroma embeddings (`text-embedding-004`, `gemini-embedding-001`, `text-embedding-3-small`) stay native — routing them would change vector dimensions and corrupt existing vector stores.
+- **Embeddings — `gemini-embedding-001` is registered on DEV + UAT (2026-08-18), but nothing calls it through the gateway yet.** See *Embeddings* below. The other embedding models (`text-embedding-004`, `text-embedding-3-small`, Chroma) are still native.
 - **Excluded — STT/TTS** (Deepgram, ElevenLabs, Azure Speech): not routable through this gateway.
 
 Services opt in via env vars `LITELLM_PROXY_URL` + `LITELLM_VIRTUAL_KEY` (default-off — unset = native provider calls, unchanged behaviour).
@@ -36,6 +36,30 @@ Services opt in via env vars `LITELLM_PROXY_URL` + `LITELLM_VIRTUAL_KEY` (defaul
 
 - **Rotate / change a provider API key**, add models, mint virtual keys: LiteLLM dashboard → Models / Keys (live, no redeploy) for DB-managed models. Models defined in `config.yaml` are read-only in the UI; change those by editing `config.yaml` and `docker restart litellm`.
 - **Gotcha:** the wildcard `"*"` model entry mis-routes bare `gemini-*` names to **Vertex AI** ("default credentials not found"). Every Gemini model an app uses must be registered explicitly with the `gemini/` prefix in `config.yaml`.
+
+### Embeddings — `gemini-embedding-001` registered on DEV + UAT (2026-08-18)
+
+Embeddings had been deliberately kept off the gateway, on the assumption that routing them would change the vector and corrupt the pgvector store. **That was tested and is not true for this model** — a gateway vector is bit-for-bit comparable to the direct-Google one.
+
+Registered in `~/litellm/config.yaml` on **DEV and UAT** (not the DB / UI — see the key note below), ahead of the `"*"` catch-all:
+
+```yaml
+  - model_name: gemini-embedding-001
+    litellm_params:
+      model: gemini/gemini-embedding-001
+      api_key: AQ.Ab8RN6K…          # inline, see below
+```
+
+Picked up with `docker restart litellm` (the file is bind-mounted). `config.yaml` is `chmod 600` on both boxes because it now holds a provider key.
+
+**Verified on both envs:** `/v1/models` lists it · `POST /v1/embeddings` with `{"dimensions": 1536}` → 200, 1536 dims, ~0.6s · **cosine 1.000000** against the same text embedded directly at `generativelanguage.googleapis.com` with `taskType: RETRIEVAL_QUERY` · works with `form-data-normalization`'s own virtual key · `gemini-2.5-flash` chat unaffected by the restart.
+
+**Why the key is inline and not `os.environ/GEMINI_API_KEY`:** the `litellm` container's own `GEMINI_API_KEY` is an `AIza…` key that is **dead on both DEV and UAT** — tested directly against Google, it returns `400 API key not valid` for chat *and* embeddings. Chat only works because each DB-managed model row carries its own key, and those are **encrypted**, so the working key cannot be read back out of `LiteLLM_ProxyModelTable`. The working key is the consolidated `AQ.Ab8RN6K…` that `datanormalization` already runs on. Adding it as a container env var would mean recreating the container, so it goes in the config file instead.
+
+**Still open:**
+- **PROD has no embeddings model.** Same one-entry addition is needed there before any code switch (PROD is `store_model_in_db: true`, so `POST /model/new` works without a restart).
+- **No caller uses it yet.** `form-data-normalization` still embeds directly against Google in `services/semantic_roles.py` (live — role search on the candidate-metrics dashboard) and `scripts/build_role_index.py` (one-off backfill). Switching either before PROD is registered would break role search there.
+- The `fastapi-ai-engine` passthrough route `/llm/v1/embeddings` is written but **uncommitted** on `feat/llm-embeddings`.
 
 ### Imagen retirement, 2026-08-17 — image generation outage
 
