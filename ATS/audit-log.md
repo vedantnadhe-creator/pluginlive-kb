@@ -4,8 +4,9 @@
 > tenant. Admin sees it as **Audit Log**; Corporate and Institute see it as
 > **Activity Log**.
 >
-> **Status:** DEV + UAT (2026-08-07; entity/actor names and onboarding events
-> 2026-08-18). PROD pending.
+> **Status:** DEV + UAT (2026-08-07; entity/actor names and onboarding events,
+> dynamic entity filter and the System Config safety net 2026-08-18).
+> PROD pending.
 
 ## Where the data lives
 
@@ -50,12 +51,13 @@ starve the request path of connections.
 
 ## Endpoints
 
-All three services expose the same three routes, all requiring a JWT:
+All three services expose the same routes, all requiring a JWT:
 
 | Route | Notes |
 |---|---|
 | `GET /audit/logs` | Cursor-paginated (`cursorOccurredAt` + `cursorId`) |
 | `GET /audit/actions` | The action taxonomy, so the UI never hardcodes it |
+| `GET /audit/entity-types` | `admin-node` only. Distinct `entity_type` values **present in the table** |
 | `GET /audit/logs/export` | XLSX; capped, with `X-Audit-Row-Count` and `X-Audit-Truncated` headers |
 
 **Tenant scope comes from the JWT, never from a request param.** Corporate reads
@@ -64,6 +66,21 @@ deliberately different from the rest of these services, where handlers take
 `instituteCampusId` from the URL — for an audit trail that would let any
 authenticated user read another tenant's history by editing the path. A token
 with no tenant scope gets `403`, not an unfiltered list.
+
+### Why the Entity filter is data-driven, not a taxonomy
+
+The Admin **Entity** dropdown used to be a hardcoded list. It offered types
+nothing had ever written, so picking one returned an empty page and the filter
+read as broken. `GET /audit/entity-types` returns
+`SELECT DISTINCT entity_type ... WHERE entity_type IS NOT NULL ORDER BY 1`, so
+every option is guaranteed to have rows behind it.
+
+On UAT (2026-08-18) that is: `assessment`, `audit_log`, `campus`, `course`,
+`job_role`, `subscription`, `user`.
+
+The trade-off is deliberate: a brand-new entity type does not appear in the
+filter until its first row exists. That is the correct behaviour for a filter
+over an append-only table — the dropdown describes the data, not the code.
 
 ## Who and What are shown as names, not ids
 
@@ -134,6 +151,36 @@ anywhere before that, and `institute.created` was filed under INSTITUTE and read
 the request body has, so it stored a null label. The corporate row is written
 only after the admin user is created, because the handler deletes the corporate
 when that step fails.
+
+## System Configuration: audited by a route hook, not per handler
+
+System Config reuses long-lived CRUD endpoints across many masters, so wiring
+`audit()` into each handler meant a new master endpoint stayed silently
+unaudited until somebody remembered. Since 2026-08-18 `institute-node` records
+**every successful mutation on that route surface** from an `onResponse` hook —
+`app/helpers/systemConfigAudit.js`, registered in `index.js`.
+
+It fires only when all of these hold:
+
+- method is `POST` / `PUT` / `PATCH` / `DELETE`
+- `reply.statusCode` is 2xx — a rejected edit never produces a row
+- the route matches the System Config surface (`/institutes/crud/{domain,degree,
+  streams,specialisation,category,degreeType,degreeLevel,
+  updateStreamSpecialisationMapIfNotExist}`, `/institutes/admin/*OthersUpdate`,
+  `/institutes/instituteCampus/:id/courses`)
+- `getAuditContext().auditRecorded` is false
+
+That last check is what makes the hook a **safety net rather than a duplicate**:
+a handler that already wrote a richer, domain-specific event (say
+`course.created`) sets the flag, and the hook stands down. Everything else lands
+as `system_config.changed` under `portal: ADMIN`, with the route, HTTP method
+and payload in `metadata`.
+
+Known rough edge: `configArea()` matches lowercase `specialisation`, so
+`updateStreamSpecialisationMapIfNotExist` and `specializationOthersUpdate` (capital
+S / `z` spelling) fall through to the generic label *"System configuration"*.
+The row is still written and `metadata.route` identifies it exactly — only the
+display label is coarse.
 
 **A new action must be added to the taxonomy of every service that names it** —
 `app/helpers/auditActions.js`. `audit()` is fire-and-forget and turns an unknown
