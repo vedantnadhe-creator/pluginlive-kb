@@ -184,6 +184,69 @@ The Roles module is the core of the corporate portal. It manages the entire job 
 
 ---
 
+## Candidate resume drawers render a PDF, not profile data (2026-08-19, DEV + UAT)
+
+Every corporate surface that shows a candidate's resume used to render
+`StudentDrawerContent` — education, skills and projects as HTML sections, i.e. a
+profile data dump rather than a resume. They now render
+`components/ResumePreview`, an actual document, using the same treatment as the
+**JD attachment preview** in institute-react's role form (`AutoJDFill`): pages
+rasterised to images with pdfjs and stacked in a scrollable frame.
+
+**Seven surfaces, one component:**
+
+| Screen | Component | Before |
+|---|---|---|
+| Role preview → candidate | `modules/JobPreview/ViewResumeDrawer` | uploaded PDF via `<object>`, else HTML sections |
+| Role preview → Institute Info | same, via `PlacementHistoryWithResume` | as above |
+| Drives → drive role → candidate | `Drives/…/ViewCandidateInfoDrawer` | as above |
+| Exp-Candidates → drive role → candidate | `Exp-Candidates/…/ViewCandidateInfoDrawer` | as above |
+| Interview details → candidate | `Page/…/InterviewDetails/CandidateInfo` | as above |
+| Role → ATS pipeline → candidate | `Roles/ViewRole/ApplicantTrackingSystem/…/CandidateViewDrawer` | **HTML only — no CV preview at all** |
+| Interviewer dashboard → candidate | `InterviewerDashboard/…/CandidateViewDrawer` | **HTML only — no CV preview at all** |
+
+**Source order** (`components/ResumePreview/index.js`):
+
+1. the CV the candidate uploaded, when a browser can render it
+2. otherwise the **generated system resume**, fetched as a PDF from
+   `POST /students/resume/bulkdownload` with `{ studentIds: [[id]] }` — the same
+   endpoint the Download Resume action uses, so preview and download cannot
+   disagree.
+
+**Two URL shapes.** The role mapping stores `cvUrl` as a plain string
+(`student.student_role_mapping."cvUrl"`); the student record stores jsonb
+`{ url, name, size }`. `ResumePreview` normalises both. `getUploadedCvUrl`
+(exported from the same file) still gates on `isSystemResume === false && cvUrl`
+for the role-scoped surfaces; the two drawers driven off the student record have
+no such flag and read `candidateDetails?.cvUrl` directly.
+
+**What candidates actually have**, measured on UAT `student_role_mapping`:
+12,383 have no upload and get the generated resume, 2,619 uploaded a `.pdf` that
+renders directly, and 437 are `.doc`/`.docx`, Drive links or extensionless.
+Google Drive links are HTML pages behind an auth redirect, not files, so they
+can neither be fetched by pdfjs nor framed — those are not dropped, the
+generated resume is shown with a notice and an **Open uploaded CV** button.
+
+⚠️ **`pdfjs-dist` needs its own splitChunks cacheGroup here.** It is ~2 MB and is
+imported dynamically, but `config/webpack.prod.js` has a vendor group
+(`test: /node_modules/`, `chunks: 'all'`) that sweeps async chunks in too — so
+without a dedicated group it lands in the always-loaded `vendors` bundle and the
+lazy import buys nothing. The `pdfjs` group uses **`chunks: 'async'`** and
+priority 20 (must beat vendor's 10). Verified on a production build: pdfjs emits
+as its own 1.56 MiB chunk and is absent from the `main` entrypoint. Its `canvas`
+dependency is *optional*, so the image build will not fail on it.
+
+⚠️ **Do not `npm install --legacy-peer-deps` in this repo.** That flag stops npm
+installing peer dependencies and silently prunes `react-is` (peer of
+styled-components) and `date-fns` (peer of react-date-range), after which the
+build dies with ~15 unrelated `Module not found` errors. The Dockerfile uses
+`npm install -f`, which does install peers — use that locally too. Note the repo
+tracks `yarn.lock` while `package-lock.json` is gitignored and the image builds
+with npm; running npm against the yarn lockfile rewrites it with merged ranges
+and stray additions, which should not be committed.
+
+---
+
 ## Sub-Modules
 
 | Sub-Module | Folder | Description |
