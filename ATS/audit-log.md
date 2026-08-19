@@ -5,8 +5,8 @@
 > **Activity Log**.
 >
 > **Status:** DEV + UAT (2026-08-07; entity/actor names and onboarding events,
-> dynamic entity filter and the System Config safety net 2026-08-18).
-> PROD pending.
+> dynamic entity filter and the System Config safety net 2026-08-18; student
+> module coverage and the Who-column fixes 2026-08-19). PROD pending.
 
 ## Where the data lives
 
@@ -42,6 +42,7 @@ and **when unset it is derived** from that service's own database URL with
 | `admin-node` | `DATABASE_URL_ADMIN` |
 | `corporate-node` | `DATABASE_URL` |
 | `institute-node` | `DATABASE_URL` |
+| `student-node` | `DATABASE_URL_STUDENT` |
 
 So an environment that forgets the variable still audits into its **own**
 database rather than silently falling back to a hardcoded one. As of
@@ -94,6 +95,39 @@ gain names with no backfill.
 | **Who** (`actorName`) | one batched read of `user_management.users` per page | `admin-node` only (`app/models/AuditActor.js`) |
 | **Entity** (`entityLabel`) | one batched read per entity type per page | all three services (`app/models/AuditEntity.js`) |
 
+### Who: an id must never reach the screen
+
+Three separate faults each surfaced as a raw id in the Who column, all fixed on
+2026-08-19 and all found by querying the UAT trail rather than reading code:
+
+1. **19 rows had no actor at all.** Their routes have `isPrivate: true`
+   *commented out* in `app/routes/assessment.js` (37 routes do), so `verifyToken`
+   never installs, `setAuditActor` is never called, and every
+   `subscription.assigned` row landed anonymous. `admin-node`'s and
+   `student-node`'s `onRequest` hooks now call `setAuditActorFromRequest`, which
+   decodes the token when one is sent. It deliberately **rejects nothing** —
+   whether a route enforces auth stays the route's decision, and this is only
+   about attribution. Those routes are still unauthenticated; that is a separate,
+   open issue.
+2. **22 rows carried an actor id present in no user table**
+   (`63e4de1011d6db2f8d400580`, role `system`). `AuditActor.findNamesByIds` now
+   searches `admin.admin_users` as well as `user_management.users`, with
+   user_management winning a collision since that is where login tokens are
+   minted.
+3. **An unresolved actor rendered as the raw id.** `toActorDisplayName` now
+   returns a label instead: the resolved name, else the email, else `System` for
+   a `system` role, else `Unknown user`, else `Unknown`. A deleted user is
+   deliberately **not** called "System" — that would assert something false about
+   who acted, and an audit row must never be more confident than its evidence.
+
+`admin-react` renders `actorName` and keeps the id in a tooltip, so the exact
+identifier is still one hover away for incident work. Verified on UAT: 0 of 60
+rows display a raw id.
+
+Note that login tokens carry `role` and `_id` and **no email**, which is why
+`actor_email` is null on essentially every row — the name lookup is the only
+thing standing between a reader and a hex string.
+
 The entity resolver only fills rows whose `entity_label` is **null**. A label a
 call site captured at write time is what the entity was called at the time and
 always wins.
@@ -102,7 +136,7 @@ What each service can name (2026-08-18):
 
 | Service | Entity types resolved |
 |---|---|
-| `admin-node` | assessment, subscription (college *or* company), corporate, institute, job_role, student_list |
+| `admin-node` | assessment, subscription (college *or* company), corporate, institute, job_role, student_list, student |
 | `corporate-node` | job_role, drive |
 | `institute-node` | job_role, drive, institute, campus |
 
@@ -151,6 +185,60 @@ anywhere before that, and `institute.created` was filed under INSTITUTE and read
 the request body has, so it stored a null label. The corporate row is written
 only after the admin user is created, because the handler deletes the corporate
 when that step fails.
+
+## The student module: audited by route hook, with two exclusion lists
+
+`student-node` joined the trail on 2026-08-19. It is a **writer only** — it has
+no `/audit/*` routes, because the Admin portal already reads every service's
+rows out of the shared `audit` schema, and a student-facing read path over a
+cross-tenant table would be a liability.
+
+Coverage comes from an `onResponse` hook (`app/helpers/studentAudit.js`), for
+the same reason System Config does: 182 hand-wired `audit()` calls would leave
+each new endpoint silently unaudited until somebody remembered it.
+
+**A blanket "record every POST/PUT/PATCH/DELETE" rule is wrong here**, and this
+is the part to understand before touching the file. 80 of the 182 mutating
+routes are not writes:
+
+- **Reads sent as POST/PUT.** `/students/details/list`, `/students/skills/list`,
+  `/appliedstudents/list/:roleId`, `/students/count/:instituteCampusId` and every
+  `.../export` route are queries with a request body. Recording them as changes
+  buries real edits under search traffic.
+- **Assessment delivery telemetry.** Per-question autosave, proctoring frames,
+  media uploads, score recomputation and backfills fire many times per attempt.
+  They belong in assessment reporting, not in a log read to answer "who changed
+  this record?".
+
+That leaves **102 audited routes**. Anything matching neither list is audited,
+so the maintenance burden is inverted: you exclude noise rather than remember to
+include signal.
+
+Only writes to the student record itself get a named action — `student.created`,
+`student.updated`, `student.deleted`. Everything else is `student_record.changed`
+with `metadata.route` and `metadata.area` carrying the detail, because a filter
+dropdown with forty near-identical entries is not one anybody uses.
+`STUDENT_RECORD_ROUTES` lists the record routes **explicitly**: matching on shape
+(`/students/<anything>`) also catches `/students/map-with-drive` and
+`/students/saveBehaviourSpecialisation`, which are not student-record writes.
+
+Two things differ from every other service:
+
+- **`portal` is not a service constant.** All four portals call `student-node` —
+  an institute TPO, a corporate recruiter, an admin and the student — so it is
+  derived per request from the token by `portalFromUser`: `student_id` → STUDENT,
+  `corporate_id` → CORPORATE, `institute_id` → INSTITUTE, none of them → ADMIN.
+  A student's own token omits `institute_id`, so their rows carry no `tenantId`;
+  the Admin trail is unscoped and still shows them.
+- **The audit client is required lazily, inside a try/catch.**
+  `prisma/generated-audit` is gitignored and built into the image, so a
+  top-level require would take the whole service down on any box where that step
+  has not run. Losing the trail is bad; failing to boot because of it is worse.
+
+For a row pointing at a real student the hook sends **no** `entityLabel`, so the
+Admin trail resolves the id to the student's name. The area name ("Student
+resume", "Offer") is only used for the generic rows, which point at no single
+named record.
 
 ## System Configuration: audited by a route hook, not per handler
 
@@ -217,9 +305,28 @@ new AuditPrismaClient({
 });
 ```
 
-Applied to `corporate-node` and `institute-node` on 2026-08-07. **`admin-node`
-still uses the `datasourceUrl` shorthand** and works only because its current
-images carry the 6.19.3 client — a clean rebuild will break it the same way.
+Applied to `corporate-node` and `institute-node` on 2026-08-07, and to
+`admin-node` and `student-node` since — all four now use the `datasources`
+form, so a clean rebuild is safe everywhere.
+
+### 3. `schema-audit.prisma` must list both OpenSSL engine targets
+
+All four `schema-audit.prisma` files pinned only `linux-arm64-openssl-3.0.x`.
+That is fine on DEV and UAT and **dead on PROD**, which runs OpenSSL 1.1 — the
+audit engine would have had no matching binary, surfacing as a 500 on the trail
+exactly where it matters most. Fixed 2026-08-19; all four now list both:
+
+```prisma
+binaryTargets = ["native", "linux-arm64-openssl-1.1.x", "linux-arm64-openssl-3.0.x", "windows"]
+```
+
+For `student-node` this is not a PROD-only concern: its image is
+`arm64v8/node:18.20-bullseye`, which ships **OpenSSL 1.1.1**, so 1.1.x is the
+engine that actually loads on every environment. The other services build on
+`node:20-slim` (bookworm, OpenSSL 3).
+
+`native` resolves at build time, which is exactly why the omission was invisible
+— it silently produced the right engine on the boxes anyone tested on.
 
 ### 2. The audit Prisma engine needs OpenSSL in the image
 
