@@ -79,6 +79,39 @@ Question generation treats a failed image as fatal, so communication/hinglish `g
 
 **Alternative tiers** if quality needs raising: `gemini-3.1-flash-image` (~$0.067/image at 1K) or `gemini-3-pro-image` (~$0.134/image). Both are registered nowhere yet.
 
+### Spend tags — `module:` + `service:` on every call (2026-08-19, DEV + UAT)
+
+Before this, **73% of UAT gateway traffic carried no module tag**: 473 of 646 calls in a week. Only `fastapi-ai-engine`'s own OpenAI-SDK calls were tagged. `pg-vector-api-service` (348 calls), `form-data-normalization` (125) and `resume-parser` arrived with nothing but a User-Agent, so cost could not be split by workload.
+
+**Two mechanisms work, both verified against the live gateway.** Body `metadata.tags: [...]` (what `portkey_gateway.params_with_tags` sends via the OpenAI SDK's `extra_body`), and the header **`x-litellm-tags: a,b`**. The header is the cheap one — set it once in `default_headers` where the client is built and every call site inherits it, instead of editing ~22 call sites. Both land in `LiteLLM_SpendLogs.request_tags`.
+
+**Convention: `module:<Name>` + `service:<logical service>`.** `module:` matches what the engine already emitted. `service:` is new and exists because the engine's `/llm` passthrough authenticates with the **engine's own virtual key** — a forwarded call is billed to `fastapi-ai-engine`, so without a service tag the real caller vanishes. Routing through the engine therefore *loses* the per-service attribution a dedicated virtual key gives; the tag puts it back.
+
+| Service | Where the tag is set | Modules emitted |
+|---|---|---|
+| `form-data-normalization` | `services/posthog_llm.py` `get_openai_client` (LiteLLM tier only) + `services/gemini_client.py` `_gateway_target` | `Normalization`, `Entity_Matcher` |
+| `pg-vector-api-service` | `_create_litellm_client(module)` in `src/core/llm_fallback.py` and `query_rewriter.py` (module-level singletons) | `Entity_Disambiguation`, `Query_Rewrite` |
+| `resume-parser` | `USING API/gateway_client.py` request headers | `CV_Parser` |
+| `fastapi-ai-engine` `/llm` passthrough | `routers/llm_proxy.py` `_tag_headers()` | caller's allowlisted module + owning service |
+| `fastapi-ai-engine` image gen | `image_generation_google.py` via `params_with_tags` | whatever the usage context holds |
+
+**The engine tier is deliberately NOT tagged by callers.** When a service routes through `AI_ENGINE_LLM_URL`, the engine tags on its behalf from `X-AI-Module`. Tags are built from `ALLOWED_MODULES`/`MODULE_SERVICES`, **never echoed from the request** — an unknown `X-AI-Module` produces *no* tags rather than caller-chosen ones, because these values land in cost reporting. Verified: `X-AI-Module: bogus:injected` → served, untagged.
+
+**Image generation had been untagged entirely** — 8 calls/week at ~$0.0387 each, the most expensive call the platform makes, so Communication's real cost was understated. It bypassed the completion path; `_params_with_tags` was renamed `params_with_tags` and applied at `client.images.generate`.
+
+**Verified on both envs** by firing one call per service and reading `request_tags` back:
+
+```
+form-data-normalization  ["module:Entity_Matcher", "service:ats-normalization", ...]
+pg-vector-api-service    ["module:Entity_Disambiguation", "service:ats-vector-search", ...]
+resume-parser            ["module:CV_Parser", "service:resume-parser", ...]
+fastapi-ai-engine        ["module:Resume_Match", "service:resume-match", ...]   (passthrough)
+```
+
+⚠️ **`form-data-normalization` has four containers on UAT** — `datanormalization`, `-worker`, `-cron`, `-export-worker` — all on the same `datanormalization:api` image. `deploy.sh` recreates only the API one; the other three must be recreated by hand or they keep running the old image. This is how the tag change nearly shipped half-applied.
+
+Note `resume-parser` is **not** in `auto_deploy.sh`: pull `master`, `docker build -t resumeparser:api .` from `USING API/`, then `docker run` re-passing `OPENAI_API_KEY` + both `LITELLM_*` flags (none of which are baked).
+
 ### Gotcha: a bad key on one model is SILENT — router fallbacks hide it
 
 Each DB-managed model row stores its **own** API key, and the keys can drift apart between model rows and between environments. When a model's key is invalid, the call does **not** surface an error to the app — LiteLLM's router fallback quietly serves the request from a different model, so the caller gets a normal 200 and never learns it was downgraded.
