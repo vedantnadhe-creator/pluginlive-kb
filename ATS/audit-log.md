@@ -258,6 +258,51 @@ Admin trail resolves the id to the student's name. The area name ("Student
 resume", "Offer") is only used for the generic rows, which point at no single
 named record.
 
+## Which door a student came through
+
+Five routes create a student, and "was this typed in, uploaded, or imported?" is
+the question people ask first when a record looks wrong. That is a property of
+the **action**, not of the actor, so the action carries it and WHO keeps meaning
+who.
+
+| Route | Auth | Action | Channel |
+|---|---|---|---|
+| `POST /students/:instituteCampusId/:courseId` | `isPrivate` | `student.created` | typed in at the institute |
+| `POST /students/bulkcreate` | `isPrivate` | `student.bulk_created` | bulk upload |
+| `POST /students/tally/create` | **none** | `student.imported` | Tally form |
+| `POST /students/create-full` | `privateByKey` | `student.imported` | form normalization |
+| `POST /students` | **none** | `student.self_registered` | public sign-up |
+
+Both imports share one action because they are two hops of the same channel —
+the Tally form feeds normalization, which calls `create-full`. The summary says
+which hop.
+
+### Why some of these say System and it is not a bug
+
+`create-full` is authenticated by a shared `auth-key` that carries **no
+identity**, and the Tally and public routes by nothing at all. There is no token
+to name an actor from, so those rows previously had `actor_id = NULL` and
+rendered as **"Unknown"** — which reads like a fault rather than like a machine
+import.
+
+A descriptor can now set `systemActor: true`, and the hook then files the row as
+`portal: SYSTEM` with `actorRole: "system"`, so it renders as **System**. It
+applies **only when no real actor was captured** — a person acting on one of
+those routes still gets the credit.
+
+Note the shape of the fix: the honest answer to "who imported this?" is *nobody,
+a machine did* — so WHO says System and the **action** says it came from the
+Tally form. Putting the channel in the WHO column would have been the wrong
+place for it.
+
+### A read that had been logging as a change
+
+`POST /students/tpo/:instituteCampusId` is `getAllStudentsCount` — a count, with
+no `count` anywhere in its path, so the read filter in `studentAudit.js` missed
+it and it recorded as a state change. Now excluded explicitly. Worth remembering
+when adding routes: **the read filter matches on path text, and this service
+names several reads in ways that do not say "read"**.
+
 ## Assessment participation: taken, abandoned, never turned up
 
 Three events, covering real and practice attempts alike — `is_practice` is
