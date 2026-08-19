@@ -310,13 +310,40 @@ Schema — two migrations, both applied to the shared DEV/UAT database on
 |---|---|
 | `20260819T061054Z__export_jobs_email_delivery.sql` | `notify_email`, `notified_at`, `started_at`, `expires_at`, `row_count`, `column_count`; `idx_export_jobs_status_created_at` (the claim) and partial `idx_export_jobs_expires_at WHERE file_bytes IS NOT NULL` (the sweep) |
 | `20260819T104253Z__export_jobs_queue_env.sql` | `queue_env` + `idx_export_jobs_status_queue_env_created_at` — see the DEV/UAT queue-sharing warning above |
+| `20260819T122353Z__export_jobs_dataset.sql` | `dataset` (NOT NULL DEFAULT `'live_candidates'`, so no backfill) — which of the two exports a job is for |
 
-**Still open:** the *other* export on the same menu — Analytics → Candidate
-Metrics → `POST /api/candidates/downloadcandidate` — is still fully
-synchronous, takes no filters at all (its request model accepts only
-`columns`), styles every cell, and streams inline behind nginx's default 60 s
-`proxy_read_timeout`. It 504s on the full 11k-candidate set and none of the
-above touches it.
+**Both Analytics exports now share this queue** — *2026-08-19*. The other one,
+Analytics → Candidate Metrics → `POST /api/candidates/downloadcandidate`, was
+fully synchronous: it built a styled xlsx inside the web process and streamed it
+inline, behind nginx's default 60 s `proxy_read_timeout`. Measured on UAT,
+13,680 rows (candidates LEFT JOINed to their role mappings) × 53 columns takes
+**~44 s**, and users routinely select far more than 53 of the 812 available
+columns — so that download **failed every time**, and because it had no job row,
+nothing recorded that it had.
+
+It now posts to `/api/candidates/download/async`, which inserts an `export_jobs`
+row with `dataset = 'ingested_candidates'`. `/downloadcandidate` remains, marked
+deprecated, so nothing breaks mid-rollout.
+
+| `dataset` | builder | used by |
+|---|---|---|
+| `live_candidates` (default) | `db_service.download_live_candidates_data` | Candidate Metric Details |
+| `ingested_candidates` | `db_service.download_ingested_candidates_data` | Candidate Metrics |
+
+`workers/export_worker._DATASET_BUILDERS` dispatches on it; both builders return
+the same `{stream, row_count, column_count}`, so storage, retention and the
+email are identical either way. Job ids are global (one table), so the Candidate
+Metrics page polls the same `/api/student-metrics/download/status/{job_id}`.
+
+⚠️ The ingested export's **colour coding is load-bearing** and was preserved
+exactly when the build moved out of the router: blue header = the column carries
+normalized data for at least one row, red cell = the normalizer marked the value
+invalid, green cell = the value was matched to a master record (excluding the
+`no_green_fields` set). It now uses a `write_only` workbook — the old code held
+every styled cell of the grid in memory at once — and parses each row's
+normalized JSON once rather than twice.
+
+Both dashboards render the shared `components/ExportStatusPanel` in admin-react.
 
 **Degree / Department filter options = the ACTIVE master, matched by id OR text**
 — *UAT + DEV, 2026-07-31.* `GET /api/student-metrics/degrees` and `/departments`
