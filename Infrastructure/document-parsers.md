@@ -170,7 +170,7 @@ which two concurrent requests clobbered) is likewise byte-identical.
 Standard `auto_deploy.sh`; the parsers ship with the engine:
 
 ```bash
-ssh ubuntu@uat.pluginlive.com "cd ~ && ./auto_deploy.sh fastapi-ai-engine <branch>"
+ssh ubuntu@uat.pluginlive.com "cd ~ && ./auto_deploy.sh fast-api <branch>"   # app name is fast-api (id 15), NOT fastapi-ai-engine
 ssh ubuntu@uat.pluginlive.com "cd ~ && ./auto_deploy.sh student-node <branch>"
 ssh ubuntu@uat.pluginlive.com "cd ~ && ./auto_deploy.sh corporate-node <branch>"
 ```
@@ -195,3 +195,108 @@ carried over with no Dockerfile change.
 publicly reachable — an empty `POST /parseResume` returns a **Werkzeug debugger
 page** with a stack trace. That disappears when the standalone service is
 retired, but it is worth fixing sooner.
+
+---
+
+## 2026-08-19 — CV parsing outage, and the UAT engine deploy that closed the JD 404
+
+Two live breakages, both from **configuration drift and deploy ordering**, not code.
+
+### 1. UAT CV parsing returned 401 for a month
+
+`POST resume-parser.uat.pluginlive.com/parseResumeAndUpload` (and `:5011` directly)
+returned **HTTP 500** with:
+
+```
+google.genai.errors.ClientError: 401 UNAUTHENTICATED
+"Expected OAuth 2 access token, login cookie or other valid authentication credential"
+```
+
+**Root cause.** The `resumeparser` container held only `GEMINI_API_KEY=AQ.…` and
+**no `LITELLM_*` variables**. The `AQ.` key is not an AI-Studio (`AIza…`) key —
+LiteLLM sends it correctly, but the raw `google-genai` SDK treats it as an OAuth
+token and Google rejects it. Those gateway variables are passed at `docker run`
+and are **not baked into the image**, so when the container was recreated on
+**2026-07-18** they were silently dropped and the parser fell back to calling
+Google directly.
+
+Proven by controlled comparison — same image, same key, only the env differs:
+
+| | LiteLLM env | Result |
+|---|---|---|
+| DEV standalone parser `:5012` | present | 200, parsed |
+| UAT `resumeparser` `:5011` | **absent** | 500 / 401 |
+
+**Fix** — recreate with the gateway env (the virtual key already exists on the box):
+
+```bash
+OPENAI=$(docker inspect resumeparser --format '{{range .Config.Env}}{{println .}}{{end}}' \
+         | grep '^OPENAI_API_KEY=' | cut -d= -f2-)     # NOT baked into the image — re-pass it
+docker rm -f resumeparser
+docker run -itd --name resumeparser --restart unless-stopped -p 5011:5012 \
+  --log-opt tag="service_name={{.Name}}" \
+  -e OPENAI_API_KEY="$OPENAI" \
+  -e LITELLM_PROXY_URL=http://172.17.0.1:4000/v1 \
+  -e LITELLM_VIRTUAL_KEY="$(cat ~/litellm/resume_parser_vkey.txt)" \
+  resumeparser:api
+```
+
+Verified: real CV → **HTTP 200**, correct name/email/phone, billed to the
+`resume-parser` virtual key on the UAT gateway. `GEMINI_API_KEY` and
+`GOOGLE_SERVICE_ACCOUNT_KEY` **are** baked into the image; `OPENAI_API_KEY` is not.
+
+### 2. DEV normalization was calling the UAT parser
+
+`form-data-normalization` on DEV had
+`PDF_PARSER_URL=https://resume-parser.uat.pluginlive.com/parseResumeAndUpload`,
+so one broken UAT container took out CV parsing on **both** environments. The
+same `.env` also defined `PDF_PARSER_URL` **twice** (`…/parseResume1` first,
+which Docker discards — only the last definition survives).
+
+Repointed to DEV's own parser and the dead duplicate removed:
+
+```
+PDF_PARSER_URL=http://172.17.0.1:5012/parseResumeAndUpload
+```
+
+Applied by recreating the container against the existing image (`--env-file .env`),
+no rebuild. Verified from inside the container with the real `AUTH-KEY` → 200.
+
+### 3. UAT JD parsing was 404ing — consumer deployed before provider
+
+`corporate-node` was deployed on UAT with the consolidated code calling
+`jd-parser/parse/s3`, while the UAT engine image still predated the merge:
+
+```
+POST http://172.17.0.1:8011/jd-parser/parse/s3  ->  404
+```
+
+`beBaseUrl.AI` has **no hardcoded fallback by design**, so every JD parse failed.
+Fixed by deploying the engine on UAT (`./auto_deploy.sh fast-api UAT`, at
+`c89bf29`). After the deploy: `/jd-parser/parse/text` → **200** with correct
+title/skills/cities, `/cv-parser/parseResume` → **200** with the right profile
+shape, and `parse/s3` returns 422 on an empty body rather than 404.
+
+**Ordering rule:** the engine must be deployed *before* `student-node` /
+`corporate-node`, because those services fail loudly rather than falling back.
+
+### Still blocking the standalone parser's retirement
+
+`/cv-parser/parseResumeAndUpload` on the engine still returns:
+
+```
+500 "Failed to upload to Oracle Storage: OCI storage is not configured
+     (OCI_NAMESPACE / OCI_BUCKET_NAME / OCI_REGION)"
+```
+
+The standalone parser carries **hardcoded defaults** for those three
+(`bmv2bqg5gpcd` / `PL_UAT_CVPARSER` / `ap-mumbai-1`) plus an `oci_config`
+credential file; the engine has neither, on DEV or UAT.
+
+A second, smaller mismatch surfaces first: the engine reads the header
+**`AUTH_KEY`** (underscore), while `form-data-normalization` sends
+**`AUTH-KEY`** (hyphen) — so it 401s before it ever reaches the OCI check.
+
+Both must be resolved before `form-data-normalization` or `student-node` can be
+moved to the engine for the upload variant. Until then they stay on the
+standalone `resumeparser` / `:5012` process, which now works again.
