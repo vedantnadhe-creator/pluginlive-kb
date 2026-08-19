@@ -277,23 +277,43 @@ Both imports share one action because they are two hops of the same channel —
 the Tally form feeds normalization, which calls `create-full`. The summary says
 which hop.
 
-### Why some of these say System and it is not a bug
+### Naming the submitter on a route with no token
 
 `create-full` is authenticated by a shared `auth-key` that carries **no
-identity**, and the Tally and public routes by nothing at all. There is no token
-to name an actor from, so those rows previously had `actor_id = NULL` and
-rendered as **"Unknown"** — which reads like a fault rather than like a machine
-import.
+identity**, and the Tally and public routes by nothing at all. There is no JWT
+to name an actor from — but those requests are not anonymous. The person who
+filled the form is in the payload, and they are the honest answer to "who did
+this?".
 
-A descriptor can now set `systemActor: true`, and the hook then files the row as
-`portal: SYSTEM` with `actorRole: "system"`, so it renders as **System**. It
-applies **only when no real actor was captured** — a person acting on one of
-those routes still gets the credit.
+`identityFrom` (in `studentAuditRoutes.js`) pulls it out — the Tally route posts
+`{ email, firstName }` flat, `create-full` and the public sign-up nest the same
+fields under `admin` — and a descriptor opts in with `actorFrom`. The submitted
+**email becomes the row's actor**; `admin-node` then resolves it to a name at
+render time via `AuditActor.findNamesByEmails`, which searches
+`user_management.users` **and** `student.student_personal_profile`, because on
+these routes the submitter is usually the student being created.
 
-Note the shape of the fix: the honest answer to "who imported this?" is *nobody,
-a machine did* — so WHO says System and the **action** says it came from the
-Tally form. Putting the channel in the WHO column would have been the wrong
-place for it.
+**Only the email is stored.** Names are resolved on read everywhere else in this
+trail, so a name written into the row would be the one thing that could never be
+corrected later. The spelling as submitted is kept in `metadata.submittedBy`.
+
+`systemActor: true` remains the fallback for a payload with **no** identity at
+all, filing the row as `portal: SYSTEM` / `actorRole: "system"` so it reads
+**System** rather than "Unknown", which looks like a fault.
+
+Both only apply when no real actor was captured — a signed-in person acting on
+one of these routes still gets the credit.
+
+The result on UAT:
+
+| Payload | WHO | Role |
+|---|---|---|
+| submitter exists | their name, e.g. `r1 k1` | `Tally form` |
+| submitter unknown | the email address | `Form normalization` |
+| no email at all | `System` | `system` |
+
+The channel still lives in the **action** (`student.imported`), not in WHO —
+those answer different questions.
 
 ### A read that had been logging as a change
 
