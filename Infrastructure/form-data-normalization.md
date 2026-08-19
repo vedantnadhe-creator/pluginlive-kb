@@ -249,6 +249,28 @@ report "Download failed" after ~7 minutes. Three separate causes, all now fixed.
    unknown all return the same opaque **403** — a distinct 404 would confirm
    which job ids exist. Expired-and-swept returns **410**.
 
+⚠️ **DEV and UAT share the queue — jobs are namespaced by `EXPORT_QUEUE_ENV`**
+(*added 2026-08-19 after a live miss*). Because DEV points at the UAT database,
+both environments read one `export_jobs` table, and each runs a
+`datanormalization-export-worker` polling it with `FOR UPDATE SKIP LOCKED`. Until
+this was fixed, whichever worker got there first claimed the job **regardless of
+which environment the request came from**. Two silent failure modes, and the
+first had already cost a real user a 40,600-row × 812-column, 91 MB UAT export:
+
+  1. the claiming worker's `EXPORT_EMAIL_ENABLED` decides whether the mail goes
+     out — a job requested where sending is on, claimed where it is off, is
+     built and then silently never delivered (the dashboard sits at "sending to
+     your email" forever);
+  2. the link is built from the *claiming* worker's `EXPORT_LINK_BASE_URL`, so a
+     DEV requester could be mailed a link into UAT.
+
+`insert_export_job` now stamps `queue_env` and `claim_next_export_job` filters
+`COALESCE(queue_env, :env) = :env` (legacy rows, all terminal, stay claimable).
+**`EXPORT_QUEUE_ENV` must differ between DEV (`dev`) and UAT (`uat`)** — this is
+the same namespacing the Node services apply to the Redis instance the two
+environments share. Verified by submitting to both APIs at once: each worker
+logged only its own job and each email carried its own host.
+
 **Email delivery.** `notify_email` on the request opts in; the worker posts to
 `EMAIL_ENDPOINT` (`https://mail.prod.pluginlive.com/send-email`) with the
 `auth-key` header and `{fromAddress, subject, messageType, toAdresses, html}` —
@@ -256,8 +278,18 @@ the same contract admin-node's `app/queues/assignmentNotify.js` uses.
 **It carries a link, never the file**: that mail server has no attachment
 support and OCI Email Delivery caps a message at ~2 MB against a 90 MB export.
 Sends are best-effort and never fail the job; `notified_at` is stamped on
-success so a retry cannot double-send. Ships **OFF** — `EXPORT_EMAIL_ENABLED`
-is `false` on DEV and UAT, and `EMAIL_AUTH_KEY` is still blank on both.
+success so a retry cannot double-send. **Enabled on DEV and UAT as of
+2026-08-19** (`EXPORT_EMAIL_ENABLED=true`, `EMAIL_AUTH_KEY` set from the same
+shared key admin-node uses). PROD is still off.
+
+**The dashboard has no download button.** `/download/status` returns `notified`
+(from `notified_at`) and `notify_email`, and admin-react polls until `notified`
+rather than until `status === 'done'` — the file existing is not the same as the
+requester having it. The panel reads: *generating…* → *file generated, sending
+it to your email…* → *file generated and sent to your email*. The middle state
+exists because on a ~90 MB export the gap between the file being written and the
+mail going out is visible; without it the panel looks stuck. `/download/file`
+survives for the emailed link and for support, but nothing in the UI calls it.
 
 **Retention.** Nothing ever deleted `file_bytes`, so `export_jobs` had grown to
 **789 MB**. `purge_expired_exports` (cron, 03:00) nulls the bytes past
@@ -271,11 +303,13 @@ form-data-normalization points at the **UAT database**, so DEV and UAT share one
 `https://data-normalization.uat.pluginlive.com`. Getting this wrong emails UAT
 users a link into DEV.
 
-Schema (migration `20260819T061054Z__export_jobs_email_delivery.sql`, applied to
-the shared DEV/UAT database 2026-08-19, **PROD pending**): `notify_email`,
-`notified_at`, `started_at`, `expires_at`, `row_count`, `column_count`, plus
-`idx_export_jobs_status_created_at` (the claim) and a partial
-`idx_export_jobs_expires_at WHERE file_bytes IS NOT NULL` (the sweep).
+Schema — two migrations, both applied to the shared DEV/UAT database on
+2026-08-19, **PROD pending for both**:
+
+| migration | adds |
+|---|---|
+| `20260819T061054Z__export_jobs_email_delivery.sql` | `notify_email`, `notified_at`, `started_at`, `expires_at`, `row_count`, `column_count`; `idx_export_jobs_status_created_at` (the claim) and partial `idx_export_jobs_expires_at WHERE file_bytes IS NOT NULL` (the sweep) |
+| `20260819T104253Z__export_jobs_queue_env.sql` | `queue_env` + `idx_export_jobs_status_queue_env_created_at` — see the DEV/UAT queue-sharing warning above |
 
 **Still open:** the *other* export on the same menu — Analytics → Candidate
 Metrics → `POST /api/candidates/downloadcandidate` — is still fully
