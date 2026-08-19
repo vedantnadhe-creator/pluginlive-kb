@@ -1,4 +1,4 @@
-# Admin v2 — strangler-fig (scaffold only, DEV, nothing migrated)
+# Admin v2 — strangler-fig (LIVE on DEV and UAT; Create Assessments migrated)
 
 The Admin portal is being rebuilt module-by-module behind a strangler-fig, the same
 pattern as [institute-react-v2](../Institute/README.md) and
@@ -7,7 +7,7 @@ the v1 app; there is **no** admin-node-v2 — the BFF calls the existing `admin-
 
 | Repo | Checkout | Stack | Where it runs |
 |---|---|---|---|
-| `admin-react-v2` | `~/frontend/admin-react-v2` | Next.js 16.2.10 + React 19 + TS + Tailwind 4, `basePath=/v2` | **nowhere yet** — no systemd unit, no nginx `location /v2`, no container |
+| `admin-react-v2` | `~/frontend/admin-react-v2` | Next.js 16.2.10 + React 19 + TS + Tailwind 4, `basePath=/v2` | DEV: systemd :3013 · UAT: systemd :3013 (since 2026-08-19) · PROD: not yet |
 | `admin-react` (v1) | `~/frontend/admin-react` | webpack SPA, antd 4 + Redux | DEV `admin-react.service` (:3004) · UAT · PROD |
 
 Created 2026-08-03 (`PluginLive-Technologies/admin-react-v2`, branch `Development`).
@@ -17,11 +17,49 @@ vedantnadhe-creator) nor the MCP GitHub identity can `POST /orgs/.../repos` — 
 
 ## Status
 
-**Scaffold only.** Every one of the 18 sidebar entries in
-`admin-react-v2/src/config/nav.tsx` is `kind: "v1"` and bridges back to the legacy
-app; the only BFF endpoints are `/api/me` and `/api/logout`. `ADMIN_V2_MODULES` is
-empty on DEV, so **no user is redirected anywhere** — v1 behaves exactly as before.
-The plumbing is in place so that migrating a module is a config change, not surgery.
+**The nav is still all-v1; one action has moved.** `ADMIN_V2_MODULES` is empty on
+both DEV and UAT, so no sidebar entry redirects anywhere. What *has* migrated is
+the **Create Assessments** action on `/assessment` — see below. The assessment
+list itself stays on v1.
+
+| Env | app running | nginx `location /v2` | `ADMIN_V2_MODULES` | `ADMIN_V2_CREATE_ASSESSMENT` |
+|---|---|---|---|---|
+| DEV | systemd :3013 | yes | `''` | `'1'` |
+| UAT | systemd :3013 | yes (added 2026-08-19) | `''` | `'1'` (2026-08-19) |
+| PROD | no | no | unset | unset |
+
+## Create Assessments hands off to v2 (action-level strangler-fig)
+
+Second flag, independent of `ADMIN_V2_MODULES`, in `admin-react`'s gitignored
+`.env`/`.env.uat`:
+
+```bash
+export ADMIN_V2_CREATE_ASSESSMENT='1'   # '1' enables; anything else = legacy wizard
+```
+
+`modules/Assessment/index.js` reads it and, when on, makes the button a real
+browser navigation (react-router cannot client-route into another app):
+
+```js
+window.location.href = `/v2/assessment?create=1&type=${entityType}`
+```
+
+v2's `ManageAssessmentsView` derives the hand-off from the URL — `create=1` opens
+the entity picker, `type=college|corporate` pre-selects the tab the user left.
+Derived from the URL rather than copied into state, so a refresh reopens the
+picker.
+
+`config/webpack.base.js` declares it in the **object** form of `EnvironmentPlugin`
+(default `''`), so it inlines cleanly. Verify a build took by grepping the
+shipped JS — when the flag is on, terser drops the condition *and* the legacy
+branch entirely:
+
+```bash
+docker exec adminreact sh -c "grep -c '/v2/assessment?create=1' /app/build/main.*.js"
+```
+
+If the string is absent, the flag was off at build time — the dead branch was
+eliminated. The env var name itself should appear only in the `.js.map`.
 
 ## The handoff is env-gated, not branch-gated
 
@@ -126,5 +164,8 @@ build without `.env.prod` rather than silently baking an env-less bundle.
 
 ## Ports
 
-DEV: institute-react-v2 :3011, corporate-react-v2 :3012 — **:3013 is the free next
-port** when admin-react-v2 gets a systemd unit.
+DEV: institute-react-v2 :3011, corporate-react-v2 :3012, **admin-react-v2 :3013**.
+UAT numbers them differently — 3011 is `pil-ai-learning` there, so institute is
+:3012, admin :3013 and corporate :3014. Never copy a port from a DEV unit file.
+Full UAT topology:
+[Infrastructure/v2-apps-uat-topology.md](../../Infrastructure/v2-apps-uat-topology.md).
