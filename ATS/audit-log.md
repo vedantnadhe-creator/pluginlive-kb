@@ -6,7 +6,15 @@
 >
 > **Status:** DEV + UAT (2026-08-07; entity/actor names and onboarding events,
 > dynamic entity filter and the System Config safety net 2026-08-18; student
-> module coverage and the Who-column fixes 2026-08-19). PROD pending.
+> module coverage, the Who-column fixes, row summaries and the readable details
+> panel 2026-08-19). PROD pending.
+>
+> Note on the 2026-08-19 promotion: `admin-node` and `admin-react` were taken to
+> UAT as **audit-only commits, not a Development merge**. Both branches were
+> carrying in-flight "Mix & Match float as one assessment" work whose halves
+> were not ready together, and merging would have shipped a frontend against a
+> backend that was not there. Verified afterwards that the UAT tips changed one
+> file (`auditActions.js`) and two (`modules/AuditLog/`) respectively.
 
 ## Where the data lives
 
