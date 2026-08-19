@@ -162,6 +162,26 @@ The admin builds a field list in the wizard; the candidate fills it in at `/asse
 **The overview decides whether that route is reached at all.** It originally called `preStages` on the *demo scenario* config, so an invited candidate's real form was never consulted and registration silently never appeared. It now fetches the float's actual form and the interview's resume policy, and routes on what the float carries. The form belongs to the **group**, not a part — it is collected once per float however many assessments it contains.
 
 - **Storage** — `assessment.pre_assessment_forms` (one row per group, `fields` is the admin's `FormField[]` verbatim) and `assessment.pre_assessment_responses` (one row per candidate per form, upserted on re-submit). Migration `20260818T063235Z__pre_assessment_registration.sql`.
+
+  **Neither table is in any Prisma schema** — both are reached only by raw SQL
+  (`admin-node` `assessmentHandler.assignMixMatchAssessment`, `student-node`
+  `models/PreAssessmentForm.js`), so `prisma migrate` will never create them and
+  a deploy cannot self-heal a missing one. The migration has to be applied to
+  each environment by hand.
+
+  **If it is missing, the whole float 500s.** The insert runs immediately after
+  `mix_match_groups.create` and is *not* in the same transaction, so the group
+  row is already committed when the raw insert throws
+  `42P01 relation "assessment.pre_assessment_forms" does not exist`. The admin
+  sees only a failed float; the database is left with an **orphaned
+  mix_match_group carrying no parts**, one per retry. This hit UAT on
+  2026-08-19 11:56–12:09 UTC ("Pre assessment submission is not able to
+  assign") and left 18 such rows before the migration was applied. Floats
+  *without* a registration form are unaffected, which is what makes it look
+  intermittent.
+
+  **PROD is still pending this migration** — the same 500 is waiting there the
+  first time someone floats with a registration form.
 - **Admin** — `admin-react-v2` sends `preAssessmentForm: { fields }` as a **top-level** field of the Mix & Match payload, not as a part, since registration is not an assessment. `assignMixMatchAssessment` writes it against the new group.
 **Routing to it.** The overview decides whether a float has pre-assessment steps from the **real** form and the interview's resume policy. It used to call `preStages` on the demo `?pre=` scenario config, so an invited candidate's authored form was never consulted and the step silently never appeared.
 
