@@ -5,7 +5,7 @@
 > window is open, capped at 3 sends. Previously this only happened if an admin
 > pressed **Send Reminders** by hand.
 >
-> **Status:** DEV + UAT (2026-08-06). PROD pending.
+> **Status:** DEV + UAT (2026-08-06; cap hardened 2026-08-19). PROD pending.
 > **Ships disabled** in every environment — see "Enabling it" below.
 
 ## Cadence
@@ -15,6 +15,18 @@
 | #1 | 24h after the candidate's invite (falls back to the assessment `start_time` if no invite email is on record) |
 | #2 | 24h after #1 |
 | #3 | 24h after #2 — then never again for that assignment |
+
+**The cap of 3 is a hard ceiling, not a default.** `AUTO_REMINDER_MAX_COUNT` is
+clamped to `[0, 3]`, so an environment may ask for *fewer* nudges but can never
+raise the ceiling — a stray ConfigMap value of `10` resolves to 3, not 10. It is
+enforced in three places: the claim query's `auto_reminder_count < maxCount`, a
+re-assertion inside the claiming `UPDATE`'s own `WHERE` (the CTE's predicates are
+not re-evaluated once the row lock is taken), and the clamp itself.
+
+A reminder occurrence costs **one** nudge regardless of how many channels it uses:
+email + WhatsApp for the same occurrence share a `reminder_number` and increment
+`auto_reminder_count` once. Queue retries reuse that same occurrence and never
+spend extra budget.
 
 Why the invite timestamp is preferred over `start_time`: a candidate added three
 days into a running assessment would otherwise be "already 3 days overdue" and
@@ -118,10 +130,33 @@ still go out as a single burst.
 so a reminder backlog never starves a live invite-on-assignment, which a
 candidate is actively waiting for.
 
-Other tunables: `AUTO_REMINDER_MAX_COUNT` (3), `AUTO_REMINDER_GAP_HOURS` (24),
+Other tunables: `AUTO_REMINDER_MAX_COUNT` (3, clamped to a maximum of 3), `AUTO_REMINDER_GAP_HOURS` (24),
 `AUTO_REMINDER_FINAL_CALL_HOURS` (12), `AUTO_REMINDER_FINAL_CALL_GAP_HOURS` (6),
 `AUTO_REMINDER_MAX_ASSESSMENT_AGE_DAYS` (30), `AUTO_REMINDER_QUIET_START_HOUR`
 (9), `AUTO_REMINDER_QUIET_END_HOUR` (20).
+
+## Budget refund on a dead occurrence
+
+The cron **claims** a reminder — spending one of the three nudges — before either
+channel has sent anything. So an occurrence whose every channel failed
+permanently used to cost a nudge nobody received: a candidate with one broken
+send effectively got two reminders instead of three.
+
+`ReminderDispatchService.finalizeFailure()` (called by both workers when a job
+exhausts its attempts) now gives that nudge back. It is deliberately narrow:
+
+- every sibling channel row of the same `(assessment_assigned_id, reminder_number)`
+  must be terminally `failed` — a `completed` one means the candidate *was*
+  reached, so the nudge was spent legitimately, and a live one still owns the
+  occurrence;
+- the refund `UPDATE` is guarded on `auto_reminder_count = reminder_number`, which
+  is what makes it idempotent: a second failing channel, or a replayed job, finds
+  the count already decremented and no-ops instead of rewinding twice;
+- the assignment must still be `PENDING`.
+
+`last_auto_reminder_at` is intentionally **not** rewound. The refunded nudge comes
+back on the normal 24h cadence rather than immediately, so a flapping relay cannot
+turn into a retry storm against the same candidate.
 
 ## Which email goes out
 
@@ -216,6 +251,13 @@ first day and watch `email_events`.
 ## Operational queries
 
 ```sql
+-- Occurrences that failed on every channel (candidates whose budget was refunded)
+SELECT assessment_assigned_id, reminder_number, count(*) AS channels
+FROM assessment.email_events
+WHERE category = 'assessment_reminder'
+GROUP BY assessment_assigned_id, reminder_number
+HAVING bool_and(status = 'failed');
+
 -- How many candidates would the next tick chase?
 SELECT count(*) FROM assessment.assessment_assigned_students
 WHERE status = 'PENDING' AND is_practice = false AND auto_reminder_count < 3;
@@ -239,10 +281,18 @@ WHERE assessment_assigned_id = '<uuid>';
 ## Per-environment status
 
 - **DEV** — channel-queue code on `Development` at `a487a27e`; `email_events`
-  migration applied and verified 2026-08-13. Code was pushed, not redeployed as
-  part of this promotion.
+  migration applied and verified 2026-08-13. Cap clamp + budget refund pushed to
+  `Development` as `956e21a0` on 2026-08-19 (no migration; code-only).
 - **UAT** — channel-queue code promoted as `7b856cf6`, migration applied, and
-  admin-node deployed 2026-08-13. Both workers verified running:
-  `[Reminder] ... rate=20/1000ms` and `[Reminder:WhatsApp] ... rate=5/1000ms`.
-  Cron `assessment_auto_reminder` enabled at `2026-08-13 15:42:07 UTC`.
-- **PROD** — pending (code + migration).
+  admin-node deployed 2026-08-13. Cap clamp + budget refund promoted as
+  `d17ccd34` and deployed 2026-08-19; `/health` 200 and both workers verified
+  running: `[Reminder] ... rate=20/1000ms` and
+  `[Reminder:WhatsApp] ... rate=5/1000ms`. No `AUTO_REMINDER_*` override is set
+  on the container, so the effective cap is 3.
+  Cron `assessment_auto_reminder` was enabled `2026-08-13 15:42:07 UTC` and
+  **disabled again `2026-08-14 07:29:51 UTC` — it is currently OFF on UAT.**
+- **PROD** — pending. `release-v1.37` carries only the original single-queue
+  reminder commit (`f01e392`); the channel-queue code, the `email_events`
+  migration, this cap hardening, and the `assessment_auto_reminder` row in
+  `CRON_JOBS` / Question Manager's `JOB_ORDER` are all still missing. The live
+  PG16 cluster (`10.0.6.104`) does have the `cron_config` row, disabled.
