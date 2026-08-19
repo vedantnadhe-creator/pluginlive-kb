@@ -180,7 +180,7 @@ carried over with no Dockerfile change.
 
 ---
 
-## Retirement checklist (not yet done)
+## Retirement checklist — DONE on DEV + UAT, 2026-08-19 (see below)
 
 1. Provision Drive/OCI credentials into the engine, then move
    `/parseResumeAndUpload`'s external caller.
@@ -300,3 +300,80 @@ A second, smaller mismatch surfaces first: the engine reads the header
 Both must be resolved before `form-data-normalization` or `student-node` can be
 moved to the engine for the upload variant. Until then they stay on the
 standalone `resumeparser` / `:5012` process, which now works again.
+
+---
+
+## 2026-08-19 — standalone parsers retired; everything runs in the engine
+
+Both standalone services are **stopped on DEV and UAT**. All four consumers now go through `fastapi-ai-engine`.
+
+### What unblocked it
+
+Two things had kept `parseResumeAndUpload` on the standalone parser:
+
+1. **Header mismatch.** The ported route read `AUTH_KEY`; `form-data-normalization` sends `AUTH-KEY`. These are *distinct header names*, not case variants, so the engine 401'd the only real caller before the request reached the archive step. Both spellings are now accepted (`auth_key or auth_key_hyphenated`).
+2. **No OCI credential.** The archive step needs `OCI_NAMESPACE` / `OCI_BUCKET_NAME` / `OCI_REGION` plus an `oci_config` + key file. The standalone parser carried hardcoded defaults and its own credential; the engine had neither.
+
+**FDN genuinely needs the archive**, so pointing it at the cheaper `/parseResume` was not an option: `normalization_worker` writes `oracleStorageUrl` / `oracleFileName` into the candidate's `cvUrl`, which is the CV link stored on the student record.
+
+### How OCI is provisioned
+
+Copied from the standalone parser into the engine checkout on each box, beside `.env`, and baked by `COPY . .`:
+
+```
+~/api/fastapi-ai-engine/oci_config        (key_file rewritten to /app/oci_api_key.pem)
+~/api/fastapi-ai-engine/oci_api_key.pem   (chmod 600)
+```
+
+plus in `.env`:
+
+```
+OCI_NAMESPACE=bmv2bqg5gpcd
+OCI_BUCKET_NAME=PL_UAT_CVPARSER
+OCI_REGION=ap-mumbai-1
+OCI_CONFIG_FILE=/app/oci_config
+```
+
+`oci_config` and `*.pem` were added to the repo's `.gitignore` so the credential can never be committed; a guard in `tests/test_parser_consolidation.py` asserts that.
+
+⚠️ **The engine `.env` is not tracked but IS fragile on UAT.** An append to it vanished between the edit and the build during one deploy — the rebuilt image had the OCI *files* but not the OCI *vars*, and `parseResumeAndUpload` still 500'd. Verify `grep -c '^OCI_' .env` **immediately before** `docker buildx build`, not just after editing.
+
+### Callers, after the switch
+
+| Caller | Env var | Now calls |
+|---|---|---|
+| `student-node` | `FASTAPI_URL` | `cv-parser/parseResume` |
+| `corporate-node` | `FASTAPI_AI_ENGINE_URL` | `jd-parser/parse/s3` |
+| `form-data-normalization` | `PDF_PARSER_URL` | `http://172.17.0.1:8011/cv-parser/parseResumeAndUpload` |
+
+`PDF_PARSER_URL` had been defined **twice** in FDN's `.env` on both boxes (a dead `…/parseResume1` line first, which Docker discards); the duplicate is gone. On UAT all four FDN containers (`datanormalization`, `-worker`, `-cron`, `-export-worker`) were recreated so they share the new value.
+
+### Verified with the standalone services stopped
+
+```
+UAT  normalization -> engine   200, oracleStorageUrl returned
+UAT  student-node  -> engine   200, RAJENDRAN KRISHNAN
+UAT  jd-parser/parse/text      200, status success
+DEV  normalization -> engine   200, oracleStorageUrl returned
+DEV  jd-parser/parse/text      200, status success
+```
+
+### What was stopped, and how to roll back
+
+| Box | Service | Stopped by | Rollback |
+|---|---|---|---|
+| DEV | `resume-parser.service` (`:5012`) | `systemctl stop` + `disable` | `sudo systemctl enable --now resume-parser.service` |
+| DEV | `llama-backend` (`:8001`) | `docker stop` (container kept) | `docker start llama-backend` |
+| UAT | `resumeparser` (`:5011`) | `docker stop` (container kept) | `docker start resumeparser` |
+| UAT | `jdparser-backend` (`:8012`) | `docker stop` (container kept) | `docker start jdparser-backend` |
+
+Evidence they were dead weight: over the retained nginx window the JD vhosts (`llma-api`, `jd-parser.dev`) saw **only scanner noise** — `/`, `/favicon.ico`, `/.git/config`, `/graphql`, `/wp-json/...`, all 404 — and `jdparser-backend` logged **0 POSTs in 7 days**. The CV parser's only callers were `student-node` (axios, now migrated) and normalization (httpx).
+
+⚠️ **One loose end: the DEV bare `Jd_parser.py` on `:5011` respawns.** Killing it brings it straight back as `/bin/bash -c exec /usr/local/bin/jd-parser | tee …` re-parented to init. No systemd unit, cron entry, or supervisor config references it — whatever restarts it was not found. It is harmless (nothing calls it, and its vhost only sees bots), but it cannot be retired by killing the process. Its nginx vhost `jd-parser.dev.pluginlive.com` and `/usr/local/bin/jd-parser` are the places to look.
+
+### Still to do
+
+- Drop the `legacy_router` root-path mounts once nothing uses `/parseResume` at the root.
+- Delete the dead `~/api/Jd_Parser` and `~/api/mistral-jd-parser` trees (after the respawn source is found).
+- Retire the `resume_parser` / `llama_jd_parser` LiteLLM virtual keys.
+- Remove the now-unused `CV_BE_BASE_URL` / `JD_BE_BASE_URL` lines from the `.env` files.
