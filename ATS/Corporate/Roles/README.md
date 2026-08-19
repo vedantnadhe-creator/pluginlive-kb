@@ -63,7 +63,8 @@ The Roles module is the core of the corporate portal. It manages the entire job 
 | `updateJobRole` | `/corporates/{corpId}/jobs/{jobId}` | PUT | Update job role (alternate action with button loading) |
 | `publishCorporateJobRole` | `/corporates/{corpId}/jobs/{jobId}/publish` | POST | Publish role to selected institutes |
 | `postCorporateJobRole` | `/corporates/{corpId}/jobs` | POST | Save role details |
-| `closeApplication` | `/corporates/{corpId}/jobs/{jobId}/close` | POST | Close a role for applications |
+| `closeApplication` | `/corporates/{corpId}/jobs/{jobId}/close` | POST | Close a role for applications (no body) |
+| `CloseRole` (`modules/JobPreview/action.js`) | `/corporates/{corpId}/jobs/{jobId}/close` | POST | Same endpoint, but with a body — `{ status: 'RE_OPEN', isCompanyId: false }` is how a role is **re-opened**. Bound via `mapDispatchToProps`; see the Cancel / Re-Open note below |
 | `duplicateRole` | `/corporates/{corpId}/jobs/{jobId}/duplicate` | POST | Duplicate an existing role |
 | `deleteRole` | `/corporates/{corpId}/jobs/{jobId}` | DELETE | Delete a role |
 | `getSingleRoleData` | `/corporates/{corpId}/jobs/{jobId}` | GET | Fetch single role details. Optional `skillsRequired` & `degreeRequired` params |
@@ -126,7 +127,41 @@ The Roles module is the core of the corporate portal. It manages the entire job 
 
 ## Key Features
 
-- **Full role lifecycle:** Draft → Create → Publish → Active → Close
+- **Full role lifecycle:** Draft → Create → Publish → Active → Close → Re-Open
+- **Cancel / Re-Open Role** (`JobPreview/index.js` → `onHandleClose`, button in
+  `PageHeader/Components/InformationHeader.js`). One button, two branches off
+  `previewData.roleStatus`; both hit the **same** endpoint
+  `POST /corporates/{corpId}/jobs/{jobId}/close`:
+  - **Cancel** (status is neither `ROLE_CLOSED` nor `COMPLETED`) → dispatches
+    `closeApplication` (imported from `modules/Roles/actions`, an **unbound**
+    thunk, so `dispatch(...)` is correct), then emails/WhatsApps every applied
+    candidate the `RoleCancelledTemplate`.
+  - **Re-Open** (status is `ROLE_CLOSED` or `COMPLETED`) → calls `CloseRole`
+    with `{ status: 'RE_OPEN', isCompanyId: false }`. No candidate
+    notifications — all of that is gated on `!shouldReopen`.
+  - Both then call `fetchPreviewData(roleId)` → `getJobRolePreview` →
+    `setJobRolePreviewData`, which is what flips the header button back.
+
+  ⚠️ **Do not wrap `CloseRole` in `dispatch()`** — *fixed DEV + UAT 2026-08-19.*
+  `CloseRole` reaches the component through `connect`'s `mapDispatchToProps`
+  (`JobPreview/Container/index.js`), so it is **already bound**: calling it
+  dispatches the thunk and returns that thunk's promise.
+  `dispatch(CloseRole(...))` therefore dispatched a **Promise**, and with only
+  `redux-thunk` + `authMiddleware` in the chain
+  (`src/redux/configureStore.js`) it reached the base dispatch and threw
+  *"Actions must be plain objects"*. The throw lands **after** the POST has
+  gone out, which is why the symptom was so confusing: the role really did
+  reopen in the database, but the exception skipped the
+  `fetchPreviewData(roleId)` on the next line and `onHandleClose`'s `catch`
+  logged it to the console and swallowed it — **server updated, screen frozen
+  on the old status, no error shown**. The fix is to call the connected action
+  directly: `await CloseRole(corpId, roleId, payload)`.
+
+  The stale comment that used to sit there claimed `CloseRole` was an unbound
+  thunk that "returns the inner function without ever firing the request" —
+  true of an older version that imported it directly, and the `dispatch()`
+  added to fix *that* is what caused this one. If a role action ever looks like
+  it does nothing, first check whether it is a bound prop or a raw import.
 - **Institute publishing:** Select institutes by location, tier, specialisation
 - **TPO notification on publish:** After a successful publish (Select Colleges drawer), the portal auto-sends the role to each eligible college's POCs — email (`/notification/bulkEmail`, `RoleDetailsToTPOTemplate`) + WhatsApp (`/notification/bulkWhatsapp`, `corporate_role_share_tpo` template). A college is eligible when it has a Tally form URL, at least one POC, and `isEmailSent` is not already true. These sends are **fire-and-forget (not awaited)** so they never block the publish flow. Both payloads are built **in the browser**, so unlike every other ATS WhatsApp path this one is **not** gated on the corporate's `WHATSAPP_NOTIFICATION` subscription — see `Infrastructure/whatsapp-messaging.md`.
 - **Bulk "Invite Candidates" upload:** `corporate_role_invite` goes only to candidates of a corporate subscribed to `WHATSAPP_NOTIFICATION` (`admin.feature_config`, fails closed). A `Phone` column on the sheet is still parsed and stored, but no longer implies consent to message. The email leg is unconditional.
