@@ -83,6 +83,7 @@ Duration is **chosen by the admin at creation**, between **15 and 60 minutes** (
 | Layer | Behavior |
 |---|---|
 | Admin UI (`AssessmentSelect.js`) | "Duration (minutes)" number input, `min=15 max=60 step=5`, default 30, rendered above Question Configuration in the `Role_Based` form. Sent as `duration` on both the broadcast and set-generation payloads |
+| Admin UI v2 (`admin-react-v2` `RoleBasedConfigPanel.tsx`) | Same 15–60 / step 5 / default 30 input, under an "Exam length" fieldset. Contract lives in `src/lib/assessments/roleBasedDuration.ts` (`ROLE_BASED_DURATION_LIMITS`, `isRoleBasedDurationValid`) and is enforced by `validateTypeConfig` before the float. Also drives the wizard's "total time" summary, which previously guessed 2 min/question |
 | admin-node intake | `broadcastHandler.createBroadcast` and `assessmentHandler.initiateRoleBasedGeneration` clamp with `Math.max(15, Math.min(60, parseInt(duration,10) \|\| 30))` and put `durationMinutes` on `generationPayload` |
 | Persistence | `generationPayload.durationMinutes` → `assessmentSetWorker` → `script/generateRoleBasedQuestions.js`, which writes `assessment_config.duration_minutes` alongside `question_config` |
 | Resolver (single source of truth) | `student-node/app/helpers/roleBasedDuration.js`. `computeDurationMinutes({ configuredMinutes, sectionCounts })` — configured value wins, clamped 15–60; otherwise the estimate `MCQ 1.5 / Subjective 5 / Video 3 / Coding 10` (unknown section 2) min per question, rounded up to the nearest 5, minimum 10. `resolveRoleBasedDurations(prisma, setIds)` does the same for many sets in two batched queries |
@@ -169,6 +170,45 @@ Note: existing groups already saved with `endDate: null` are fixed by this witho
 
 ---
 
+### Coding languages are normalised, not demanded (2026-08-19, DEV + UAT)
+
+A Role_Based assessment with **C++ among its skills could not generate a coding
+question at all**. The model names languages the way the *role's skills* name
+them — a `C++` skill yields `"C++"`, a `Node.js` skill yields `"Node.js"` — and
+`_is_coding_question_valid` only accepted the literals
+`{python, javascript, java, cpp}`. All three FastAPI attempts were rejected, the
+section was dropped, and admin-node then retried a paper that could never come
+back complete. Reproduced 0/6 with C++ in the skills, 3/3 without.
+
+`fastapi-ai-engine` `QuestionGeneration/Role_Specific/question_generator.py`:
+
+- **`_canonical_language()`** folds the common spellings onto the runnable set —
+  `C++ / c++ / CPlusPlus / C Plus Plus / cxx / g++` → `cpp`; `Py / python3 /
+  Python 3 / CPython` → `python`; `JS / Node / Node.js / ECMAScript` →
+  `javascript`; `Core Java / JavaSE` → `java`. Two passes cover spacing and
+  punctuation variants. Java and JavaScript are explicitly never confused.
+- **`_normalise_coding_question()` / `_normalise_coding_content()`** run **before**
+  validation, and the **normalised payload is what is returned** — `starter_code`
+  keys travel through admin-node's `codingMetadata` to the code runner, so they
+  have to be the canonical names.
+- **Degrade instead of discard.** A language we cannot run (Go, Rust, C#, SQL,
+  TypeScript) is a legitimate answer to "what suits this role", so it is dropped
+  rather than treated as fatal; likewise a single language whose starter template
+  leaks a solution. Dropping such a language is strictly safe — the candidate can
+  no longer choose it — where rejecting the question costs them the whole section.
+  Only a question left with **no** runnable language fails and retries.
+- The prompt now names the exact literals and forbids the aliases, so
+  normalisation is a safety net rather than the primary mechanism.
+
+`SUPPORTED_CODING_LANGUAGES = (python, javascript, java, cpp)` — the four the
+code runner executes **and** this module has placeholder rules for. (`code-runner`
+`LANG_CONFIG` also supports `c` and `typescript`, but there are no starter-code
+rules for them, so they are not offered.)
+
+Covered by `tests/test_role_coding_language_normalisation.py` (14 tests).
+
+---
+
 ### Coding starter code must not solve the question (2026-08-07, promoted to UAT 2026-08-10)
 
 Generated coding questions were shipping **starter code that already contained the solution** (or part of it), so a candidate could pass the test cases without writing anything. `fastapi-ai-engine` `QuestionGeneration/Role_Specific/question_generator.py` now enforces this on both sides:
@@ -180,6 +220,129 @@ Generated coding questions were shipping **starter code that already contained t
 Commit `eb518bf` (authored 2026-08-07 on `Development`, reached UAT 2026-08-10 as part of the `Development → UAT` promotion). **PROD pending.**
 
 ---
+
+### The v2 wizard's Role_Based payload (fixed 2026-08-19)
+
+Role_Based had **never successfully floated from `admin-react-v2`**. Two faults,
+both in `src/app/api/assessments/mix-match/route.ts`:
+
+1. The part carried **no `generatedQuestions`**, so admin-node routed it to the
+   synchronous assigner, which throws `Missing required fields: roleName or
+   generatedQuestions` — failing the **entire** Mix & Match float, not just that
+   type. Fixed by the generate-then-assign path below.
+2. `questionConfig` was sent as `{mcq, subjective, video, coding}`. admin-node
+   reads **`{mcqCount, subjectiveCount, videoCount, codingCount}`** and falls back
+   to the historic 10/2/1/0 paper for anything it cannot find — so even once the
+   request stopped failing, the counts the admin chose were **silently
+   discarded**. `region` and `duration` were not sent at all.
+
+The `*Count` suffixes are load-bearing: they are written straight to
+`assessment_config.question_config`, which drives both generation and which score
+columns the admin tables show.
+
+## Assigning: two flows, one of them with no human in it
+
+Role_Based has **two** ways a cohort gets assigned, and which one runs is decided
+by whether the request carries a pre-generated paper.
+
+### Generate-then-assign (the v2 wizard, DEV + UAT 2026-08-19)
+
+`assignAssessment` routes `Role_Based` to
+**`RoleBasedAssignmentService.assignRoleBasedAsync`** when the request has **no
+`generatedQuestions`** and `AssignmentJobService.isAsyncEnabled('Role_Based')`.
+There is **no review screen and no approval step**: one assignment job is
+registered, it returns immediately with `{ jobId }`, and the queue does the rest.
+
+```
+POST /assessment/assignAssessment (or assignMixMatchAssessment)
+  → createJob  (state=queued)             ← returns { jobId } here
+  → orchestrate: prepare.pending > 0      → dispatch N × prepare-set
+  → prepare-set 'role-based-generate'     → FastAPI → assessment_set (APPROVED)
+      writes configSnapshot.sets[setKey]; last one resumes orchestrate
+  → provision → assign → notify           → invites
+  → summary email to created_by           ← the ONLY thing the admin receives
+```
+
+- **Pool sizing is unchanged** — `AssessmentSetGroupService.calculateDistribution`,
+  `max(5, ceil(20% of cohort))` per paper.
+- Each candidate is pinned to a paper by **`studentPayload.__assign =
+  [{ mapKey:'main', setKey:'set<i>' }]`**. `setKey` (not `setId`) is the point:
+  the set does not exist yet, and `assignmentWorker.targetsForItem` resolves it
+  from `configSnapshot.sets` once generation lands. Same mechanism
+  Custom_Assessment uses.
+- Sets are created **`approvalStatus: 'APPROVED'`** (the column defaults to
+  `PENDING`). Nobody reviews these, so leaving them PENDING would only make them
+  look like they were still waiting for someone.
+- **No `assessment_set_groups` row is created**, so these never appear on the
+  Review Assessments screen and the "Sets Ready for Review" email
+  (`notificationWorker` `review-ready`) never fires for them.
+- The frontend confirmation dialog switches copy when Role_Based is in the float
+  (`serverPreparedTypes.ts` → `isPreparedOnServer`): *"Question sets are being
+  prepared… we'll email you once everyone has been invited"*. Correct for a mixed
+  float too — `sendMixMatchGroupInvites` holds the single group invite until
+  **every** part is terminal, so with Role_Based present nobody is emailed until
+  its paper finishes.
+
+### Review-panel flow (legacy admin-react) — still live
+
+A request **with** `generatedQuestions` still takes the synchronous
+`createRoleBasedAssessment` path, and `initiateRoleBasedGeneration` →
+`assessment_set_groups` → `/assessment/review/<groupId>` → approve →
+`assignStudents` is untouched.
+
+Shared so the two cannot drift:
+- **`app/helpers/roleBasedSetBuilder.js`** — generate + validate counts + persist.
+  Used by both `assessmentSetWorker` (legacy) and `roleBasedSetGenerator` (new).
+- **`app/service/RoleBasedAssignmentService.js`** — the per-candidate item builder
+  (`buildAssignmentItems`), entity context and account lookup, used by both assign
+  paths. This builder is historically where per-candidate fields got dropped on
+  one path only (see `Assessment/otp-invite.md`).
+
+### Failure handling when nobody is watching
+
+Because no admin returns to check, the failure paths were rebuilt around *whose
+fault it is*:
+
+| Failure | Behaviour |
+|---|---|
+| **Transient** generation failure (AI 429, FastAPI restart, Prisma blip) — `genericRecovery.isTransient` | Job **stays in `preparing`**; the reconciler resumes it and orchestrate re-dispatches **only the missing** setKeys. Bounded by `PREPARE_MAX_RECOVERIES` (default 5) via `config_snapshot.prepare.recoveryAttempts` |
+| **Permanent** generation failure (e.g. a section the model will not produce) | `config_snapshot.prepare.fatalError` set, every non-terminal item marked failed with the reason, job `failed`, admin emailed |
+| **Bad candidate data** (unusable email/mobile) | That item alone fails; the rest assign normally |
+
+**Before 2026-08-19 an exhausted prepare-set failed the whole job immediately**,
+which reported *our* outage to the admin as *their* bad data — and the generic
+recovery that would have retried it could not, because the job was already
+terminal.
+
+Two supporting fixes:
+- `assignmentRecovery` now reads **both** the orchestrate and prepare-set queues.
+  Reading only the former called a job "stuck" while its generation sat in BullMQ
+  backoff, commissioning a second, redundant AI generation.
+- `assessment-prepare-set` was `concurrency: 8` with **no limiter** — that is how
+  a large cohort rate-limited itself against the AI provider. Now
+  `PREPARE_CONCURRENCY`/`PREPARE_RATE_MAX` (default 3 and 3/sec, matching what the
+  legacy set worker needed), and `PREPARE_RETRY_BY_KIND` gives AI-backed kinds 8
+  attempts with 30s exponential backoff. The shared failure handler reads the
+  attempt budget from **the job's own opts**, not a hardcoded 5 — otherwise the
+  longer runway was silently truncated.
+
+### The summary email is the whole report
+
+`renderSummaryEmail` now lists the **failed candidates and their reason inline**
+(up to `MAX_LISTED_FAILURES`, with an "and N more" line) rather than telling the
+admin to open the Activity view, because nobody opens it in this flow. A
+generation failure gets a **separate copy** — *"this was a problem on our side…
+nothing needs correcting in your upload"* — so an outage is never reported as a
+bad candidate list.
+
+### Assessment window (new path)
+
+Start/end are built by **`app/helpers/assessmentWindow.js` `combineDateTime`**,
+which stores the IST wall-clock digits as UTC, matching every other assign helper
+and the student read-side. A **missing end date is refused** (HTTP 400) instead of
+silently becoming an invented `+30 days` deadline that the invite would then
+misquote. **Note the legacy `AssessmentSetGroupService` still has its own
+local-time `combineDateTime`**, which can be ~5.5h out — unfixed as of 2026-08-19.
 
 ## End-to-End Flow
 
