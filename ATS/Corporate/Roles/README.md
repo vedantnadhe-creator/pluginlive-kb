@@ -184,14 +184,14 @@ The Roles module is the core of the corporate portal. It manages the entire job 
 
 ---
 
-## Candidate resume drawers render a PDF, not profile data (2026-08-19, DEV + UAT)
+## Candidate resume drawers show the uploaded resume, and only that (2026-08-19, DEV + UAT)
 
 Every corporate surface that shows a candidate's resume used to render
 `StudentDrawerContent` — education, skills and projects as HTML sections, i.e. a
-profile data dump rather than a resume. They now render
-`components/ResumePreview`, an actual document, using the same treatment as the
-**JD attachment preview** in institute-react's role form (`AutoJDFill`): pages
-rasterised to images with pdfjs and stacked in a scrollable frame.
+profile data dump. They now render `components/ResumePreview`, an actual
+document, using the same treatment as the **JD attachment preview** in
+institute-react's role form (`AutoJDFill`): pages rasterised to images with pdfjs
+and stacked in a scrollable frame.
 
 **Seven surfaces, one component:**
 
@@ -205,27 +205,44 @@ rasterised to images with pdfjs and stacked in a scrollable frame.
 | Role → ATS pipeline → candidate | `Roles/ViewRole/ApplicantTrackingSystem/…/CandidateViewDrawer` | **HTML only — no CV preview at all** |
 | Interviewer dashboard → candidate | `InterviewerDashboard/…/CandidateViewDrawer` | **HTML only — no CV preview at all** |
 
-**Source order** (`components/ResumePreview/index.js`):
+⚠️ **There is no generated-resume fallback, deliberately.** The first cut of this
+viewer fell back to the **system-generated** resume whenever there was no usable
+upload, which meant a recruiter could not tell a real submission from a document
+we had built. That fallback was removed the same day. `ResumePreview` now shows
+the uploaded CV or nothing:
 
-1. the CV the candidate uploaded, when a browser can render it
-2. otherwise the **generated system resume**, fetched as a PDF from
-   `POST /students/resume/bulkdownload` with `{ studentIds: [[id]] }` — the same
-   endpoint the Download Resume action uses, so preview and download cannot
-   disagree.
+| Candidate has | Drawer shows |
+|---|---|
+| an uploaded CV a browser can render | its pages |
+| an upload that cannot be shown inline — Drive link, `.doc`/`.docx`/`.rtf`, or a PDF that fails to parse | **"Unable to display this resume"**, naming the reason, plus an **Open uploaded resume** button (new tab) |
+| no upload | **"No resume found"** |
+
+Do not re-add a fallback to `POST /students/resume/bulkdownload` here. The
+**Download Resume** actions still call that endpoint and still produce the
+generated resume — that is what they are for; the *preview* is the candidate's
+own document.
 
 **Two URL shapes.** The role mapping stores `cvUrl` as a plain string
 (`student.student_role_mapping."cvUrl"`); the student record stores jsonb
-`{ url, name, size }`. `ResumePreview` normalises both. `getUploadedCvUrl`
-(exported from the same file) still gates on `isSystemResume === false && cvUrl`
-for the role-scoped surfaces; the two drawers driven off the student record have
-no such flag and read `candidateDetails?.cvUrl` directly.
+`{ url, name, size }`, and that jsonb is frequently `{"url": ""}` rather than
+NULL — `toUrl` normalises both and treats the empty string as absent.
+`getUploadedCvUrl` (exported from the same file) gates on
+`isSystemResume === false && cvUrl` for the role-scoped surfaces; the two drawers
+driven off the student record have no such flag and read
+`candidateDetails?.cvUrl` directly.
 
-**What candidates actually have**, measured on UAT `student_role_mapping`:
-12,383 have no upload and get the generated resume, 2,619 uploaded a `.pdf` that
-renders directly, and 437 are `.doc`/`.docx`, Drive links or extensionless.
-Google Drive links are HTML pages behind an auth redirect, not files, so they
-can neither be fetched by pdfjs nor framed — those are not dropped, the
-generated resume is shown with a notice and an **Open uploaded CV** button.
+**Expect "No resume found" to be the common state**, measured on UAT:
+
+| Source | No usable upload | Renderable | Drive link | .doc/.docx |
+|---|---:|---:|---:|---:|
+| `student_role_mapping` (5 role-scoped surfaces) | 12,386 of 15,442 | 2,842 | 25 | 189 |
+| `students.cv_url` (ATS pipeline + Interviewer dashboard) | 26,017 of 40,636 | 2,476 | **11,961** | 182 |
+
+Google Drive links are HTML pages behind an auth redirect, not files, so they can
+neither be fetched by pdfjs nor framed — hence the Open-in-new-tab path rather
+than a render attempt. On the student-record surfaces they are the *majority* of
+uploads, which is why institute-react reverted its equivalent viewer entirely
+(see `ATS/Institute/JobPreview`).
 
 ⚠️ **`pdfjs-dist` needs its own splitChunks cacheGroup here.** It is ~2 MB and is
 imported dynamically, but `config/webpack.prod.js` has a vendor group
