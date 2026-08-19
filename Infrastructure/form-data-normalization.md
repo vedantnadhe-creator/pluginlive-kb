@@ -57,21 +57,29 @@ The Docker image's CMD only runs the API. The worker and scheduler run as **sepa
 |-----------|---------|------|
 | `datanormalization` | (image CMD) `uvicorn api.main:app … :5013` | API + **webhook receiver** (`-p 5013:5013`) |
 | `datanormalization-worker` | `python main.py worker` | AI normalization loop |
-| `datanormalization-cron` | `python main.py cron` | APScheduler (renewal, daily ingest, status) |
+| `datanormalization-cron` | `python main.py cron` | APScheduler (renewal, daily ingest, status, **expired-export purge**) |
+| `datanormalization-export-worker` | `python main.py export_worker` | Analytics candidate export builder (added 2026-08-19) |
+
+**`export_worker` is its own container on purpose.** A full export is ~90 MB and
+takes 5-6 minutes of CPU; `run_worker`'s loop is sequential, so folding exports
+into it would stall sheet ingestion behind every export. It is also **not** a
+BackgroundTask in the API any more — see *Analytics export* below.
 
 ⚠️ **`deploy.sh` only builds/runs `datanormalization`** — it does *not* recreate the `-worker`/`-cron` siblings, and rebuilding the image does not restart them. After any redeploy, recreate the two siblings manually (or add them to `deploy.sh`). **This bites hardest on worker-only changes** (`workers/normalization_worker.py`): `auto_deploy.sh` reports success, the API container is new, and the normalization logic is still running the old code. Always check `docker ps` — if `-worker`/`-cron` show an older `Up …` than `datanormalization`, they were not rolled.
 
 **Tag drift (resolved 2026-08-05):** the siblings historically ran a separate **`datanormalization:api-mastersrc`** tag while `deploy.sh` builds `datanormalization:api`, so a plain redeploy left them on a stale image even after a manual `docker restart`. As of 2026-08-05 all three UAT containers run **`datanormalization:api`**. Recreate them from that tag:
 ```bash
 cd ~/api/form-data-normalization
-for m in worker cron; do
-  docker rm -f datanormalization-$m
-  docker run -itd --name datanormalization-$m --restart unless-stopped --env-file .env \
+for m in worker cron export_worker; do
+  name=$(echo "$m" | tr '_' '-')
+  docker rm -f datanormalization-$name
+  docker run -itd --name datanormalization-$name --restart unless-stopped --env-file .env \
     --log-opt tag='service_name={{.Name}}' --log-opt max-size=100m --log-opt max-file=3 \
     datanormalization:api python main.py $m
 done
 ```
-Expect `No pending sheets found.` (worker) and `Scheduler started` (cron) in the logs. Code + SA key are **baked into the image** (`COPY . /app`), so config/key changes require an image rebuild, not just an `.env` edit. The runtime config (batch sizes, model, normalizer URL) is read from the baked `/app/.env`, but OS env vars set via `docker run -e`/`--env-file` **override** it.
+Expect `No pending sheets found.` (worker), `Scheduler started` (cron) and
+`Export worker ready - polling every 15s` (export-worker) in the logs. Code + SA key are **baked into the image** (`COPY . /app`), so config/key changes require an image rebuild, not just an `.env` edit. The runtime config (batch sizes, model, normalizer URL) is read from the baked `/app/.env`, but OS env vars set via `docker run -e`/`--env-file` **override** it.
 
 ### PROD runtime topology — 3 Deployments in ns `api`
 
@@ -203,7 +211,78 @@ Note: `/ingest` only enqueues; the dedicated `api_ingest_worker` mode (`python m
 Backs the admin-react Candidate Metrics dashboard. Supports the full filter set
 (gender, status, institute, degree, roles, work experience, salary, passing years…)
 plus pagination and async CSV/Excel export (`/download/async` → `export_jobs`,
-drained by the `worker` sibling).
+drained by the **`export-worker`** sibling).
+
+**Analytics export: worker-built, link emailed, link is the credential**
+— *DEV + UAT, 2026-08-19. PROD pending.*
+
+The export a user starts from **Analytics → Candidate Metric Details** used to
+report "Download failed" after ~7 minutes. Three separate causes, all now fixed.
+
+1. **It ran inside the web process.** `/download/async` handed the build to
+   FastAPI `BackgroundTasks`, so 5-6 minutes of CPU competed with request
+   handling, a container restart orphaned the row at `processing` for ever, and
+   nothing bounded concurrency. **The `export_jobs` row is now the queue**:
+   `insert_export_job` writes it `pending` and `claim_next_export_job()`
+   (`SELECT … FOR UPDATE SKIP LOCKED` + `UPDATE … status='processing',
+   started_at=now()` in one transaction) hands it to exactly one worker — the
+   same table-as-queue pattern `run_worker` uses for candidates. A second
+   export-worker container is therefore safe and self-distributing.
+   `reset_stale_export_jobs(EXPORT_JOB_STALE_MINUTES)` runs on worker startup
+   and fails anything a restart left mid-build.
+
+2. **The browser died on the file, not the server.** admin-react fetched it
+   with `responseType:'blob'`, which loads the whole thing into the JS heap and
+   then copies it into a second `Blob`. A full export is **40,485 rows × 810
+   columns ≈ 90 MB zipped / 1.04 GB of sheet XML**, so the tab OOM'd and the
+   `catch` printed "Download failed" for a file the API had served fine (pulled
+   off the box in 1.8 s, HTTP 200, all 90,763,307 bytes). It now navigates to
+   the signed URL and the browser streams to disk. **If you see this class of
+   bug again, check the client before the server.**
+
+3. **`GET /download/file/{job_id}` had no authentication at all** — a bare
+   `curl` returned the full PII export. The link is emailed and an emailed link
+   cannot carry a session, so **the URL is the credential**:
+   `services/download_token.py` HMAC-SHA256s `"<job_id>:<expiry>"` with
+   `API_SECRET_KEY` (stdlib only, no token store). `/download/status` mints it,
+   so the in-app button and the email share one path. Forged, expired and
+   unknown all return the same opaque **403** — a distinct 404 would confirm
+   which job ids exist. Expired-and-swept returns **410**.
+
+**Email delivery.** `notify_email` on the request opts in; the worker posts to
+`EMAIL_ENDPOINT` (`https://mail.prod.pluginlive.com/send-email`) with the
+`auth-key` header and `{fromAddress, subject, messageType, toAdresses, html}` —
+the same contract admin-node's `app/queues/assignmentNotify.js` uses.
+**It carries a link, never the file**: that mail server has no attachment
+support and OCI Email Delivery caps a message at ~2 MB against a 90 MB export.
+Sends are best-effort and never fail the job; `notified_at` is stamped on
+success so a retry cannot double-send. Ships **OFF** — `EXPORT_EMAIL_ENABLED`
+is `false` on DEV and UAT, and `EMAIL_AUTH_KEY` is still blank on both.
+
+**Retention.** Nothing ever deleted `file_bytes`, so `export_jobs` had grown to
+**789 MB**. `purge_expired_exports` (cron, 03:00) nulls the bytes past
+`EXPORT_FILE_RETENTION_DAYS` (7) and sets status `expired`, keeping the row as
+history; the dashboard renders that as "run it again" rather than a dead button.
+
+⚠️ **`EXPORT_LINK_BASE_URL` must name its own environment.** DEV
+form-data-normalization points at the **UAT database**, so DEV and UAT share one
+`export_jobs` table — the row cannot say which host built the file. DEV is
+`https://data-normalization.dev.pluginlive.com`, UAT is
+`https://data-normalization.uat.pluginlive.com`. Getting this wrong emails UAT
+users a link into DEV.
+
+Schema (migration `20260819T061054Z__export_jobs_email_delivery.sql`, applied to
+the shared DEV/UAT database 2026-08-19, **PROD pending**): `notify_email`,
+`notified_at`, `started_at`, `expires_at`, `row_count`, `column_count`, plus
+`idx_export_jobs_status_created_at` (the claim) and a partial
+`idx_export_jobs_expires_at WHERE file_bytes IS NOT NULL` (the sweep).
+
+**Still open:** the *other* export on the same menu — Analytics → Candidate
+Metrics → `POST /api/candidates/downloadcandidate` — is still fully
+synchronous, takes no filters at all (its request model accepts only
+`columns`), styles every cell, and streams inline behind nginx's default 60 s
+`proxy_read_timeout`. It 504s on the full 11k-candidate set and none of the
+above touches it.
 
 **Degree / Department filter options = the ACTIVE master, matched by id OR text**
 — *UAT + DEV, 2026-07-31.* `GET /api/student-metrics/degrees` and `/departments`
@@ -285,9 +364,11 @@ semantically-matching candidates in one shot, so users don't hand-pick every rol
 variant. Fixes the old literal-`LIKE` gaps where `fullstack` (no space) or
 `software developer` returned no/few roles.
 
-- Param `role_search` on `GET /api/student-metrics` and the download endpoints
-  (the GET grid is wired; **async export via the `worker` sibling is not yet
-  rebuilt** — it ignores `role_search` until the worker container is refreshed).
+- Param `role_search` on `GET /api/student-metrics` and the download endpoints.
+  The router expands the free-text query to role ids before writing the job row
+  (`role_ids` in `filters`), so the export worker never has to run the semantic
+  expansion itself. Both the grid and the async export honour it as of the
+  2026-08-19 export-worker rebuild.
 - How it works: `services/semantic_roles.py` embeds the query (Gemini
   `gemini-embedding-001` @ 1536 dims, L2-normalized, `RETRIEVAL_QUERY`), pulls the
   nearest role ids from the `ROLE_VECTOR_DB_URL` pgvector store
