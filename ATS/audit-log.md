@@ -258,6 +258,72 @@ Admin trail resolves the id to the student's name. The area name ("Student
 resume", "Offer") is only used for the generic rows, which point at no single
 named record.
 
+## Assessment participation: taken, abandoned, never turned up
+
+Three events, covering real and practice attempts alike — `is_practice` is
+carried on the row, so practice attendance is the same query with one filter.
+
+| Action | Written by | Volume on PROD |
+|---|---|---|
+| `assessment.submitted` | the submit routes | ~400–950 / month |
+| `assessment.auto_submitted` | `markAutoSubmitted` | part of the above |
+| `assessment.dropped` | the dropout sweep (`updateDropoutStatusCron`) | 840 all-time |
+| `assessment.window_closed` | `script/assessmentWindowAudit.js`, hourly | one row per schedule |
+
+Submitted and auto-submitted are deliberately **distinct actions**: in one the
+candidate chose to finish, in the other the clock finished for them. Conflating
+them would misreport what the candidate actually did.
+
+### The descriptor opt-in
+
+The submit routes sit inside the delivery surface `studentAudit.js` filters out
+as telemetry, and that exclusion is still correct for autosave, proctoring
+frames and media uploads. So `isAuditableRoute` now works like this: **a route
+with an explicit descriptor is always audited, even inside the telemetry
+surface.** Naming a route in `studentAuditRoutes.js` is how you say "this one is
+an event, not noise". A submit happens once per attempt; the traffic around it
+does not.
+
+### Why non-attendance is one row per schedule, not one per absentee
+
+This is the one thing in the trail that is **not an event** — nobody makes a
+request when they fail to turn up — so it can only be observed when the window
+shuts. That is what the hourly sweep does.
+
+It writes **one row per schedule**, carrying counts (invited / taken / not taken
+/ dropped / still in progress, plus the practice split) and a **capped sample**
+of absentee ids. The reason is arithmetic:
+
+```
+PROD assessment_assigned_students:
+  PENDING     330,692      ← "did not take"
+  COMPLETED    19,421
+  DROPOUT         840
+```
+
+A row per absentee would put a third of a million entries into a table holding a
+few hundred, growing by tens of thousands each cycle, burying every real edit
+underneath — the precise failure this trail exists to avoid. The full absentee
+list stays a report against `assessment.assessment_assigned_students`, which is
+indexed for it and is the right tool for a question about *state* rather than
+about events.
+
+**The sample cap is not cosmetic.** `AuditService.capJsonSize` replaces the
+*entire* metadata object when it exceeds 32KB, so an uncapped list would have
+cost the counts as well as the sample. Measured at 5,000 absentees the row is
+752 bytes.
+
+The sweep asks the trail whether it already recorded a schedule before writing,
+because an append-only table cannot be corrected and a duplicate would be
+permanent. Verified on DEV: first run recorded 50, second recorded 0 and skipped
+50. Tunable via `AUDIT_WINDOW_LOOKBACK_HOURS` (default 48) and
+`AUDIT_WINDOW_BATCH_LIMIT` (default 50); it runs at minute 7 of each hour,
+alongside the dropout sweep in `script/scheduler.js`.
+
+Both the sweep and the dropout rows are written as `portal: SYSTEM` with
+`actorRole: "system"`. Nobody performed them — a deadline passed and a timer
+noticed — and attributing them to a person would be a lie.
+
 ## Every row says what happened, in words
 
 A hook can only ever report "a PUT happened on this path", which is how the
