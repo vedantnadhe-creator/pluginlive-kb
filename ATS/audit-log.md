@@ -100,15 +100,25 @@ gain names with no backfill.
 Three separate faults each surfaced as a raw id in the Who column, all fixed on
 2026-08-19 and all found by querying the UAT trail rather than reading code:
 
-1. **19 rows had no actor at all.** Their routes have `isPrivate: true`
-   *commented out* in `app/routes/assessment.js` (37 routes do), so `verifyToken`
-   never installs, `setAuditActor` is never called, and every
-   `subscription.assigned` row landed anonymous. `admin-node`'s and
-   `student-node`'s `onRequest` hooks now call `setAuditActorFromRequest`, which
-   decodes the token when one is sent. It deliberately **rejects nothing** —
-   whether a route enforces auth stays the route's decision, and this is only
-   about attribution. Those routes are still unauthenticated; that is a separate,
-   open issue.
+1. **Rows with no actor at all, shown as "Unknown".** A route only runs
+   `verifyToken` if it sets `isPrivate: true`. Where it does not, `setAuditActor`
+   is never called and the row lands anonymous. Two separate cases hit this:
+   `admin-node`'s `subscription.assigned` (37 routes in `app/routes/assessment.js`
+   have `isPrivate` *commented out*), and `institute-node`'s
+   `system_config.changed` from
+   `PUT /institutes/instituteCampus/:instituteCampusId/course/:courseId`, which
+   never had the flag.
+
+   **All four services** now call `setAuditActorFromRequest` from their
+   `onRequest` hook, which decodes the token when one is sent. It deliberately
+   **rejects nothing** — whether a route enforces auth stays the route's
+   decision, and this is only about attribution. Those routes are still
+   unauthenticated; that is a separate, open issue.
+
+   Because the table is append-only, **rows written before the fix keep reading
+   "Unknown" forever**. There is no backfill and there should not be: inventing
+   an actor for a row that never recorded one is exactly the kind of thing an
+   audit log must not do. Only new rows carry the actor.
 2. **22 rows carried an actor id present in no user table**
    (`63e4de1011d6db2f8d400580`, role `system`). `AuditActor.findNamesByIds` now
    searches `admin.admin_users` as well as `user_management.users`, with
