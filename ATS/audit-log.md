@@ -250,6 +250,71 @@ Admin trail resolves the id to the student's name. The area name ("Student
 resume", "Offer") is only used for the generic rows, which point at no single
 named record.
 
+## Every row says what happened, in words
+
+A hook can only ever report "a PUT happened on this path", which is how the
+trail ended up reading as a list of endpoints. Two things fixed that, on
+2026-08-19:
+
+**`metadata.summary`.** Written at audit time by `student-node` and
+`institute-node`, it is a sentence built from the actual request — *"Updated 3
+specialisations on the course mapping"*, *"Moved 3 candidates to SHORTLISTED"*,
+*"TPO approval set to Lapsed"*. The route, HTTP method and full payload are
+still recorded underneath as the evidence; the summary is only what a reader
+sees first. `metadata.area` carries the section name for grouping.
+
+**`student-node/app/helpers/studentAuditRoutes.js`.** A descriptor table mapping
+each route to `{ action, entity, label, summary, changes }`. `entity` names the
+route param that identifies the record, so the Admin trail can resolve it to a
+name; `changes` is only populated where the request actually carries a
+transition, because an audit row must record what it was told and never a guess.
+
+Two stored codes are translated on the way in, since neither means anything on
+screen: `tpoStatus` (an Int defaulting to `-2`; `-1` is **Lapsed**) and the
+numeric opt-out state on `currentCourse` (`2` opt-out pending, `3` opted in,
+`4` opt-in pending).
+
+Every descriptor callback runs inside a try/catch. A summary is a nicety and the
+audit row is not — a descriptor that trips over an unexpected payload must cost
+the sentence, never the record.
+
+### The student actions
+
+Profile areas are named individually because they are what people dispute:
+`student_profile.updated`, `student_education.updated`, `student_resume.updated`,
+`student_work_experience.updated`, `student_internship.updated`,
+`student_course.updated`.
+
+**The profile endpoints take a nested body, so the route alone cannot say which
+section was edited** — `PUT /students/:studentId/profileUpdate` covers all of
+them. The payload keys are the only signal, and they are what decides the
+action (`SECTION_ACTIONS`).
+
+The apply-and-evaluate flow reads end to end, which is the point — this is how
+you reconstruct what happened to one candidate:
+
+| Action | Raised by |
+|---|---|
+| `application.applied` / `.saved` / `.declined` | `/students/role/{apply,save,reject}` |
+| `application.status_changed` | ATS stage moves, incl. bulk |
+| `tpo_approval.changed` | TPO decision and profile approval requests |
+| `offer.status_changed` | offer released / accepted / rejected / negotiated |
+| `candidate.status_changed` | drive candidate result |
+| `opt_out.changed`, `application.withdrawn` | opt-out, opt-in and withdrawal |
+
+**A new action must be added to `admin-node`'s taxonomy too**, or the Action
+filter cannot offer it however many rows exist — `admin-node` never writes these,
+but its `/audit/actions` feeds the filter for the whole trail.
+
+### The expanded row
+
+`admin-react`'s Details panel leads with the summary, states its own date and
+time in IST (an expanded row is what gets screenshotted into a ticket), then
+`What changed`, then `Submitted values` as labelled fields. Arrays of objects are
+**counted, not printed** — a list of specialisation uuids told a reader nothing.
+Endpoint and request id sit in a `Technical` block at the bottom; they stay,
+because an audit row has to be verifiable.
+
 ## System Configuration: audited by a route hook, not per handler
 
 System Config reuses long-lived CRUD endpoints across many masters, so wiring
