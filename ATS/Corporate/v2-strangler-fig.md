@@ -5,8 +5,22 @@ the same pattern as institute-react-v2. Two new repos sit alongside the v1 app:
 
 | Repo | Checkout | Stack | Where it runs |
 |---|---|---|---|
-| `corporate-react-v2` | `~/frontend/corporate-react-v2` | Next.js + TS + Tailwind, `basePath=/v2` | DEV: systemd :3012 · **PROD: k8s ns `frontend`** |
-| `corporate-node-v2` | `~/api/corporate-node-v2` | Fastify + TS + Zod + Kysely/pg (no Prisma) | DEV: systemd :4001 · **PROD: k8s ns `api`** (API + worker) |
+| `corporate-react-v2` | `~/frontend/corporate-react-v2` | Next.js + TS + Tailwind, `basePath=/v2` | DEV: systemd :3012 · UAT: systemd :3014 · **PROD: k8s ns `frontend`** |
+| `corporate-node-v2` | `~/api/corporate-node-v2` | Fastify + TS + Zod + Kysely/pg (no Prisma) | DEV: systemd :4001 · UAT: systemd :4001 · **PROD: k8s ns `api`** (API + worker) |
+
+## UAT (since 2026-08-19)
+
+Both services run as systemd units on the UAT box, not containers:
+`corporate-react-v2` :3014 behind `corporate.uat.pluginlive.com/v2`, and
+`corporate-node-v2` :4001 with no public route. Deploy the frontend with
+`./auto_deploy.sh corporate-react-v2 UAT` (menu 24); the API is built and
+restarted by hand. Env, secrets, queue isolation and the score webhook are
+documented in
+[Infrastructure/v2-apps-uat-topology.md](../../Infrastructure/v2-apps-uat-topology.md).
+
+The 11 agentic migrations **are** applied to UAT (verified 2026-08-19, 58 tables
+in the `corporate` schema). `deploy/prod/RELEASE-v1.37.md` in the repo still
+claims UAT is pending — that is stale.
 
 ## PROD topology (release-v1.37, deployed 2026-07-30)
 
