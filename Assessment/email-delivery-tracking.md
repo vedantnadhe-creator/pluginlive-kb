@@ -9,6 +9,11 @@ admins as a **DELIVERY** column on the assessment detail candidate table and as 
 
 Live on **DEV + UAT** (2026-07-31). PROD pending.
 
+Both provider feeds — WhatsApp status callbacks and OCI Email Delivery logs —
+are live on **DEV + UAT since 2026-08-20**, so `delivered` / `bounced` are now
+written by the providers rather than being statuses nothing ever set. PROD
+pending.
+
 ## Why it exists
 
 Before this, email delivery was completely untracked:
@@ -43,7 +48,8 @@ One row per send **attempt** against the mail relay.
 
 **`accepted` means the relay handed the message to OCI and OCI took it — NOT that
 it reached a mailbox.** `delivered`/`bounced` are the only statuses that describe
-the recipient's mailbox, and nothing writes them yet (see Known gaps).
+the recipient's mailbox, and since 2026-08-20 the provider feeds write them.
+`accepted` is what the UI now calls **Processing**.
 
 ### `assessment.candidate_journey_events`
 Append-only; one row per milestone occurrence.
@@ -259,8 +265,39 @@ truthful `Completed` tag.
 
 - **`admin-react` `Partials/DeliveryStatusTag.js`** — antd `Tag` with a tooltip
   per status. Colour carries urgency, not stage: only `failed` is red, `opened`
-  (assessment) is green. Untracked candidates render a muted `—`, never a tag
-  asserting something never observed.
+  (assessment) is green. Untracked candidates render a muted `—` with the tooltip
+  **"No info available"**, never a tag asserting something never observed.
+
+### The four states (since 2026-08-20)
+
+| Tag | Colour | Means | Row state behind it |
+|---|---|---|---|
+| **Opened** | green | clicked the link, or started/completed the attempt | `candidate_journey_events` / attempt state |
+| **Sent** | blue | **a provider confirmed delivery** on at least one channel | any channel at `delivered` |
+| **Processing** | grey | submitted somewhere, confirmed nowhere — still in flight | any channel at `accepted`, none `delivered` |
+| **Failed** | red | every attempted channel failed | all channels `failed`/`bounced` |
+| **—** | muted | no `email_events` rows at all | — |
+
+Before this split, **Sent meant two different things** — a confirmed delivery and
+a message merely handed to the provider — which is precisely how a bounced invite
+sat there reading Sent. The distinction only became possible once both providers
+started reporting back.
+
+**Processing outranks Failed in the precedence list.** A candidate whose email
+bounced while the WhatsApp leg is still in flight has not been declared
+unreachable yet; reporting Failed would send an admin chasing someone who is
+about to receive the invite. The failed leg is still named in the tooltip, so the
+softer tag hides nothing.
+
+The per-channel tooltip uses the same three words (`delivered` → Sent,
+`accepted` → Processing, `failed` → Failed), so a Processing tag can say which
+leg it is waiting on. The old `sent` channel key is kept as an alias of
+`delivered` for rolling deploys.
+
+Funnel stages behind it: `inviteDelivered` (Sent), `inviteAccepted`
+(Processing), `inviteFailed`, plus per-channel `channelDelivered` /
+`channelAccepted` / `channelFailed` in
+`admin-node/app/service/DeliveryFunnelService.js`.
 - Column sits next to CONTACT DETAILS, because it answers a question about the
   address on the left.
 - Excel: `Delivery Status` column in `exportStudentData`.
@@ -323,15 +360,57 @@ The handler completes the Notifications subscription confirmation itself,
 authorised caller could turn the endpoint into a request-forgery tool. When the
 confirming fetch fails it logs the URL so it can be completed by hand.
 
-**Per-environment:** the endpoint exists wherever admin-node runs (UAT since
-2026-08-20, answering 401 to unauthenticated posts), but it receives nothing
-until the Connector Hub → Notifications → subscription chain is built in that
-tenancy's OCI console. That is console work, not a deploy.
+### The OCI resources (built 2026-08-20)
+
+| Resource | Name / detail |
+|---|---|
+| Email domain logs | `pluginlive.com` (PluginLivePROD compartment) **and** `prod.pluginlive.com` (PluginLiveDEV), both categories, 30-day retention |
+| Log groups | `Default_Group` (PROD compartment), `Dev-Uat-Mail-Track` (DEV compartment) |
+| Connector | `pl-email-logs-dev` — source Logging (all four logs), target Notifications |
+| Topic | `pl-email-delivery-dev` |
+| Subscriptions | `CUSTOM_HTTPS` → DEV and UAT `/delivery-feedback/email/oci?token=…` |
+| Policies | `pl-email-log-connector-dev` (DEV), `pl-email-log-connector-read-prod-logs` (cross-compartment log read) |
+
+**One log stream serves every environment.** Mail-Server sends every
+environment's mail as `mandate@pluginlive.com`, so DEV, UAT and PROD invites all
+land in the same `pluginlive.com` logs and there is no env discriminator in the
+record. Each environment is therefore subscribed to the same topic and applies
+only the `message_id`s it recognises; everything else is counted as unmatched
+and dropped. Nothing about another environment is *stored* — `applyFeedback`
+only writes rows it can match.
+
+**Env vars:** `OCI_LOG_WEBHOOK_SECRET` guards the email endpoint,
+`DELIVERY_WEBHOOK_SECRET` the WhatsApp one. Both fail closed: unset means the
+route rejects everything rather than running open.
+
+**Watch out:** on DEV the CI deploy rewrites `.env.dev`, which silently dropped
+`OCI_LOG_WEBHOOK_SECRET` once and turned real pushes into 401s. Connector Hub
+does **not** redeliver an event it has already handed over, so events lost that
+way are lost for good.
 
 ### WhatsApp: MSG91 sends `eventName`, not `event`
 
 The WhatsApp callback leg was reading a field MSG91 does not send, so those
 callbacks applied to nothing. Fixed 2026-08-20 (`c0e4f43`).
+
+MSG91 posts a flat body, not Meta's envelope. The fields that matter:
+`eventName` (`sent` → `delivered` → `read`, or `hold`), `requestId` — which is
+exactly the id `recordWhatsappEvent` already stores, so correlation needed no new
+field — `uuid` (Meta's wamid, fallback only), `customerNumber`, and `reason`.
+
+| `eventName` | Written |
+|---|---|
+| `delivered`, `read` | `delivered` |
+| `failed`, `undelivered`, `rejected` | `failed` |
+| `hold` **with** a `reason` (e.g. `131026: Message undeliverable`) | `failed` |
+| `hold` with no reason | **nothing** — MSG91 also uses hold for queued-behind-something, and marking a live send dead would be wrong |
+| `sent` | **nothing** — the row already reads `accepted`, and there is no legal transition into it |
+
+Webhooks are configured per environment in MSG91 (`pluginlive5`) as three events
+each — On Outbound Report Received, On Failed Events, On API Failed Events — all
+pointing at that environment's `/delivery-feedback/whatsapp?token=…`. The WABA
+(`916380485173`) is shared, so every environment receives every environment's
+callbacks and ignores the ids it does not own.
 
 ## Known gaps
 
@@ -341,11 +420,15 @@ callbacks applied to nothing. Fixed 2026-08-20 (`c0e4f43`).
   list.~~ **Closed 2026-08-20**: a suppressed recipient now announces itself, per
   message, as an accept carrying `errorType: Recipient suppressed`, so no
   suppression-list snapshot is needed.
-- **`messageId` is NULL on DEV and UAT.** `admin-node/.env` has no
-  `EMAIL_ENDPOINT`, so it falls back to the hardcoded **production** relay
-  (`https://mail.prod.pluginlive.com/send-email`) — a DEV/UAT container without
-  that var sends real mail through the prod relay. The relay change is pushed but
-  not deployed to that host (it is PROD infra). Everything else tracks fine.
+- ~~**`messageId` is NULL on DEV and UAT.**~~ **Closed**: Mail-Server mints and
+  returns the id, and DEV/UAT rows carry it. But **DEV and UAT still send through
+  the production relay** — `EMAIL_ENDPOINT` is
+  `https://mail.prod.pluginlive.com/send-email` in every environment, and that
+  relay sends as `mandate@pluginlive.com`. That is why one log stream carries all
+  three environments.
+- **PROD has no subscription yet.** The logs are on and the topic exists, so PROD
+  events are being generated and delivered to the DEV/UAT subscribers, where they
+  match nothing. PROD gets its own subscription when admin-node ships there.
 - **Email opens are deliberately NOT tracked.** A tracking pixel was considered
   and rejected: Apple Mail Privacy Protection pre-fetches images for every iOS
   Mail user (false positives), Outlook blocks remote images by default (false

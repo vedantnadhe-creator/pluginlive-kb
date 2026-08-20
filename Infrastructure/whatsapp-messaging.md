@@ -347,7 +347,12 @@ curl -s "https://graph.facebook.com/v17.0/<template_id>?fields=name,status,categ
 Meta can **re-categorise a template it previously approved as UTILITY into MARKETING** on its
 own review, so a template that worked can start failing with no code change on our side.
 
-**Verifying delivery at all** — the only trustworthy signal is Meta's own WABA analytics
+**Verifying delivery at all** — for assessment mail-outs this is now solved: MSG91 posts
+per-message status callbacks to admin-node (`POST /delivery-feedback/whatsapp`, DEV + UAT since
+2026-08-20), and they land in `assessment.email_events` as `delivered` / `failed` with a reason.
+See [email-delivery-tracking.md](../Assessment/email-delivery-tracking.md). MSG91 sends its own
+`eventName` field (`sent` / `delivered` / `read` / `hold`), **not** Meta's `status`, and correlates
+on `requestId`. For anything outside that flow, the fallback signal is Meta's own WABA analytics
 (our token has business-management access). Note the daily bucket is timezone-offset (today's
 sends can land in yesterday's bucket) and `granularity(HOUR)` returns nothing on this WABA, so
 compare `sent`/`delivered` **deltas** on `granularity(DAY)` rather than looking for today's row:
