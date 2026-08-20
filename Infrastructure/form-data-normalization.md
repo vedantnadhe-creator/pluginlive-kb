@@ -956,9 +956,67 @@ them by setting their `normalization_status` to `pending`.
 
 > **Deploy note — the fix lives in the WORKER.** `auto_deploy.sh form-data-normalization`
 > rebuilds `datanormalization:api` and recreates **only** the api container.
-> `datanormalization-worker` / `-cron` run the `datanormalization:api-mastersrc` tag and
-> are left on the old image, so normalization behaviour would not change. Always bump all
-> three — see *Docker & Deployment* below.
+> `datanormalization-worker` / `-cron` / `-export-worker` are left on the OLD image, so
+> normalization behaviour would not change. (They shared the `datanormalization:api` tag
+> from 2026-08-05 — the `api-mastersrc` drift is long resolved — but a tag is not a
+> container: an existing container stays pinned to the image ID it was created from until
+> it is recreated.) Always bump all four — see *Docker & Deployment* below.
+
+### Behavior — the PIN sanitiser now runs on EVERY postcode key, not just `current_postcode` (2026-08-20)
+
+The 2026-08-04 fix above stopped the *crash* but not the *bad data*. `extract_pincode()`
+was wired into only one of the paths that can set a postcode, so an ERP bulk upload still
+put the door number in the candidate's Pincode field:
+
+| raw address | stored `corr_post_code` | now |
+|---|---|---|
+| `103, Fabian Building 1, St.Martin Road, Bandra West, Mumbai - 400050` | `1031400050` | `400050` |
+| `F-22, 2nd building, Wellington terrace, near Liberty, Mumbai - 400002` | `222400002` | `400002` |
+| `9D Abhilasha Building, Opp. Agust Kranti Maidan, Mumbai - 400026` | `9400026` | `400026` |
+
+Two holes were still live in `services/normalization_service.py`:
+
+1. **The guard covered `current_postcode` only.** An LLM-emitted `permanent_postcode`
+   went through raw — 79 of the 139 bad UAT rows were `perm_post_code`.
+2. **The guard ran too early.** It sat at the top of the cleaning block, but the bare
+   `pincode` → `current_postcode` remap ("when the LLM outputs a bare `pincode` with no
+   `current_*`/`permanent_*`, treat it as the current location") runs ~150 lines LATER,
+   re-introducing an unsanitized value after the guard had already run.
+
+**Why nobody noticed:** `1031400050` still fits INT4 (max 2147483647), so nothing
+downstream rejected it. Only values long enough to *overflow* — the original
+`1021296416006` — ever failed loudly. Everything between 7 and 10 digits was silently
+persisted and shown to the candidate as their PIN.
+
+Fix (Development `49f56bc` → UAT `fe0145e`, deployed DEV + UAT 2026-08-20; **PROD pending**):
+
+- **`sanitize_postcodes(cleaned)`** replaces the single inline guard. It forces
+  `current_postcode` / `permanent_postcode` / `pincode` to a bare 6-digit PIN via
+  `extract_pincode()`, or drops the key. Called at **both** exits of the normalize loop —
+  the normal one (after the explicit/positional address detectors, i.e. after the LAST
+  write to any postcode key) and the `##NO##` pass-through early return, which the old
+  guard covered only by accident of position.
+- **`NormalizationWorker._coerce_postcode()`** hardens the last guard before create-full.
+  `_coerce_number()` was the only check on `studentPersonalProfile.corrPostCode` /
+  `permPostCode`, and it happily forwards `1031400050` because that *is* a valid number.
+  The new coercer reuses `extract_pincode()` and falls back to the payload template's own
+  unset value of `0`.
+
+`tests/test_pincode_extraction.py` grew to **16 cases** covering both new functions
+(door-number concatenations that fit INT4, every-key sanitisation, idempotence,
+the `0` sentinel) — `docker exec datanormalization python -m unittest discover -s tests`.
+
+**Not retroactive.** Rows written before this deploy still carry the junk:
+
+| env | bad `corr_post_code` | bad `perm_post_code` | recoverable from address |
+|---|---|---|---|
+| UAT | 139 (98 are >6 digits) | 218 | 45 |
+| PROD | 242 | 4 | 7 |
+
+**PROD's 242 are mostly a DIFFERENT bug.** Samples are student-typed junk from the profile
+UI (`56` for "Vile Parle", `6000`, `40010`, `50019`), not ERP concatenations — only 7 are
+recoverable from the address text. That points at a missing 6-digit validation on the
+**student profile Pincode input**, which is not fixed here.
 
 ### Gotcha — city/state "mismatch" = entity-normalizer (vector-search) Gemini key invalid
 
@@ -1341,12 +1399,18 @@ LinkedIn-sourced candidate gets a populated work history / education without a r
 > three together:
 > ```bash
 > cd ~/api/form-data-normalization
-> docker rm -f datanormalization-worker datanormalization-cron
-> docker run -itd --name datanormalization-worker --restart unless-stopped --env-file .env \
->   --log-opt tag="service_name={{.Name}}" datanormalization:api python main.py worker
-> docker run -itd --name datanormalization-cron   --restart unless-stopped --env-file .env \
->   --log-opt tag="service_name={{.Name}}" datanormalization:api python main.py cron
+> for spec in worker:worker cron:cron export-worker:export_worker; do
+>   name=datanormalization-${spec%%:*}; cmd=${spec##*:}
+>   docker rm -f $name
+>   docker run -itd --name $name --restart unless-stopped --env-file .env \
+>     --log-opt tag="service_name={{.Name}}" datanormalization:api python main.py $cmd
+> done
 > ```
+> Verified 2026-08-20: this reproduces all three siblings' config exactly (restart policy
+> `unless-stopped`, no ports, no binds, bridge network, 45 env vars from `--env-file .env`).
+> **DEV runs only 2 containers** — `datanormalization` (the worker runs in-process via the
+> FastAPI lifespan) and `datanormalization-export-worker` — so on DEV recreate just the
+> export-worker after `auto_deploy.sh form-data-normalization Development`.
 > Verify with `docker exec <c> grep -c permanent_ids_from_current /app/workers/normalization_worker.py`
 > on all three. Same rule on PROD, where a mixed worker version previously produced ERP orphans.
 >
@@ -1613,11 +1677,14 @@ docker run -itd --name datanormalization-cron --restart always --env-file .env d
 
 > **UAT reality — `auto_deploy.sh` only bumps 1 of the 3 containers.**
 > `./auto_deploy.sh form-data-normalization UAT` builds `datanormalization:api` and
-> recreates **only** the `datanormalization` (api) container. On UAT the worker and cron
-> containers run the separate **`datanormalization:api-mastersrc`** tag, so they keep
-> serving the previous build and any change to `workers/` or `services/` has no effect —
-> which is most of this service's behaviour. After the script finishes, retag and roll the
-> siblings (their env is `--env-file .env`, restart policy `unless-stopped`):
+> recreates **only** the `datanormalization` (api) container. The three siblings
+> (`-worker`, `-cron`, `-export-worker`) stay pinned to the image ID they were created
+> from, so they keep serving the previous build and any change to `workers/` or
+> `services/` has no effect — which is most of this service's behaviour. (Re-confirmed
+> 2026-08-20 on the ERP pincode deploy: after `auto_deploy.sh`, the api container was on
+> the new image while all three siblings still ran the 17-hour-old one.) After the script
+> finishes, roll the siblings (their env is `--env-file .env`, restart policy
+> `unless-stopped`):
 >
 > ```bash
 > cd ~/api/form-data-normalization
