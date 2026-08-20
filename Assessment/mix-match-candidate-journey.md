@@ -58,6 +58,70 @@ that candidate was never sent — hence `assessmentReminderCopy` branches on
 The copy lives in `AssignmentJobService` rather than inline in the worker so it
 is testable without the worker's DB (`test/mixMatchAssignment.spec.js`).
 
+### The float writes its invite channel onto every part's map (2026-08-20)
+
+`mixMatchInviteChannel` decides how the float invites — but until this fix
+nothing wrote that decision down, and **every later flow reads the column, not
+the function**. `assessment_corporate_map.is_otp_invite` kept its `false`
+default (no caller sent the flag; the v2 wizard's BFF does not send it), so a
+corporate float invited candidates with a no-login `/s/` link and then, for
+anything that happened afterwards, was treated as a portal-credentials campaign:
+
+| Flow | Reads | Was doing |
+|---|---|---|
+| `_addStudentsToOneTimeAssessment` | `assessmentMap.isOtpInvite` | created a portal account + activation/credentials email, then `sendRemindersToStudents` |
+| `resendInvitesToStudents` | same column | portal reminder instead of the OTP link |
+| `AutoReminderService` | `m.is_otp_invite` | portal "log in to view" reminder |
+
+Worse than a wrong template: `provision` (`assignmentWorker.buildUserData`)
+always sets `skipActivationEmail: true`, so those candidates have **no portal
+password at all** — they were being sent to a login they cannot pass.
+
+`assignMixMatchAssessment` (`assessmentHandler.js`) now stamps each part's body
+with `isOtpInvite: svc.mixMatchInviteChannel(body.entityType) === "otp"` before
+delegating to `assignAssessment`, so the column records the channel the invite
+actually uses and the two cannot drift. College is unaffected — the institute
+map has no such column and `assignAssessment` ignores the flag for it.
+
+**Existing float maps needed a data fix** (DEV 2026-08-20, UAT 2026-08-20; PROD
+pending):
+
+```sql
+UPDATE assessment.assessment_corporate_map SET is_otp_invite = true
+ WHERE mix_match_group_id IS NOT NULL AND is_otp_invite = false;
+-- DEV 79 rows, UAT 46 rows
+```
+
+### A candidate added to a float is invited ONCE, not once per part (2026-08-20)
+
+`/assessment/addStudentsToAssessment` resolves a float id to its part maps
+(`mixMatchPartMapIds`) and adds the candidate to **every** part — so letting the
+parts mail meant one email per part for a single addition. The parts now take
+`deferInvite: true` and skip their notification block entirely; the handler then
+calls `Assessment.sendFloatInvites({groupId, partMapIds, entityType, emails})`
+once every part has taken the candidate. It mirrors `sendMixMatchGroupInvites`:
+
+- channel from `mixMatchInviteChannel` — corporate `sendAssessmentInviteEmail`
+  (with `mixMatch: {title, assessmentTypes}` only when ≥2 parts assigned),
+  college the portal reminder via `assessmentReminderCopy`
+- the link is minted from the **first floated part** the candidate landed on;
+  `MixMatchJourney.assertMember` resolves the group from any member assignment,
+  so any part's link opens the whole journey
+- a part whose assignment failed leaves no row, so it neither supplies the link
+  nor is named in the email
+- `AI_Interview` owners still get `role` / `durationMinutes` / the IST deadline
+  label via `_getAiInterviewEmailMeta`
+- non-critical: a send that throws is logged per candidate; the addition stands
+
+The per-candidate plan is a pure function — `app/helpers/floatInvitePlan.js`
+`planFloatInvites({parts, assignedRows})` — so ordering, partial assignment and
+the bundle threshold are tested without a DB
+(`test/floatAddCandidateInvite.spec.js`).
+
+Verified on UAT: floating Behaviour + Aptitude to a corporate, then adding a
+candidate, produces exactly one `mixMatchAssessmentInvite` per candidate and no
+portal reminder.
+
 ### The WhatsApp invite names every part (2026-08-20)
 
 The email above listed all the parts from day one; **WhatsApp did not**, and the
