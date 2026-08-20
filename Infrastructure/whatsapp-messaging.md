@@ -118,11 +118,21 @@ before it sends anything).
 
 Corporate assessment communications now calculate a short candidate-facing CTA
 from the assessment map's deadline in the IST wall-clock frame. More than 36h
-remaining renders `Complete it by tomorrow at 12 PM`; at or below 36h it uses
+remaining renders `Complete it by tomorrow 12 PM`; at or below 36h it uses
 the real deadline with `today` / `tomorrow` and preserves non-zero minutes. An
 expired deadline suppresses the send. The common formatter is
 `admin-node/app/helpers/candidateDeadline.js`; do not compare the map value as an
 honest UTC instant.
+
+The over-36h form lost its `at` on 2026-08-20 (`Complete it by tomorrow at 12
+PM` -> `Complete it by tomorrow 12 PM`, admin-node `d3c7703` / UAT `a984bcd`),
+matching the two shorter forms which never carried one. **This string is
+shared** — it is `{{5}}` on all six `*_deadline_v1` templates and the invite
+email's complete-by line, so a change here moves every corporate assessment
+invite and reminder at once. It is a parameter value, not template text, so no
+Meta re-approval is involved. One `at` deliberately survives: the branch for a
+deadline 2+ calendar days out yet under 36h away still reads `Complete it by 23
+Aug 2026 at 4:30 PM`, where it is correct.
 
 Invite and reminder are explicit intents in `assessmentInviteEmail.js`. Email
 reminders now have reminder subjects/headings/body copy instead of reusing the
