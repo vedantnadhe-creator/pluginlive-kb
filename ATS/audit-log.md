@@ -354,6 +354,13 @@ Both imports share one action because they are two hops of the same channel —
 the Tally form feeds normalization, which calls `create-full`. The summary says
 which hop.
 
+**The Action chip must not repeat that guess** (fixed 2026-08-20, `3dde5dce`).
+Because both routes raise `student.imported`, the chip labelled every such row
+`(Tally form)` — including rows whose own summary read "from form
+normalization", so the two halves of one row contradicted each other. The chip
+no longer names a channel; the summary is the single place that says which hop
+it was.
+
 ### Naming the submitter on a route with no token
 
 `create-full` is authenticated by a shared `auth-key` that carries **no
