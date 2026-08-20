@@ -353,6 +353,52 @@ The resume screen follows the AI Interview's `resumePolicy` (`mandatory` / `opti
 
 `totalDurationMinutes` used to require *every* part to have a configured duration, so one unknown blanked the whole total: the candidate saw no duration and the runner fell back to a hard-coded 60-minute clock regardless of the sitting. It now sums the parts that have one, with `durationPartial` flagging that the real sitting is at least that long.
 
+### The candidate is quoted the length and count the admin set (2026-08-20)
+
+Only **Role Based, AI Interview and Custom** store a duration — Role Based on
+`assessment_config.duration_minutes`, AI Interview on
+`ai_interview_config.interview_duration`, Custom summed from its section times.
+On DEV, of sets created in the preceding ten days: Aptitude 39 sets / 0 with a
+stored duration, Communication 2 / 0, Role Based 4 / 4.
+
+Everything else falls through `estimatedDuration()` in
+`student-node/app/models/MixMatchJourney.js`, and that estimate had nothing to
+do with what the admin picked — Aptitude used its *question count* as minutes
+(a 60-minute paper read as 40) and Communication used 12 minutes per section.
+Both now derive the admin's own number:
+
+| Type | Candidate clock |
+|---|---|
+| Aptitude | inverted blueprint — 25 questions → 30 min, 30 → 45, 40 → 60 |
+| Communication | flat 30 min |
+| Behavior | 20 min |
+
+The Aptitude blueprint is 1:1 and invertible, so reading it backwards returns
+exactly the duration that was chosen. **Nothing is persisted per assignment on
+purpose:** Communication sets come from a shared pre-generated pool and
+`assessment_config` is 1:1 with a set, so writing one assignment's duration
+there would change it for every other assignment reusing that set. The rule
+lives in two places and the two must agree — `estimatedDuration()` here and
+`assessmentMetrics()` in `admin-react-v2/src/lib/assessments/typeSummary.ts`.
+
+### Communication is counted in questions, and the count is 7
+
+A Communication set holds **one question per section** — the set rows confirm
+it, 8 sections and 8 mapped questions — so the number the admin used to see
+labelled "7 sections" was already the question count wearing the wrong unit. It
+reads "7 questions" on both sides now.
+
+The candidate side was separately reporting **8**: it counted the mapped rows,
+but student-node serves exactly one of **Email Writing** or **Dictation** per
+candidate (the `IsEmailWriting` flag drops the other, `Assessment.js` ~3165), so
+the raw count was always one too many. A `comm_counts` lateral in the summary
+subtracts the twin when both sections are present.
+
+**Behaviour still disagrees:** the summary reports the whole domain bank (115 on
+DEV) while the wizard shows a hardcoded 15. The two *times* agree at 20 min.
+Unresolved — neither number has been checked against what the Behaviour runner
+actually serves.
+
 ### A module is finished explicitly, then goes read-only
 
 Every module's last question carries a **"Finish <Module>"** control rather than

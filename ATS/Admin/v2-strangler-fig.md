@@ -166,11 +166,50 @@ sent**, so dropping a blank option renumbers the answer with it rather than
 marking the wrong one); an Excel section posts the sheet itself as multipart,
 because admin-node is what parses it — including the images embedded in the rows.
 
+**Step 3's candidate lists and sheet upload are real** (2026-08-20). "Use an
+existing list" offered a hardcoded `B.Tech CSE` / `MBA-Fin` catalogue with
+invented headcounts, and every uploaded file resolved to the same eight
+fictional people after a 700 ms fake delay that always ended in "Parsed
+successfully". Three admin-node endpoints back them now:
+
+| Endpoint | Returns |
+|---|---|
+| `GET /assessment/getInstituteBatches?instituteId=` | the degree / department / passing-year cohorts a campus has students in, with true headcounts |
+| `GET /assessment/getInstituteBatchStudents?instituteId=&degreeId=&streamId=[&passingYear=]` | that cohort's students as `{name, email, mobile}` |
+| `POST /assessment/parseCandidateSheet` (multipart) | an uploaded XLSX/CSV read into `{candidates, skipped}` |
+
+The cohorts come from the same three columns the broadcast scope picker reads
+(`student.current_course.degree_id / stream_id / ended_on`), so a list here
+reaches the cohort a broadcast would. A cohort with **no passing year on file**
+is still real students and is offered as "No year" rather than dropped.
+
+The sheet is parsed in admin-node, not the browser, because admin-node already
+carries `exceljs` — the wizard would otherwise need a spreadsheet library of its
+own to read a file whose contents it immediately posts back. Header aliases are
+accepted (`email` / `email id` / `e-mail`, `mobile` / `phone number`, …), rows
+with no usable email and duplicate emails are dropped, and the **count of
+skipped rows is returned and shown** — a dropped row is a candidate who would
+not be invited. Rosters are returned in full for the same reason: silently
+sampling a cohort the admin was told held N students would float to fewer people
+than promised.
+
+**Corporate has no suggested lists** — there is no enrolled population behind a
+company, so the section says so rather than rendering an empty box that reads as
+a failed load. Custom lists work for both segments.
+
 **Type-list ordering.** Only Pre-Assessment Registration is pinned (first,
 undraggable, lock icon instead of a grip). AI Interview was briefly pinned last
 the same way (`a78c17b`) — that was never a requirement and was reverted in
 `eee9ddb`, including in the mix-match payload builder, which now maps
 `draft.typeKeys` directly with no reordering. AI Interview is freely draggable.
+
+**Evaluation parameter descriptions are back** (2026-08-20). The BFF mapped each
+suggested parameter down to `{name, weight}` and threw the description away.
+That is not cosmetic: the interview engine serialises the whole parameter into
+both the question-generation and the scoring prompt, so the description is what
+tells the model what a bucket measures — without it the interview was questioned
+and scored against bare names. v1 forwarded `ai.parameters` verbatim and never
+had this. Each row now carries its description under the name and weight.
 
 **Field changes worth knowing:** Listening audio accent is now a two-option
 RadioCardGroup (`US`, `Indian`, default `US`) rather than a five-option

@@ -702,3 +702,56 @@ The TPO dashboard's "sent" count uses `_getAssessmentMapsUpToCurrent()` to deter
 - **Batch Queries:** `getBatchDegreeStreamMapIds()` and similar functions use batch lookups to avoid N+1 queries during bulk operations
 - **Audit Trail:** All major operations (assignment, generation, schedule creation) create `assessmentAudit` entries for traceability
 - **ExcelJS Export:** `exportStudentData()` uses ExcelJS to generate formatted XLSX files for download without a temp file
+
+## A float of one is listed as that assessment, not as "Mix & Match" (2026-08-20)
+
+A **College float is single-assessment by design** (the v2 wizard's `toggleType`
+replaces rather than adds for a college), so every college row carried a
+`mix_match_group_id` and the Active / Completed lists labelled it "Mix & Match
+Assessment" — a bundle the admin had never sent.
+
+`getActiveAssessments` / `getCompletedAssessments` (`app/models/Assessment.js`)
+now decide four columns together through `floatIdentitySql()`:
+
+    CASE WHEN <alias>.mix_match_group_id IS NOT NULL
+          AND (SELECT COUNT(*) FROM assessment.<map table> m2
+                WHERE m2.mix_match_group_id = <alias>.mix_match_group_id) > 1
+         THEN ... group ... ELSE ... the plain assessment ... END
+
+covering `id`, `mixMatchGroupId`, `assessmentType` and `assessmentName`. A group
+of one presents as the plain assessment — real type, its own map id,
+`mixMatchGroupId` NULL — so `decorateMixMatchRows` strips `parts` and the detail
+screen takes the normal per-assessment path (it only takes the float path when
+the id it is handed *is* a group id).
+
+Two decisions worth keeping:
+
+- **The part count comes from the group, not from the surviving rows.** A
+  correlated subquery over the map table, not `COUNT(DISTINCT map_id)` — filtering
+  the list by type would otherwise collapse a real three-part float to one row
+  and relabel it as a single assessment.
+- **The name stays the title the admin typed.** A single-part float is stored as
+  `"<title> - Behavior"`; the type is already its own column, so the suffix only
+  repeated it. Same reasoning applied to the candidate email.
+
+## Aptitude: the three blueprints, and two ways they were being missed
+
+30 min → **25** questions, 45 → **30**, 60 → **40**. Difficulty changes the MIX
+(Easy 60/30/10, Medium 30/50/20, Hard 20/50/30), never the total.
+`APTITUDE_DIFFICULTY_MIX` in `app/helpers/aptitudeDistribution.js` is the source
+of truth; the handler's `convertDurationAndDifficultyToSettings` just delegates.
+
+Two bugs, both silent:
+
+1. **Sub-topics are matched by NAME.** `_resolveAptitudeSelection` and
+   `selectAptitudeQuestionsForAssessment` both match
+   `LOWER(ss.sub_section_name) = ANY(...)`. admin-react-v2 was sending
+   sub-section **ids**, so nothing matched, every question was filtered out and
+   the part failed with *"No matching subsections found for selected subtopics"*
+   — which, before the group-invite rework, took the whole float's invite with it.
+2. **The difficulty level is read case-insensitively now.** The mix table is
+   keyed lower case; admin-react sends `"medium"`, admin-react-v2 sends
+   `"Medium"`. A title-cased level fell through to the `{0,0,0}` fallback, and
+   that fallback is **not** safe downstream — `aptitudeLengthFromDifficulty`
+   reads a sum of 0 as the 30-question paper, so a 60-minute float silently
+   built 30 questions instead of 40 rather than failing anywhere visible.
