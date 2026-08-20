@@ -58,6 +58,89 @@ that candidate was never sent — hence `assessmentReminderCopy` branches on
 The copy lives in `AssignmentJobService` rather than inline in the worker so it
 is testable without the worker's DB (`test/mixMatchAssignment.spec.js`).
 
+### The WhatsApp invite names every part (2026-08-20)
+
+The email above listed all the parts from day one; **WhatsApp did not**, and the
+two channels disagreed about what the candidate had been floated. A candidate
+sent Aptitude + Communication got *"You have been invited to complete the
+Communication Assessment"* and was never told the Aptitude part existed.
+
+Two independent causes, both in the WhatsApp leg only:
+
+- `sendMixMatchGroupInvites` passes `assessmentType: assigned[0].assessmentType`
+  — the **first** part, in `created_at` order, which is the order the admin
+  added them in the wizard. Reverse the selection and the message names the
+  other part instead.
+- `sendAssessmentInviteEmail` forwarded that `assessmentType` to
+  `sendAssessmentInviteWhatsapp` but **dropped `mixMatch` entirely**, so the
+  part list never reached the template even though the caller had built it.
+
+Every WhatsApp template predating Mix & Match is built around a single
+assessment, so there was nothing correct to select. Two Meta UTILITY templates
+were added, submitted and **approved 2026-08-20**:
+
+| Intent | Template | Meta ID |
+|---|---|---|
+| invite | `corporate_multi_assessment_invite_deadline_v1` | 1794306421754329 |
+| reminder | `corporate_multi_assessment_reminder_deadline_v1` | 1753818855768401 |
+
+```
+Hi {{1}},
+
+You have been invited to complete {{2}} at {{3}}.
+
+Assessment: {{4}}
+
+{{5}}.
+
+Open assessment: {{6}}
+
+Registered email: {{7}}
+
+All the best!
+```
+
+`{{1}}` name · `{{2}}` float title · `{{3}}` company · `{{4}}` part list ·
+`{{5}}` deadline sentence · `{{6}}` link · `{{7}}` email.
+
+**There is no role param**, unlike every other assessment template. A bundle is
+floated against the group, not a role, so `role || "open"` rendered the literal
+*"for the open role"* to real candidates on UAT before this.
+
+`resolveTemplateName(assessmentType, intent, isMixMatch)` gained the bundle
+axis, and it **outranks** the per-type AI Interview choice — a bundle containing
+an AI Interview is still a bundle, and `aiinterview_*` can only name one part
+either. The gate is **2-or-more parts**, not "has a `mixMatchGroupId`": the same
+reason `assessmentReminderCopy` branches on `partTypes.length < 2` above.
+
+Part labels are **bare** (`Aptitude, Communication`) because the template already
+prints the word *Assessment* on that line — `MIX_MATCH_WA_PART_LABELS`, distinct
+from the email's `MIX_MATCH_PART_LABELS` which keeps the full noun phrase.
+Hinglish maps to Communication and duplicates collapse, so a float holding both
+does not print it twice. An unmapped type degrades to its de-underscored name
+rather than vanishing — a silently short list is the exact bug being fixed.
+Neither `{{2}}` nor `{{4}}` can ever be blank (Meta rejects an empty body param):
+they fall back to `your assessment` and `Assessment`.
+
+Selection is env-gated on `WA_MIX_MATCH_INVITE_TEMPLATE` /
+`WA_MIX_MATCH_REMINDER_TEMPLATE`, **set on DEV and UAT, PROD pending**. Unset
+reproduces the old behaviour exactly, so rollback is commenting one line out and
+restarting — no rebuild. Templates are WABA-scoped, so both already exist in
+PROD; only the env vars are missing there.
+
+Verified on UAT by replaying the worker's own invite construction against a real
+five-part group (`all assesmnet`): `Aptitude, Communication, AI Interview, Role
+Based, Custom` in one message, `email_events` row `whatsapp / delivered /
+corporate_multi_assessment_invite_deadline_v1`. Before the fix that group would
+have said only *"the Aptitude Assessment"*.
+
+**The reminder template has no caller yet.** Auto-reminders fire per assignment,
+so a five-part bundle still sends five reminders, each naming one part — the
+same class of bug in a different place. Collapsing them to one group-level
+reminder is unbuilt.
+
+admin-node `54e1a21` (Development) / `3871fcd` (UAT).
+
 ## Candidate APIs
 
 `student-node` exposes private Mix & Match routes. Every part-level route verifies that the requested assignment has the same Mix Match group and candidate email as the owner assignment in the scoped JWT.

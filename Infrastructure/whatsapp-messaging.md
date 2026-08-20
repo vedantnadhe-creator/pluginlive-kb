@@ -214,6 +214,29 @@ message.
 | everything else | `student_online_assessment_email_link` | 7 — name, **assessment label**, role, company, deadline, link, **email** |
 | (fallback) | `student_online_assessment` | 6 — as above, no email |
 
+**A Mix & Match bundle has its own pair, and they outrank both rows above**
+(added 2026-08-20, Meta-approved UTILITY the same day). Every other template is
+built around a single assessment, so a bundle sent on one of them named only its
+first part — a candidate floated Aptitude + Communication was told to complete
+"the Communication Assessment" and never heard about the other. The email had
+listed all the parts since day one, so the two channels disagreed.
+
+| Intent | Template | Meta ID | Params |
+|---|---|---|---|
+| invite | `corporate_multi_assessment_invite_deadline_v1` | 1794306421754329 | 7 — name, **title**, company, **part list**, deadline, link, email |
+| reminder | `corporate_multi_assessment_reminder_deadline_v1` | 1753818855768401 | 7 — same order |
+
+These carry **no role param**: a bundle is floated against the group, not a
+role, so `role || "open"` rendered "for the open role" to real UAT candidates.
+The parts print under an `Assessment:` line, so the labels are bare
+(`Aptitude, Communication`) — `MIX_MATCH_WA_PART_LABELS`, not the email's
+`MIX_MATCH_PART_LABELS`. Selection is `resolveTemplateName(type, intent,
+isMixMatch)`, gated on **2-or-more parts**; a one-part float keeps the rows
+above. Env: `WA_MIX_MATCH_INVITE_TEMPLATE` / `WA_MIX_MATCH_REMINDER_TEMPLATE`,
+**DEV + UAT, PROD pending** — unset reproduces the old behaviour exactly. See
+`Assessment/mix-match-candidate-journey.md` for the full contract. The reminder
+template has no caller yet: auto-reminders still fire one per assignment.
+
 Note the two 7-param templates are **not interchangeable**: the AI one puts company in `{{2}}`
 and email *before* the link, the generic one puts the assessment label in `{{2}}` and email
 last. Selecting the wrong one silently renders a scrambled message, which is the whole reason
