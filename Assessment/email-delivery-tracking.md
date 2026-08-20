@@ -406,6 +406,42 @@ field — `uuid` (Meta's wamid, fallback only), `customerNumber`, and `reason`.
 | `hold` with no reason | **nothing** — MSG91 also uses hold for queued-behind-something, and marking a live send dead would be wrong |
 | `sent` | **nothing** — the row already reads `accepted`, and there is no legal transition into it |
 
+### Failure reasons are rewritten for the reader (2026-08-20)
+
+MSG91 forwards Meta's numeric code and Meta's wording — `131026: Message
+undeliverable` — which is written for the API caller, not for the admin chasing
+one candidate. `admin-node/app/helpers/whatsappErrorCodes.js` maps the codes an
+assessment invite can realistically produce, **grouped by who has to act**:
+
+| Group | Codes | Reads as |
+|---|---|---|
+| Candidate unreachable | `131026`, `131021`, `133010` | "This number is not on WhatsApp… reach the candidate by email" |
+| Candidate opted out | `131050` | "opted out — do not retry, use email" |
+| Retry later | `131049`, `131056`, `131047` | "retry after 24 hours" / "wait before retrying" |
+| **Our** template/config | `132000`, `132001`, `132005`, `132007`, `132012`, `132015`, `132016`, `131008`, `131009`, `100` | "needs a fix on our side" |
+| **Our** account | `368`, `131031`, `130497`, `131042`, `131048`, `130429`, `80007`, `0`, `10`, `190`, `404` | "contact the platform team" |
+| Provider wobble | `1`, `2`, `131000`, `131016`, `131057`, `133004`, `500` | "try resending" |
+
+Source: <https://msg91.com/help/whatsapp/error-codes-for-whatsapp>
+
+Three rules that matter if you touch this:
+
+- **The provider code stays in the text**, in parentheses. The admin does not
+  need it; whoever they escalate to does, and without it the tooltip can no
+  longer be matched against the MSG91 dashboard.
+- **An unmapped code keeps the provider's own wording, untouched.** A new code is
+  rare and its original text is at least searchable, where a generic apology
+  destroys the only clue anyone has.
+- **The rewrite happens on the read side** (`deriveDeliveryStatuses`), never at
+  write time. `email_events.error` keeps exactly what the provider said — that
+  row is the audit trail support quotes back to MSG91, and rewriting in place
+  would mean a mapping change could never be applied to history, nor a bad
+  mapping undone. Both the hover and the Excel `Delivery Issue` column read
+  through that path, so they cannot disagree.
+
+Email reasons pass through untouched: OCI already writes close to plain English
+(`5.1.1 550 mailbox unavailable`).
+
 Webhooks are configured per environment in MSG91 (`pluginlive5`) as three events
 each — On Outbound Report Received, On Failed Events, On API Failed Events — all
 pointing at that environment's `/delivery-feedback/whatsapp?token=…`. The WABA
