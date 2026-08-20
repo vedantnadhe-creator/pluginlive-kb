@@ -97,7 +97,7 @@ The runner can only serve what assignment created, and each type sources its que
 | --- | --- | --- |
 | Communication | a pre-generated set, picked by CEFR level + domain + accent | `cefrLevel`, `accent`, `responseLanguage`, `enabledSections` |
 | Behaviour | a pre-made active set for the stream's domain | `assessmentDomain` (Engineering / Management) |
-| Aptitude | composed at assign time from sub-topics | `aptitudeSubtopics` — **sub-topic IDs, at least 10** |
+| Aptitude | composed at assign time from sub-topics | `aptitudeSubtopics` — **sub-topic IDs, any number ≥1**; admin-node 400s if the picked topics hold fewer live questions than the paper needs |
 | Role Based | generated at assign time from the role | `roleName`, `skills`, `seniority`, `jobDescription`, `industry_domain`, `questionConfig` |
 | AI Interview | none stored — asked live, turn by turn | `interviewConfig` |
 | Custom | admin-authored sections, questions uploaded ahead of time | `sectionConfigurations` with **persisted** `section_id`s |
