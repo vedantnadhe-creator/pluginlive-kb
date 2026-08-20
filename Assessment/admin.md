@@ -312,6 +312,8 @@ into `droppedOffDateTime`. Every dropped-off candidate on an assessment therefor
   (raw SQL: `SET status = 'DROPOUT', dropped_at = NOW()`).
 - `script/updateDropoutStatusCron.js` — the timeout sweep (60 min aptitude / AI Interview,
   22 min everything else). Here it is **detection time**, not the last keystroke.
+  **A Mix & Match part is exempt from those per-part timers** and is swept as part of one
+  sitting instead — see [Drop-off is a property of the sitting](mix-match-candidate-journey.md#drop-off-is-a-property-of-the-sitting-not-of-a-part-2026-08-20).
 
 **Who clears it:** the cron's Assessment #1/#2 reset branch and admin-node's resend-invites
 reset (`droppedAt: null` alongside `status: 'PENDING'`), so the timestamp never outlives the

@@ -528,6 +528,58 @@ backfilled `audioSettled` and `tabViolations` but not this, and the module lock
 reads it unguarded on every render, so a record stored before the lock existed
 took the whole screen down on resume.
 
+### Drop-off is a property of the sitting, not of a part (2026-08-20)
+
+Opening a float claims **every** part at once: `fetchLiveTest` (`lib/liveExam.ts`)
+runs one `Promise.all` over the whole float, and fetching a part's questions is
+what marks it started. So every non-AI part is `INPROGRESS` from the first
+second, long before the candidate reaches it — `helpers/assessmentStartGuard.js`
+already relies on exactly this to treat an `INPROGRESS` part as a resume rather
+than a second device.
+
+`script/updateDropoutStatusCron.js` did not know that, and timed each part from
+its own `assessment_started_at`. **Live candidates were therefore declared
+dropped mid-sitting**, and `DROPOUT` is terminal (`NOT_STARTABLE`), so the start
+guard then refused to let them back into parts they had never opened. One DEV
+sitting started its four parts 70ms apart:
+
+```
+Communication      14:49:45.211      Custom_Assessment  14:49:45.243
+Role_Based         14:49:45.234      Aptitude           14:49:45.278
+```
+
+Under the old rule three of the four were dropped at **t+23 min** while the
+candidate was still working; the fourth at t+61. The DB signature is two parts
+started milliseconds apart and dropped 38 minutes apart.
+
+**The rule now:** a float's open parts share one clock.
+
+- **clock** — the last thing we saw the candidate do anywhere in the float: the
+  latest part start **or part submission**. Submitting Communication at minute
+  20 restarts the clock there, instead of pretending Aptitude began at minute 0.
+- **allowance** — the sum of the per-type timeouts of the parts **still open**
+  (60 aptitude, 60 AI Interview, 22 everything else). Finishing a part shortens
+  what is left to wait for.
+
+Every still-open part of an expired sitting is dropped **together**. Nothing is
+dropped earlier than the per-part rule dropped it — only later. A float with a
+single open part is unchanged by construction (allowance = that part's own
+timeout), which is what the first UAT sweep after deploy exercised: one
+abandoned Aptitude part, started 60 minutes earlier, correctly dropped.
+
+The decision is a pure function — `app/helpers/mixMatchDropout.js`
+(`splitMixMatchParts`), tested in `test/mixMatchDropout.spec.js`. The cron
+selects **every** part of any sitting that has an open one (submitted parts
+included — they carry the submission that moves the clock) and holds the open
+ones out of the three per-part sweeps by id. Raw SQL, because student-node's
+Prisma schema does not carry `mix_match_group_id` on either map.
+
+An AI Interview part is **not** claimed at sitting open — `loadAssessment`
+returns it without fetching questions — so it starts when the candidate reaches
+it. Its single-attempt guard in `aiInterviewHandler.startSession` (flip to
+`DROPOUT` on a second `start`) is unchanged and is not float-specific;
+`startInterviewOnce` dedupes in memory, so it only fires on a real reload.
+
 ### Finishing is the candidate's call
 
 Finish is always available. It used to be disabled until every part was complete and refused outright while the AI Interview was unfinished; the confirm dialog already lists what is unanswered, which is where that belongs rather than in a button that cannot be pressed.
