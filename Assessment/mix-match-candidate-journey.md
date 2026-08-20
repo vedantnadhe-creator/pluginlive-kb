@@ -223,10 +223,22 @@ The resume screen follows the AI Interview's `resumePolicy` (`mandatory` / `opti
 ### A module is finished explicitly, then goes read-only
 
 Every module's last question carries a **"Finish <Module>"** control rather than
-a plain Next. Finishing locks that module and opens either a **Module Complete**
-summary ("Begin <Next Module> →") or, on the last module, the existing Review
-and submit dialog. `isPartComplete` is now the same explicit-finish signal for
-every module — previously only the AI Interview worked that way.
+a plain Next. `isPartComplete` is now the same explicit-finish signal for every
+module — previously only the AI Interview worked that way.
+
+**The question is asked before anything is committed** (fixed 2026-08-20). It
+originally locked the module and moved the candidate on, then raised the dialog
+saying so — meaning every way *out* of that dialog (Cancel, the scrim, Escape)
+still left them in the next module, because the decision had already been taken.
+On the last module it was worse: that path opens the final review, so "Keep
+working" returned to a module that was already closed. `commitModule` is now the
+single place a module closes, both dialogs route through it on confirm, and
+neither does anything on the way out. The copy follows the same logic —
+"Finish Aptitude?" not "Aptitude submitted", "your answers *will be* locked in"
+not "are locked in".
+
+Confirming opens either a **Module Complete** summary ("Begin <Next Module> →")
+or, on the last module, the Review and submit dialog.
 
 **A finished module stays open to revisit, but every answer surface renders
 disabled** — options, textareas, the reorder list, the code editor, recording

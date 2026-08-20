@@ -154,6 +154,18 @@ likewise canned. Both share one timer ref, so starting either cancels a running
 other rather than letting two reveals collide in the same field. Treat any JD
 text these produce as placeholder, not as anything derived from the file.
 
+**Custom Assessment can now be floated** (2026-08-20). It was the one type the
+wizard could configure but never send: admin-node composes a Custom paper from
+sections that are already rows in its own bank, referenced by `section_id`, and
+the wizard only held them in the browser under generated ids — so the BFF
+refused the float outright and told the admin to remove Custom to send the rest.
+The float now **persists each section first** via `createSectionquestions` and
+points the assign call at the ids that come back. Manual sections post their
+questions as JSON (`correct_opt` is a **1-based index into the options actually
+sent**, so dropping a blank option renumbers the answer with it rather than
+marking the wrong one); an Excel section posts the sheet itself as multipart,
+because admin-node is what parses it — including the images embedded in the rows.
+
 **Type-list ordering.** Only Pre-Assessment Registration is pinned (first,
 undraggable, lock icon instead of a grip). AI Interview was briefly pinned last
 the same way (`a78c17b`) — that was never a requirement and was reverted in

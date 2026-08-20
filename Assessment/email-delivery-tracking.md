@@ -282,13 +282,65 @@ mints an explicit `Message-ID` header per send and returns it as `messageId` in
 the 200 body. `user-management-node`'s `assessmentRemainder` echoes it through and
 returns **502** when the relay rejects the message.
 
+## The email leg's provider feed (OCI Email Delivery, since 2026-08-20)
+
+Until this shipped, **email had no provider feed at all**: a row was written at
+`accepted` and nothing ever moved it, so a bounced or suppressed address read
+**Sent forever**. For scale, PROD suppresses ~2,774 and hard-bounces ~291
+addresses a month, none of which reached the DELIVERY column.
+
+OCI Email Delivery has no webhook, but it emits per-message service logs, and
+those can be **pushed rather than polled**: Connector Hub reads the log group and
+hands each batch to a Notifications topic, whose HTTPS subscription posts to
+`POST /delivery-feedback/email/oci`. So there is **no scheduled sweep and no OCI
+API credentials in the application**.
+
+### What maps to what
+
+Only what the DELIVERY column can act on:
+
+| OCI log | Written |
+|---|---|
+| `relay` | `delivered` |
+| hard bounce | `bounced`, carrying the bounce code and SMTP status |
+| accept **with** an `errorType` (e.g. `Recipient suppressed`) | `failed` |
+| clean accept | **nothing** — it only repeats what the row already says |
+| **soft** bounce | **nothing, deliberately** — OCI retries for hours and the message commonly lands, so writing it would show an admin a dead candidate who is about to be reached |
+| complaint | nothing — delivered then marked spam is a deliverability question, not a delivery one |
+| opens / clicks | nothing — `candidate_journey_events` already records the click on our own link |
+
+### Correlation strips the angle brackets
+
+Matching is on the `Message-ID` Mail-Server mints for exactly this purpose, but
+**OCI logs it without its angle brackets**, so `applyFeedback` matches a *set* of
+forms rather than the literal string. Without that, every email event matches
+nothing and the whole feed looks like traffic for another service.
+
+### The subscription handshake is answered, but narrowly
+
+The handler completes the Notifications subscription confirmation itself,
+**restricted to a confirmation URL on `oraclecloud.com`** — otherwise an
+authorised caller could turn the endpoint into a request-forgery tool. When the
+confirming fetch fails it logs the URL so it can be completed by hand.
+
+**Per-environment:** the endpoint exists wherever admin-node runs (UAT since
+2026-08-20, answering 401 to unauthenticated posts), but it receives nothing
+until the Connector Hub → Notifications → subscription chain is built in that
+tenancy's OCI console. That is console work, not a deploy.
+
+### WhatsApp: MSG91 sends `eventName`, not `event`
+
+The WhatsApp callback leg was reading a field MSG91 does not send, so those
+callbacks applied to nothing. Fixed 2026-08-20 (`c0e4f43`).
+
 ## Known gaps
 
-- **`delivered` / `bounced` are never written.** That needs OCI Email Delivery
-  outbound logging into OCI Logging and/or a Return-Path bounce mailbox, plus a
-  small ingest worker keyed on `message_id`. The schema is ready for it.
-- **OCI auto-suppresses hard-bounced addresses.** Suppressed candidates silently
-  receive nothing forever after, and we have no visibility into that list.
+- ~~**`delivered` / `bounced` are never written.**~~ **Closed 2026-08-20** by the
+  OCI Email Delivery ingest — see below.
+- ~~**OCI auto-suppresses hard-bounced addresses**, with no visibility into that
+  list.~~ **Closed 2026-08-20**: a suppressed recipient now announces itself, per
+  message, as an accept carrying `errorType: Recipient suppressed`, so no
+  suppression-list snapshot is needed.
 - **`messageId` is NULL on DEV and UAT.** `admin-node/.env` has no
   `EMAIL_ENDPOINT`, so it falls back to the hardcoded **production** relay
   (`https://mail.prod.pluginlive.com/send-email`) — a DEV/UAT container without
