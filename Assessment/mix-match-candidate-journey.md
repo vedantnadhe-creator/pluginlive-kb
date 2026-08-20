@@ -343,7 +343,38 @@ Samples for the admin picker live at `…/pl-uat-public-docs/ai-interview/voice-
 
 ### Full screen is a condition of sitting, not a button
 
-The runner requests full screen as the attempt opens. Browsers only grant that during a user gesture, so when the automatic request is refused the guard dialog covers the exam until the candidate clicks — it now appears whenever full screen is inactive, not only after they leave it.
+The runner requests full screen as the attempt opens. Browsers only grant that
+during a user gesture, so when the automatic request is refused the guard dialog
+covers the exam until the candidate clicks — it appears whenever full screen is
+inactive, not only after they leave it.
+
+**"Full screen" is not the same question as `document.fullscreenElement`**
+(fixed 2026-08-20). That property only answers for full screen entered through
+the **Fullscreen API**. A candidate who pressed **F11**, or who is on a device
+whose browser has no window chrome (a kiosk, a tablet), is looking at a page
+that fills the screen while the API insists it is not full-screen — so the guard
+covered an exam that was already exactly as the guard wants it, and the only way
+past was to leave real full screen and click the button to re-enter it a
+different way.
+
+`src/lib/fullscreen.ts` answers it as **"the API says so, OR the viewport fills
+the screen"**. The threshold (`FILL_RATIO = 0.95`) sits between the two cases it
+has to separate: a *maximised* desktop window still shows tabs and an address
+bar and lands around 88% of screen height, while F11 and kiosk are ~100%. It
+excludes the first and tolerates a scrollbar or a thin system bar in the second.
+
+Two related faults fixed with it:
+
+- The `fullscreenActive` state started `false` and nothing corrected it until
+  something happened to fire `fullscreenchange`, so a page that opened *already*
+  full-screen wore the guard regardless. It syncs on mount.
+- Leaving F11 fires **`resize`**, not `fullscreenchange`, so the guard could
+  never come back once dismissed. `resize` is watched too — and because it fires
+  constantly (a rotated phone, a shown keyboard), a `fullscreen_exit` proctoring
+  event is recorded only on a real transition **out**, not on every event.
+
+`enterFullscreen` no longer asks the API for something the candidate already
+has: that request can be refused, and a refusal read as a failure.
 
 ### Interview evaluation parameters come from the model
 
