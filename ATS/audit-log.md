@@ -51,6 +51,7 @@ and **when unset it is derived** from that service's own database URL with
 | `corporate-node` | `DATABASE_URL` |
 | `institute-node` | `DATABASE_URL` |
 | `student-node` | `DATABASE_URL_STUDENT` |
+| `user-management-node` | `DATABASE_URL` |
 
 So an environment that forgets the variable still audits into its **own**
 database rather than silently falling back to a hardcoded one. As of
@@ -257,6 +258,82 @@ For a row pointing at a real student the hook sends **no** `entityLabel`, so the
 Admin trail resolves the id to the student's name. The area name ("Student
 resume", "Offer") is only used for the generic rows, which point at no single
 named record.
+
+## user-management-node: locations, accounts and authentication
+
+Added 2026-08-20. Until then this service had **no audit wiring at all** — 69
+mutating routes, none recorded — which is why *editing a Location in Admin →
+System Configuration never appeared in the Audit Log*. The location masters live
+here, not in institute-node where the System Config hook runs, so the request
+never reached an audited service. Location was simply the one that got noticed.
+
+### Two hooks, and why they cannot be one
+
+| Hook | Records | Rule |
+|---|---|---|
+| `userAudit` | 26 CRUD routes | successful (2xx) mutations only |
+| `authAudit` | 11 auth routes | **success *and* failure** |
+
+The split is load-bearing. The CRUD hook ignores non-2xx because a rejected edit
+changed nothing. For authentication the opposite holds: **a failed sign-in is
+the event most worth having**, and a 2xx-only rule throws exactly that away. So
+`authAudit` reads the status code and files the two outcomes as different
+actions (`auth.signed_in` / `auth.sign_in_failed`), because that is how a reader
+filters them.
+
+`userAudit` excludes everything `isAuthRoute` matches, and a test asserts the
+two sets stay disjoint — an append-only table cannot be de-duplicated after the
+fact.
+
+### The actor on a failed sign-in
+
+There is no token, so no authenticated user. The **email that was attempted** is
+in the body and is stored as `actorEmail`, which the Admin trail resolves to a
+name at render time. It is never proof the account holder acted; it is what the
+request claimed, which is what an audit log should store.
+
+`metadata.payload` is explicitly **null** on every auth route. `AuditService`
+would redact anything password-shaped anyway, but the safest payload on a
+credentials endpoint is no payload.
+
+### What is excluded, and why
+
+43 of the 69 routes are not audited, in three groups:
+
+- **Reads sent as POST** — `/users/by-login-email` is a lookup with a body;
+  `/signedURL`, `/uploadSignedURL`, `/download` mint object-storage URLs.
+- **Message delivery** — email, WhatsApp, in-app notifications, reinvitations
+  and reminders fire in bulk and are already tracked by the delivery pipeline.
+- **Presence** — `heartbeat` / `offline` are per-tab telemetry.
+
+Two traps the route review caught before this shipped, both worth remembering
+when editing the patterns:
+
+- A single `/notification/` pattern also matched
+  `/user/:userId/notification-preference`, silently excluding **a setting the
+  user changed**. The pattern now anchors on the notification *noun*.
+- `removeGoogleCalendarIntigration` contains `GoogleCalendar`, so the disconnect
+  was being described as a connect. Order the specific pattern first.
+
+### The Dockerfile change is load-bearing in both directions
+
+```dockerfile
+# stage 1
+RUN npm ci --omit=dev && npx prisma generate \
+ && npx prisma generate --schema=./prisma/schema-audit.prisma
+# stage 2
+COPY . .
+COPY --from=deps /app/prisma/generated-audit ./prisma/generated-audit
+```
+
+Stage 2 copies only `node_modules` from `deps`, so `generated-audit` has to be
+carried across **explicitly** or it is missing from the image entirely. And that
+copy must come **after** `COPY . .`, or the build context overwrites it. The
+directory is gitignored, so the context cannot supply it either way.
+
+The audit client is required lazily inside a try/catch: its output is built at
+image time, and a top-level require would take the service down on any box where
+that step has not run — and this service owns sign-in.
 
 ## Which door a student came through
 
