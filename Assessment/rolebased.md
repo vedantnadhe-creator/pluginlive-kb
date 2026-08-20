@@ -209,6 +209,93 @@ Covered by `tests/test_role_coding_language_normalisation.py` (14 tests).
 
 ---
 
+### Coding runs server-side; test-case inputs and outputs are now graded correctly (2026-08-20, DEV + UAT)
+
+Two separate problems, both fixed together because the second was only found while
+fixing the first.
+
+**1. Candidate code ran in the browser.** The v2 runner (`assessment-react-v2`)
+evaluated a coding answer in a Web Worker in the candidate's own tab — a sandbox
+against tampering, but JavaScript-only, and the "3/3 passed" it reported was
+whatever the page chose to send at submit time. Replaced with a server round
+trip: `assessment-react-v2` → new BFF route `api/assessment/parts/[id]/run-code`
+→ student-node `POST /students/mix-match/assessment/:id/run-code` (scoped by
+`assertMixMatchMember`, same as every other runner route) → `code-runner`
+container. All six languages the sandbox runs (`python, javascript, typescript,
+java, cpp, c`) are now offered, not only the two-to-four a question happened to
+ship starter code for.
+
+`RoleBasedCalculations.js` gained `runCodingTests()` / `executeInSandbox()`,
+extracted from `calculateCodingScore`'s old inline fallback so **the live Run
+button and submit-time scoring share one harness** — a case that passes during
+the sitting can no longer disagree with the case that gets marked.
+
+**2. Test-case inputs weren't argument lists, so cases failed to even bind.**
+Pulled real failures from `role_based_scores.metadata`: a one-parameter function
+given `apple:5,banana:2,apple:3` was called with **three** arguments (`SyntaxError`
+in JS, `missing 1 required positional argument` in Python) — the input was
+always one string, not a comma list. A two-parameter function given `[32.00, 5]`
+got **one** argument instead of two. Measured against the live bank (1382 cases
+across languages with starter code): **82 could not bind before this fix, 25
+after** — the remaining 25 are React-component questions whose starter code is
+JSX and can't run under Node at all (unrelated, not fixed here).
+
+Fix is arity-aware binding in `buildTestWrapper`: the function's declared
+parameter count is read off its signature (`functionArity()`), and the input is
+rewritten to match — one param + a multi-value input → treated as one string; N
+params + a single sequence of length N → spread across them; a bare word →
+quoted as a string literal rather than emitted as an identifier that doesn't
+exist. Named args (`a = 2, b = 3`) are untouched — they already say where each
+value binds.
+
+**Java specifically never compiled with a list argument** — inputs were spliced
+into Java source verbatim, so `[101, 202]` produced invalid syntax. Now rendered
+from the declared parameter type: `int[]` → `new int[]{101, 202}`, `List<String>`
+→ `Arrays.asList(...)`, nesting included for `List<List<String>>`. Java's result
+print also changed from `toString()`/`deepToString` (which can't match a
+Python-style expected value, and rendered a primitive array as a pointer) to a
+hand-rolled JSON serializer, so a returned list/map/string compares the same way
+every other language's does.
+
+**3. Output comparison gained a canonical fallback.** A question asking for
+`a:5,b:2` was satisfied by code that prints exactly that string, but not by code
+that returns the *mapping* it describes — Python prints that as `{'a': 5, 'b':
+2}`. `compareOutputs()` now tries exact → JSON-structural → whitespace-normalized
+→ **canonical** (strip one wrapping container, collapse space around `,`/`:`,
+drop per-item quoting) before giving up. Runs last and only on failure — an
+empty actual/expected can never satisfy the other, so a program that printed
+nothing still can't pass.
+
+**4. The generator's prompt never said how a test case is executed**, so the
+model kept writing inputs for a human reader instead of an argument list, and
+wrapped `expected_output` in quotes `print()` never emits. Both `generate_prompt`
+and `generate_coding_prompt` in `fastapi-ai-engine`
+`QuestionGeneration/Role_Specific/question_generator.py` now spell out the
+contract explicitly (candidate writes only the function body; the harness calls
+it with `input` as positional Python-literal arguments and prints the return
+value) with worked correct/wrong examples. Because a prompt is not a guarantee,
+`_normalise_coding_question()` also **repairs** what comes back —
+`_repair_test_input()` applies the same arity-aware rule as the harness, reading
+the parameter count off the Python starter code (`_python_parameter_count()`),
+so a malformed input is fixed in the stored question rather than only at grade
+time.
+
+`code-runner` also picked up a real bug found in passing: TypeScript fetched
+`ts-node` through `npx` at container run time, which fails closed with no
+registry access — every TypeScript submission errored. `ts-node`/`typescript`
+are now installed in the image at build time.
+
+Commits: `student-node` `96802fc3` (Development), `4a9ab387` (UAT) · `assessment-react-v2`
+`b4f1a59` (Development only — see below) · `fastapi-ai-engine` `a2904fa`
+(Development), `6ed2407` (UAT). **PROD pending.**
+
+Note: `assessment-react-v2` has no CI auto-deploy and, per its own README, was
+**not deployed to UAT at all before this change** — no systemd unit, no nginx
+`/v2` routing on that box. DEV has a manually-run container; UAT needs that
+infra built before this ships there, not just a branch push.
+
+---
+
 ### Coding starter code must not solve the question (2026-08-07, promoted to UAT 2026-08-10)
 
 Generated coding questions were shipping **starter code that already contained the solution** (or part of it), so a candidate could pass the test cases without writing anything. `fastapi-ai-engine` `QuestionGeneration/Role_Specific/question_generator.py` now enforces this on both sides:
