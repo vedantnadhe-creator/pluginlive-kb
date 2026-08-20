@@ -8,6 +8,56 @@ Universal Mix & Match OTP invites resolve to:
 
 After OTP verification, the browser stores a candidate-scoped `assessment:run` JWT in session storage. The JWT identifies the owner assignment; it is not replaced with a second token.
 
+## The candidate is invited to "an assessment", never to a "Mix & Match" (2026-08-20)
+
+A float that bundles several types is still **one assessment** to the person
+sitting it. The parts are how the sitting is built, not a second kind of
+assessment the candidate has to learn — so no candidate-facing string names the
+internal concept. Both invite channels were saying otherwise and were corrected
+on the same day.
+
+`sendMixMatchGroupInvites` (`admin-node/app/queues/assignmentWorker.js`) sends
+**one** email per group, after every part is terminal, and picks the channel
+from `svc.mixMatchInviteChannel(entityType)`:
+
+| Entity | Channel | Template |
+|---|---|---|
+| corporate | `otp` | `sendAssessmentInviteEmail` → `mixMatchAssessmentInvite` |
+| college | `reminder` | UMS `assessmentRemainder` (the portal reminder every college assignment sends) |
+
+**OTP channel** (`app/helpers/assessmentInviteEmail.js`, commit `d4f5f44`):
+
+    Your combined assessment invite from X   ->  Your assessment invite from X
+    You're invited to a combined assessment  ->  You're invited to an assessment
+    Start Combined Assessment                ->  Start Assessment
+
+The subject's Mix & Match branch was deleted rather than left identical to the
+plain one, so the two cannot silently drift. The **body** still names the parts
+(`You have been invited to <title>, containing Communication Assessment, AI
+Interview`) — the candidate should know what is coming, they just should not
+meet a new noun for it.
+
+**Reminder channel** (`svc.assessmentReminderCopy`, commit `1a128d1`): this path
+is easy to miss because it does not use the invite template at all, and it
+leaked the internal name twice — the template renders `${assessment_type}
+Assessment` as the heading *and* an `Assessment Type:` details row, and
+`assessment_type` was the literal string `'Mix & Match'`. It now carries the
+part names, humanised from the enum values:
+
+    Mix & Match Assessment                   ->  Communication, AI Interview Assessment
+    Assessment Type: Mix & Match             ->  Assessment Type: Communication, AI Interview
+    You have been assigned a combined
+      assessment containing AI_Interview     ->  You have been assigned an assessment "<title>",
+                                                 containing Communication, AI Interview.
+
+A **single-part** float keeps the legacy single-assessment wording. A College
+float is single by design, and "complete all parts in one go" describes a bundle
+that candidate was never sent — hence `assessmentReminderCopy` branches on
+`partTypes.length < 2`, not on whether the job carried a `mixMatchGroupId`.
+
+The copy lives in `AssignmentJobService` rather than inline in the worker so it
+is testable without the worker's DB (`test/mixMatchAssignment.spec.js`).
+
 ## Candidate APIs
 
 `student-node` exposes private Mix & Match routes. Every part-level route verifies that the requested assignment has the same Mix Match group and candidate email as the owner assignment in the scoped JWT.
@@ -344,4 +394,4 @@ A combined final submission is blocked until AI Interview is complete. Every oth
 - `student-node` commits `e60c67b2`, `9f7dfca5`, `1f43c573`, `b6eeeb63`, `5fd5e9d7`, `69470352`
 - `assessment-react-v2` commits `4602376`, `c70bee7`, `d1822b4`, `b7c78b4`, `da1432a`, `518203e`, `936a10d`, `6fafe50`, `8b0d903`, `2b5c9b3`, `19fe1e4`, `071666e`, `d2484f1`, `52e0aa1`
 - `admin-react-v2` commits `741a9b4`, `c17e420`, `892f520`, `5e44c23`
-- `admin-node` commit `8d04f84`
+- `admin-node` commits `8d04f84`, `d4f5f44`, `1a128d1` (candidate-facing naming; UAT 2026-08-20, PROD pending)
