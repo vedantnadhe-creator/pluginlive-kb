@@ -193,6 +193,25 @@ not be invited. Rosters are returned in full for the same reason: silently
 sampling a cohort the admin was told held N students would float to fewer people
 than promised.
 
+**A recipient row must be complete before it is floated** (2026-08-20).
+`parseCandidateSheet` answers with `{name, email, mobile}` — a sheet has no
+institute column, so admin-node never sends one — while the wizard's
+`RecipientCandidate` also carries `instituteName`. The mix-match BFF built its
+`bulkUploadData` by reading `candidate.instituteName.trim()` off every
+recipient, so an **uploaded row, or a saved custom list cloned from one, threw
+`TypeError: Cannot read properties of undefined (reading 'trim')`** before the
+handler's `try` — which Next answers as a bare 500, with no error body for the
+wizard to show ("Float responded 500"). Picking an existing institute batch was
+never affected: `/api/entities/batches` already filled the column with `""`.
+
+Two fixes, source and boundary: `parse-sheet` now fills `instituteName` on every
+parsed row, and the row builder lives in `src/lib/assessments/bulkUploadRows.ts`
+and **coerces every column instead of trusting it** (`typeof v === "string" ? v.trim() : ""`).
+The draft is client input arriving from three recipient sources that do not all
+write the same fields, so one absent column must not be able to fault the float.
+A real admin-node refusal now surfaces as its own message again instead of
+being masked by a 500.
+
 **Corporate has no suggested lists** — there is no enrolled population behind a
 company, so the section says so rather than rendering an empty box that reads as
 a failed load. Custom lists work for both segments.
