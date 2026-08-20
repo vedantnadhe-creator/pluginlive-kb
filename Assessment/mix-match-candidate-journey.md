@@ -205,6 +205,42 @@ reminder is unbuilt.
 
 admin-node `54e1a21` (Development) / `3871fcd` (UAT).
 
+## A signed-in student enters from the v1 dashboard (2026-08-20)
+
+Corporate candidates arrive by invite and v2 is the whole journey for them.
+**Institute students do not** — they sign in, see a dashboard of their
+assessments, and pick one. v2 has no screen that lists a student's assessments,
+so v1 keeps the dashboard and hands the chosen assignment over.
+
+- **v1** (`Assessment-React`, `src/modules/Assessments/index.js` — the single
+  funnel where a picked assessment becomes an instruction screen) redirects to
+  `/candidate-assessment-journey/v2/assessment?assigned=<id>&back=<path>`, but
+  **only** when there is a signed-in student *and* an assignment id. Otherwise
+  it falls through to the existing v1 instruction screens, which is what keeps
+  the practice journeys and invite routes working. The path is relative on
+  purpose: an absolute one built from an env var is how a DEV URL ends up baked
+  into a UAT bundle.
+- **v2** trades the signed-in token (same origin, so readable) for the same
+  scoped `assessment:run` session an invited candidate holds, via
+  `POST /students/assessments/:assessmentAssignedId/session`. Everything past
+  that first screen is identical for both — the runner has one way in, not two.
+- The completion screen is a dead end by design, with one exception: a student
+  who came from their own dashboard gets a **"Back to dashboard"** button. The
+  return path is captured from `?back=`, **restricted to this origin** so the
+  screen cannot become an open redirect, and held in the module so clearing the
+  session does not take the button with it.
+
+**Ownership is proved server-side.** The login token carries `student_id` and
+*no email*, so the exchange resolves that student's primary email and requires
+the assignment to be addressed to it. A completed or dropped-out assignment is
+refused (409) rather than reopened; another student's assignment is 403.
+
+**An assignment that belongs to no float is a sitting of one part.** Both
+`assertMember` and `getSummary` treated a NULL `mix_match_group_id` as "no
+rows", which is every assessment the institute dashboard hands out. The summary's
+two per-entity branches collapse into one, with the group joined optionally and
+its title falling back to the assignment's own assessment name.
+
 ## Candidate APIs
 
 `student-node` exposes private Mix & Match routes. Every part-level route verifies that the requested assignment has the same Mix Match group and candidate email as the owner assignment in the scoped JWT.
@@ -337,6 +373,131 @@ Both were found in `assessment.student_answers` on DEV and are fixed in the shar
 - **Sentence Build** stored the drag handles' ids (`"…-item-1 …-item-0"`) because the reorder answer keeps ids rather than words. v1 saves the arranged content, which is what the scorer compares against.
 - **Recordings** stored `{"durationSec":3}` as the answer text, overwriting the row the upload had already written with the real storage key.
 
+### Recordings are uploaded from a queue that outlives the page (2026-08-20)
+
+A recording used to be POSTed straight from MediaRecorder's `onstop`, and
+nothing else held the blob. On a phone that is a coin toss: a video response
+over a mobile link takes tens of seconds, and the moment the candidate switches
+app, the screen locks, the page navigates or the assessment is submitted, the
+in-flight request is killed and the take is gone — with a toast as the only
+trace. The nginx logs for a failed sitting show **no upload request at all**.
+
+The blob is now written to **IndexedDB** (`pl.v2.uploads`, store `pending`)
+first and uploaded from there, so it survives a reload, a crash, a lost
+connection and the submit itself, and is picked up again by whatever page loads
+next — including the completion screen. Retries back off across eight attempts
+and resume on `online` and on the tab becoming visible.
+
+- v1 tracked in-flight uploads and drained them before finalising
+  (`createInflightUploads`). That guarantee is kept: the final submit awaits the
+  queue, **bounded** (20s) so a dead network can never trap a candidate on a
+  submit button. Outliving the page is the part v1 never had.
+- Each record carries the **scoped token it was made under**, because the
+  completion screen drops the session on purpose and a recording still going up
+  at that moment must not be stranded by it.
+
+**The upload goes straight to student-node, not through the candidate app.**
+The body used to cross the box twice, which meant two `client_max_body_size`
+limits to keep in step — and the one covering the Mix & Match upload routes was
+never raised, so a video came back **413** while the identical upload succeeded
+on the v1 path. The browser now posts to
+`POST /students/mix-match/assessment/:id/upload-audio|upload-video` directly,
+carrying the same scoped token, and the BFF `media/[kind]` route is gone.
+
+The base URL is asked of the server per session
+(`GET /api/assessment/upload-url`, derived from `STD_API_URL`) rather than
+compiled into the bundle — the same reason the live-transcription socket URL is
+(see `ai-interview/stt-url`): a build-time constant pins the host per build,
+which is how UAT traffic ended up pointed at DEV.
+
+Two things the proxy had been doing quietly, which going direct exposed:
+
+- student-node verifies `authorization` **verbatim**. A `Bearer ` prefix fails
+  the check — send the RAW token.
+- The handler only writes its `student_answers` row when **both**
+  `assessmentAssignedId` and `questionId` are in the multipart body, *before*
+  the file boundary (fastify-multipart only exposes parts parsed before it).
+  Without the assignment id the upload answers **200 with `storedInDb: false`**:
+  the recording reaches object storage and is never linked to the attempt.
+
+**nginx.** `/students/mix-match/assessment/:id/(upload-audio|upload-video|proctoring/image)`
+now has its own `client_max_body_size` on both DEV (100M) and UAT (150M),
+matching the v1 `/students/assessments/upload{Audio,Video}` locations next to
+it. Without it those routes inherit `location /`'s **1M** default.
+
+### A recorded answer keeps the container it was recorded in (2026-08-20)
+
+Safari — which is every browser on iOS — records **MP4**, not WebM. Three
+places assumed otherwise, and together they are why a video that uploaded
+perfectly well still came back "Video not available" in the report:
+
+1. the client named the part `.webm` regardless;
+2. `uploadToOracle` appended `.webm`, so an MP4 landed as `video-x.mp4.webm`
+   while the answer row recorded `video-x.mp4`;
+3. `generatePreSignedURLVideo` appended `.webm` too, signing a valid URL for a
+   key nothing was ever written to.
+
+All three now resolve the real container (`resolveVideoContentType`,
+`resolveVideoObjectName`, and the client's `recordingFilename`). The audio path
+had been fixed for this long before; video never was.
+
+### The read-aloud is recorded once, and it closes its own passage (2026-08-20)
+
+Paragraph Reading was judged against a 15-second minimum it offered no way to
+meet: the take could only be replaced *while* it was too short, and every
+question on that passage stayed locked until it wasn't. A candidate who stopped
+early got "Record again" and a section that would not open.
+
+The flow is now: **record → stop starts the 90-second silent reading
+immediately, whatever the take's length → the questions on that passage open.**
+No re-record is offered. Length is deliberately not a gate, because the
+recording cannot be retaken.
+
+- The gate reads the silent-reading **deadline** (`silentReadingEndsAt`) rather
+  than a flag the on-screen timer clears, so leaving the passage mid-window no
+  longer strands it — an elapsed window is finished whether or not anything was
+  mounted to notice.
+- The passage is open while it is being read (aloud, then silently) and
+  **closed again once the silent reading ends**, so returning to the question is
+  not a way to re-read it while answering. The text carries `aria-hidden` when
+  closed.
+- A still-sealed question carries a **"Go to the passage"** button rather than
+  instructions for finding it.
+
+### A listening question holds navigation until the recording is done (2026-08-20)
+
+The palette already refused to open a sealed listening question; Previous and
+Next were the way around it. Both are now disabled until the candidate is done
+with the recording, and Next says why ("Finish the recording to continue").
+
+That lock needs an exit when the recording itself is broken — DEV has lost
+question audio before, and a signed URL for a missing object looks valid until
+it is fetched. A recording that fails to load or play now says so and offers
+**"Continue without it"**, rather than leaving the candidate on a question they
+can neither answer nor leave.
+
+### Question text is Markdown, and is rendered as such (2026-08-20)
+
+Aptitude questions are authored in Markdown and were printed raw, so a candidate
+read literal asterisks and backticks — and, worse, **every line break was lost**.
+A coding-and-decoding question collapsed its digit/code table and its numbered
+conditions into one wall of prose. Of 2,558 aptitude questions, **864 carry line
+breaks**, 250 bold, 106 code runs and 288 lists; Role Based goes through the
+same panel.
+
+Six constructs cover the bank: paragraphs, hard breaks, bulleted and numbered
+lists, `**bold**`, `` `code` ``, and `$…$` — which is **not** maths but a LaTeX
+habit of the generator wrapped around plain text (exactly one question in the
+bank contains a LaTeX command), so its delimiters are dropped and the text kept.
+That is not worth a Markdown library, let alone a maths one: it is a small
+parser (`_components/exam/markdown.ts`) with the constructs pinned by tests.
+
+Question text stays **data**: it is parsed to spans and rendered as React
+elements, never HTML, so a stem cannot introduce markup. Code runs keep their
+spacing, which is what lines the code table's columns up. The stem cannot be an
+`<h1>` any more — it is regularly several paragraphs and a list — so it carries
+the heading role explicitly.
+
 ### Proctoring
 
 Report-only, as in v1: nothing warns, interrupts or auto-submits, and the whole runner is inert unless the invite carried `allowProctoring`. Two streams, at v1's cadences:
@@ -397,7 +558,25 @@ The device check used to mark Camera and Microphone "ok" the moment `getUserMedi
 
 `detect-audio` needs a few seconds of speech before it can judge a human voice, so the mic row records a ~3.5s sample while showing "Say a few words…".
 
-An engine that cannot answer — unreachable, 5xx, or no invite token on the demo route — returns `unchecked`, which **leaves the permission result standing**. A service blip must never become a locked door in front of a candidate who is ready to sit.
+**The rows wait for the verdict** (fixed 2026-08-20). They used to flip to
+"Ready" the moment permission was granted and only *then* ask the engine, so the
+candidate was told they had passed a check that had not been made and "Begin
+assessment" was live throughout it — which is why it looked like nothing was
+being checked at all. Both rows now stay running until the answer lands, and the
+camera preview follows the **stream** rather than the check's status, because the
+candidate has to see themselves to get in frame while the check runs.
+
+The face check looks at up to **three frames** rather than the first one it can
+grab: a candidate is usually still settling when the camera produces that, and
+one unlucky frame should not be the difference between Ready and a dead end. Any
+frame with a face passes; only a run of clean no-face verdicts fails.
+
+An engine that cannot answer — unreachable, 5xx, or no invite token on the demo
+route — returns `unchecked`, which **leaves the permission result standing**: a
+service blip must never become a locked door in front of a candidate who is
+ready to sit. It is no longer dressed up as a pass, though — the row reads
+"Camera on — face check unavailable" rather than claiming a detection that never
+happened.
 
 Requires `FASTAPI_URL` (server-side only, v1's `REACT_APP_FASTAPI_URL`).
 

@@ -473,3 +473,37 @@ Use this after fixing progression/scoring bugs to recalculate historical data, o
 - **Chain-replay model** — Each progression row is derived from its assessment and its **immediate predecessor** (pair average of their scores); same set level → derive, else carry forward. The whole chain is recomputed deterministically on every run. There is **no `is_calc` rolling-window / consume logic** — the old model was removed because the live and backfill copies drifted apart.
 - **One core, two callers** — The live path (`replayCommunicationProgression`) and the backfill (`backfillAllStudentProgression`) both call the same pure `computeCommunicationChain`, so they cannot diverge. The replay is idempotent and self-correcting.
 - **Reliability model** — `updateCurrCERFlevelOfStudent` (→ `replayCommunicationProgression`) is `await`ed. If it fails, the cron job retries the entire score calculation including progression (up to 3 non-transient retries, 10 transient retries). Because the replay recomputes the full chain each time, a later successful run heals any earlier partial state.
+
+## A read-aloud recording is stored again, and in its real container (2026-08-20)
+
+Two independent faults in the shared upload path, both affecting **v1 as much
+as v2** since they live in `student-node`.
+
+**1. The read-aloud's answer row stopped being written on 2026-07-06.**
+`uploadAudio` read a `chapters` variable that was never declared — it is only
+sent by the AI Interview session recording — so every *other* audio upload threw
+a `ReferenceError` on the way to the database. The write is wrapped in a `catch`
+that logs `"Database storage failed (non-critical)"` and carries on, and the
+handler still answers **200 with a PAR URL**, so the client had no idea. The
+recording reached object storage and nothing ever linked it to the attempt: the
+report had no audio to play and Reading scored 0. Introduced by `9090771a`
+(2026-07-06); the data agrees — Paragraph Reading answers carrying an
+`object_key` were **10 in June, 7 in July, 0 in August**. (Video Response was
+unaffected: `uploadVideo` never had the bug — 4 of 4 in August.)
+
+**2. The lookup targeted the wrong row.** `findFirst({assessmentAssignedId,
+questionId})` matched *any* row for the question, but a Paragraph Reading
+question's **sub-question answers share that question id** — so if a
+comprehension answer was saved first it took the object key, and the report only
+reads an `objectKey` from a row with **no `subQuestionId`**. Both the audio and
+video paths now pin `subQuestionId: null`.
+
+**3. Container naming (see also the Mix & Match journey doc).** Safari records
+MP4; `uploadToOracle` and `generatePreSignedURLVideo` both appended `.webm`
+unconditionally, so an iPhone video was stored under one key and signed under
+another. `resolveVideoContentType` / `resolveVideoObjectName` now resolve the
+real container, mirroring what the audio path already did.
+
+**Historical attempts do not self-heal.** Recordings uploaded between 6 July and
+20 August are in object storage but were never linked, and those attempts are
+already scored.
