@@ -458,6 +458,19 @@ variant. Fixes the old literal-`LIKE` gaps where `fullstack` (no space) or
 | `candidates_raw_data` | Raw ingested data (JSONB), normalization status, timestamps |
 | `candidates` | Normalized records (name, email, mobile, gender, DOB, assessment_scores JSONB) |
 | `candidate_job_details` | Role-specific data (role, cv_url, normalized_data JSONB, cv_data JSONB, `linkedin_data` JSONB) |
+
+> ⚠️ **An empty `cv_data` silently loses the candidate's CV.** `map_to_final_schema`
+> builds `student.cvUrl.url` from `cv_data.oracleStorageUrl` — so when the CV step
+> produced nothing (`cv_data = {}`), create-full receives `cvUrl: ""`, derives
+> `isSystemResume = true`, and the candidate's link survives only inside
+> `student_role_mapping.response_data.cv_url`, which no resume screen reads. On UAT
+> that is **1,056 of the 3,932** rows that carried a `cv_url`, and **762 role
+> mappings**. Two mitigations landed 2026-08-20 (DEV + UAT): student-node re-hosts
+> the external link whenever the payload has no usable `cvUrl` of its own
+> (`helpers/cvRehostDecision.js`), and `GET /students/:id/uploaded-cv` reads
+> `response_data.cv_url` as a fallback so existing rows resolve without a backfill.
+> A backfill of the 762 is still pending — the Drive files are readable by the
+> service account (spot-checked), so they are recoverable.
 | `open_ai_logs` | LLM API calls (prompt, response, token counts) — 1 row per normalization call |
 | `normalization_logs` | Audit trail (steps incl. `*_matcher_api`, `create_full_student_*`; old/new data, timestamps) |
 | `validation_logs` | Field validation results |

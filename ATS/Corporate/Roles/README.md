@@ -222,6 +222,19 @@ Do not re-add a fallback to `POST /students/resume/bulkdownload` here. The
 generated resume — that is what they are for; the *preview* is the candidate's
 own document.
 
+⚠️ **Three of the seven surfaces never received a `cvUrl` at all.** `corporate-node`'s
+drive-candidate query (`models/DriveRoleCandidateMap.js` → `getCandForHR`) selects
+`response_data` but **not** `srm."cvUrl"`/`"isSystemResume"`, so Drives,
+Exp-Candidates and Interview-details handed `getUploadedCvUrl` a row that could
+never produce one. Nobody noticed while the generated resume was the fallback —
+every candidate simply got the generated one. Fixed 2026-08-20: `ResumePreview`
+falls back to `GET /students/:studentId/uploaded-cv?roleId=` (see
+`ATS/Student/Resume` → "Where an uploaded CV actually lives"), which resolves the
+role mapping, the raw ingestion response and the student profile in that order. A
+`cvUrl` handed down by the screen still wins, so screens that already had the right
+value cost no round trip. Every call site passes `studentId` **and** `roleId` — the
+resolution is role-scoped.
+
 **Two URL shapes.** The role mapping stores `cvUrl` as a plain string
 (`student.student_role_mapping."cvUrl"`); the student record stores jsonb
 `{ url, name, size }`, and that jsonb is frequently `{"url": ""}` rather than

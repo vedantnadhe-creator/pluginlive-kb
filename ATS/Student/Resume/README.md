@@ -39,6 +39,7 @@ The Resume module is the student's comprehensive profile and resume management h
 | `resumeBulkDownload` | `/students/resume/bulkdownload` | POST (Student) | Bulk resume download (blob) |
 | `resumeBulkDownloadJobRoles` | `/students/resume/bulkdownload/jobRoles` | POST (Student) | Bulk resume download scoped to a job role (`roleId` required). Per-student resume resolution reads `student_role_mapping` (`isSystemResume`/`cvUrl`) |
 | `logResumeDownload` | `/students/resume/bulkdownload` | POST (Student) | Log resume download activity |
+| `fetchUploadedCv` | `/students/{studentId}/uploaded-cv?roleId=` | GET (Student) | Resolve the CV the candidate **uploaded**, across all three places one can live. 404 = never uploaded |
 
 ### Profile Data
 
@@ -283,6 +284,55 @@ working on the raw list. The sibling component in `Assessment-React` still rende
   it, and the header duration summed both stints. Introduced 2026-07-10 with the
   pending-approval merge (`af022a1a`); `isGrouped` never fires because `resume.workExperience`
   is stored flat (array of objects), never as an array of arrays.
+
+---
+
+## Where an uploaded CV actually lives (`GET /students/:studentId/uploaded-cv`)
+
+Added 2026-08-20 (DEV + UAT). One answer for every resume surface, because there
+are **three** places a candidate's uploaded CV can be, and any one of them can be
+the only one populated:
+
+| # | Source | Written by |
+|---|---|---|
+| 1 | `student_role_mapping."cvUrl"` (plain string) | apply / re-host — role-scoped |
+| 2 | `student_role_mapping.response_data->>'cv_url'` | the ingestion, as the link arrived (Tally / Drive) |
+| 3 | `students.cv_url` jsonb `{url,name,size}` | profile-level upload |
+
+Resolution order is 1 → 2 → 3, role-scoped first because a candidate can submit a
+different CV per application. Source 1 is skipped when `isSystemResume` is true —
+that flag means the row holds **our** generated resume, not a submission. Ordering
+lives in `app/helpers/resolveUploadedCv.js` (pure, unit-tested); the handler is
+`resumeHandler.getUploadedCv`. Response is `{ url, name, source }` where source is
+`ROLE_UPLOAD` | `ROLE_RESPONSE` | `STUDENT_PROFILE`; **404 is the ordinary answer**
+for a candidate who never uploaded one, and callers render it as "No resume found".
+
+⚠️ **`{"url": ""}` is the common shape of `students.cv_url`, and it means no CV.**
+Treating it as present yields an empty-string URL that silently renders nothing.
+
+⚠️ **Source 2 exists because the ingestion loses CVs.** `map_to_final_schema` builds
+`student.cvUrl.url` from `cv_data.oracleStorageUrl`; when the CV step produced
+nothing (`candidate_job_details.cv_data = {}`) that is `""`, create-full derives
+`isSystemResume = !cvUrl` → true, and the candidate's link survives *only* inside
+`response_data`. Measured on UAT: **1,056 of the 3,932** ingestion rows carrying a CV
+link had an empty `cv_data`, and **762 role mappings** hold their only CV there.
+Fixed forward in `helpers/cvRehostDecision.js` (see below), but existing rows still
+depend on source 2.
+
+### `shouldRehostExternalCv` — why the re-host gate changed
+
+`createFullStudent` re-hosts an external CV (Drive/Tally link → Oracle Object
+Storage) so it is renderable. That used to run only when `is_normalization === false`;
+the normalized flow was trusted to have done it already, which is exactly the case
+that fails silently. It now runs whenever the payload carries an external
+`responceData.cv_url` **and no usable `student.cvUrl.url` of its own**.
+
+- Re-host is best-effort: on failure it preserves the original URL and records
+  `student.cvDetails.rehostStatus`, so the worst case is today's behaviour.
+- `INSTITUTE_ERP` is excluded deliberately — it delivers resumes as `erpResumes` and
+  must never populate the default CV (see `syncErpUploadedResumes`).
+- A Drive link that our service account cannot read stays unrecoverable: 23 students
+  carry `download_failed: Google Drive file not accessible (404)`.
 
 ---
 
