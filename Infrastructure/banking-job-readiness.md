@@ -312,3 +312,17 @@ Confirmed **present**: `agent_threads`, `domains`, `module_taxonomy_history`, `i
 **Consequence:** any feature delivered by a hand-written migration — payments/journey access, admin RBAC entitlement reports, AI coach threads, tech AI-practice sessions, domain/module group visibility, module prerequisites, live sessions, trainer assignments, AI-interview proctoring settings — is **dead on UAT** no matter how many times the frontend is rebuilt. Applying them needs the Supabase CLI (not installed on the box) plus project credentials, and should be reviewed first: several are `resync`/`seed`/`backfill` scripts that mutate data, and `20260728150000_fix_security_vulnerabilities.sql` changes RLS.
 
 **Resolved:** the `bulk-create-users` "Not authorized" bug (service-role client calling `rpc("has_role")`, which lives in the locked-down `private` schema and is executable only by `authenticated`) was previously carried as an uncommitted local patch on the UAT box. It has since **landed upstream** — `supabase/functions/bulk-create-users/index.ts` now authenticates the caller with an anon-key client and reads `user_roles` directly via the service-role client, matching `admin-confirm-candidates` / `bulk-export-enqueue` / `assessment-report`. No local patch to preserve across pulls anymore. It still needs to be *deployed* to Supabase per the drift note above.
+
+## 2026-08-20 — redeployed to `4a67e19`
+
+Advanced Banking UAT by 14 commits from `6119771` to `4a67e19`. Applied the one new migration,
+`20260821000000_assessments_schema_cache_repair.sql`, which preserves the existing
+`assessments.assigned_colleges` default and requests a PostgREST schema reload. PostgREST was then
+fully restarted, the changed `generate-assessment-questions` edge function was synced, and the
+frontend rebuilt with the self-hosted `/sb` configuration.
+
+Verification: site and both REST/Auth API roots return 200; unauthenticated `seed-admin-user`
+returns 401; all Banking stack containers are up; function logs contain no new boot/worker errors;
+browser E2E passed landing, admin login, protected modules, and the authenticated admin console
+with zero page errors, hosted-Supabase requests, or API errors. Snapshot:
+`~/banking-predeploy-20260820T092104Z/`.

@@ -769,3 +769,28 @@ Verification: all containers up, zero function boot errors, admin login OK, `adm
 401 unauthenticated and 200 with `action: list` as admin, approval columns still readable,
 `student_profiles` still 37 rows. Browser E2E passed all six routes with 0 page errors, 0 hosted
 Supabase requests, 0 `/sb` 4xx/5xx.
+
+## 2026-08-20 — redeployed to `73990337`
+
+Advanced PilVidya UAT by 18 commits from `aefb9cf5` to `73990337`. Applied both new migrations:
+`20260819013857` adds the already-known `admin` enum label idempotently, and `20260819013918`
+creates `is_platform_admin(uuid)` plus four admin policies across `user_roles`, `profiles`, and
+`staff_ops_roles`. The enum migration required the database-admin role because `eduspeak_owner`
+does not own `app_role`; it was applied on the PostgreSQL host and committed before the second file.
+
+After the standard grant and sensitive-column scripts, the six curriculum-master tables were again
+revoked from `anon`. The blanket grant script also re-granted the new helper to `anon`, overriding
+the migration's explicit revoke; this was corrected after verification. Final helper permissions:
+`anon=false`, `authenticated=true`, `service_role=true`. All four policies exist and the six master
+tables have zero anon table grants. PostgREST/Auth/Storage pools were restarted.
+
+The release shipped a runtime regression in `TeacherPortal.tsx`: the new Student Progress menu used
+`TrendingUp` without importing it, blanking `/teacher`. A local UAT import patch was added and the
+image rebuilt; preserve it until upstream adds the import. Final image: `eduspeakreact:73990337`.
+
+Verification: route manifest 5/5; site and REST/Auth roots return 200; unauthenticated
+`admin-manage-users` returns 401; all active containers are up with zero function boot errors;
+browser E2E passed five anonymous routes, admin login, and `/admin`, `/teacher`, `/student` with
+zero page errors, failed requests, hosted-Supabase traffic, or `/sb` responses >=400. Rollback
+container/image and source/function snapshot use stamp `20260820T092140Z`; full pre-migration dump
+is retained on the DB host as `~/eduspeak_uat-predeploy-20260820T092140Z.dump`.
