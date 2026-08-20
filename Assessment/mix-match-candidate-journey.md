@@ -220,6 +220,59 @@ The resume screen follows the AI Interview's `resumePolicy` (`mandatory` / `opti
 
 `totalDurationMinutes` used to require *every* part to have a configured duration, so one unknown blanked the whole total: the candidate saw no duration and the runner fell back to a hard-coded 60-minute clock regardless of the sitting. It now sums the parts that have one, with `durationPartial` flagging that the real sitting is at least that long.
 
+### A module is finished explicitly, then goes read-only
+
+Every module's last question carries a **"Finish <Module>"** control rather than
+a plain Next. Finishing locks that module and opens either a **Module Complete**
+summary ("Begin <Next Module> →") or, on the last module, the existing Review
+and submit dialog. `isPartComplete` is now the same explicit-finish signal for
+every module — previously only the AI Interview worked that way.
+
+**A finished module stays open to revisit, but every answer surface renders
+disabled** — options, textareas, the reorder list, the code editor, recording
+controls. This is enforced **in the reducer** (`SELECT` / `CLEAR` /
+`TOGGLE_MARK` refuse a locked module), not only in the UI, so a stale component
+or a devtools poke cannot write to a module the candidate has closed. Only one
+module is open at a time (`canOpenAssessment`, gated in both the track and the
+`SWITCH_ASSESSMENT` reducer case).
+
+**Negative marking is surfaced, and changes the finish prompt.** Aptitude
+questions carry `negativeMarking` and show a "Negative Marking" tag. A module
+flagged with it **skips the unanswered-count caution** on finish — leaving a
+question blank there may be a deliberate choice to avoid a penalty, not an
+oversight, so nagging about it would push candidates into guessing.
+
+### Communication locks its subsections one at a time
+
+`loadCommunication` in `liveExam.ts` was hardcoded to `freeNavigation: true` on
+the **live** path while the mock build already sequenced them, so the two
+disagreed about the same assessment. Communication now matches Role Based.
+
+Previous/Next are also disabled while a recording (read-aloud, speaking, video)
+or a dictation playback is actively running, and Previous now respects the
+post-read-aloud silent-reading window that Next already did.
+
+### A stale chunk reloads instead of killing the attempt
+
+"Begin assessment" crashed to the root error boundary whenever a candidate's tab
+had loaded its JS **before** a deploy replaced that build: a client-side
+navigation then 404s on a chunk hash that no longer exists (`ChunkLoadError`).
+`global-error.tsx` swallowed it silently and its "Try again" only reset the
+boundary — re-rendering the same stale tree asking for the same missing chunk,
+so it could never recover.
+
+It now logs the error and, when the shape is chunk-load-like, **hard-reloads
+once** to fetch the current build, with a 15-second guard against looping if the
+server itself is broken. The detector is a pure function in
+`lib/staleChunkError.ts` with tests. This matters here more than in most apps:
+deploying mid-sitting is normal on DEV/UAT, and the candidate cannot simply be
+told to start over.
+
+`reconcileAttempt` also backfills `completedParts` on a restored attempt — it
+backfilled `audioSettled` and `tabViolations` but not this, and the module lock
+reads it unguarded on every render, so a record stored before the lock existed
+took the whole screen down on resume.
+
 ### Finishing is the candidate's call
 
 Finish is always available. It used to be disabled until every part was complete and refused outright while the AI Interview was unfinished; the confirm dialog already lists what is unanswered, which is where that belongs rather than in a button that cannot be pressed.

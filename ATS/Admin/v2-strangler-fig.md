@@ -140,6 +140,35 @@ automatically. While nothing is migrated it renders an explainer instead.
 Steps 3 and 4 are the ones that matter. Enabling a key in an env without the app and
 the nginx block reproduces the Corporate failure exactly.
 
+## Assessment wizard — current state (2026-08-19)
+
+Reached from v1's Create Assessments button (above) at `/v2/assessment/new`.
+
+**"Generate with AI" and the JD file attach are both simulations.** Attaching a
+file makes the Job description box read-only, shows a spinner and
+"Parsing <name>…", then types generated text in a few characters at a time,
+landing on "Parsed <name>". It looks exactly like extraction. **No
+text-extraction is wired up** — nothing reads the PDF, and there is nowhere to
+send one yet. Generate with AI goes through the same typing engine and is
+likewise canned. Both share one timer ref, so starting either cancels a running
+other rather than letting two reveals collide in the same field. Treat any JD
+text these produce as placeholder, not as anything derived from the file.
+
+**Type-list ordering.** Only Pre-Assessment Registration is pinned (first,
+undraggable, lock icon instead of a grip). AI Interview was briefly pinned last
+the same way (`a78c17b`) — that was never a requirement and was reverted in
+`eee9ddb`, including in the mix-match payload builder, which now maps
+`draft.typeKeys` directly with no reordering. AI Interview is freely draggable.
+
+**Field changes worth knowing:** Listening audio accent is now a two-option
+RadioCardGroup (`US`, `Indian`, default `US`) rather than a five-option
+dropdown; Role Based's Industry/domain carries the standard optional tag (it was
+always optional in practice — `buildJobDescription` treats blank as absent — it
+just did not say so); AI Interview's Difficulty curve select is gone from the
+config panel but the field remains in `AiInterviewConfig`, `defaultConfig` and
+the mix-match payload defaulting to `"Flat"`, the same way Probing Style was
+removed earlier and still defaults to `"Neutral"`.
+
 ## Auth — admin-node wants the RAW token
 
 v2 is same-origin with v1, so it reads v1's JWT from `localStorage.token` (falling
