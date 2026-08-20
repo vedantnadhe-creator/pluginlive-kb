@@ -184,9 +184,22 @@ customAssessmentScores: true
 |------|------------|-------------|----------------|
 | Communication | `communicationScores` | Percentage from sections | reading, listening, speaking, writing |
 | Aptitude | `aptitudeScores` | Percentage from sections | critical, quantitative, logical |
-| Behavior | `behaviorScores[0].totalScores` | Average of all scores | Parsed from JSON `totalScores` field |
+| Behavior | `behaviorProficiencyScores` | **null — Behavior has no score** | none; awarded levels come back as `proficiencyLevels` |
 | Role_Based | `roleBasedScores[]` | Average of section scores | Dynamic from `section.sectionName` (e.g., mcq, subjective, video) |
 | Custom | `customAssessmentScores[0]` | `percentage` field | `gainedMarks`, `totalMarks`, `percentage`, `sectionWiseStats` |
+
+> **Behavior carries no total score (2026-08-20, DEV + UAT, PROD pending).** This row
+> previously averaged `behaviorScores[0].totalScores`, which is not a score table — it is
+> the raw answer tally (`{"Empathy":{count,total}, …, "grandTotal":350}`). Reducing its
+> values with `+` concatenates objects, so every Behavior row here and in the Excel export
+> printed **`NaN`**. There is no percentage to substitute: `behavior_competency_scores.score`
+> is a weighted T-score (mean 50, SD 10), and the assessment never rolls the nine
+> competencies into one figure — the candidate's own PDF prints no number at all. So
+> `totalScore` is `null` and `helpers/behaviorDashboardScore.js` returns the awarded levels
+> as `proficiencyLevels` (`{competencyName: "Practitioner"}`) for callers that can render a
+> profile. The v1 screen currently leaves the score column blank for Behavior and needs a
+> level column to be useful; the v2 TPO drawer shows the full competency profile — see
+> `ATS/Institute/v2-strangler-fig.md`.
 
 **Response includes:** `assessmentType` field (`mapData.assessmentType.typeName`) for frontend type detection, and `timeTakenSeconds` — the attempt's `total_time_taken` (seconds) selected as `totalTakenTime` alongside the assignment. Null when the candidate never submitted.
 

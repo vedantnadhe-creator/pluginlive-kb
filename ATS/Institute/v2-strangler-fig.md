@@ -1011,6 +1011,7 @@ the class is usually already there.
 | Aptitude | Quantitative / Logical Reasoning / Critical Reasoning | `aptitude_scores.statistics->'categories'` | share of the paper's marks |
 | Custom_Assessment | its own sections | `custom_assessment_scores.section_wise_stats` | share of marks |
 | Role_Based | its own sections | `role_based_scores` | equal per section |
+| Behavior | its nine competencies, as **levels** | `behavior_proficiency_scores` | none — no score to weight |
 | AI_Interview | **none** | — | card is dropped |
 
 The old query only ever hit `communication_scores`/`role_based_scores`, so
@@ -1038,11 +1039,87 @@ and the new `headline.levelBand` ("90+", "60–75") both come from
 `assessmentBands` — the drawer, the roster's Achieved Level column and the
 Competency ladder are one label set by design. Two ladder changes shipped with
 this: Communication now reads `C2 (Advanced)` rather than a bare `C2`, and the
-DEFAULT ladder (Role_Based / AI_Interview / Custom / Behavior) takes the
+DEFAULT ladder (Role_Based / AI_Interview / Custom) takes the
 design's **40/55/70/85** cutoffs instead of an even 20-point split, under which
 35% read as "Developing" while the same 35 is a fail everywhere else. Nothing
 filters on the level string (the column sorts by score), so this is display-only
 — but it is not drawer-local.
+
+### A Behavior assessment has NO score — it reports levels (2026-08-20)
+
+`b2d883d`/`1b38586` institute-node, `65f5fda`/`aec3c93` institute-react-v2,
+`48b4e2b2`/`155e707c` student-node. **DEV + UAT. PROD pending.**
+
+A fully graded Behavior attempt showed **"Not yet scored"**, a dash for Achieved
+Level and no breakdown card, while the legacy v1 TPO list and both Excel exports
+printed **`NaN`** for the same attempt. The data was never the problem — the
+PROD attempt behind the report had 9 competency scores, 9 proficiency rows and
+14 report rows. Every symptom was read-side.
+
+**The rule: a Behavior assessment has no score, and none can be invented.** The
+candidate's own PDF ("Campus to Corporate Assessment Report") contains no number
+anywhere — nine competencies each carry a proficiency level (**Beginner /
+Apprentice / Practitioner / Master / Expert**, plotted 1-5), fourteen
+sub-component behaviours carry Low / Medium / High, then a strengths vs
+areas-for-improvement split and suggested job roles. No total, no average, no
+percentage.
+
+Two numbers exist and **both are wrong to report as a score**:
+
+- `behavior_scores.total_scores` is the raw ANSWER TALLY —
+  `{"Empathy":{count,total}, …, "grandTotal":350}`. Four sites in student-node
+  `TpoDashBoard.js` averaged it with `Object.values(...).reduce((a,b)=>a+b,0)`,
+  which **concatenates objects** → `NaN` on the institute list, the corporate
+  list and both workbook exports.
+- `behavior_competency_scores.score` is a weighted **T-score** (mean 50, SD 10 —
+  student-node `BehaviorCalculations.calculateCompetencyScores`). Averaging the
+  nine and printing "45.6%" put a candidate holding a **Master**-level Critical
+  Approach into the "Developing / moderate risk / below 55%" band. **Do NOT add
+  it to `assessmentScoreSql` `SCORE_JOINS`.** Every numeric v2 widget reading
+  "—" for Behavior is correct, not a gap.
+
+Per-competency band edges differ (`behavior_competency_levels`), so a row's
+level must be **read** from `behavior_proficiency_scores`, never re-derived from
+the number: 40.65 is "Apprentice" for Project Management and "Beginner"
+elsewhere.
+
+**Levels appear in the report drawer and nowhere else.** No roll-up on the
+roster's Achieved Level column and none on the Overview Competency ladder — the
+assessment awards one level PER COMPETENCY and no overall one, so any single
+level would be the dashboard's invention, the same mistake as the score. In the
+drawer the "Score breakdown" card becomes a **"Competency profile"** card grid
+(`.cmp-cards` / `.cmp-card`, ported from v1 `StudentReport`
+`renderBehaviorScoreCards`, on DS subtle surfaces so it survives dark mode, red
+for Beginner only); the Achieved Level cell is hidden via `showLevel &&
+!levelled`, the same way Role_Based already hides it; the score cell stays and
+reads "—" with `scoreSub` = "Reported as levels, not a score", because a TPO
+hunting for a percentage is owed the reason there isn't one. The Overview
+Competency panel gets a Behavior-specific empty note instead of its default
+"once the first attempts are scored", a promise this type never keeps.
+
+Note v1 `institute-react` spreads these levels as **one table column per
+competency** (`StudentsTable/index.js`) — nine extra columns. v2 deliberately
+does not.
+
+**Two traps if you touch this path:**
+
+1. `latest` (the attempt a report describes) resolved as *latest SCORED*.
+   Behavior has no score, so it resolved to nothing: no competency profile, and
+   `headline.reportAttemptId` stayed null, which **disabled the PDF download**
+   for an attempt that was fully graded. It now resolves by *latest submitted*
+   for Behavior.
+2. A recurring Behavior schedule skips `loadSeriesBreakdown`. The components are
+   ordinal levels, and "the mean of Apprentice and Master" is not a level the
+   platform can name.
+
+Captions moved server-side with this: `headline.scoreSub` and
+`headline.levelSub` are now the API's words. The frontend used to append
+`"% band"` to whatever `levelBand` it was handed, which cannot describe a type
+that has no band.
+
+Still open: institute-node `StudentListInfo.js` (the **corporate** ATS list)
+still averages competency T-scores into `totalScore` — same fabrication,
+untouched because it sits outside the TPO dashboard.
 
 ### "How long is this assessment?" has no single answer
 
