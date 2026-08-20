@@ -209,6 +209,64 @@ Covered by `tests/test_role_coding_language_normalisation.py` (14 tests).
 
 ---
 
+### Every language gets a starter template, and the entry point is the one the question names (2026-08-20, DEV + UAT)
+
+Follow-on from the entry below, found by using the runner: pick C++ on a
+question and the editor still held **Python**, with `Run` then failing to
+compile.
+
+**Templates.** The bank predates six-language support — of 178 coding
+questions, 178 ship Python, 174 JavaScript, **40** Java/C++, and **none**
+TypeScript or C. Selecting an unauthored language left the editor holding the
+previous language's code. `assessment-react-v2` `src/lib/starterTemplates.ts`
+(new, pure, tested) now **synthesises** the missing template from what the
+question already carries: function name and parameter names from whichever
+template exists, and types inferred from the test-case literals — a quoted
+argument is a string, `[1, 2, 3]` is a list of ints. Emits idiomatic scaffolds
+per language (Java in a `class Solution`, C++/C bare functions, TypeScript
+annotating `name: type`), each returning a neutral value of its own declared
+type so the scaffold **compiles before it is filled in** (verified against the
+live sandbox in all six).
+
+**C is withheld, not faked.** The runner passes C arguments as C literals and
+prints the result through `printf`, so a list argument or list return has no
+representation. `synthesizeStarter` returns null there and `codingMeta` leaves
+C out of the picker for that question, rather than offering a scaffold that
+cannot pass.
+
+**Per-language drafts.** `CodeAnswer.tsx` keeps what the candidate wrote in each
+language they visited and restores it on switch-back. Switching now always
+loads that language's own code (draft, else template) — carrying the old source
+across is what produced the Python-under-C++ screenshot.
+
+**Entry point resolution (`student-node`).** `extractFunctionName` read the
+**first** definition in the candidate's source, so a C++ answer with a helper
+above its solution had the *helper* called — a correct answer scoring 0. The
+name the question defines now wins whenever the candidate's code still defines
+it. Because most questions ship starter code for only some languages, the
+fallback also reads the Python/JavaScript template **with that language's
+matcher** rather than the answer language's, which previously matched nothing.
+
+**Generator (`fastapi-ai-engine`).** `SUPPORTED_CODING_LANGUAGES` is now all six
+(`python, javascript, typescript, java, cpp, c`), with placeholder rules for the
+two new ones — TypeScript follows the JavaScript brace-body shape; C has no
+exceptions, so its only accepted scaffold is a bare `return 0;`. Both prompts
+demand a template for **every** language rather than a role-relevant subset, and
+spell out the typed shapes. `C#` no longer folds onto `C`: the punctuation-
+stripping pass reduced `c#` to `c`, so a deny-set now rejects it (with
+`csharp`, `cs`, `objective-c`) before the aliases are consulted.
+
+Commits: `assessment-react-v2` `4d2e7e2` → UAT `a4f58c0` · `student-node`
+`081a0246` → UAT `5bf1c2b0` · `fastapi-ai-engine` `c9fff3b` → UAT `5619e54`.
+**PROD pending.**
+
+Note: the UAT `fastapi-ai-engine` build failed once on `pip install` at 94% disk
+— the usual ENOSPC. `docker builder prune -f` reclaimed 7.1GB and it succeeded.
+The deploy script leaves the old container running on a failed build, so there
+was no downtime.
+
+---
+
 ### Coding runs server-side; test-case inputs and outputs are now graded correctly (2026-08-20, DEV + UAT)
 
 Two separate problems, both fixed together because the second was only found while
