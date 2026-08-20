@@ -466,6 +466,45 @@ Both the sweep and the dropout rows are written as `portal: SYSTEM` with
 `actorRole: "system"`. Nobody performed them — a deadline passed and a timer
 noticed — and attributing them to a person would be a lie.
 
+## Every row leads with a sentence, including the hand-wired ones
+
+Two families of row exist in this trail, and only one of them used to have a
+headline:
+
+| Family | Where the summary comes from |
+|---|---|
+| Route hooks — System Config, student module, user management | built from the request by the hook |
+| ~50 hand-wired `audit()` call sites across admin / corporate / institute | **nothing** — a curated `metadata` object and no summary |
+
+So `subscription.assigned` showed a good set of fields with nothing to lead
+with, and thinner ones like `job_role.status_changed` showed a bare `{status}`.
+
+Editing fifty call sites would have fixed the actions that exist today and
+missed every one added later. Instead `app/helpers/auditSummary.js` generates
+the sentence inside `buildEntry`, so **every row gets one** — including actions
+added by someone who never reads that file.
+
+```
+Assigned a subscription: Friends in the data value — 6 assessment types, subscribed, 365 days
+Changed a job role's status: quant Developer — status "OPEN" → "CLOSED"
+Updated a campus: neet campus — sections: details, courses
+```
+
+Three properties are load-bearing:
+
+- **It reads the redacted, size-capped values, not the raw event.** A token
+  limit masked by `redact()` must not reappear in prose, and the sentence still
+  attaches when an oversized payload has been replaced by a truncation marker.
+- **A call-site summary always wins.** The handler had the request in front of
+  it; this only has what was stored.
+- **An unknown action is humanised from its own name** —
+  `job_role.status_changed` → *"Job role status changed"* — so a new action
+  reads properly on day one without touching the phrase table.
+
+`ACTION_PHRASES` holds the nicer wording per action and `DETAIL_FIELDS` decides
+which stored fields make it into the headline. Anything not listed still shows
+in the Details panel; the table only chooses what is worth saying first.
+
 ## Every row says what happened, in words
 
 A hook can only ever report "a PUT happened on this path", which is how the
