@@ -326,3 +326,98 @@ returns 401; all Banking stack containers are up; function logs contain no new b
 browser E2E passed landing, admin login, protected modules, and the authenticated admin console
 with zero page errors, hosted-Supabase requests, or API errors. Snapshot:
 `~/banking-predeploy-20260820T092104Z/`.
+
+## 2026-08-20 (second run) — redeployed to `a79370c`
+
+Advanced Banking UAT by 4 commits from `4a67e19` to `a79370c` (`6c46066` Sync remote mcp index
+changes, `b5a3e13` Work in progress, `06213f7` Changes, `a79370c` Removed stale vite config file).
+Clean fast-forward, **no new migrations**, so this was a function sync plus a frontend rebuild.
+
+### The release is a near no-op, and its one real change is a type regression
+
+The four commits look substantial per-commit (±171 lines in `supabase/functions/mcp/index.ts`, a
+stray `vite.config.ts.timestamp-*.mjs` added then deleted), but they add and revert each other.
+The **net** `git diff 4a67e19..a79370c` is three deleted lines in
+`src/integrations/supabase/types.ts`: `assigned_colleges: string[]` removed from the `assessments`
+`Row`/`Insert`/`Update` types.
+
+That removal is wrong, and it directly contradicts the migration applied the day before:
+
+* `banking_uat.public.assessments.assigned_colleges` **exists**, `ARRAY`, default `'{}'::text[]`
+  — put there by `20260821000000_assessments_schema_cache_repair.sql`.
+* PostgREST serves the column fine (`/rest/v1/assessments?select=id,title,assigned_colleges` → 200
+  with `"assigned_colleges":[]`).
+* The app reads and writes it in four places — `useAssessments.ts`, `AssessmentCreator.tsx`
+  (`assigned_colleges: assignedColleges` on save) and `StudentAssessmentTaker.tsx`
+  (`a.assigned_colleges.length === 0 || a.assigned_colleges.includes(studentCollege)`, i.e. the
+  college-scoping rule for which assessments a student may see).
+
+**It is inert for the deployed bundle** only because `npm run build` is plain `vite build` with no
+`tsc` step — Vite strips types without checking them. So the shipped JS is unchanged. The cost is
+that the generated types now lie about the schema: anyone running `tsc`, relying on IDE
+type-checking, or regenerating from these types will be told a live column does not exist. If a
+typecheck is ever added to the build, this breaks it. Fix belongs upstream (regenerate types
+against the current DB), not on the box.
+
+### Local patches on the UAT checkout survived the pull — re-verify after every deploy
+
+The UAT checkout carries four **uncommitted** local patches. The pull was done as
+`git stash push -- src/ supabase/ package-lock.json` → `git merge --ff-only origin/main` →
+`git stash pop`, which kept all four:
+
+| File | Patch |
+|---|---|
+| `src/components/pil-admin/LearningPathsManager.tsx` | edit-save deletes `learning_path_assignments`, **not** `learning_paths` |
+| `src/hooks/useLearningPaths.ts` | assignments read points at `learning_path_assignments` |
+| `src/lib/adminErrorLogger.ts` | `SUPABASE_URL` from `import.meta.env.VITE_SUPABASE_URL`, not the hosted project |
+| `supabase/functions/mcp/index.ts` | `projectRef = "banking-uat-selfhosted"` |
+
+**Upstream still has not fixed the learning-path data-loss bug** (`2e0fdfb`), so the patch is still
+load-bearing: without it, editing and saving any learning path deletes it while the UI reports
+success. Verified in the *built bundle*, not just the source — the only
+`from("learning_paths").delete()` in `dist/` is the explicit "Learning path deleted" button; the
+edit-save path emits `from("learning_path_modules").delete()...from("learning_path_assignments").delete()`.
+`learning_paths` still holds its 11 rows.
+
+### Verification
+
+Site 200; `/sb/rest/v1`, `/sb/auth/v1/settings`, `/sb/storage/v1/bucket` all 200; unauthenticated
+`seed-admin-user` → 401; 83 edge functions synced with 3 fixups (`live-session-rsvp`, `main`,
+`mcp`), dispatcher intact, zero boot errors; all 7 stack containers up.
+
+* **AI coach** — 200, first byte **51 ms**, streamed SSE chunks from real `gemini-2.5-flash`
+  (not the built-in fallback). Both earlier fixes still hold: the `llm_provider_configs` gemini key
+  and `proxy_buffering off` in nginx.
+* **TTS** — 200, `provider: elevenlabs`, `mimeType: audio/mpeg`, 28,465 bytes of real MP3 (`ID3`).
+* **Payments RPC** — `submit_payment_request` resolves in the PostgREST schema cache and its
+  ownership check fires (`42501 Not allowed to submit payment for this student` for a bogus
+  student). `payment_requests` still 0 rows — the probe wrote nothing.
+* **Browser E2E** — 6 anonymous routes and the authenticated admin console (User Management,
+  Institutes, Subscriptions): **0 page errors, 0 hosted `*.supabase.co` requests, 0 `/sb` 4xx/5xx**.
+* **Unit tests** — 291 passed / 10 failed (301). Identical at the previous commit `4a67e19`
+  (run in a throwaway worktree), so this release adds **no** test regressions.
+* **Data** — 121 public tables, 62 profiles, 62 auth users, 13 assessments, 11 learning paths.
+
+Backups: `~/banking-sb/banking_uat_predeploy_20260820T113939Z.dump`,
+`~/banking-sb/functions-predeploy-20260820T113939Z.tar.gz`,
+`~/bankingjobreadiness/dist.bak-predeploy-20260820T113939Z/`, `.env.bak-predeploy-20260820T113939Z`.
+
+### Probing the stack with a minted JWT — the `session_id` trap
+
+To test authenticated paths without touching anyone's password, mint an HS256 token with the stack
+`JWT_SECRET` (claims: `sub`, `aud`/`role` = `authenticated`, `email`, `iat`, `exp`).
+
+**Do not add a `session_id` claim.** GoTrue validates it against `auth.sessions`, so an invented one
+makes `/auth/v1/user` return **403**; supabase-js then tries to refresh, fails, and every following
+request 401s. That produces a browser run full of `/sb` 4xx that look like a broken deploy but are
+purely an artefact of the probe. Confirmed by running both tokens side by side: with `session_id`,
+`/auth/v1/user` → 403; without it, `/auth/v1/user`, `/rest/v1/institute_subscriptions` and
+`/functions/v1/admin-candidate-auth-status` all → 200.
+
+Two more gotchas when probing:
+
+* `ai-personal-coach` takes `{studentId, messages:[{role,content}]}` — `message` is rejected, and
+  `studentId` must be the **auth user id** or a `students.id` the caller owns; `profiles.id` is a
+  different key (`profiles.user_id` is the auth link) and yields `403 Student does not belong…`.
+* The stack database is **`banking_uat`**, not `postgres`. `psql -U postgres` with no `-d` lands in
+  an empty database and reports 0 public tables — not a wiped stack.
