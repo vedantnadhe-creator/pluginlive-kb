@@ -213,8 +213,7 @@ the uploaded CV or nothing:
 
 | Candidate has | Drawer shows |
 |---|---|
-| an uploaded CV a browser can render | its pages |
-| an upload that cannot be shown inline — Drive link, `.doc`/`.docx`/`.rtf`, or a PDF that fails to parse | **"Unable to display this resume"**, naming the reason, plus an **Open uploaded resume** button (new tab) |
+| any uploaded CV | its pages — see "Every link previews" below |
 | no upload | **"No resume found"** |
 
 Do not re-add a fallback to `POST /students/resume/bulkdownload` here. The
@@ -251,11 +250,55 @@ driven off the student record have no such flag and read
 | `student_role_mapping` (5 role-scoped surfaces) | 12,386 of 15,442 | 2,842 | 25 | 189 |
 | `students.cv_url` (ATS pipeline + Interviewer dashboard) | 26,017 of 40,636 | 2,476 | **11,961** | 182 |
 
-Google Drive links are HTML pages behind an auth redirect, not files, so they can
-neither be fetched by pdfjs nor framed — hence the Open-in-new-tab path rather
-than a render attempt. On the student-record surfaces they are the *majority* of
-uploads, which is why institute-react reverted its equivalent viewer entirely
-(see `ATS/Institute/JobPreview`).
+Note institute-react reverted its equivalent viewer entirely — this component is
+corporate-only (see `ATS/Institute/JobPreview`).
+
+### Every link previews (2026-08-20, DEV + UAT)
+
+The first cut only rasterised PDFs; everything else landed on "Unable to display
+this resume". On the student-record surfaces that was the **majority** of
+uploads — 11,961 Drive links against 2,476 renderable PDFs — so most recruiters
+looking at the ATS pipeline or the Interviewer dashboard saw a dead end. Every
+shape now renders. `components/ResumePreview/source.js` owns the routing:
+
+| Link shape | How it renders |
+|---|---|
+| PDF | rasterised locally by pdfjs, as before |
+| Google Drive / Docs | `<iframe>` on Google's own `drive.google.com/file/d/<id>/preview` (or `docs.google.com/<type>/d/<id>/preview`) |
+| `.doc` `.docx` `.rtf` `.ppt(x)` `.xls(x)` `.odt` `.txt` | `<iframe>` on `docs.google.com/gview?embedded=true&url=…` |
+| image (`.jpg` `.png` `.webp` …) — a photographed resume | plain `<img>` |
+| **no extension** — object-storage keys | one `fetch(url, {method: 'HEAD'})` reads Content-Type and routes on that; on failure it assumes PDF |
+| PDF that pdfjs cannot parse | **retried** through the gview document viewer |
+| Google link with no file id (a folder) | "Unable to display this resume" + **Open uploaded resume** |
+| — | that fallback card is now the *only* remaining dead end |
+
+⚠️ **Use `gview`, not Office Web Viewer, for Word files.** Office Web Viewer
+(`view.officeapps.live.com/op/embed.aspx`) trusts the file extension, and a large
+share of our `.doc` uploads are actually **docx zips saved under the wrong
+extension** — it renders a blank frame for those. `gview` sniffs the file and
+renders them correctly. Verified in a headless browser against real UAT CVs of
+each shape.
+
+⚠️ **A Drive link cannot be fetched or sniffed — only framed.** It is an HTML page
+behind Google's auth, so pdfjs gets markup and CORS blocks a `fetch` anyway. If
+the recruiter cannot open the file, Google's own "request access" page renders
+inside the frame, which is the truthful thing to show.
+
+⚠️ **Both buckets must keep `Access-Control-Allow-Origin: *`.** The HEAD sniff for
+extension-less keys depends on it (CloudFront `d39w34th2iwz5l.cloudfront.net`,
+OCI `pl-uat-public-docs`). It degrades safely — a blocked HEAD assumes PDF and a
+failed parse falls through to gview — but the sniff is what makes the 326
+extension-less role-mapping keys land on the right renderer first try.
+
+**Privacy note:** the gview and Drive embeds mean Google fetches the CV
+server-side. These URLs are already unauthenticated public-bucket links, so this
+does not widen exposure, but it is a third party touching candidate documents.
+Removing that dependency means converting documents in `fastapi-ai-engine`
+instead.
+
+**No CSP blocks the frames.** Neither `corporate.dev` nor `corporate.uat` sends
+`Content-Security-Policy`; adding one later must include
+`frame-src https://docs.google.com https://drive.google.com`.
 
 ⚠️ **`pdfjs-dist` needs its own splitChunks cacheGroup here.** It is ~2 MB and is
 imported dynamically, but `config/webpack.prod.js` has a vendor group

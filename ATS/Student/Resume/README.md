@@ -306,6 +306,9 @@ lives in `app/helpers/resolveUploadedCv.js` (pure, unit-tested); the handler is
 `resumeHandler.getUploadedCv`. Response is `{ url, name, source }` where source is
 `ROLE_UPLOAD` | `ROLE_RESPONSE` | `STUDENT_PROFILE`; **404 is the ordinary answer**
 for a candidate who never uploaded one, and callers render it as "No resume found".
+Whatever URL comes back previews — Drive link, Word file, image or PDF; the
+routing lives in corporate-react's `components/ResumePreview/source.js`
+(see `ATS/Corporate/Roles` → "Every link previews").
 
 ⚠️ **`{"url": ""}` is the common shape of `students.cv_url`, and it means no CV.**
 Treating it as present yields an empty-string URL that silently renders nothing.
