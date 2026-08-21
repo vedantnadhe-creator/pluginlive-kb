@@ -636,6 +636,29 @@ a handler that already wrote a richer, domain-specific event (say
 as `system_config.changed` under `portal: ADMIN`, with the route, HTTP method
 and payload in `metadata`.
 
+### The College screen, and two gaps that had to line up
+
+Creating a college from Admin → System Configuration left **no trace at all**.
+Two independent gaps were both required for that, and both are now closed:
+
+- `createInstMaster` never called `audit()`, while `updateInstituteMaster` and
+  `deleteInstitute` both did. **Create was the only one of the three missing** —
+  which is why editing a college appeared in the trail and adding one did not.
+- The hook's route list left `college` out, so the safety net that exists for
+  exactly this case did not catch it either.
+
+The handler now writes `institute.created` with the campus name and city, filed
+under `portal: ADMIN` because that is the screen it is performed from. The
+hook's pattern covers the whole college surface —
+`/institutes/crud/(student)?college...` — and because handler-level `audit()`
+sets `auditRecorded`, the hook stands down on create/update/delete and only
+catches the rest (`studentcollege`, `tierInfo`).
+
+The widened pattern is anchored deliberately: `/institutes/collegeDrive` merely
+contains the word and is **not** System Configuration. A test guards that.
+
+Reads as: *"Onboarded a college: Anna Neet Coaching campus — Chennai"*.
+
 Known rough edge: `configArea()` matches lowercase `specialisation`, so
 `updateStreamSpecialisationMapIfNotExist` and `specializationOthersUpdate` (capital
 S / `z` spelling) fall through to the generic label *"System configuration"*.
