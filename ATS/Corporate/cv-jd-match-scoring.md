@@ -156,6 +156,17 @@ Roles open **only** to ITI / Diploma candidates skip AI match entirely
 
 ## Known gotchas / recent issues
 
+- **Cached criterion text can outlive a display fix** (UAT, 2026-08-21): role
+  `e3905f0a-2000-4502-9508-549802a479ed` had 9 older `ai_match_score` JSON
+  records whose `criteria_scores[].text` still ended in `(weight: N/10)`, while
+  2 newer scores were already clean. The running UAT AI engine contained the
+  `_clean_criterion_text` fix, so this was stale persisted output rather than a
+  current generation bug. The 9 affected records were cleaned in place without
+  changing scores, reasons, or the role's internal criterion weights; post-fix
+  verification was 11 scored records, 0 containing `weight:`. For the same
+  symptom on an older role, inspect persisted `ai_match_score` before redeploying
+  or re-scoring—the internal `ai_match_criteria[].weight` remains intentional and
+  must not be removed because it drives the weighted average.
 - **Response-schema drift via gateway** (UAT, 2026-07-01, **fixed**): Gemini
   through the in-cluster `http://litellm/v1` (Portkey/LiteLLM) shim did not
   enforce the google-genai `response_schema`/`response_mime_type=application/json`
