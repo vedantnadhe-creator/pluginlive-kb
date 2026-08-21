@@ -852,9 +852,23 @@ On the client, a restored attempt is re-seated against the test that actually lo
 
 A combined final submission is blocked until AI Interview is complete. Every other part is submitted with one request each. The overall timer uses the same backend submission path as manual finish.
 
+### Delivery status on the consolidated report
+
+A Mix & Match row represents several `assessment_assigned_students` rows, but
+the bundle sends one invitation and records its `email_events` against only the
+owner part. The consolidated report must therefore resolve delivery across all
+part assignment ids. It uses the normal precedence (`Opened` > `Sent` >
+`Processing` > `Failed`) and merges the channel detail for the hover. Looking up
+only one arbitrary part produces a false untracked dash even when another part
+owns the email/WhatsApp event.
+
+Fixed and deployed to DEV in `admin-node` `8c8464e` (2026-08-21). Verified on
+the live `Test assessment` float: `vedantmnadhe+ss@gmail.com` now resolves to
+`Opened` with its email leg present instead of `—`.
+
 ## DEV deployments
 
 - `student-node` commits `e60c67b2`, `9f7dfca5`, `1f43c573`, `b6eeeb63`, `5fd5e9d7`, `69470352`
 - `assessment-react-v2` commits `4602376`, `c70bee7`, `d1822b4`, `b7c78b4`, `da1432a`, `518203e`, `936a10d`, `6fafe50`, `8b0d903`, `2b5c9b3`, `19fe1e4`, `071666e`, `d2484f1`, `52e0aa1`
 - `admin-react-v2` commits `741a9b4`, `c17e420`, `892f520`, `5e44c23`
-- `admin-node` commits `8d04f84`, `d4f5f44`, `1a128d1` (candidate-facing naming; UAT 2026-08-20, PROD pending)
+- `admin-node` commits `8d04f84`, `d4f5f44`, `1a128d1`, `8c8464e` (delivery status on consolidated rows; DEV 2026-08-21, UAT/PROD pending)
