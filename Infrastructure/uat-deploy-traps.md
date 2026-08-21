@@ -125,3 +125,71 @@ the fix is on **Development (44154d4), UAT (1fc2347) and release-v1.38
 If a prod admin-node build ever fails with `"/.env": not found` again, check
 line 39 before anything else — and fix it on all three branches, not just the
 release branch.
+
+## institute-react-v2's container files were release-branch-only
+
+`institute-react-v2` has been live in PROD since release-v1.37, but its
+`Dockerfile`, `.dockerignore` and `next.config.ts`'s `output: "standalone"`
+were authored **directly on the release branch** (`063a9f7` / `f74e524`) during
+that first onboarding and never merged back. `Development` and `UAT` never had
+them.
+
+Every release is cut from `origin/UAT`, so every release lost them, and the
+prod build died with:
+
+```
+ERROR: failed to solve: failed to read dockerfile: open Dockerfile: no such file or directory
+```
+
+That is exactly the admin-node shape above: a release-branch-only fix that
+cannot survive the next cut. It recurred on release-v1.38 (2026-08-21) and had
+to be re-applied a second time (`409e6b4`).
+
+As of 2026-08-21 the files are on **Development (`855c849`), UAT (`8c526ec`)
+and release-v1.38 (`409e6b4`)** — byte-identical blobs on all three
+(`Dockerfile a6436156`, `.dockerignore 3fe2fee9`, `next.config.ts bc8c7b73`).
+
+The Dockerfile is env-agnostic, matching the other v2 apps: the deploy writes
+the target environment's central env file to `.env.prod`, and the Dockerfile
+renames it to `.env.production`, the filename Next actually loads for a
+production build. It hard-fails when `.env.prod` is absent rather than baking an
+env-less bundle. Note this means **a UAT image cannot be built until someone
+adds a UAT env file** — institute-react-v2 runs on UAT under systemd
+(`next start`), not Docker, so no UAT env file exists yet.
+
+## `autodeploy_noprune.sh` silently shipped DEV URLs to PROD (student-react)
+
+On 2026-08-21 the `release-v1.38` **student-react** image reached production
+baking `api-*.dev.pluginlive.com` and `auth.dev.pluginlive.com` — and **no prod
+URLs at all**. `student.pluginlive.com` called DEV APIs and DEV auth for about
+23 minutes before it was rolled back.
+
+The cause is a divergence between the two prod deploy scripts:
+
+| | writes `.env.prod` | also writes `.env` |
+|---|---|---|
+| `autodeploy.sh` | all frontends | **student-react only** |
+| `autodeploy_noprune.sh` | all frontends | **nothing — the special case was missing entirely** |
+
+student-react's `.env` is **git-tracked and holds DEV values**, and its
+`webpack.prod.js` loads `../.env` via dotenv — not the `.env.prod` the deploy
+writes. `autodeploy.sh` compensates by overwriting `.env`; `autodeploy_noprune.sh`
+never did. Since `prod_deploy_notify.sh` **always** uses the noprune variant for
+parallel releases, every parallel release built student-react from its tracked
+DEV `.env`. The 2026-08-04 image escaped only because it was rebuilt by hand
+with `autodeploy.sh` after a yarn timeout.
+
+`admin-react` has the same shape — `config/webpack.prod.js:13` also reads
+`../.env` — but its `.env` is untracked and hand-placed with prod values, so it
+leaked nothing. It did mean every edit to the central
+`repositories/envs/ui/admin-react.env` was silently ignored.
+
+Both scripts now copy the central env to `.env` for **student-react and
+admin-react**. The lasting lesson: **an HTTP 200 smoke check does not prove a
+bundle points at the right backend.** After any frontend build, grep the image:
+
+```bash
+docker export $(docker create <image>) | tar -xO | grep -aoE '[a-z-]+\.dev\.pluginlive\.com' | sort -u
+```
+
+Empty is the only acceptable result.

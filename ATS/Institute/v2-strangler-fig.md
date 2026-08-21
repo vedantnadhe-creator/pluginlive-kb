@@ -30,6 +30,23 @@ Service unit: `/etc/systemd/system/institute-react-v2.service` (`next start`,
 `Restart=always`). It reads `.env.local` at runtime for the server-side BFF vars;
 `NEXT_PUBLIC_*` and `basePath` are **baked into the bundle at build time**.
 
+**PROD is different: it runs as a container in K8s**, not systemd — deployment
+`institute-react-v2` in the `frontend` namespace, port 3000 behind a ClusterIP
+service, mounted at `institute.pluginlive.com/v2` by a `/v2` path on
+`institute-react-ingress`. The server-only vars (`INST_API_URL`, `AUTH_API_URL`,
+`ADMIN_API_URL`, `CORPORATE_API_URL`, `STUD_API_URL`) resolve over **in-cluster
+DNS** and are set on the Deployment as well as in
+`repositories/envs/ui/institute-react-v2.env`, because Next reads them at
+runtime rather than baking them.
+
+The `Dockerfile`, `.dockerignore` and `output: "standalone"` that make this
+possible lived **only on the release branches** until 2026-08-21 — every release
+cut from UAT lost them and the prod build failed on a missing Dockerfile. They
+are now on `Development`, `UAT` and `release-v1.38` alike. See
+[Infrastructure/uat-deploy-traps.md](../../Infrastructure/uat-deploy-traps.md).
+A UAT *image* still cannot be built until a UAT env file exists — UAT runs this
+app under systemd, so it has never needed one.
+
 ## Screens migrated so far
 
 | Screen | v2 route | Notes |
