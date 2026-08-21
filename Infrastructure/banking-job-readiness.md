@@ -427,6 +427,26 @@ redirected to `/candidate/home`, and rendered the student console. An already-op
 the build continued executing the old in-memory JavaScript and produced one more 400 until reloaded;
 GoTrue logs distinguished that stale-client attempt from the fresh successful flow.
 
+## 2026-08-21 — redeployed to `251f18a`
+
+Advanced two commits from `2a2a477` (one feature commit plus its merge). Applied the one new
+migration, `20260822000000_module_group_id_columns.sql`, transactionally as `banking_owner`; no
+self-hosted fixup was needed. It adds nullable `module_group_id uuid` foreign keys to both `modules`
+and `admin_modules`, referencing `module_groups(id) ON DELETE SET NULL`, plus indexes on both
+columns. Existing data was unchanged: `modules` has 51 rows and `admin_modules` has 65, with zero
+mapped values until admins begin assigning groups.
+
+Reapplied grants, fully restarted PostgREST, rebuilt the frontend with the UAT environment, then
+resynced all 83 edge functions with the three standing fixups. Verification: site and auth settings
+200; both new columns return 200 through PostgREST; both foreign keys and indexes exist; all seven
+containers are up and the database is healthy; zero new function boot errors; no hosted Supabase
+data-plane URL in the bundle. A fresh Chromium candidate login for `9820065335` using OTP `1234`
+successfully redirected to `/candidate/home` and rendered the student console.
+
+Rollback assets use stamp `20260821T071010Z`: database dump and functions archive under
+`~/banking-sb/`, frontend copy at `~/bankingjobreadiness-dist-backup-20260821T071010Z`, and the
+checkout-local `.env` backup in `~/bankingjobreadiness/`.
+
 ### Probing the stack with a minted JWT — the `session_id` trap
 
 To test authenticated paths without touching anyone's password, mint an HS256 token with the stack
