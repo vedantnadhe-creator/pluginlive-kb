@@ -461,6 +461,26 @@ URL in the bundle. Fresh Chromium loads of `/reset-password` and `/login/candida
 errors and zero `/sb` API errors. Candidate `9820065335` with OTP `1234` still authenticates and
 lands on `/candidate/home`. Frontend and `.env` rollback copies use stamp `20260821T110647Z`.
 
+## 2026-08-21 (fourth run) — deployed `f56a5d5`, repaired to `e44a897`
+
+The incoming commit changed `ai-assessment` to use the shared multi-provider LLM path and added a
+deterministic fallback; there was no migration. It also committed the recurring invalid Windows-path
+MCP artifact. The build regenerated MCP and the standing UAT fixup overlaid it, so that artifact was
+not deployed.
+
+An authenticated live generation probe found two independent upstream API-contract defects that a
+static bundle check did not catch: `fallbackJsonForFeature` existed in `_shared/llm.ts` but was not
+exported, causing a worker boot error; after exporting it, both call sites destructured a nonexistent
+`response` property even though `callLlmChatCompletion` returns `Response` directly. Fixed and pushed
+as `b502309` and `e44a897`, then resynced all 83 functions with three fixups.
+
+Final verification: an authenticated `ai-assessment` generation request returns HTTP 200 with one
+MCQ and no error; site and auth settings 200; all seven containers up with the database healthy;
+clean post-fix function logs; deployed MCP has no Windows path; candidate `9820065335` still logs in
+with OTP `1234` and reaches `/candidate/home`. No database migration was required. Rollback assets
+use stamp `20260821T153931Z`: function archive under `~/banking-sb/`, frontend and `.env` copies in
+the usual Banking paths.
+
 ### Probing the stack with a minted JWT — the `session_id` trap
 
 To test authenticated paths without touching anyone's password, mint an HS256 token with the stack
