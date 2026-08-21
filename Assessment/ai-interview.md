@@ -822,6 +822,27 @@ TTS begins. Verified with 201 unit tests, lint, production Next build, authentic
 live bundle inspection, and HTTP 200 candidate pages on both estates. Deployed through
 `auto_deploy.sh candidate-assessment-journey-v2` on DEV and the same target with `UAT` on UAT.
 
+#### Stalled TTS and third-warning terminal recovery (2026-08-21, DEV + UAT)
+
+Two terminal states could leave the Next.js candidate sitting behind a permanent overlay. First,
+the AI Interview cleared its 12-second network fallback as soon as the TTS blob downloaded, then
+waited only for the browser audio element's `ended`/`error` events. Chrome can fully reveal the
+question and leave blob-backed audio in `waiting`/`stalled` without emitting either event, so the
+screen remained on "Speaking to you" forever even though FastAPI and the BFF both returned 200.
+The player now has a metadata-derived absolute deadline (duration + 5s, bounded 10–60s; 45s when
+metadata is absent), a 5-second stalled-buffer guard, and `abort` recovery. Every path converges on
+the same idempotent transition that opens the microphone.
+
+Second, warning three correctly raised `tabViolations` to the auto-submit threshold, but final
+submission was a single asynchronous attempt. Any rejection in AI completion, upload draining, or
+a part submit left `FINAL_SUBMIT` undispatched; the modal continued saying "Submitting" with no
+retry path and the trigger was not reliably re-armed. Commit `6cf026e` (UAT merge `f9d5837`) makes
+whole-assessment finalization single-flight, automatically retries transient failures up to three
+times with backoff, preserves the saved attempt throughout, and then exposes a manual Retry
+submission action with the actual error if service recovery takes longer. The third fullscreen/tab
+violation still triggers without confirmation. Verified with 203 tests, lint, production build,
+live-bundle inspection and HTTP 200 on DEV + UAT candidate routes.
+
 #### Invite delivery splits by entity type — OTP for corporate, portal for institute (2026-06-17)
 
 `assignAIInterviewAssessment()` (`admin-node/app/models/Assessment.js`) was OTP-invite-only for
