@@ -447,6 +447,20 @@ Rollback assets use stamp `20260821T071010Z`: database dump and functions archiv
 `~/banking-sb/`, frontend copy at `~/bankingjobreadiness-dist-backup-20260821T071010Z`, and the
 checkout-local `.env` backup in `~/bankingjobreadiness/`.
 
+## 2026-08-21 (third run) — redeployed to `5add773`
+
+Advanced two frontend-only commits from `251f18a`: improved password-recovery session/error
+handling and added missing dialog descriptions to admin domains, module groups, RBAC and admin
+dialogs. There were no new migrations and no edge-function source changes, so no database work was
+required. Preserved all four standing UAT source patches and the self-hosted `.env`, rebuilt the
+frontend, then resynced the generated MCP bundle and the three function fixups.
+
+Verification: new `index-UREdX1mg.js` asset is served; site and auth settings 200; all seven stack
+containers up with the database healthy; zero function boot errors; no hosted Supabase data-plane
+URL in the bundle. Fresh Chromium loads of `/reset-password` and `/login/candidate` had zero page
+errors and zero `/sb` API errors. Candidate `9820065335` with OTP `1234` still authenticates and
+lands on `/candidate/home`. Frontend and `.env` rollback copies use stamp `20260821T110647Z`.
+
 ### Probing the stack with a minted JWT — the `session_id` trap
 
 To test authenticated paths without touching anyone's password, mint an HS256 token with the stack
