@@ -832,7 +832,9 @@ Each type is scored from a different shape, so the runner builds a different pay
 
 Getting the option-id-versus-option-text distinction wrong scores a candidate zero without failing anything, so both directions are pinned by tests in `examShapes.test.ts`.
 
-Coding answers submit `{ code, language, test_results: [] }`. The empty results are deliberate — the server re-runs the test cases itself and only trusts frontend results when they are supplied. The in-browser runner executes JavaScript only, so runnable languages are offered first and the rest are labelled "(no run)".
+Coding answers submit `{ code, language, test_results: [] }`. The empty results are deliberate — the server re-runs the test cases itself and only trusts frontend results when they are supplied.
+
+Nothing executes in the browser. Pressing **Run** posts `{ questionId, language, code }` to the v2 BFF route `POST /api/assessment/parts/:assessmentAssignedId/run-code`, which forwards to student-node and on to the code-runner sandbox; all six languages the sandbox runs are offered, and the same harness scores the attempt at submit time. See [Role Based → Coding runs server-side](rolebased.md#coding-runs-server-side-test-case-inputs-and-outputs-are-now-graded-correctly-2026-08-20-dev--uat) for the whole chain.
 
 Role Based video clips are uploaded while recording; that upload already attaches the storage key to the attempt server-side, and the submit payload repeats it as a safety net exactly as v1 does.
 

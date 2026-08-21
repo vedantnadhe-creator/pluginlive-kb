@@ -354,6 +354,33 @@ infra built before this ships there, not just a branch push.
 
 ---
 
+### One Run showed its verdicts on every coding question (2026-08-21, DEV + UAT)
+
+Running one Coding Question and paging to the next opened that next question
+already showing the previous one's "3 of 4 passed" and its test-case list, so a
+Coding section read as though a single click had run every question in it.
+
+Nothing ran twice. `runMixMatchCodingTests` → `runQuestionCodingTests` loads one
+`assessment.questions.coding_metadata` row by the posted `questionId` and runs
+only its cases, and `toRunOutcome` joins the server's verdicts to that same
+question's cases — both were already correctly scoped, and only one request was
+ever sent.
+
+The leak was React state. `CodeAnswer` keeps the run outcome and the
+per-language drafts in `useState`, and it sits in a **fixed slot** among
+`QuestionPanel`'s children, so with no `key` React reused one component instance
+as the candidate moved between questions and that state carried across.
+`RecordingAnswer` and `WritingAnswer` in the same file already carried
+`key={question.id}` for exactly this reason; `CodeAnswer` was the one that
+missed it. Now keyed the same way, so each coding question mounts its own
+editor, drafts and results.
+
+Commit `assessment-react-v2` `9835cf2` (Development), `74a5220` (UAT merge).
+DEV container rebuilt; **UAT is a branch push only — the `/v2` UAT infra noted
+above still does not exist, so nothing is serving it there.** PROD pending.
+
+---
+
 ### Coding starter code must not solve the question (2026-08-07, promoted to UAT 2026-08-10)
 
 Generated coding questions were shipping **starter code that already contained the solution** (or part of it), so a candidate could pass the test cases without writing anything. `fastapi-ai-engine` `QuestionGeneration/Role_Specific/question_generator.py` now enforces this on both sides:
