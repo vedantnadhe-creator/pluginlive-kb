@@ -421,6 +421,12 @@ password-grant request now returns HTTP 200 with the expected user UUID and an a
 served bundle contains the new contract; the linked profile remains active and approved. Rollback
 frontend copy: `~/bankingjobreadiness-dist-backup-loginfix-20260821T*`.
 
+Follow-up browser verification used a fresh Chromium context against `/login/candidate`: mobile
+`9820065335` + visible OTP `1234` submitted the new `Otp_` credential, authenticated successfully,
+redirected to `/candidate/home`, and rendered the student console. An already-open tab from before
+the build continued executing the old in-memory JavaScript and produced one more 400 until reloaded;
+GoTrue logs distinguished that stale-client attempt from the fresh successful flow.
+
 ### Probing the stack with a minted JWT — the `session_id` trap
 
 To test authenticated paths without touching anyone's password, mint an HS256 token with the stack
