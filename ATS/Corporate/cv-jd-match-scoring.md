@@ -166,7 +166,13 @@ Roles open **only** to ITI / Diploma candidates skip AI match entirely
   verification was 11 scored records, 0 containing `weight:`. For the same
   symptom on an older role, inspect persisted `ai_match_score` before redeploying
   or re-scoring—the internal `ai_match_criteria[].weight` remains intentional and
-  must not be removed because it drives the weighted average.
+  must not be removed because it drives the weighted average. **Follow-up:** DB
+  cleanup alone did not reliably remove the already-returned text from the v1
+  candidate drawer. Corporate React commit `cc6c052a8` (UAT merge `130c44f5e`)
+  adds a final presentation-layer guard to both the criteria tooltip and Risk
+  Signals chips, stripping a trailing `(weight: …)` before rendering. Deployed
+  to UAT on 2026-08-21; use this UI guard as defence-in-depth even though the AI
+  engine also cleans newly generated criterion text.
 - **Response-schema drift via gateway** (UAT, 2026-07-01, **fixed**): Gemini
   through the in-cluster `http://litellm/v1` (Portkey/LiteLLM) shim did not
   enforce the google-genai `response_schema`/`response_mime_type=application/json`
