@@ -347,10 +347,14 @@ Commits: `student-node` `96802fc3` (Development), `4a9ab387` (UAT) · `assessmen
 `b4f1a59` (Development only — see below) · `fastapi-ai-engine` `a2904fa`
 (Development), `6ed2407` (UAT). **PROD pending.**
 
-Note: `assessment-react-v2` has no CI auto-deploy and, per its own README, was
-**not deployed to UAT at all before this change** — no systemd unit, no nginx
-`/v2` routing on that box. DEV has a manually-run container; UAT needs that
-infra built before this ships there, not just a branch push.
+Note: `assessment-react-v2` has **no CI auto-deploy** on either box — a branch
+push moves the code and nothing else; the container has to be rebuilt by hand.
+DEV deploys via `./auto_deploy.sh candidate-assessment-journey-v2` (id 26 in
+`deploy.sh`), which builds the image from the checkout and swaps the container
+on `127.0.0.1:3015`. UAT had no target at all when this change landed; it has
+one now — a `candidate-assessment-journey-v2` container on `:3015`, an nginx
+`/candidate-assessment-journey/v2/` location, and a checkout on the `UAT`
+branch (verified 2026-08-21).
 
 ---
 
@@ -376,8 +380,16 @@ missed it. Now keyed the same way, so each coding question mounts its own
 editor, drafts and results.
 
 Commit `assessment-react-v2` `9835cf2` (Development), `74a5220` (UAT merge).
-DEV container rebuilt; **UAT is a branch push only — the `/v2` UAT infra noted
-above still does not exist, so nothing is serving it there.** PROD pending.
+DEV container rebuilt. **UAT is a branch push only** — no CI runs there, so the
+UAT container still serves the previous build until someone rebuilds it. PROD
+pending.
+
+Watch out when deploying this app: `deploy.sh`'s `git_commands` runs `git stash`
+before pulling, which stashes *tracked* work in progress but leaves untracked
+files behind. With a half-finished feature in the shared checkout that produces
+a build failure on orphaned imports (`Cannot find module '@codemirror/state'`)
+and the old container is left running. Build from a clean clone of the branch,
+or commit first.
 
 ---
 
