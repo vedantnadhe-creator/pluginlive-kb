@@ -402,6 +402,25 @@ Backups: `~/banking-sb/banking_uat_predeploy_20260820T113939Z.dump`,
 `~/banking-sb/functions-predeploy-20260820T113939Z.tar.gz`,
 `~/bankingjobreadiness/dist.bak-predeploy-20260820T113939Z/`, `.env.bak-predeploy-20260820T113939Z`.
 
+## 2026-08-21 — candidate OTP login policy fix (`2a2a477`)
+
+Candidate `9820065335` appeared correctly in the admin candidate list but candidate login returned
+"Account not found". The data was not missing: `profiles.user_id` matched the confirmed
+`auth.users.id`, the profile was active/approved, and the auth email was the expected
+`9820065335@bankready.app`.
+
+The actual defect was the demo OTP password contract in `Login.tsx`. It generated
+`otp_<mobile>_1234`, while self-hosted GoTrue requires at least one lowercase letter, uppercase
+letter and digit. GoTrue rejected that value as `weak_password`, and existing imported identities
+could not authenticate with the password the UI always submitted. Changed the internal derived
+password to policy-compliant `Otp_<mobile>_1234`; the visible OTP remains `1234`.
+
+Reset only `9820065335@bankready.app` through GoTrue's admin API using
+`set-user-password.sh`, rebuilt the frontend, and pushed the source fix. Verification: the exact
+password-grant request now returns HTTP 200 with the expected user UUID and an access token; the
+served bundle contains the new contract; the linked profile remains active and approved. Rollback
+frontend copy: `~/bankingjobreadiness-dist-backup-loginfix-20260821T*`.
+
 ### Probing the stack with a minted JWT — the `session_id` trap
 
 To test authenticated paths without touching anyone's password, mint an HS256 token with the stack
