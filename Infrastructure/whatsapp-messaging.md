@@ -140,6 +140,8 @@ Interview, and Mix & Match invite/reminder templates, as well as to email. The
 approved Meta bodies contain only `{{5}}` at that position—not the word `at`—so
 no new template submission or Meta reapproval was required. Live MSG91 records
 for all six templates were rechecked before rollout and remain approved.
+Deployed and health-checked on DEV (`admin-node` `8ed2a7a`) and UAT
+(`admin-node` `a906e88`) on 2026-08-21.
 
 Invite and reminder are explicit intents in `assessmentInviteEmail.js`. Email
 reminders now have reminder subjects/headings/body copy instead of reusing the
