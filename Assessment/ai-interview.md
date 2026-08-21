@@ -1182,6 +1182,12 @@ This bit `aiInterviewInviteAPI.js` and blanked the whole app on DEV and again on
 
 ## Key Concepts
 
+### Next.js admin language-payload contract (fixed 2026-08-21)
+
+AI Interview language and style settings must be sent under `interviewConfig.stageConfig`. The admin-node creation paths persist only that nested object. The Next.js admin migration initially sent flat `aiLanguage`, `responseLanguage`, `probingStyle`, and `difficultyCurve` fields, causing new assignments to store `stage_config: {}` and silently default to English even when Hinglish was selected.
+
+`admin-react-v2` now maps the wizard values to `stageConfig.language`, `stageConfig.responderLanguage`, `stageConfig.probingStyle`, and `stageConfig.difficultyCurve`, matching V1 and the backend contract. Development commit: `b995e8d`; UAT merge: `46c6688`. Deployed to DEV and UAT on 2026-08-21. Existing assignments retain their stored empty configuration and must be recreated to test the corrected language behavior.
+
 - **Adaptive Questioning** — Each question adapts to the candidate's prior performance. Strong answers → harder questions. Weak answers → adjusted difficulty or deeper probing.
 - **Follow-up Intelligence** — When a response is evaluated as needing deeper exploration (`needsFollowUp: true`), a targeted follow-up is generated probing the specific weak area.
 - **Weighted Scoring** — Every response is scored on 4 dimensions (Technical 40%, Depth 25%, Communication 20%, Problem Solving 15%), not just right/wrong.
