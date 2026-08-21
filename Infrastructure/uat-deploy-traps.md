@@ -84,3 +84,44 @@ and the deploy — `student-node` landed on a commit two behind `origin/UAT` on
 2026-08-20 because two commits were pushed while its image was building, and
 needed a second run. **Re-check the deployed SHA after every deploy** rather
 than assuming the one you merged is the one now running.
+
+## admin-node's Dockerfile env copy — the trap that broke PROD twice
+
+`admin-node/Dockerfile:39` must read:
+
+```dockerfile
+COPY .env.${ENVIRONMENT} .env
+```
+
+It has twice been regressed to a bare `COPY .env .env`, and each time that broke
+the **production** image build with `"/.env": not found` — on release-v1.37
+(2026-08-11, fixed by c8fbe1f) and again on release-v1.38 (2026-08-21).
+
+### Why the bare form looks fine and is not
+
+Each environment builds with its own build-arg and ships its own env file. Only
+prod has no plain `.env` to fall back on:
+
+| Env | Build arg | Env file written by the deploy | Bare `COPY .env .env` |
+|-----|-----------|-------------------------------|-----------------------|
+| DEV | `--build-arg ENVIRONMENT=dev` (`.github/workflows/dev-admin.yml`) | `.env.dev` — and a plain `.env` also exists on the box | works by accident |
+| UAT | `--build-arg ENVIRONMENT=uat` (`deploy.sh:201`) | `deploy.sh` does `cp .env.uat .env` | works by accident |
+| PROD | `--build-arg ENVIRONMENT=prod` (`autodeploy_noprune.sh:143`) | `autodeploy_noprune.sh:119` writes **`.env.prod` only** | **build fails** |
+
+So the regression is invisible on DEV and UAT and only ever surfaces at the
+worst moment — mid-release, on the prod builder box.
+
+The `.dockerignore` settles the intent: it excludes `.env*` then explicitly
+whitelists `!.env.dev`, `!.env.uat`, `!.env.prod` — never a bare `.env`. The
+parameterised form is what the build context was designed for.
+
+### Why it kept coming back
+
+Prior fixes were applied **only to the release branch**. `origin/UAT` kept the
+broken line, so the next release cut from UAT reintroduced it. As of 2026-08-21
+the fix is on **Development (44154d4), UAT (1fc2347) and release-v1.38
+(262bd4e)**, so a future release cut from UAT carries the correct line.
+
+If a prod admin-node build ever fails with `"/.env": not found` again, check
+line 39 before anything else — and fix it on all three branches, not just the
+release branch.
