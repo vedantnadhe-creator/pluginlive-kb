@@ -129,7 +129,9 @@ Three separate faults each surfaced as a raw id in the Who column, all fixed on
    an actor for a row that never recorded one is exactly the kind of thing an
    audit log must not do. Only new rows carry the actor.
 2. **22 rows carried an actor id present in no user table**
-   (`63e4de1011d6db2f8d400580`, role `system`). `AuditActor.findNamesByIds` now
+   (`63e4de1011d6db2f8d400580`, role `system`) — later identified as the shared
+   **service-account** token, not a deleted user; see the service-accounts
+   section below. `AuditActor.findNamesByIds` now
    searches `admin.admin_users` as well as `user_management.users`, with
    user_management winning a collision since that is where login tokens are
    minted.
@@ -472,6 +474,39 @@ alongside the dropout sweep in `script/scheduler.js`.
 Both the sweep and the dropout rows are written as `portal: SYSTEM` with
 `actorRole: "system"`. Nobody performed them — a deadline passed and a timer
 noticed — and attributing them to a person would be a lie.
+
+## Service accounts, and the id that was never a deleted user
+
+The Admin trail showed **"System" for 58 of 99 rows**, which tells a reader only
+that no human was involved. Both markers turned out to be **service accounts**:
+
+| Actor id | Held by | Renders as |
+|---|---|---|
+| `63e4de1011d6db2f8d400580` | `AUTH_TOKEN` in **institute, corporate, student and auth** — one shared legacy token | *"Institute service"*, *"Student service"*, … |
+| `admin-node-system` | `AUTH_TOKEN` in admin-node | *"Admin service"* |
+
+Every backend keeps a long-lived JWT in `AUTH_TOKEN` whose payload is
+`{"role":"system","_id":...}`, used for service-to-service calls and background
+workers — `assignmentWorker` creates students through `StudentService` with
+exactly this token. **No lookup was ever going to resolve them to a person.**
+
+> `63e4de1011d6db2f8d400580` had looked like a *deleted user* for weeks, and was
+> documented that way. It is not: it is a shared machine identity, which is
+> precisely why it appears in no user table. To check one of these, decode the
+> token rather than hunting the id in `user_management.users`:
+> `docker exec <svc> sh -c 'grep -oE "eyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+" /app/.env' | cut -d. -f2 | base64 -d`
+
+The shared token cannot say *which* of the four services used it — but the audit
+row's own `service` column can, so that is what the Who column renders.
+
+`role === "system"` is the discriminator, and it is reliable: a person's token
+carries their own role (`Admin`, `TPO`), never `system`.
+
+**Rows with role `system` and no actor id keep reading "System".** Those are
+written by the window-closure sweep and the dropout cron — the system observing
+something, not a service account holding a token.
+
+Result on UAT: 99 Admin rows, **0 bare "System"**, 0 raw ids.
 
 ## Every row leads with a sentence, including the hand-wired ones
 
