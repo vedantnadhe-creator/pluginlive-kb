@@ -1188,6 +1188,10 @@ AI Interview language and style settings must be sent under `interviewConfig.sta
 
 `admin-react-v2` now maps the wizard values to `stageConfig.language`, `stageConfig.responderLanguage`, `stageConfig.probingStyle`, and `stageConfig.difficultyCurve`, matching V1 and the backend contract. Development commit: `b995e8d`; UAT merge: `46c6688`. Deployed to DEV and UAT on 2026-08-21. Existing assignments retain their stored empty configuration and must be recreated to test the corrected language behavior.
 
+### Next.js answer never advanced after speech (fixed 2026-08-21)
+
+The migrated candidate monitor originally handled only the no-speech case: it retried after 10 seconds if it heard nothing, but after hearing any speech it never stopped the recorder on subsequent silence. The turn therefore stayed on the same question until the candidate manually clicked Submit response. It now restores V1 behavior by stopping and submitting after 1.8 seconds of continuous silence following detected speech. Live-STT initialization also closes its browser socket and audio context when AudioWorklet setup fails, preventing zero-audio orphan streams (observed on UAT as Sarvam `Cannot flush: no audio input has been received`). Candidate Development commit: `277dc0f`; UAT merge: `d0f13e7`. Deployed to both environments.
+
 - **Adaptive Questioning** — Each question adapts to the candidate's prior performance. Strong answers → harder questions. Weak answers → adjusted difficulty or deeper probing.
 - **Follow-up Intelligence** — When a response is evaluated as needing deeper exploration (`needsFollowUp: true`), a targeted follow-up is generated probing the specific weak area.
 - **Weighted Scoring** — Every response is scored on 4 dimensions (Technical 40%, Depth 25%, Communication 20%, Problem Solving 15%), not just right/wrong.
