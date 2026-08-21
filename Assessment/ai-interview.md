@@ -797,6 +797,31 @@ grep -rl "<changed string>" /app/build`) and manually `docker build --no-cache -
 ENVIRONMENT=dev -t assesment:frontend .` + swap if stale, same as the documented UAT
 `auto_deploy.sh` recipe.
 
+#### Next.js interview transcription parity restored (2026-08-21, DEV + UAT)
+
+The initial `assessment-react-v2` AI Interview port kept the live PCM WebSocket but omitted
+several load-bearing parts of V1. It ignored `responderLanguage` from the start response, never
+passed a language to `stt-url` (therefore every interview defaulted to `en`), and displayed a
+`languageSwitch` notice without changing the next STT socket. Hinglish/Hindi consequently went
+to the English provider even though student-node still returned both the initial language and
+the mid-interview switch. The port also created a `MediaRecorder` without collecting its chunks,
+so it had no batch-STT recovery when the live provider opened slowly or dropped. Finally, its
+10-second "silence" watchdog inspected transcript text rather than microphone energy, causing a
+spoken answer with delayed captions to be stopped and reported as "couldn't hear you."
+
+Fix in `assessment-react-v2` commit `a0ac95d` (UAT merge `f85fb34`): map the backend responder
+language to the engine's STT codes (`Hinglish`/`Hindi` -> `hi`), update a ref synchronously on
+`languageSwitch`, and include that code in every `stt-url` request. Local MediaRecorder capture
+now starts immediately while live STT connects in parallel, uses a browser-supported WebM/MP4
+container, and forwards the complete take through a new same-origin `/ai-interview/stt` BFF route
+when live text is empty or the provider reports `upstream_dropped`. The no-speech watchdog is
+armed only when an independent Web Audio RMS monitor is running and checks actual microphone
+energy, never caption arrival. Question state enters `speaking` and clears the displayed prompt
+in the same update that installs each question, preventing the full question from flashing before
+TTS begins. Verified with 201 unit tests, lint, production Next build, authenticated-route guards,
+live bundle inspection, and HTTP 200 candidate pages on both estates. Deployed through
+`auto_deploy.sh candidate-assessment-journey-v2` on DEV and the same target with `UAT` on UAT.
+
 #### Invite delivery splits by entity type — OTP for corporate, portal for institute (2026-06-17)
 
 `assignAIInterviewAssessment()` (`admin-node/app/models/Assessment.js`) was OTP-invite-only for
