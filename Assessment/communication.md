@@ -31,6 +31,68 @@
 
 ---
 
+## Duration is summed from the enabled sections (2026-08-21)
+
+Communication persists **no duration anywhere** — there is no
+`assessment_config` row for it and the wizard sends none — so the clock is
+derived, in two places that must agree:
+
+| Where | What |
+|---|---|
+| `admin-react-v2/src/lib/assessments/communicationSections.ts` | `communicationDurationMinutes()` — what the admin is quoted while floating |
+| `student-node/app/helpers/communicationDuration.js` | same table — the candidate's actual clock, via `estimatedDuration()` in `MixMatchJourney.js` |
+
+Each section's allowance is its own timer in the v1 candidate runner
+(`Assessment-React .../Communicationassmt/assessment.js`) multiplied by the
+items it carries — uniform across the question bank, so these are the real
+allowance, not an estimate:
+
+| Section | Skill | v1 timers | Budget | Whole min |
+|---|---|---|---|---|
+| Paragraph Reading | Reading | 150 read-aloud cap + 90 silent read + 90 for its 3 MCQs | 330s | 6 |
+| Audio Question | Listening | 150 for its 6 MCQs + ~90 for the clip that plays first | 240s | 4 |
+| Video Response | Speaking | 120 recording cap (60 min) | 120s | 2 |
+| Question Based Response | Writing | 240 | 240s | 4 |
+| Email Writing | Writing | 300 | 300s | 5 |
+| Dictation | Writing | 25 × 5 sentences + ~50 for the clips | 175s | 3 |
+| Sentence Completion | Writing | 25 × 5 sentences | 125s | 3 |
+| Sentence Build | Writing | 180 × 2 questions | 360s | 6 |
+
+Each section is **rounded up to a whole minute before summing** — that rounding
+is what makes the full paper land on 30 rather than 28. Per skill: Reading 6,
+Listening 4, Speaking 2, Writing 18 → **30 for all four**, which is exactly what
+v1 hardcoded on the instruction screen (`Duration - 30 mins`). Turning skills
+off now shortens the clock proportionally (Speaking alone 2 min, Listening +
+Speaking 6, Reading + Listening + Writing 28).
+
+**Email Writing and Dictation are quoted at the longer of the two (5 min).**
+Delivery serves one or the other via `IsEmailWriting`, and the admin cannot see
+which, so the clock is never short for whoever draws the email.
+
+### The `enabled_sections` trap
+
+`enabled_sections` on `assessment_corporate_map` / `assessment_institute_map`
+means **NO FILTER when empty — the whole paper** — the exact opposite of what
+an empty list means to the wizard. 275 of 304 corporate maps on DEV store `[]`.
+An earlier estimate read its length as a section count times 12 minutes, so the
+fullest paper priced as a single 12-minute section while a Writing-only one came
+to 60.
+
+It also holds **two vocabularies**: skill groups (`Writing`) on some assignments
+and granular section names (`Email Writing`) on others. The helper expands
+groups before summing so both cost the same.
+
+### v1 behaviour, for contrast
+
+v1 admin had **no duration field for Communication at all** — `AssessmentSelect.js`
+explicitly does `delete newFormData.duration` for Communication/Hinglish, and its
+"Configure Sections" panel is switches only, with no time shown and no total. The
+per-section timers existed solely as hardcoded literals in the candidate runner,
+under a master clock of `useState(30 * 60)` that ignored which sections were on.
+Hinglish is a copy of that runner with a 20-minute clock.
+
+---
+
 ## Final Score Weights
 
 ```

@@ -644,7 +644,7 @@ Both now derive the admin's own number:
 | Type | Candidate clock |
 |---|---|
 | Aptitude | inverted blueprint — 25 questions → 30 min, 30 → 45, 40 → 60 |
-| Communication | flat 30 min |
+| Communication | summed from the sections enabled — 30 min for the full paper (see [communication.md](communication.md#duration-is-summed-from-the-enabled-sections-2026-08-21)) |
 | Behavior | 20 min |
 
 The Aptitude blueprint is 1:1 and invertible, so reading it backwards returns
@@ -654,6 +654,12 @@ purpose:** Communication sets come from a shared pre-generated pool and
 there would change it for every other assignment reusing that set. The rule
 lives in two places and the two must agree — `estimatedDuration()` here and
 `assessmentMetrics()` in `admin-react-v2/src/lib/assessments/typeSummary.ts`.
+
+`estimatedDuration()` takes the map's `enabled_sections` as its third argument
+for Communication and delegates to
+`student-node/app/helpers/communicationDuration.js`. **Empty means the whole
+paper, not no sections** — see the Communication doc; reading its length as a
+section count is what made the fullest paper the shortest one.
 
 ### Communication is counted in questions, and the count is 7
 
