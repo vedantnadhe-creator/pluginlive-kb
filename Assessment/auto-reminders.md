@@ -5,7 +5,8 @@
 > window is open, capped at 3 sends. Previously this only happened if an admin
 > pressed **Send Reminders** by hand.
 >
-> **Status:** DEV + UAT (2026-08-06; cap hardened 2026-08-19). PROD pending.
+> **Status:** LIVE ON PROD — enabled `2026-08-22 10:04 UTC` (15:34 IST). Code
+> shipped in `release-v1.38`; DEV + UAT carry it too but their toggles are OFF.
 > **Ships disabled** in every environment — see "Enabling it" below.
 
 ## Cadence
@@ -291,8 +292,37 @@ WHERE assessment_assigned_id = '<uuid>';
   on the container, so the effective cap is 3.
   Cron `assessment_auto_reminder` was enabled `2026-08-13 15:42:07 UTC` and
   **disabled again `2026-08-14 07:29:51 UTC` — it is currently OFF on UAT.**
-- **PROD** — pending. `release-v1.37` carries only the original single-queue
-  reminder commit (`f01e392`); the channel-queue code, the `email_events`
-  migration, this cap hardening, and the `assessment_auto_reminder` row in
-  `CRON_JOBS` / Question Manager's `JOB_ORDER` are all still missing. The live
-  PG16 cluster (`10.0.6.104`) does have the `cron_config` row, disabled.
+- **PROD** — **LIVE.** `release-v1.38`
+  (`pl-admin-api:2026-08-21-16-31-04-release-v1.38`) carries the full
+  channel-queue code: `assessment-reminder` + `assessment-reminder-whatsapp` in
+  `app/queues/setup.js`, `reminderWhatsappWorker.js`, and
+  `ReminderDispatchService`. Both worker processes verified running inside the
+  pod (`node /app/script/startWorkers.js`, plus `assessmentCronWorker.js` for
+  the scheduler). The `email_events` outbox migration is applied on the PG16
+  cluster (`channel`, `reminder_number`, `to_phone`, `next_attempt_at`,
+  `bull_job_id` all present). `AUTH_KEY` is set in the `admin-api-config`
+  ConfigMap.
+
+  Cron `assessment_auto_reminder` **enabled `2026-08-22 10:04:41 UTC`**
+  (`updated_by = 'claude-code (user request)'`) via direct SQL on
+  `assessment.cron_config`; no restart was needed because
+  `scheduler.isCronEnabled()` re-reads the row every tick. First sweep ran on
+  the 16:00 IST tick.
+
+  Backlog at flip time, all previously unreminded (`auto_reminder_count = 0`
+  across the whole table, `last_auto_reminder_at` NULL — the 97 existing
+  `assessment_reminder` rows dated 2026-08-04 → 2026-08-20 are *manual* admin
+  reminders, identifiable by `reminder_number IS NULL`):
+
+  | | PENDING, window open |
+  |---|---|
+  | College / institute | 27,186 (email only — `whatsappEnabledSql` is hardcoded `false`) |
+  | Corporate | 1,630, of which 103 are WhatsApp-eligible |
+
+  `WHATSAPP_NOTIFICATION` is enabled for 7 corporates in `admin.feature_config`.
+
+  **Not applied:** the "lower `AUTO_REMINDER_MAX_PER_TICK` for the first day"
+  recommendation above. No `AUTO_REMINDER_*` override exists in
+  `admin-api-config`, so PROD runs the defaults — cap 3, 24h gap, 09:00–20:00
+  IST window, 200/batch, **2,000/tick**, email 20/s and WhatsApp 5/s. Setting an
+  override means editing the ConfigMap and restarting `admin-node` (a deploy).
