@@ -306,8 +306,14 @@ WHERE assessment_assigned_id = '<uuid>';
   Cron `assessment_auto_reminder` **enabled `2026-08-22 10:04:41 UTC`**
   (`updated_by = 'claude-code (user request)'`) via direct SQL on
   `assessment.cron_config`; no restart was needed because
-  `scheduler.isCronEnabled()` re-reads the row every tick. First sweep ran on
-  the 16:00 IST tick.
+  `scheduler.isCronEnabled()` re-reads the row every tick.
+
+  **Tick grid is UTC, not IST.** The job is `cron.schedule('0 * * * *', …,
+  { timezone: 'UTC' })`, so it fires at the top of each *UTC* hour — i.e. at
+  **:30 past the hour IST** (09:30, 10:30 … 19:30 IST inside the send window),
+  never on the IST hour. The 10:00 UTC tick preceded the 10:04 UTC flip, so the
+  first sweep was 11:00 UTC / 16:30 IST. Anything logging at 10:30 UTC is the
+  every-30-minutes assignment scheduler, not this job.
 
   Backlog at flip time, all previously unreminded (`auto_reminder_count = 0`
   across the whole table, `last_auto_reminder_at` NULL — the 97 existing
