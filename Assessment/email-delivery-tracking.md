@@ -7,12 +7,12 @@ candidate did between receiving it and starting the assessment. Surfaced to
 admins as a **DELIVERY** column on the assessment detail candidate table and as a
 **Delivery Status** column in the exported workbook.
 
-Live on **DEV + UAT** (2026-07-31). PROD pending.
+Live on **DEV + UAT** (2026-07-31) and **PROD** (2026-08-22).
 
 Both provider feeds — WhatsApp status callbacks and OCI Email Delivery logs —
-are live on **DEV + UAT since 2026-08-20**, so `delivered` / `bounced` are now
-written by the providers rather than being statuses nothing ever set. PROD
-pending.
+are live on **DEV + UAT since 2026-08-20** and **PROD since 2026-08-22**, so
+`delivered` / `bounced` are now written by the providers rather than being
+statuses nothing ever set.
 
 ## Why it exists
 
@@ -360,16 +360,30 @@ The handler completes the Notifications subscription confirmation itself,
 authorised caller could turn the endpoint into a request-forgery tool. When the
 confirming fetch fails it logs the URL so it can be completed by hand.
 
-### The OCI resources (built 2026-08-20)
+### The OCI resources (built 2026-08-20, PROD added 2026-08-22)
 
 | Resource | Name / detail |
 |---|---|
 | Email domain logs | `pluginlive.com` (PluginLivePROD compartment) **and** `prod.pluginlive.com` (PluginLiveDEV), both categories, 30-day retention |
 | Log groups | `Default_Group` (PROD compartment), `Dev-Uat-Mail-Track` (DEV compartment) |
-| Connector | `pl-email-logs-dev` — source Logging (all four logs), target Notifications |
-| Topic | `pl-email-delivery-dev` |
-| Subscriptions | `CUSTOM_HTTPS` → DEV and UAT `/delivery-feedback/email/oci?token=…` |
-| Policies | `pl-email-log-connector-dev` (DEV), `pl-email-log-connector-read-prod-logs` (cross-compartment log read) |
+| Connectors | `pl-email-logs-prod` — the two PROD logs → `pl-email-delivery-prod`.<br>`pl-email-logs-dev` — all four logs → `pl-email-delivery-dev`. |
+| Topics | `pl-email-delivery-prod` (PROD compartment), `pl-email-delivery-dev` (DEV compartment) |
+| Subscriptions | `CUSTOM_HTTPS` → PROD on the prod topic; DEV and UAT on the dev topic |
+| Policies | `pl-email-log-connector-prod` (PROD connector reads PROD logs + publishes to PROD topic), `pl-email-log-connector-dev` (DEV), `pl-email-log-connector-read-prod-logs` (lets the DEV connector read the shared PROD-compartment mail logs) |
+
+**PROD has its own dedicated pipeline** — own connector, topic, subscription,
+policy and secret. Nothing PROD depends on is shared with a lower environment.
+
+**But the source log stream cannot be separated per environment**, and this is
+the trap. Every environment sends through `mail.prod.pluginlive.com` as
+`mandate@pluginlive.com`, so *all* mail — DEV, UAT and PROD — lands in the
+PROD-compartment `pluginlive.com` logs. `Dev-Uat-Mail-Track` is effectively dead:
+over 7 days it carried **8 events against 5,902** in the PROD group on a single
+day. Removing the PROD log sources from `pl-email-logs-dev` therefore does not
+"unshare" anything — it silently kills DEV and UAT tracking, because that is
+where their own mail is logged. This was tried and reverted on 2026-08-22.
+Genuine per-environment separation needs DEV/UAT to send through their own
+relay and email domain, with `EMAIL_ENDPOINT` differing per environment.
 
 **One log stream serves every environment.** Mail-Server sends every
 environment's mail as `mandate@pluginlive.com`, so DEV, UAT and PROD invites all
@@ -462,9 +476,21 @@ callbacks and ignores the ids it does not own.
   `https://mail.prod.pluginlive.com/send-email` in every environment, and that
   relay sends as `mandate@pluginlive.com`. That is why one log stream carries all
   three environments.
-- **PROD has no subscription yet.** The logs are on and the topic exists, so PROD
-  events are being generated and delivered to the DEV/UAT subscribers, where they
-  match nothing. PROD gets its own subscription when admin-node ships there.
+- **PROD went live 2026-08-22** with a dedicated topic, connector and
+  subscription, and `OCI_LOG_WEBHOOK_SECRET` added to the `admin-api-config`
+  ConfigMap (the `.env` is mounted by subPath, so a `rollout restart
+  deployment/admin-node` is required — it does not hot-reload). Verified end to
+  end: a probe mail relayed at 14:54:54Z and the Connector Hub push reached both
+  PROD pods at 14:56:49Z with `200`.
+- **Rows sent before the subscription existed stay Processing forever.**
+  Connector Hub only forwards logs from the moment the connector is created and
+  cannot replay history, so every pre-2026-08-22 PROD invite is permanently
+  unconfirmed. Whether those should fall back to the `—` / "No info available"
+  state instead is still undecided.
+- **Confirmation lags 35–80s** behind actual delivery, because Connector Hub
+  batches on its own ~60s flush and the Notifications target exposes no batching
+  controls. A freshly sent invite legitimately reads Processing for about a
+  minute after the candidate already has the mail.
 - **Email opens are deliberately NOT tracked.** A tracking pixel was considered
   and rejected: Apple Mail Privacy Protection pre-fetches images for every iOS
   Mail user (false positives), Outlook blocks remote images by default (false
