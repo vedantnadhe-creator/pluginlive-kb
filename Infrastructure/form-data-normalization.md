@@ -1042,7 +1042,8 @@ overrode it:
    rewrote the level `pg` → **`ug`**.
 4. `currentCourse.educationLevel = 'ug'` reached create-full and was stored.
 
-Fix (Development `6a28352` → UAT `6d14e95`, deployed DEV + UAT 2026-08-24; **PROD pending**):
+Fix (Development `6a28352` → UAT `6d14e95`, deployed DEV + UAT 2026-08-24;
+deployed PROD in `release-v1.38` on 2026-08-24):
 
 - `DBService.get_campus_course()` also selects **`degrees_degree_type`** —
   `institute.institute_campus_course_view` already exposes it on DEV/UAT/PROD, so there is
@@ -1229,6 +1230,10 @@ LinkedIn-sourced candidate gets a populated work history / education without a r
 > tolerant of a trailing-'s' plural mismatch, preferring global masters (empty `student_id`). On a hit it
 > sends the real `specialisationId` (+ canonical master name); only a genuine no-match falls back to
 > `"OTHERS"`. Validated: `cc.specialisationId` = real UUID, `cc.specialisation` = "Human Resource".
+> **Multiple-specialisation follow-up (`63e6f0b`, deployed PROD in `release-v1.38` on
+> 2026-08-24):** split comma/semicolon/pipe-separated values, resolve every part independently, and
+> preserve name/id ordering. This prevents a valid comma-joined list from being looked up as one
+> nonexistent master and collapsing the whole `specialisationId` field to `OTHERS`.
 >
 > **Gotcha — "Other Degree" diploma DEGREE + DEPARTMENT dropped, and UG department stolen (fixed
 > 2026-07-17, UAT `1e1a460`).** ERP sheets (JBIMS / pharmacy colleges) label the diploma/extra
