@@ -419,7 +419,8 @@ admin-react `CandidateMetricDetails/CandidateMetricMain.js` (`fetchDegrees`/`fet
 calls these via `candidateRequest`, matching how Cities/States/Roles on the same page
 already work.
 
-**Semantic role search (`role_search`)** — *live UAT + DEV, 2026-06-22.* A free-text
+**Semantic role search (`role_search`)** — *live UAT + DEV; MiniLM cluster path live
+on UAT 2026-08-24.* A free-text
 role query (e.g. `full stack`, `fullstack`, `software developer`) returns **all**
 semantically-matching candidates in one shot, so users don't hand-pick every role
 variant. Fixes the old literal-`LIKE` gaps where `fullstack` (no space) or
@@ -430,21 +431,19 @@ variant. Fixes the old literal-`LIKE` gaps where `fullstack` (no space) or
   (`role_ids` in `filters`), so the export worker never has to run the semantic
   expansion itself. Both the grid and the async export honour it as of the
   2026-08-19 export-worker rebuild.
-- How it works: `services/semantic_roles.py` embeds the query (Gemini
-  `gemini-embedding-001` @ 1536 dims, L2-normalized, `RETRIEVAL_QUERY`), pulls the
-  nearest role ids from the `ROLE_VECTOR_DB_URL` pgvector store
-  (`job_role_embeddings`, cosine, top-k + threshold), then filters students via
+- How it works: `services/semantic_roles.py` calls the entity normalizer's
+  `POST /api/v1/role-clusters/search`. That service embeds the query locally with
+  open-source `all-MiniLM-L6-v2`, selects a title+cleaned-JD cluster, and returns
+  every role id in the family. Analytics then filters students via
   `corporate.job_role_student_map` (`is_applied=1`) — the same mapping the roles-chip
   filter uses, so typing a role and selecting its chips return the same candidates.
-- **Fail-open**: if disabled, the store is unreachable, or the embed call fails,
+- **Fail-open**: if disabled, vector-search is unreachable, or expansion fails,
   `expand()` returns `[]` and the grid falls back to existing behavior — it can't
   break the dashboard.
-- Vector store: dedicated `role-vec-proto` pgvector container (named volume
-  `role-vec-data`, `--restart`, published on `127.0.0.1:5460` + bridge gateway
-  `172.17.0.1:5460`). Backfill (≈30s, ~1361 distinct titles): inside the app
-  container run `python -m scripts.build_role_index`. Embeddings are a snapshot —
-  re-run after roles change. **Not auto-provisioned by deploy.sh** — the container +
-  backfill + env vars must exist on the box or the feature stays a no-op.
+- UAT rollout: `form-data-normalization` commits `661211f` (Development) and
+  `f29c401` (UAT). Runtime validation for `Devops`, `software developer`, `full
+  stack engineer`, and `cloud engineer` expanded each query to the same 269 role
+  ids and returned 1,217 matching UAT candidates.
 
 ---
 
@@ -1713,8 +1712,8 @@ LinkedIn-sourced candidate gets a populated work history / education without a r
 | `API_SECRET_KEY` | Auth key for `/api/api-ingest` endpoints |
 | `APP_ENV` | `local` / `uat` / `prod` |
 | `SEMANTIC_ROLE_SEARCH_ENABLED` | Enable the `role_search` semantic role filter (default `false`; `true` on UAT/DEV) |
-| `ROLE_VECTOR_DB_URL` | pgvector store of role-title embeddings (UAT/DEV: `postgres@172.17.0.1:5460/roleproto` — the `role-vec-proto` container via the docker bridge gateway) |
-| `ROLE_VECTOR_TOP_K` / `ROLE_VECTOR_THRESHOLD` | Expansion cap (default 50) and min cosine similarity (default 0.66) |
+| `ROLE_CLUSTER_SEARCH_URL` | Optional explicit cluster endpoint; by default derived from `ENTITY_NORMALIZER_API_URL` as `/api/v1/role-clusters/search` |
+| `ROLE_VECTOR_DB_URL` / `ROLE_VECTOR_TOP_K` / `ROLE_VECTOR_THRESHOLD` | Legacy prototype settings retained for env compatibility; the MiniLM cluster path no longer queries the dedicated Gemini title-vector store |
 
 ---
 
