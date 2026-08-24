@@ -37,6 +37,7 @@ nvm use 20 && npm install && npm run build
 | 2026-08-09 | `6c0429b` | `20260808045623` (as idempotent fixup) | 41 commits; date-fns repin removed the need for `--legacy-peer-deps` |
 | 2026-08-10 | `8877a68` | `20260810100000_admin_subscription_rbac_menu_access` | 18 commits; adds **Subscriptions & Access** and **RBAC & Reports** to the admin nav; edge functions 81 → 82 (`request-password-reset`) |
 | 2026-08-12 | `bade695` | **none** | 9 commits; multilingual AI coach; edge functions 82 → 83 (`elevenlabs-tts`). Ships **three upstream defects** — see *Upstream defects in the 2026-08-12 release*. One needed a local patch to avoid data loss. |
+| 2026-08-24 | `6815d28` | `20260824183000_interview_proctoring_lifecycle` (additive, no fixup) | 6 commits; admin password reset across roles, auth-lock re-entry, assessment question dedup, interview proctoring lifecycle. `interview_sessions` 19 → 48 columns. Unit suite 291/301 → **335/335**. |
 
 `20260810100000` needed **no fixup** — it is `ALTER COLUMN … SET DEFAULT` plus a distinct-union
 `UPDATE`, so it is naturally idempotent. Effect on UAT: per-admin `allowed_tabs` went 56 → 58 and
@@ -637,3 +638,76 @@ Rollback assets use stamp `20260824T084231Z`: `~/banking-db-20260824T084231Z.sql
 the destructive migration), `~/banking-functions-20260824T084231Z.tar.gz`,
 `~/banking-localpatches-20260824T084231Z.patch`,
 `~/bankingjobreadiness-dist-backup-20260824T084231Z`, and `.env.bak-predeploy-20260824T084231Z`.
+
+---
+
+## 2026-08-24 (third run) — redeployed to `6815d28` (6 commits, 1 migration)
+
+`2492621` → `6815d28`: `e4bd2c8` + `6815d28` fix admin password reset across account roles,
+`2044488` fixes Supabase auth-lock re-entry, `5e36e1a` fixes duplicate assessment question
+generation, `11ccdb0` adds the interview proctoring lifecycle, `ead7b42` reformats the practice
+plan widget. 28 files, +1060/−218.
+
+All five local patches (`.env`, `LearningPathsManager.tsx`, `useLearningPaths.ts`,
+`adminErrorLogger.ts`, `functions/mcp/index.ts`) survived the pull untouched — none of the six
+commits touches those files, so no stash dance was needed.
+
+### Migration `20260824183000_interview_proctoring_lifecycle.sql`
+
+Purely additive and already idempotent (`add column if not exists` ×30, `create index if not
+exists` ×2, then `notify pgrst`). **No fixup needed.** `public.interview_sessions` went
+**19 → 48 columns** (one of the 30 already existed), both indexes created, all 3 rows preserved.
+
+One thing to know about the backfill: `started_at` is added `not null default now()`, so the three
+pre-existing sessions now claim a `started_at` of the migration timestamp rather than their real
+start. Harmless at 3 rows, but do not read `started_at` as truth for anything created before
+2026-08-24.
+
+The migration's trailing `notify pgrst, 'reload schema'` worked — the new columns
+(`proctoring_score`, `object_detections`, `attention_pct`) were reachable over PostgREST
+immediately, with **no restart needed**. That is the reliable path; contrast with the
+`kill -HUP 1` failure documented under the payment-request incident.
+
+### Verification
+
+Site / REST / auth all 200 (49 ms). Served bundle `index-BWuAW6Kb.js` matches the freshly built
+`dist`; **no hosted `*.supabase.co` in the bundle**, 19 self-hosted `/sb` refs. 83 functions synced
+with the three fixups, **zero boot errors**. All seven containers up, database healthy.
+123 tables, 62 profiles, 62 auth users, 25 assessments, 3 interview sessions.
+
+**Unit suite: 335/335 passing across 30 files** — up from 291/301 at `2492621`, so this release
+also repaired the ten tests that were failing before it.
+
+Both behavioural fixes were probed live rather than trusted from the diff:
+
+- **`ai-assessment` dedup (`5e36e1a`)** — note the real contract is
+  `{action:"generate", topicContent, assessmentTitle, mcqCount, descriptiveCount, videoCount,
+  excludedQuestions[]}`; calling it with `{feature, topic, count}` silently returns
+  `{"questions":[]}` with HTTP 200, which reads like a broken deploy but is just a bad payload.
+  A correct call returned 3 MCQs; re-calling with the first question in `excludedQuestions`
+  returned 3 **different** questions, so the `uniqueQuestionResult` filter works end-to-end.
+- **`admin-reset-password` (`e4bd2c8`/`6815d28`)** — tested against a throwaway auth user rather
+  than a real account: reset returned `{"success":true, userId, email}` (the new echo fields),
+  login with the new password 200, with the old password 400, and the probe user was deleted
+  afterwards (0 remaining). The new 404 branch also fires correctly: an unknown UUID returns
+  *"The selected account is not linked to a valid login user."* Both admin functions still return
+  401 unauthenticated.
+
+The `resolveAuthUserId` change is the actual fix — it now checks `auth.admin.getUserById` **first**
+for anything UUID-shaped, so a missing optional table in PostgREST can no longer block a reset for
+a Student / Trainer / Institute / Admin account.
+
+**Browser E2E** (`~/e2e-banking.cjs` on the DEV box, now extended with a candidate-OTP leg since
+that is the path `2044488` rewrote): anon routes 200 with non-empty `#root`; candidate
+`9820065335` / OTP `1234` → `/candidate/home` with the full student console; admin sign-in →
+`/admin` with the full admin console. **0 page errors, 0 hosted-Supabase requests, 0 `/sb` 4xx/5xx.**
+
+Note the candidate mobile field is `#loginMobile`, not `#mobile` — the latter does not exist and
+the leg times out on it.
+
+Rollback assets use stamp `20260824T150630Z`:
+`~/bankingjobreadiness/dist.bak-predeploy-20260824T150630Z`,
+`.env.bak-predeploy-20260824T150630Z`, and
+`~/banking-localpatches-20260824T150630Z.patch`. No pre-migration DB dump was taken this time —
+the migration is additive-only and destroys nothing. Disk on the UAT box is at **90 % (13 G free)**;
+the accumulated `dist.bak-*` / `.env.bak-*` directories are the obvious thing to prune.
