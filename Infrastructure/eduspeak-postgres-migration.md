@@ -794,3 +794,43 @@ browser E2E passed five anonymous routes, admin login, and `/admin`, `/teacher`,
 zero page errors, failed requests, hosted-Supabase traffic, or `/sb` responses >=400. Rollback
 container/image and source/function snapshot use stamp `20260820T092140Z`; full pre-migration dump
 is retained on the DB host as `~/eduspeak_uat-predeploy-20260820T092140Z.dump`.
+
+## 2026-08-24 — redeployed to `56b821a4` (closing a deployed-vs-checkout gap)
+
+**Git was already current; the running container was not.** `~/frontend/eduspeak-india-react` sat at
+`origin/main` = `56b821a4` with 0 commits behind, but `eduspeakreact` was still serving an image
+built from `73990337` — three commits back (`c4a6b6cb` JSX syntax fixes in `StudentsListView`,
+`2a374721` merge-conflict resolution, `56b821a4` `useCallback` for `fetchProgress` in
+`StudentProgressOverview`). A `rollback-20260822T073612Z` image tag exists with no matching
+`~/pilvidya-predeploy-*` directory, so a 08-22 deploy attempt tagged its rollback and then never
+swapped the container. **Check the running image tag, not just `git log`** — `git rev-list --count
+HEAD..origin/main` returning 0 does not mean the box is serving that commit.
+
+**No migrations.** `git diff 73990337..HEAD -- supabase/migrations/` is empty; the repo's 160 files
+are unchanged since the last deploy. Spot-checked the newest ones against the live database:
+`is_platform_admin` exists and all four `Admins …` policies on `user_roles`, `profiles` and
+`staff_ops_roles` are present, so `20260819013857` / `20260819013918` remain applied.
+
+**Edge functions were already in sync** — `diff -rq --exclude=main` between the repo's 116 functions
+and the 117 in `~/eduspeak-sb/functions` (116 + the local `main` dispatcher) reported no differences,
+so no function sync was needed. Only a frontend rebuild was required.
+
+The three standing local patches survived and were built in: `vite.config.ts` `preview.allowedHosts`
+including `pilvidya.uat.pluginlive.com` (without it every route 403s while `/sb/*` still looks
+healthy), the `TrendingUp` import in `TeacherPortal.tsx`, and the `roleBadge` fallback in
+`DashboardHub.tsx`.
+
+Built on the UAT box as `eduspeakreact:56b821a4` with `--build-arg ENVIRONMENT=uat`; route manifest
+5/5. Note the image's build output is at **`/dist`, not `/app/dist`** — the Dockerfile's `npm run
+build` writes one level up, so bundle greps against `/app/dist` silently find nothing and look like
+a clean result.
+
+Verification: bundle has **no hosted `*.supabase.co` URL** and 10 self-hosted
+`pilvidya.uat.pluginlive.com/sb` references; site 200 (79 ms); `/admin`, `/teacher`, `/student`,
+`/status`, `/observability` all 200; `/sb/rest/v1` and `/sb/auth/v1/settings` 200; the
+`student_profiles` `approval_status` read still returns 200 (the 2026-08-17 grant fix holds); all
+eduspeak containers up; zero edge-function boot errors. Chromium rendered `/teacher` and `/admin`
+fully — no blank screen, no page errors.
+
+Rollback: image `eduspeakreact:rollback-20260824T035756Z`, plus `.env.uat` and a functions archive
+under `~/pilvidya-predeploy-20260824T035756Z/`.

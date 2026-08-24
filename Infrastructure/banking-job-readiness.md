@@ -500,3 +500,74 @@ Two more gotchas when probing:
   different key (`profiles.user_id` is the auth link) and yields `403 Student does not belong…`.
 * The stack database is **`banking_uat`**, not `postgres`. `psql -U postgres` with no `-d` lands in
   an empty database and reports 0 public tables — not a wiped stack.
+
+## 2026-08-24 — redeployed to `63d9eb3` (13 commits, 2 migrations)
+
+Advanced Banking UAT from `c8a66c9` to `63d9eb3`. The five standing UAT source patches were stashed
+across the pull and restored intact (two `LOCAL PATCH` blocks each in `LearningPathsManager.tsx` and
+`useLearningPaths.ts`, the `import.meta.env` derivation in `adminErrorLogger.ts`, the
+`banking-uat-selfhosted` MCP project ref, and the self-hosted `.env`). None of the 13 incoming
+commits touched a patched file, so the pull was conflict-free.
+
+### Both migrations were partially pre-applied — replay was still required
+
+`20260823105238` creates `student_module_progress`, `student_assessment_scores` and
+`proctoring_defaults`. **All three tables already existed** and held live data (123 / 18 / 1 rows),
+so every `CREATE TABLE IF NOT EXISTS` was skipped. What the file did add was a **second, wider set of
+RLS policies** on tables that already had narrower ones. Postgres OR-combines permissive policies, so
+on `student_module_progress` the pre-existing `student_module_progress owner write` policy is now
+superseded by the migration's `FOR ALL TO authenticated USING (true) WITH CHECK (true)` — **any
+authenticated user can now write any student's progress row**. This is the same widening pattern
+already recorded for `public.students`; it is upstream's shipped migration, applied as-is.
+
+`20260824015329` adds `provider_key` to `llm_provider_configs` and keeps it in sync with `provider`.
+The **column already existed** but the trigger, the unique index and the `provider` `DROP NOT NULL`
+did not — the file was genuinely half-applied. Replaying it completed the other three steps. Checked
+for duplicate `(provider_key, application_feature)` pairs first; there were none, so the unique index
+built cleanly. Both files replayed under `--single-transaction -v ON_ERROR_STOP=1` with no errors.
+
+PostgREST was **fully restarted** (not `HUP` — see the 2026-08-18 note). Logs confirm the reload:
+128 Relations, 52 Relationships, 32 Functions. All four affected tables and the `provider_key`
+column return 200 through `/sb/rest/v1`.
+
+### Candidate `9820065335` was locked out again — by a deliberate password change, not a regression
+
+The OTP login broke again between deploys. The auth row was intact (confirmed, `role=authenticated`,
+not banned), but `extensions.crypt()` proved the stored bcrypt hash **did not match** the derived
+`Otp_<mobile>_1234`, and `updated_at` was `2026-08-23 10:49:58` — **58 seconds after a successful
+login at 10:49:00**. `recovery_sent_at` is NULL, so this was not the forgot-password flow: it was
+`PasswordChangeForm.tsx` (`supabase.auth.updateUser({password})`) from inside the candidate
+dashboard.
+
+**This is a product defect, not a deploy problem.** The candidate login screen is **OTP-only** — it
+derives the password from the mobile number and has no password field — yet the candidate dashboard
+ships a change-password form. Any candidate who uses it permanently locks themselves out of the only
+candidate login path. `ResetPassword.tsx` and the candidate "Forgot Password?" link have the same
+end state. Either remove the candidate change-password affordance or give the candidate tab a real
+password field.
+
+The credential was restored with `~/banking-sb/set-user-password.sh 9820065335 'Otp_9820065335_1234'`.
+Note this **overwrites whatever password the account holder set on 08-23**; that profile is
+`Prakash Chinnadurai`, `role=admin`, so if that password was deliberate for the Admin tab it must be
+set again.
+
+Scope check across all 46 `@bankready.app` users: **51 auth users have no password at all**
+(the imported-CSV accounts described under `set-user-password.sh`), and 10 have a password that is
+not the derived OTP one. Only `9820065335` was repaired.
+
+### Verification
+
+Site 200 (89 ms); `/sb/rest/v1` and `/sb/auth/v1/settings` 200; `student_module_progress`,
+`student_assessment_scores`, `proctoring_defaults`, `llm_provider_configs` and the new `provider_key`
+column all 200; 83 functions synced with the three standing fixups; zero function boot errors; all
+seven stack containers up with the database healthy. The bundle contains **no hosted
+`*.supabase.co` data-plane URL** and 19 self-hosted `/sb` references. The deployed `mcp` bundle has
+no Windows path. `ai-personal-coach` streams SSE from a real `gemini-2.5-flash` (200, TTFB 50 ms);
+`elevenlabs-tts` returns 200 with a 39 KB base64 MP3 (`ID3`). Candidate `9820065335` with OTP `1234`
+returns a 200 token and reads its profile 200. A Chromium load of `/login/candidate` rendered the
+full candidate tab with no page errors.
+
+Rollback assets use stamp `20260824T035130Z`: `~/banking-db-20260824T035130Z.sql.gz`,
+`~/banking-functions-20260824T035130Z.tar.gz`, `~/banking-localpatches-20260824T035130Z.patch`,
+`~/bankingjobreadiness-dist-backup-20260824T035130Z`, and the checkout-local
+`.env.bak-predeploy-20260824T035130Z`.
