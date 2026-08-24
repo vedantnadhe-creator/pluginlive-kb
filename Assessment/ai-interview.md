@@ -1049,6 +1049,18 @@ AssessmentAssignedStudent
 - `job_role`, `seniority`, `skills[]`, `industry_domain`
 - `job_description` (full JD text for context)
 - `interview_duration` (seconds; admin-react create-form default 900s/15min, admin-node INSERT fallback 1500s/25min if omitted). admin-react range was 15–30 min (946e9a19, 2026-06-30), **loosened back to 10–30 min (2026-07-07)** — default still 15. No backend clamp on the value; `interview_duration` is stored as-sent.
+  - **`ai_interview_config` is 1:1 with a SET, not with the assessment map** — so one
+    assessment can hold several rows with **different durations**, and they do diverge in
+    practice. The admin edit drawer used to read the **oldest** of them, which on PROD's
+    Meesho "Business Development Manager -  F&E (Self Pick Up)" meant reporting **3 min**
+    (a 180s set holding 1 stray assignment) for the **15 min** interview 142 of 147
+    candidates were actually taking. Since 2026-08-24 the drawer reads the
+    **most-assigned** set — see `Assessment/admin-frontend.md`, "Published-assessment
+    configuration in the edit drawer". The candidate-facing runtime was never affected: it
+    resolves `interview_duration` through the candidate's **own** assignment row
+    (`_getAiInterviewEmailMeta`, `startSession`), so each candidate always gets their own
+    set's clock — which is exactly why the stray 180s assignment is a real 3-minute
+    interview rather than just a display bug.
 - `enable_follow_up` (boolean, default true)
 - `ai_model` (e.g., "gemini-2.5-pro")
 - `evaluation_criteria` (JSONB for custom weight overrides)
