@@ -60,8 +60,10 @@ direct cosine threshold.
 - `POST /api/v1/admin/role-clusters/rebuild` loads every embedded `role`, folds
   case/whitespace-equivalent duplicate job postings into one title concept,
   builds a cosine k-nearest-neighbour graph, and partitions it with deterministic
-  Louvain community detection. All original job-role IDs are mapped back to the
-  resulting cluster.
+  Louvain community detection. A small reviewed taxonomy supplies intentional
+  long-range bridges that embeddings miss; the first family combines software,
+  full-stack, frontend/backend, DevOps, SRE and cloud titles. All original
+  job-role IDs are mapped back to the resulting cluster.
 - Defaults: `neighbours=12`, `edge_threshold=0.68`, `resolution=0.8`, seed `42`.
   Parameters are query parameters so they can be tuned against reviewed DEV
   examples without a code release.
@@ -72,8 +74,17 @@ direct cosine threshold.
   it creates a singleton. Periodic full rebuilds allow later bridge roles to
   reshape communities globally.
 - `POST /api/v1/role-clusters/search` normalizes free-text to a known role and
-  returns the complete family. `GET /api/v1/admin/role-clusters/{role_id}` returns
-  a family directly from a known role ID.
+  returns the complete family. Because expansion is recall-oriented, if the
+  strict normalizer returns `no_match` it seeds from the nearest embedded role
+  (`method=cluster_vector_seed`); this is how `cloud engineer` reaches the
+  software/DevOps/cloud family even when no exact canonical title exists.
+  `GET /api/v1/admin/role-clusters/{role_id}` returns a family directly from a
+  known role ID.
+
+Initial DEV backfill result (2026-08-24): 7,475 embedded role rows, 1,578 unique
+normalized titles, 157 clusters. Acceptance queries `software developer`,
+`full stack engineer`, `devops engineer`, and `cloud engineer` all resolve to
+cluster `Software Engineering, DevOps & Cloud` (269 role rows).
 
 DEV backfill after deployment:
 
@@ -81,7 +92,8 @@ DEV backfill after deployment:
 curl -X POST 'https://vector-search.dev.pluginlive.com/api/v1/admin/role-clusters/rebuild?neighbours=12&edge_threshold=0.68&resolution=0.8'
 ```
 
-Implementation: `pg-vector-api-service` Development commit `f200744`.
+Implementation: `pg-vector-api-service` Development commits `f200744` and
+`888c322`.
 
 > **Known issue (partially fixed, 2026-08-11) — degree aliases must resolve to the canonical master.**
 > `/normalize/multi` with `entity_types=["degree","degree_level"]` for input `"B.E./B.Tech"` returns the
