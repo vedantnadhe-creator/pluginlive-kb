@@ -70,3 +70,7 @@ The Roles module is the primary job discovery interface for students. It lists a
 - **Questionnaire flow:** Multi-step questionnaire with feedback and result/fail screens
 - **Role float:** Track which roles have been floated to the student
 - **Rule engine integration:** Eligibility checking via institute rule engine
+
+## Resolved Incidents
+
+- **Null preferred job locations caused `eligibleDetails` to return 500 (2026-08-24):** For a location-restricted role, `studentEligibleData` called `.some()` directly on `studentPersonalProfile.preferredJobLocation`. Profiles where that field was `null` failed with `Cannot read properties of null (reading 'some')`. `corporate-node/app/helpers/utils.js` now normalizes non-array values to `[]` in both `studentEligibleData` and the sibling `isStudentEligible` helper. Missing preferences therefore produce a normal location-ineligible result instead of crashing. Corporate-node commits: DEV `599bb67f`; UAT merge `bfddb2c2`. Deployed and health-checked in both environments on 2026-08-24.
