@@ -1018,6 +1018,63 @@ UI (`56` for "Vile Parle", `6000`, `40010`, `50019`), not ERP concatenations —
 recoverable from the address text. That points at a missing 6-digit validation on the
 **student profile Pincode input**, which is not fixed here.
 
+### Behavior — ERP `currentCourse.educationLevel` comes from the campus course degree (2026-08-24)
+
+A PROD institute-ERP upload created a PGDM student whose profile read **"UG – <college>"**.
+`student.current_course` held `education_level = 'ug'` while `degree_id` on the *same row*
+pointed at **POST GRADUATE DIPLOMA IN MANAGEMENT** (`institute.degrees.degree_type = 'PG'`) —
+the level and the degree disagreed.
+
+The sheet had no education-level column, only a bare `Degree: "pgdm"`. In
+`services/normalization_service.py` a bare `"Degree"` header is read as the **UG** degree
+regardless of its value:
+
+```python
+raw_ug_degree = edu_input.get("UG Degree") or edu_input.get("Degree") or edu_input.get("education_ug_degree")
+```
+
+The worker log shows the whole chain — the LLM got it **right** and the deterministic layer
+overrode it:
+
+1. AI output: `highest_qualification_education_level: 'pg'`, `education_p_g_diploma_education_level: 'p_g_diploma'`.
+2. `🎓 Filling missing education_ug_degree from raw input: 'pgdm'` — injected as a *UG* degree.
+3. The highest-qualification chain picks by priority `phd → pg → ug → pd → p_g_diploma → …`;
+   `education_pg_degree` was absent but the injected `education_ug_degree` was not, so it
+   rewrote the level `pg` → **`ug`**.
+4. `currentCourse.educationLevel = 'ug'` reached create-full and was stored.
+
+Fix (Development `6a28352` → UAT `6d14e95`, deployed DEV + UAT 2026-08-24; **PROD pending**):
+
+- `DBService.get_campus_course()` also selects **`degrees_degree_type`** —
+  `institute.institute_campus_course_view` already exposes it on DEV/UAT/PROD, so there is
+  **no DB migration**.
+- `_apply_institute_erp_overrides()` already rebinds `courseId` / `degreeStreamMapId` /
+  `degreeId` / `streamId` / `domainId` from the **uploading campus's course catalogue**; it
+  now takes `educationLevel` from that same course's degree type. The campus catalogue is the
+  authority for an institute student's current course, so the level can no longer contradict
+  the `degreeId` sitting next to it.
+- The type is mapped through `NormalizationWorker._EDU_LEVEL_ALIASES` (lower-cased, dots
+  stripped), which covers every value in the master: `UG→ug`, `PG→pg`, `DIPLOMA→diploma`,
+  `PHD→phd`, `P.G.DIPLOMA`/`P_G_DIPLOMA→p_g_diploma`, `TWELFTH→twelfth`, `ITI→iti`. An
+  **unrecognised** type is left alone rather than written through — create-full's enum would
+  reject it and fail the whole row.
+
+**Scope.** ERP rows only; the Tally/corporate path is untouched. It corrects rows whose
+degree + stream resolved to a campus course — a row that failed to match still carries the
+upstream guess, and the bare-`Degree`-is-UG rule itself is unchanged (it also mislabels
+`education_ug_department` with the sheet's *Specialization* value). Marked with a `ponytail:`
+note in the source; the upgrade path is `normalization_service.get_ug_degree`.
+
+**Forward-only.** Existing mis-levelled students keep `ug` until their raw row is reprocessed
+(`normalization_status='pending'` → the worker re-runs, create-full upserts by email).
+
+`tests/test_erp_campus_location.py` grew to **9 cases** (PG correction, dotted
+`P.G.DIPLOMA`/`DIPLOMA`/`PHD` mapping, unrecognised type ignored, no-`degree_type` row left
+alone). That file's pre-existing cases were all erroring on a stale
+`_apply_institute_erp_overrides` signature (`access_level` became required) — repaired in the
+same commit. `docker exec -w /app datanormalization python -m unittest discover -s tests`
+→ **119 tests, OK** on both DEV and UAT.
+
 ### Gotcha — city/state "mismatch" = entity-normalizer (vector-search) Gemini key invalid
 
 When the normalized-data UI flags **Current City / Current State** red (and `corrCityId` /
