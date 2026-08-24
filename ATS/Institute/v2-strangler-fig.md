@@ -141,9 +141,10 @@ screen. The empty state now means only what it says: nobody is assigned.
 ### "End date" was blank until the series' first run fired
 
 The Schedule tab's **End date** card used to read the LAST occurrence's `end`
-(its attempt-window close) — since 2026-08-17 it reads `meta.end`, which is
-`GREATEST(schedule_end_date, last occurrence end)`; see "…and so is the DETAIL
-page's Schedule tab" below for why. The rest of this section still applies. But
+(its attempt-window close) — since 2026-08-17 it reads `meta.end`, which since
+2026-08-24 is the latest of the minted ends, the projected close of the last
+run still to fire, and `schedule_end_date`; see "…and so is the DETAIL page's
+Schedule tab" and "…and now the LIST reads the plan too" below for why. The rest of this section still applies. But
 `loadPendingSchedule` set every occurrence's `end: null` before the scheduler
 had fired a single run, so the card had nothing to read and showed "—" on every
 Upcoming series regardless of how far out its real close date was. Same root
@@ -152,6 +153,8 @@ cause put "—" on each timeline row too ("12 Aug 2026 — —").
 Fixed by projecting `end` on unfired occurrences the same way the scheduler
 computes a real map's `end_time` (admin-node `Assessment.js`
 `updateAssessmentSchedule`): `start + assessment_validity_days`, end of day.
+(Since 2026-08-24 that projection lives in `helpers/assessmentPlan.js` and is
+built in IST rather than the container's local time.)
 Verified on "Communication - Schedules" (20 daily runs from 12 Aug 2026,
 14-day validity) — last occurrence now projects to **14 Sep 2026** instead of
 "—".
@@ -268,7 +271,9 @@ series that closed on run 8.
              the schedule date alone: the final run's attempt window
              legitimately closes after `schedule_end_date`. NULLs are ignored
              by GREATEST, so one-time and diagnosis groups fall through to
-             their own maps.
+             their own maps. Since 2026-08-24 the projected close of the last
+             PLANNED run is folded in on top of this, in JS — see "…and now the
+             LIST reads the plan too" below.
   total_occ  `GREATEST(fired, planned)` — 8 fired of 46 read "8/8 sent", which
              contradicts an end date eight months out.
 
@@ -318,6 +323,50 @@ the left fifth of the axis.
 Verified on UAT `0cc47667` (Communication - Schedules): 6 minted + 14
 projected = 20, `cycle [6,20]`, status **live**, completion still `0/24` units
 off the minted runs alone.
+
+### …and now the LIST reads the plan too (2026-08-24)
+
+`1e19f0a` institute-node. The two corrections above were made separately, and
+they left the list and the detail page dating the same series differently:
+
+  list    GREATEST(schedule_end_date, last MINTED occurrence end)
+  detail  latest(minted ends, PROJECTED planned-run ends, schedule_end_date)
+
+PROD's `41824d34` **Communication - Staff** (weekly, 14-day windows, 25 of 26
+runs minted) therefore read *7 Mar 2026 → 6 Sept 2026* on the list and
+*7 Mar 2026 → 12 Sept 2026* inside. The list was right about the last run that
+had FIRED (opened 22 Aug, closes 5 Sept) and wrong about the series: run 26 is
+planned for 29 Aug and its attempt window closes 12 Sept. Because the list chip
+is derived from that same date, every live recurring series also flipped
+**Ongoing → Expired** up to one attempt window early.
+
+`app/helpers/assessmentPlan.js` now owns the projection for both screens:
+
+  projectedRunEnd(start, validityDays)   start's IST day + validityDays, 23:59 IST
+  plannedSeriesEnd({planDates, ...})     close of the LAST run still to fire, or null
+  latestDate(values)                     max, ignoring nulls
+
+`plannedSeriesEnd` keeps the same "still to run" rule the Schedule tab already
+applied — after the last run that fired, not already past, nothing at all for
+an inactive series — so a stalled plan cannot claim a future end date.
+`AssessmentV2.getAssessmentsFull` reads `frequency_value` per institute in one
+extra query and folds the result into both `end` and `status`;
+`loadPendingSchedule` got the same close, because its summary card showed
+`schedule_end_date` while its own timeline already ran past it.
+
+**`projectedRunEnd` used to read the container clock.** It built the close with
+local `setHours(23,59,59)`, so the same schedule projected one day later on
+DEV/UAT (containers on UTC) than on PROD (IST). It is now built explicitly in
+IST via `Date.UTC(...) - 5.5h`, which is also the frame a TPO reads the date
+in. Note this is the *plan's* frame — minted maps written by the newer
+scheduler still carry `00:01Z`/`23:59Z` (see [[Assessment/schedule.md]] on the
+IST wall-clock storage), so a projected run's date shifts by a day once it
+actually fires. That is the scheduler's storage bug, not this projection's.
+
+Verified by comparing `getAssessmentsFull` against `getOverview` for every
+assessment of several institutes: **DEV 185 compared, 2 mismatched → 0**;
+**UAT 308 compared, 0 mismatched**. That comparison is the check to use if the
+two screens ever disagree on a date again.
 
 ### Achieved Level is the graded level, not a score band (2026-08-12)
 
