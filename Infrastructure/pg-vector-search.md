@@ -92,6 +92,12 @@ normalized titles, 76 clusters. Acceptance queries `software developer`,
 `full stack engineer`, `devops engineer`, and `cloud engineer` all resolve to
 cluster `Software Engineering, DevOps & Cloud` (269 role rows).
 
+UAT received the same implementation in merge commit `36c336e` on 2026-08-24.
+The UAT backfill produced the same 7,505 rows / 1,585 titles / 76 clusters and
+reused all 7,505 content-identical cached vectors. The four acceptance queries
+pass through `https://vector-search.uat.pluginlive.com` and expand to the same
+269-row software/DevOps/cloud family.
+
 Role clustering and cluster search make no paid embedding API calls. The model
 is baked into the service image and runs on DEV CPU. This is separate from the
 existing Gemini-backed entity-normalizer fallback and its startup health check.
