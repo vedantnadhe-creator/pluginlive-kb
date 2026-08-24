@@ -57,7 +57,10 @@ Role search also supports transitive semantic families. This solves cases where
 is close to `DevOps engineer`, even when the first and last titles do not clear a
 direct cosine threshold.
 
-- `POST /api/v1/admin/role-clusters/rebuild` loads every embedded `role`, folds
+- `POST /api/v1/admin/role-clusters/rebuild` loads every `role`, cleans its
+  description/JD, weights the title more heavily, and embeds that combined text
+  locally with the open-source `sentence-transformers/all-MiniLM-L6-v2` model
+  through FastEmbed/ONNX. It folds
   case/whitespace-equivalent duplicate job postings into one title concept,
   builds a cosine k-nearest-neighbour graph, and partitions it with deterministic
   Louvain community detection. A small reviewed taxonomy supplies intentional
@@ -68,23 +71,30 @@ direct cosine threshold.
   Parameters are query parameters so they can be tuned against reviewed DEV
   examples without a code release.
 - Clusters are stored in `public.role_clusters`; membership is stored in
-  `public.role_cluster_memberships`. Rebuild replacement is transactional.
+  `public.role_cluster_memberships`. Local 384-dimensional role embeddings are
+  cached by content hash in `public.role_cluster_embeddings`, so later rebuilds
+  generate vectors only for new or edited roles. Rebuild replacement is
+  transactional.
 - When the embedding queue processes a new or renamed `role`, it assigns the row
   to the cluster of its nearest embedded member at similarity `>= 0.68`; otherwise
   it creates a singleton. Periodic full rebuilds allow later bridge roles to
   reshape communities globally.
-- `POST /api/v1/role-clusters/search` normalizes free-text to a known role and
-  returns the complete family. Because expansion is recall-oriented, if the
-  strict normalizer returns `no_match` it seeds from the nearest embedded role
-  (`method=cluster_vector_seed`); this is how `cloud engineer` reaches the
-  software/DevOps/cloud family even when no exact canonical title exists.
+- `POST /api/v1/role-clusters/search` embeds free text locally and returns the
+  complete family (`method=local_minilm_cluster_seed`). Reviewed family terms
+  route to that family before nearest-role selection; this is how `full stack
+  engineer` and `cloud engineer` reliably reach the software/DevOps/cloud family
+  even when no exact canonical title exists.
   `GET /api/v1/admin/role-clusters/{role_id}` returns a family directly from a
   known role ID.
 
-Initial DEV backfill result (2026-08-24): 7,475 embedded role rows, 1,578 unique
-normalized titles, 157 clusters. Acceptance queries `software developer`,
+Title+JD DEV backfill result (2026-08-24): 7,505 role rows, 1,585 unique
+normalized titles, 76 clusters. Acceptance queries `software developer`,
 `full stack engineer`, `devops engineer`, and `cloud engineer` all resolve to
 cluster `Software Engineering, DevOps & Cloud` (269 role rows).
+
+Role clustering and cluster search make no paid embedding API calls. The model
+is baked into the service image and runs on DEV CPU. This is separate from the
+existing Gemini-backed entity-normalizer fallback and its startup health check.
 
 DEV backfill after deployment:
 
@@ -92,8 +102,9 @@ DEV backfill after deployment:
 curl -X POST 'https://vector-search.dev.pluginlive.com/api/v1/admin/role-clusters/rebuild?neighbours=12&edge_threshold=0.68&resolution=0.8'
 ```
 
-Implementation: `pg-vector-api-service` Development commits `f200744` and
-`888c322`.
+Implementation: `pg-vector-api-service` Development commits `a862470`,
+`103f842`, `c84fdb8`, and `386d664` (following the original title-only commits
+`f200744` and `888c322`).
 
 > **Known issue (partially fixed, 2026-08-11) — degree aliases must resolve to the canonical master.**
 > `/normalize/multi` with `entity_types=["degree","degree_level"]` for input `"B.E./B.Tech"` returns the
