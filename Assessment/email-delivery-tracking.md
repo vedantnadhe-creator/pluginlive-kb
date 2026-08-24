@@ -71,6 +71,34 @@ repeats never inflate them.
 | `invite_link_clicked` | admin-node | `app/service/InviteShortLinkService.js` `recordClick` |
 | `assessment_opened` | student-node | `app/handlers/assessmentHandler.js` `inviteReloadGuard` |
 
+### Assignment-queue portal invites (fixed 2026-08-24)
+
+The asynchronous assignment worker has two college portal-email paths: the
+ordinary non-OTP notification and the terminal Mix & Match group invitation.
+Both previously called `UserService.sendAssessmentReminder()` directly. The
+mail was sent, but neither path wrote the initial `email_events` row, leaving
+OCI's later relay/bounce callback with no Message-ID to match. The admin report
+therefore showed **— / No info available** even when the candidate received the
+message (PROD example: `ravi.kotadiya@pluginlive.com`, one-part Aptitude float,
+2026-08-24 07:15 UTC).
+
+`app/service/TrackedAssessmentReminderService.js` is now the shared choke point
+for those two queue paths. It resolves the owning `assessment_assigned_id`,
+sends the portal reminder, and records:
+
+- `assessment_invite / accepted` with the provider Message-ID when the relay
+  accepts the send; or
+- `assessment_invite / failed` with the provider reason when the send throws.
+
+The queue refuses to mark a normal notification emailed when its owning
+assignment cannot be resolved. For a Mix & Match float, the single invitation
+is recorded against the first successfully assigned part; the report already
+aggregates delivery evidence across every part assignment ID.
+
+Shipped: admin-node `c1fc921` on DEV and UAT merge `00e736b`, both deployed
+2026-08-24. PROD is unchanged; the historical row is not fabricated or
+backfilled by this code change.
+
 Shared writers: `admin-node/app/service/TrackingService.js` and
 `student-node/app/helpers/journeyTracking.js`. Both are **best effort** — they
 never throw, so tracking can never fail a send, a redirect or an assessment
