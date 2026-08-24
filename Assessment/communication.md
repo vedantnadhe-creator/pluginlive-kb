@@ -153,6 +153,30 @@ The guard lives in
 Shipped to `Development` (`493c734`) and `UAT` (`ce93d35`). The Development push
 triggers the DEV deployment workflow; UAT was updated only and was not deployed.
 
+### v2 candidate journey uses its own mandatory guard (2026-08-24 follow-up)
+
+The `/candidate-assessment-journey/v2` route is served by the separate
+`assessment-react-v2` repository. A v1-only change therefore has no effect on
+that screen. In v2, `QuestionPanel` originally disabled forward navigation only
+for incomplete recordings; MCQ, writing, and reorder questions could still
+dispatch `NEXT`. `EXPIRE_COMMUNICATION_TIMER` also deliberately marked every
+question in the timer scope visited and moved forward even when it had no
+answer.
+
+The v2 fix enforces the requirement at both UI and state-machine layers:
+
+- Next/Finish is disabled while the current Communication answer fails
+  `isAnswered()`.
+- The Communication reducer refuses `NEXT` for an unanswered current question.
+- Timer expiry ends the section/question timer but does not mark or advance
+  unanswered questions. It advances only when every question in that timer's
+  scope has a valid answer. The overall assessment deadline remains the hard
+  submission cutoff.
+
+Shipped to `assessment-react-v2` Development (`1608397`) and UAT (`470a13e`).
+DEV was deployed and verified at HTTP 200; UAT was updated only and not deployed
+by this change.
+
 ---
 
 ## File Reference
