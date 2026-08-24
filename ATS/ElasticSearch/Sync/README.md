@@ -6,7 +6,16 @@
 
 ## Overview
 
-The Sync module handles data synchronization from PostgreSQL (institute schema) to ElasticSearch indices. Each endpoint triggers a full or incremental sync for a specific index type. All endpoints accept an optional `query_date` parameter for incremental syncs (only records updated after that date). The sync service is the largest module (~260KB) containing all SQL queries and ES bulk insert logic.
+**On all three environments (DEV, UAT, PROD — all on `SEARCH_ENGINE_DEFAULT=pg` as of 2026-08-24) "sync" means refreshing a Postgres materialized view, not writing to ElasticSearch.** Each endpoint resolves its engine flag and, under PG, calls `search_engine.refresh_one(<mv>, true)` — `REFRESH MATERIALIZED VIEW CONCURRENTLY` — for the MV(s) backing that dataset, then returns. The ES bulk-insert pipeline below it is legacy and unreachable. See the PG-engine section in [../README.md](../README.md) for the full picture.
+
+Two consequences that catch people out:
+
+- **`query_date` is accepted and ignored.** Under PG there is no incremental path: the DTO still takes the field, but a `CONCURRENTLY` refresh re-runs the MV's entire defining query and diffs the whole result set. Passing yesterday's date does not make the call cheaper.
+- **These calls are slow and are on user-facing save paths.** End-to-end endpoint times measured on PROD (warm): `/sync/institutes_master` **11.2 s**, `/sync/institute_campus_cources` **8.4 s** (it refreshes two MVs — `mv_institute_campus_course` 5.1 s plus the events MV), `/sync/institute_locations` **7.6 s**. Cold, the underlying MVs took 42.2 s / 21.5 s / 26.5 s. Everything else is under a second. Callers should fire them concurrently and never in an awaited chain — admin-react's System Config save did exactly that and cost 29 s per college create until 2026-08-24.
+
+Refreshes are debounced per MV via `pgRefreshMvs` (`SEARCH_MV_REFRESH_TTL_SECONDS`, default 900; `institutes_master`, `institute_campus_cources` and `del_index_institute_campus_cources` override to 30 s so a user-initiated save is visible immediately). Outcomes land in `search_engine.refresh_log`.
+
+The sync service is the largest module (~260KB); most of its bulk is the legacy SQL and ES bulk-insert logic kept behind the engine flag.
 
 ---
 
@@ -103,8 +112,17 @@ All endpoints are **POST** and return a success message on completion.
 
 ## Key Features
 
-- **Incremental sync:** `query_date` allows syncing only records modified after a given date
-- **Type variants:** Many indices have multiple variants (e.g., degree_department_ls, degree_department_ssw_lsp) serving different filter contexts
+**Current (PG engine — all envs):**
+
+- **Matview refresh:** each endpoint refreshes the `search_engine` MV(s) backing its dataset via `search_engine.refresh_one`, concurrently so readers are never blocked
+- **Per-MV debounce:** `pgRefreshMvs` skips an MV refreshed successfully inside its TTL; user-initiated saves override to 30 s
+- **Observability:** every refresh writes `view_name`, `started_at`, `duration_ms`, `row_count`, `status` and `error` to `search_engine.refresh_log` — the first place to look when search data looks stale or a save feels slow
+- **Datasets with no MV** no-op with a log rather than erroring
+
+**Legacy (ES engine — retired on every environment, kept behind the flag):**
+
+- **Incremental sync:** `query_date` synced only records modified after a given date. Under PG the parameter is inert
+- **Type variants:** Many indices have multiple variants (e.g., degree_department_ls, degree_department_ssw_lsp) serving different filter contexts — these map to separate MVs under PG
 - **SQL → ES pipeline:** Reads from PostgreSQL views/tables, transforms, and bulk-inserts into ES
 - **Index aliasing:** Uses timestamped indices with aliases for zero-downtime reindexing
 - **Index config:** All ES index mappings and settings defined in `sync/index/indexConfig.ts` (~249KB)
