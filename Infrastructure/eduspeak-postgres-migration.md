@@ -834,3 +834,27 @@ fully — no blank screen, no page errors.
 
 Rollback: image `eduspeakreact:rollback-20260824T035756Z`, plus `.env.uat` and a functions archive
 under `~/pilvidya-predeploy-20260824T035756Z/`.
+
+## 2026-08-24 — Virtual Tutor audio playback fixed (`64628ef7`)
+
+Fixed the Virtual Tutor error `Failed to load because no supported source was found`. The live
+ElevenLabs provider was healthy and returned valid ID3/MPEG audio, but two client-side MIME issues
+corrupted it: `functions-js` parsed `audio/mpeg` responses as text, and the browser Cache API code
+then labelled the MP3 bytes as `audio/wav`.
+
+Commits `f79df747` and `64628ef7` preserve/detect the real MP3 or WAV type, repair already-mislabeled
+cache entries on read, and transport edge-function audio as binary-safe `application/octet-stream`
+with the actual format in `X-Audio-Content-Type`. The same binary normalization was applied to both
+Virtual Tutor and AI Coach. No database migrations were added or required.
+
+Deployed frontend image `eduspeakreact:64628ef7` and synced only
+`functions/ai-coach-tts/index.ts`; the stack-local `functions/main` dispatcher remained intact.
+Live Chromium verification received three ElevenLabs responses with
+`application/octet-stream` / `X-Audio-Content-Type: audio/mpeg`, cached valid ID3 data as
+`audio/mpeg`, decoded a 31.36-second clip (`readyState=4`), and advanced playback with no error.
+Site and route smoke passed with no page errors or hosted Supabase traffic; all EduSpeak containers
+are up and function logs have no boot errors.
+
+Rollback/snapshots: `~/pilvidya-predeploy-20260824T090606Z/`; the immediately previous frontend
+container is retained as `eduspeakreact-old-20260824T090606Z` and the earlier image rollback is
+tagged `eduspeakreact:rollback-20260824T090039Z`.
