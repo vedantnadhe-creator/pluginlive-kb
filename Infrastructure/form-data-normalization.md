@@ -419,8 +419,7 @@ admin-react `CandidateMetricDetails/CandidateMetricMain.js` (`fetchDegrees`/`fet
 calls these via `candidateRequest`, matching how Cities/States/Roles on the same page
 already work.
 
-**Semantic role search (`role_search`)** — *live UAT + DEV; MiniLM cluster path live
-on UAT 2026-08-24.* A free-text
+**Semantic role search (`role_search`)** — *live UAT + DEV only; **not on PROD**.* A free-text
 role query (e.g. `full stack`, `fullstack`, `software developer`) returns **all**
 semantically-matching candidates in one shot, so users don't hand-pick every role
 variant. Fixes the old literal-`LIKE` gaps where `fullstack` (no space) or
@@ -444,6 +443,20 @@ variant. Fixes the old literal-`LIKE` gaps where `fullstack` (no space) or
   `f29c401` (UAT). Runtime validation for `Devops`, `software developer`, `full
   stack engineer`, and `cloud engineer` expanded each query to the same 269 role
   ids and returned 1,217 matching UAT candidates.
+- ⚠️ **Reverted out of `release-v1.38` before PROD (2026-08-24, `791b5f2`).** The
+  MiniLM cluster commit rode into the release branch on the UAT merge, but PROD's
+  vector-search has no cluster endpoint — `POST
+  https://vector-search.prod.pluginlive.com/api/v1/role-clusters/search` returns
+  **404**. `git revert -m 1 f29c401` restored the pgvector `job_role_embeddings`
+  path on the release branch only; **`Development` and `UAT` keep the MiniLM
+  version.** Behaviourally the revert is a no-op on PROD — `/app/.env` there sets
+  neither `SEMANTIC_ROLE_SEARCH_ENABLED` (default `False`) nor `ROLE_VECTOR_DB_URL`,
+  so `expand()` short-circuits to `[]` either way — but it keeps a code path that
+  cannot work on PROD out of the release, and restores
+  `scripts/build_role_index.py`, which imports `EMBED_DIMS` / `EMBED_MODEL` /
+  `_l2_normalize` from `services/semantic_roles.py` and fails to import against
+  the MiniLM rewrite. Re-land it on PROD only after the cluster endpoint ships to
+  `vector-search.prod`.
 
 ---
 
@@ -1717,8 +1730,8 @@ LinkedIn-sourced candidate gets a populated work history / education without a r
 | `API_SECRET_KEY` | Auth key for `/api/api-ingest` endpoints |
 | `APP_ENV` | `local` / `uat` / `prod` |
 | `SEMANTIC_ROLE_SEARCH_ENABLED` | Enable the `role_search` semantic role filter (default `false`; `true` on UAT/DEV) |
-| `ROLE_CLUSTER_SEARCH_URL` | Optional explicit cluster endpoint; by default derived from `ENTITY_NORMALIZER_API_URL` as `/api/v1/role-clusters/search` |
-| `ROLE_VECTOR_DB_URL` / `ROLE_VECTOR_TOP_K` / `ROLE_VECTOR_THRESHOLD` | Legacy prototype settings retained for env compatibility; the MiniLM cluster path no longer queries the dedicated Gemini title-vector store |
+| `ROLE_CLUSTER_SEARCH_URL` | Optional explicit cluster endpoint; by default derived from `ENTITY_NORMALIZER_API_URL` as `/api/v1/role-clusters/search`. **DEV/UAT only — the setting does not exist on `release-v1.38`/PROD, which was reverted to the pgvector path** |
+| `ROLE_VECTOR_DB_URL` / `ROLE_VECTOR_TOP_K` / `ROLE_VECTOR_THRESHOLD` | pgvector title-vector store for role expansion. On DEV/UAT these are legacy (the MiniLM cluster path no longer reads them); on `release-v1.38`/PROD they are the live path — and unset on PROD, so expansion is inert there |
 
 ---
 
