@@ -1286,6 +1286,37 @@ LinkedIn-sourced candidate gets a populated work history / education without a r
 > entity normalizer returning a `degree_level` over the exact `B.E/B.Tech` degree (see
 > `Infrastructure/pg-vector-search.md`).
 >
+> **Gotcha — a bare "Department" column was thrown away and the "Specialization" column became the
+> department (fixed 2026-08-24, Development `f5abddf` / UAT `3e90da4` / PROD `release-v1.38` `3c280ff`).**
+> A compact institute-ERP sheet (`Degree`=pgdm, `Department`=Management, `Specialization`=
+> "Business Analytics, Fintech, Marketing And Data Analytics,") rendered on the institute Students grid
+> as **"Post Graduate Diploma In Management / Fintech With Business Analytics"** — the specialisation
+> sitting in the DEG & DEPARTMENT second line. `current_course.stream_id` really did point at the
+> specialisation-named stream, and because this campus models its specialisations as streams,
+> `_apply_institute_erp_overrides` found a matching campus course and bound `courseId` /
+> `degreeStreamMapId` to the wrong course too. Two stacked causes, both in `get_ug_department`
+> (`services/normalization_service.py`):
+> 1. **`"Department"` contains `"me"`.** The non-UG exclusion list (`other_degree_keywords`) is matched
+>    as plain substrings and holds two-letter degree abbreviations (`me`, `ba`, `be`, …), so every plain
+>    `Department` column was skipped as if it were an M.E. column. A `Dept` header — no `"me"` — always
+>    worked, which is why this only showed up on sheets spelling the header out in full.
+> 2. **Last bare match won.** Neither `Department` nor `Specialization` names a level, so both only
+>    reached the fallback branch, which kept a single slot — and `Specialization` sits after `Department`
+>    in these sheets.
+> The wrong value then propagated: the worker pops `education_pg_department` when there is no
+> `education_pg_degree` (a bare `Degree` column is typed as UG), so `highest_qualification_department`
+> fell back to `education_ug_department` = the specialisation → department matcher →
+> `currentCourse.streamId`. PROD log for the row: `department_matcher_api: input='Business Analytics,
+> Fintech, Marketing And Data Analytics,' matched='Fintech with Business Analytics' confidence=0.88`.
+> Fix: match the level keywords on **word boundaries** (the way `get_pg_department` already does), and
+> split the fallback into a department bucket (`department`, `dept`, `trade`, `stream`) and a
+> specialisation bucket (`specialization`, `specialisation`, `branch`) — an explicit department column
+> outranks a specialisation column regardless of sheet order, first of each kind wins. A level-qualified
+> header (`Graduation Specialization`) still wins outright. The specialisation is untouched:
+> `apply_generic_course_columns` still files it under `education_<level>_specializations` and
+> `currentCourse.specialisation`. Config-free (code only); **already-uploaded students are not
+> retro-fixed** — re-upload the sheet (create-full upserts by email) to correct them.
+>
 > **Gotcha — Roll No. / Preferred Location / social links ingested but never mapped (fixed 2026-07-28,
 > UAT `706fb08` / Development `8460c9b`).** Three ERP columns reached `candidates_raw_data` and (for
 > roll no) the LLM output, but never the create-full payload:
