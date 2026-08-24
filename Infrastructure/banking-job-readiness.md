@@ -571,3 +571,69 @@ Rollback assets use stamp `20260824T035130Z`: `~/banking-db-20260824T035130Z.sql
 `~/banking-functions-20260824T035130Z.tar.gz`, `~/banking-localpatches-20260824T035130Z.patch`,
 `~/bankingjobreadiness-dist-backup-20260824T035130Z`, and the checkout-local
 `.env.bak-predeploy-20260824T035130Z`.
+
+## 2026-08-24 (second run) — redeployed to `2492621` (3 commits, 1 migration)
+
+Advanced from `63d9eb3`: `0755fd7` fixes the domain/tech assessment lifecycle, `8effba9` adds an
+end-to-end curriculum assessment journey test, `2492621` tightens that test's types. None of the
+three touched a locally patched file, so the stash/pull/pop cycle was clean and all five standing
+UAT patches were verified back in place afterwards.
+
+### The migration is destructive — pre-count it before applying
+
+`20260824143000_assessment_lifecycle_integrity.sql` starts with a **`DELETE`** of duplicate
+`assessment_questions` rows (same `assessment_id`, same case-folded/trimmed prompt, higher `id`),
+then adds a partial unique index on `(assessment_id, md5(lower(btrim(prompt))))`, a
+`sync_assessment_question_totals()` function plus an AFTER INSERT/UPDATE/DELETE trigger, and finally
+backfills totals for every assessment.
+
+**`assessment_responses.question_id` has `ON DELETE CASCADE`**, so that opening `DELETE` can silently
+take student answers with it. Always quantify first:
+
+```sql
+-- rows the DELETE will remove, and the responses that would cascade
+select count(*) from public.assessment_questions d
+join public.assessment_questions r
+  on d.assessment_id = r.assessment_id and d.id > r.id
+ and lower(btrim(coalesce(nullif(d.question,''), d.question_text,''))) =
+     lower(btrim(coalesce(nullif(r.question,''), r.question_text,'')))
+where btrim(coalesce(nullif(d.question,''), d.question_text,'')) <> '';
+```
+
+Here it was **5 rows across 1 assessment** ("Banking Domain Readiness Assessment", 10 → 5 questions)
+with **0 attached responses**, so nothing cascaded. Applied under `--single-transaction -v
+ON_ERROR_STOP=1`: `DELETE 5`, index and both functions created, trigger created, backfill ran.
+`assessment_questions` 734 → 729; `assessment_responses` unchanged at 11241. PostgREST reloaded to
+128 Relations / 52 Relationships / **33** Functions (was 32 — the new `sync_assessment_question_totals`).
+
+The `assessments` table has no `coding_count` column; the migration only uses `coding_count` as a
+local record field inside `question_mix`, so it does not fail. Verified before applying.
+
+### Verification
+
+Site 200 (53 ms), REST and auth settings 200; served bundle `index-BQ1ZYkOP.js` matches the freshly
+built `dist`; no hosted `*.supabase.co` in the bundle, 19 self-hosted `/sb` refs; 83 functions synced
+with the three fixups; deployed `mcp` has no Windows path; zero function boot errors; all seven
+containers up with the database healthy.
+
+Both edge functions changed by this release were probed live, since a previous release shipped
+runtime defects that only a live call caught. `generate-assessment-questions` and
+`grade-assessment-attempt` both return 401 unauthenticated and validate correctly when authenticated.
+A real generation call (`{topic_or_skills, track, difficulty, mix:{mcq:1,…}}` — note it is `mix` and
+`topic_or_skills`, not `questionMix`/`topic`) returned **HTTP 200 in 2.7 s with a valid MCQ**, and
+`assessment_questions` stayed at 729, confirming the probe does not persist.
+
+**Full browser login run, not just a token check:** filled `9820065335`, Send OTP, `1234`, Verify →
+landed on `/candidate/home` with the whole student console rendered and **zero page errors**; the
+`/assessments` page then listed all 64 assessments with the migration's resynced counts
+(e.g. the deduped assessment now correctly reads "5 questions 5 marks 5 MCQ"). API-level: correct OTP
+200, wrong OTP 400, unknown mobile 400.
+
+One pre-existing data oddity the totals backfill made visible: **"Axis Securities Assessment" shows
+0 questions / 0 marks yet still renders a Start Assessment button.** Not caused by this release —
+the assessment genuinely has no questions — but it is now plainly wrong in the UI.
+
+Rollback assets use stamp `20260824T084231Z`: `~/banking-db-20260824T084231Z.sql.gz` (taken *before*
+the destructive migration), `~/banking-functions-20260824T084231Z.tar.gz`,
+`~/banking-localpatches-20260824T084231Z.patch`,
+`~/bankingjobreadiness-dist-backup-20260824T084231Z`, and `.env.bak-predeploy-20260824T084231Z`.

@@ -330,6 +330,27 @@ and Behavior, plus `roleName`/`seniority`/`aiModel`/`conversationRubric`/
   students); updating only the first would leave candidates scored against different job
   briefs. `assessment_config` is **upserted** per set because older Role_Based sets predate
   the table and an update-only write would silently drop the edit.
+- **Reads come from the MOST-ASSIGNED set, not the oldest one (fixed 2026-08-24).** A map
+  accumulates sets — one per batch, per re-generation, or from a single stray
+  mis-assignment — and the service used to pick its representative set purely by age
+  (`loadSetIds` had no `ORDER BY`, `loadRepresentativeSet` used `orderBy createdAt asc`,
+  `loadInterviewConfig` used `ORDER BY created_at ASC LIMIT 1`). The oldest set is routinely
+  *not* the one the cohort sits. PROD's Meesho **"Business Development Manager -  F&E (Self
+  Pick Up)"** (AI_Interview) has 6 sets: **142 of 147 candidates on a 900s (15 min) set**,
+  plus 5 one-off assignments made 2026-08-03 pointing elsewhere — and the oldest of those
+  (config created 2026-05-27) is configured at **180s**, so the drawer reported a Max
+  Duration of **3 minutes** for an interview that really runs **15**. `loadSetIds` now
+  `groupBy`s assignments per set ordered by **count desc** (tie-broken on set id so the
+  drawer cannot flip between equally-sized sets), making `setIds[0]` the dominant set;
+  `loadInterviewConfig` prefers it and still falls back to a sibling row for legacy sets
+  with no `ai_interview_config` of their own. Note the read and the write were
+  **asymmetric** — writes already fanned out to every set, which is why saving was correct
+  while only the display lied. The fix also corrects the same skew for Role_Based,
+  Communication and Aptitude, which shared the oldest-set read. Regression test:
+  `admin-node/test/assessmentConfigService.spec.js` — "reads the duration of the
+  most-assigned set, not the oldest set". **Data caveat:** the fix corrects what the drawer
+  *reports*; a candidate genuinely assigned to a stray 180s set still sits a 3-minute
+  interview until that assignment is repointed. DEV+UAT 2026-08-24; **PROD pending**.
 - **The config patch is applied FIRST**, before name/end-date/roster, so a rejected value
   (bad interview length, out-of-range question count) aborts the save with everything else
   untouched.
