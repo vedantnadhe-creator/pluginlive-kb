@@ -129,6 +129,30 @@ flowchart TD
     K --> L["PDF Report Generated"]
 ```
 
+## Candidate responses are mandatory (2026-08-24)
+
+The v1 Communication runner does not allow a candidate to use **Next** or
+**Submit Assessment** until the current response has genuinely been attempted.
+This applies to both MCQ groups (Paragraph Reading and Audio Question), recorded
+audio/video, free-text writing, Dictation, Sentence Completion, and Sentence
+Build.
+
+The guard lives in
+`Assessment-React/src/modules/Assessments/Partials/Communicationassmt/assessment.js`:
+
+- `isCurrentSectionComplete()` checks response data only. An expired section
+  timer, a visited question, or section review mode no longer counts as an
+  answer.
+- `handleNext()` always applies that check, including when revisiting a section.
+- The final Submit button applies the same check and stays disabled while the
+  current question is unanswered.
+- Forced submission remains available only for the overall assessment deadline
+  and proctoring violations, where the candidate is no longer permitted to
+  continue.
+
+Shipped to `Development` (`493c734`) and `UAT` (`ce93d35`). The Development push
+triggers the DEV deployment workflow; UAT was updated only and was not deployed.
+
 ---
 
 ## File Reference
