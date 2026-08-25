@@ -721,6 +721,122 @@ pin both constants, assert 1-of-8 scores on a drop-off but not on an early exit,
   the recommendation block. Always populated for new interviews; pre-existing scored rows
   retain their old text until re-scored.
 
+#### Speech Delivery — pronunciation + fluency on the report (2026-08-25, DEV + UAT)
+
+The report now carries a **Speech Delivery** block: a **Speech Clarity** score and a **Fluency**
+score, both 0–100 with a band label. They are **report-only** — deliberately excluded from
+`overall_score`, `parameter_scores` and `ai_recommendation`. An interview is scored on what the
+candidate said, not on how clearly the recognizer heard it. The session payload carries
+`isExcludedFromOverallScore: true` and the report prints a "how to read this" note saying so, so a
+reviewer never double-counts it against the parameter ratings.
+
+**Where the numbers come from.** Nothing new is captured at interview time — both blocks are derived
+server-side from the per-turn Deepgram delivery telemetry already stored on
+`ai_interview_interactions.ai_evaluation.delivery` (`wpm`, `wordCount`, `pauseRatePer100`,
+`fillerCount`, `avgWordConfidence`, `pacingCv`). FastAPI's `_low_confidence_profile`
+(`routers/ai_interview.py`) adds `lowConfidenceCount` / `lowConfidenceRatio` / `lowConfidenceWords`
+(worst 10, confidence < 0.75) on both the live Deepgram stream and the batch
+`POST /ai-interview/delivery-telemetry` pass, so both STT paths emit an identical payload.
+
+**Banding is ported from the Communication assessment** so a candidate's speech reads the same
+across products — see `CommunicationScoreCalculation/video_calculation.py`:
+
+| Block | Ported from | Formula |
+|---|---|---|
+| Speech Clarity | `calculate_pronunciation_score` | `avgWordConfidence`, penalised by `min(lowConfRatio × 0.8, 0.4)` once the low-confidence ratio exceeds 5% |
+| Fluency | `calculate_fluency_score` | pause-rate / speech-rate / filler-rate tiers, weighted **0.40 / 0.35 / 0.25** |
+
+**Two deliberate deviations from Communication**, both intentional:
+1. Communication blends its Deepgram confidence 50/50 with an LLM accuracy score judged against a
+   known reference text. An interview answer is open-ended and has no reference, so only the
+   Deepgram half is used.
+2. Communication gives 15% of fluency to answer **length** (≥100 words = full marks). Its prompt is
+   fixed so length is comparable; interview questions vary wildly in expected answer length, so the
+   length component is dropped and the remaining three weights are renormalised.
+
+**Implementation** — `student-node/app/helpers/speechQuality.js` (pure, unit-tested:
+`test/aiInterviewSpeechQuality.spec.js`, 25 cases). Session roll-up is **word-count weighted**, so a
+12-word turn does not move the average as much as a 150-word one. Persisted to
+`ai_interview_scores.section_scores` — a column that was previously unused for AI Interview, so
+**no migration was needed**. `getReport` prefers the stored copy and recomputes live when a score row
+predates the feature, so old interviews render it retroactively. Surfaced per-turn
+(`transcript[].speechQuality`) and per-session (`speechProfile`) on
+`GET /ai-interview/report/:sessionId`, rendered in the PDF (`public/aiInterviewReport.html`) and in
+`admin-react` `AIInterviewReport.js`.
+
+**Honesty rules baked in** (these matter when reading a report):
+- A metric that was never measured reports as **`null`, not `0`** — "0 unclear words" reads as
+  flawless delivery, which is a very different claim from "we did not measure it". Each PDF line is
+  gated on its own metric.
+- `coverage` is `full` / `partial` / `unavailable` and the report states when it measured only some
+  turns. Turns under 15 words are not scored for fluency (a 6-word answer with one "um" is a 16%
+  filler rate, which means nothing).
+- `isCalibratedLanguage` is **true only for English**. Deepgram confidence is calibrated per acoustic
+  model — Hindi and Tamil run structurally lower — so a non-English clarity number is indicative and
+  is printed with a caveat rather than hidden.
+- The UI label is **"Speech Clarity"**, not "pronunciation". Confidence is *transcription*
+  confidence: microphone quality, background noise and uncommon technical words depress it too. It
+  is an intelligibility signal, **not a judgement of accent**.
+- Delivery telemetry is posted by the candidate's own browser, so every value is clamped and
+  truncated server-side before it reaches a score or the PDF (a crafted `avgWordConfidence: 50` would
+  otherwise print 5000/100).
+
+**Language coverage gotcha — Malayalam has none.** Verified against Deepgram's live model catalogue:
+`nova-3` supports `ta, te, kn, bn, gu, mr, pa, hi, ur` but **not `ml`**. A Malayalam interview's
+`/delivery-telemetry` call fails, so no clarity score exists for it — `coverage: "unavailable"` makes
+that visible instead of rendering zeros.
+
+#### Delivery telemetry was gated behind the camera collector (fixed 2026-08-25, DEV + UAT)
+
+**The whole speech-telemetry capture silently depended on camera proctoring succeeding.** In
+`Assessment-React` `interview.js`, the per-turn delivery analysis was wrapped in
+`if (collectorStartedRef.current && answer && …)` — `collectorStartedRef` is only set once the
+MediaPipe **gaze** collector starts, which requires the proctor camera stream and `<video>` to be
+live. If the camera was denied, unavailable, or slow to initialise, **no delivery telemetry was
+stored at all**: no WPM, no confidence, no filler counts, and therefore no read-aloud baseline and an
+empty Speech Delivery block.
+
+Evidence on DEV: session `d2f11921-3250-4e44-aebc-606a2d19eb96` (25 Aug, 8 answered turns) had
+`ai_evaluation->'delivery' = null` on **every** turn and **zero** rows in `proctoring_events`.
+
+These signals come from the **speech** stats, not the camera. The analysis now runs for every real
+answer; only the calls that actually push events *into* the gaze collector
+(`recordEvent`/`recordAnswer`/`flush`) remain gated on `collectorStartedRef`.
+
+**Second half of the same fix:** the submit path was sending only a subset of the signals —
+`fillerCount`, `pauseRate` and `pauseCount` were omitted and were supplied *only* by the Deepgram
+batch backfill. English is the one language that streams via Deepgram and therefore **never runs that
+backfill**, so English interviews reached the server with no filler or pause data at all and fluency
+could only ever score its speech-rate component. The submit payload now carries them plus the
+low-confidence breakdown.
+
+**The v2 (Next.js) candidate app never captured any of this — the bigger half of the same bug
+(fixed 2026-08-25, DEV + UAT).** There are two candidate apps, and the AI Interview journey now runs
+through **`assessment-react-v2`** (Next.js, container `candidate-assessment-journey-v2`, nginx
+`/candidate-assessment-journey/v2/` on `assessment.<env>.pluginlive.com`), **not** the v1
+`Assessment-React` SPA. Tell them apart from the turn route in student-node's logs:
+`/students/mix-match/ai-interview/turn` is **v2**; `/ai-interview/session/turn` is v1. v2 submitted a
+turn as `{sessionId, interactionId, answerText}` with **no `deliverySignals` field at all**, and
+`src/lib/sttStream.ts` parsed the engine's per-turn `speech` payload off the wire and **discarded
+it** — it kept only `message.running`. So every v2 interview reached the server with no delivery data
+whatsoever, no matter what v1 did. The backend was always ready: `submitMixMatchTurn` delegates
+straight to `submitTurn`, which stores `deliverySignals` and builds the speech profile.
+
+Fixed by porting the v1 capture into v2: `sttStream.ts` retains the `speech` stats and the
+first-word timestamp and exposes them as `speechStats()` / `firstWordAt()`; `src/lib/answerDelivery.ts`
+is a TypeScript port of v1's analyzer with **identical thresholds**, so a candidate is judged the same
+whichever app served the interview (`src/lib/answerDelivery.test.ts`, 10 cases); `AIInterviewPanel.tsx`
+sends `deliverySignals` on every answered turn. Two new BFF route handlers —
+`api/assessment/ai-interview/delivery-telemetry` (audio → FastAPI) and `…/delivery-backfill`
+(JSON → student-node) — carry the non-English Deepgram pass, since a browser cannot call the engine
+directly through a Next Route Handler. **When touching AI Interview candidate behaviour, change v2 —
+v1 is not what candidates are using.**
+
+**Telemetry cannot be backfilled after the fact** unless the session audio was stored — it is
+captured while the candidate speaks. A past interview with `delivery: null` and no
+`AI_Interview_audio_*` object in `student_answers` can never show a Speech Delivery block, no matter
+how many times the report is regenerated.
+
 #### Gotcha — corporate candidates with no student profile (fixed 2026-06-12)
 
 `Assessment.calculateAssessmentScore()` called `getFullName(primaryEmail)`
