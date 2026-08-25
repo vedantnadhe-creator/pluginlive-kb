@@ -38,6 +38,7 @@ nvm use 20 && npm install && npm run build
 | 2026-08-10 | `8877a68` | `20260810100000_admin_subscription_rbac_menu_access` | 18 commits; adds **Subscriptions & Access** and **RBAC & Reports** to the admin nav; edge functions 81 → 82 (`request-password-reset`) |
 | 2026-08-12 | `bade695` | **none** | 9 commits; multilingual AI coach; edge functions 82 → 83 (`elevenlabs-tts`). Ships **three upstream defects** — see *Upstream defects in the 2026-08-12 release*. One needed a local patch to avoid data loss. |
 | 2026-08-24 | `6815d28` | `20260824183000_interview_proctoring_lifecycle` (additive, no fixup) | 6 commits; admin password reset across roles, auth-lock re-entry, assessment question dedup, interview proctoring lifecycle. `interview_sessions` 19 → 48 columns. Unit suite 291/301 → **335/335**. |
+| 2026-08-25 | `423fd65` | `20260824220000_assessment_question_canonical_uniqueness` (0 rows deleted, no fixup) | 9 commits; raises `LLM_PROVIDER_TIMEOUT_MS` 15000 → 45000 and widens provider failover to 400/404/422 (fixes generation timeouts), adds a DB-level unique index rejecting duplicate prompts per assessment, fixes a detached-ArrayBuffer bug in Gemini TTS. Unit suite 340/341 (1 stale test literal, not a regression — see below). |
 
 `20260810100000` needed **no fixup** — it is `ALTER COLUMN … SET DEFAULT` plus a distinct-union
 `UPDATE`, so it is naturally idempotent. Effect on UAT: per-admin `allowed_tabs` went 56 → 58 and
@@ -711,3 +712,63 @@ Rollback assets use stamp `20260824T150630Z`:
 `~/banking-localpatches-20260824T150630Z.patch`. No pre-migration DB dump was taken this time —
 the migration is additive-only and destroys nothing. Disk on the UAT box is at **90 % (13 G free)**;
 the accumulated `dist.bak-*` / `.env.bak-*` directories are the obvious thing to prune.
+
+---
+
+## 2026-08-25 — redeployed to `423fd65` (9 commits, 1 migration)
+
+`6815d28` → `423fd65`: `8927a13` fixes the domain/tech assessment lifecycle, six `Changes` commits,
+`69a244c` enforces unique assessment question generation, `423fd65` ("Fixed generation failures &
+bugs") reworks the shared LLM helper's timeout and failover behaviour. 19 files, +478/−51. All five
+local patches survived — none of the nine commits touches them.
+
+### Migration `20260824220000_assessment_question_canonical_uniqueness.sql`
+
+Same shape as the 2026-08-24 lifecycle migration (delete duplicates by canonicalised prompt, then
+add a matching unique index) but this run **deleted 0 rows** — the earlier migration had already
+cleaned every duplicate, so this one only added the permanent guard:
+`assessment_questions_unique_prompt_idx`, a unique index on
+`(assessment_id, md5(canonicalized prompt))`. Verified live by inserting an exact duplicate of an
+existing row inside a rolled-back transaction — Postgres correctly rejected it with
+`duplicate key value violates unique constraint "assessment_questions_unique_prompt_idx"` before the
+rollback discarded the probe.
+
+### The actual bug fix in `_shared/llm.ts`
+
+`LLM_PROVIDER_TIMEOUT_MS` went **15000 → 45000**, which is the real content of "Fixed generation
+failures & bugs" — AI question/content generation was being aborted at 15s before providers like
+Gemini could finish a longer completion. Provider failover was also widened from
+`[401,402,403,...retryable]` to also cover `400/404/422` ("model not available on this provider"
+should fail over, not abort the whole request), `elevenlabs`/`youtube` were excluded from the
+chat-provider pool via a new `NON_CHAT_PROVIDERS` set, and Gemini TTS now copies its decoded audio
+into a fresh `Uint8Array` before returning it (fixes a detached-ArrayBuffer class of bug).
+
+**One test was not updated to match:** `llmFallbackCoverage.test.ts` still asserts the shared
+source contains the literal `"LLM_PROVIDER_TIMEOUT_MS = 15000"`; it now reads `45000`, so that one
+assertion fails (340/341 passing). This is a stale test, not a regression — the 45000 value is the
+deliberate fix. Not corrected locally since it's upstream's file to fix and doesn't affect runtime
+behaviour.
+
+### Verification
+
+Site / REST / auth 200/200/200. Served bundle `index-DzQ1eYgD.js` matches the freshly built `dist`;
+no hosted `*.supabase.co`, 19 self-hosted `/sb` refs. 83 functions synced, 3 fixups, **0 boot
+errors**. All seven containers up, database healthy. 123 tables, 62 profiles, 62 auth users,
+25 assessments, 729 assessment questions (unchanged by the migration).
+
+**`generate-assessment-questions` probed live twice** — once cold, once with the first returned
+question passed back in `excludedQuestions` — both HTTP 200 in ~8s with real Gemini-generated MCQs
+on "KYC norms and AML compliance", and the second call's three questions were all distinct from the
+excluded one, confirming semantic dedup still works with the new timeout/failover logic layered on
+top of it.
+
+**Browser E2E** (`~/e2e-banking.cjs`, same candidate + admin legs as the prior release): anon routes
+200 with non-empty `#root`; candidate `9820065335` / OTP `1234` → `/candidate/home`; admin → `/admin`
+with full console. **0 page errors, 0 hosted-Supabase requests, 0 `/sb` 4xx/5xx.**
+
+Rollback assets use stamp `20260825T015122Z`:
+`~/bankingjobreadiness/dist.bak-predeploy-20260825T015122Z`,
+`.env.bak-predeploy-20260825T015122Z`, `~/banking-localpatches-20260825T015122Z.patch`. No DB dump
+taken — the migration deleted 0 rows and is otherwise additive. **Disk remains at 90% (13G free)** —
+now three releases running without a prune of the accumulated `dist.bak-*`/`.env.bak-*` directories;
+worth clearing on the next deploy.
