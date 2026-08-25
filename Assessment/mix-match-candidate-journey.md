@@ -713,6 +713,14 @@ flagged with it **skips the unanswered-count caution** on finish — leaving a
 question blank there may be a deliberate choice to avoid a penalty, not an
 oversight, so nagging about it would push candidates into guessing.
 
+**On mobile, both question tags sit above the stem** (`bf5d9c7`, 2026-08-25,
+DEV + UAT). "Negative marking enabled" and "Marked for review" used to render
+parallel to the question text, where a narrow viewport squeezed them into
+leftover whitespace. They now group into a single `.qtags` row above the
+question, top-left, with a `.qtag-sep` divider when both are present. Desktop
+layout is unchanged. Grep the built bundle for `qtag-sep` to confirm a deploy
+actually carried it.
+
 ### Communication locks its subsections one at a time
 
 `loadCommunication` in `liveExam.ts` was hardcoded to `freeNavigation: true` on
@@ -869,6 +877,6 @@ the live `Test assessment` float: `vedantmnadhe+ss@gmail.com` now resolves to
 ## DEV deployments
 
 - `student-node` commits `e60c67b2`, `9f7dfca5`, `1f43c573`, `b6eeeb63`, `5fd5e9d7`, `69470352`
-- `assessment-react-v2` commits `4602376`, `c70bee7`, `d1822b4`, `b7c78b4`, `da1432a`, `518203e`, `936a10d`, `6fafe50`, `8b0d903`, `2b5c9b3`, `19fe1e4`, `071666e`, `d2484f1`, `52e0aa1`
+- `assessment-react-v2` commits `4602376`, `c70bee7`, `d1822b4`, `b7c78b4`, `da1432a`, `518203e`, `936a10d`, `6fafe50`, `8b0d903`, `2b5c9b3`, `19fe1e4`, `071666e`, `d2484f1`, `52e0aa1`, `bf5d9c7` (mobile question tags; DEV + **UAT 2026-08-25**)
 - `admin-react-v2` commits `741a9b4`, `c17e420`, `892f520`, `5e44c23`
 - `admin-node` commits `8d04f84`, `d4f5f44`, `1a128d1`, `8c8464e` (delivery status on consolidated rows; DEV 2026-08-21, UAT/PROD pending)

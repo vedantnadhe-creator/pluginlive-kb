@@ -1642,3 +1642,106 @@ Two traps worth naming, both hit on 2026-08-10:
 v2 must be **up on the target environment before** the v1 nav change ships, or
 every click on that entry 404s. Deploy order: `institute-node` → stand up v2 →
 verify → flip v1 nav.
+
+## Communication/Aptitude rank on progress score, not raw % (2026-08-25)
+
+`d84988c` + `ba3b394` institute-node, `f39e026` + `aa1eeb3` institute-react-v2.
+**DEV + UAT. PROD pending.**
+
+The dashboard ranked and banded every type on a plain 0–100 percentage, so an
+**A1 student at 80% outranked an A2 student at 60%** — the wrong ordering, and
+it repeated in the roster sort, the Avg-score column, the KPIs and the risk
+bands. The most literal instance was `PerformanceTab.tsx` `SORT_VALUE.level`
+= `(s) => s.score ?? -1`: the **Achieved Level** column sorted by raw
+percentage and never by level ordinal.
+
+Communication and Aptitude now rank and band on **NPS** (the difficulty-anchored
+progress score) instead. Everything else is unchanged.
+
+### Only Communication and Aptitude — everything else keeps its raw %
+
+Those are the only two types with a level ladder to anchor on. Role_Based,
+Custom_Assessment, AI_Interview and Behavior have **no NPS at all** (NULL, not
+zero) and keep their raw percentage on a visibly separate scale. Do not mix an
+NPS and a percentage in one column — that is the original bug.
+
+### The NPS read is per-attempt, inside the schedule
+
+`assessmentScoreSql.js` gained `NPS_EXPR` / `NPS_JOIN`, joining
+`assessment.progression_history` on `assessment_assigned_id`, plus
+`npsExprFor(type)` / `npsLevelExprFor(type)` which resolve the **one** column
+that type's ladder lives in:
+
+| type | progress score column | level column |
+|---|---|---|
+| Communication | `assessment_communication_progress_score` | CEFR |
+| Aptitude | `assessment_aptitude_progress_score` | competency |
+| anything else | `NULL::double precision` | `NULL::text` |
+
+`NPS_EXPR` COALESCEs the two only because the dashboard query spans several
+types at once. A per-type query **must** use `npsExprFor` — a Communication
+schedule must never surface an aptitude progress score.
+
+**Do not take "latest NPS per type, ignoring the schedule".** That leaks other
+schedules in: on the PROD preview, "Aptitude 2027 24/04" went 17 → 24, inflated
+by a *later* schedule, and four distinct Communication rows nearly collapsed to
+10/10/10/11 — an April schedule showing a number shaped by a June test. Join
+per attempt inside the schedule.
+
+### The number in SQL is LINEAR; the curve is applied last, once
+
+`NPS_EXPR` is deliberately the stored linear column. **Never curve in SQL.**
+Aggregate linear, curve last, curve once — see
+[../../Assessment/nps-scale-and-curve.md](../../Assessment/nps-scale-and-curve.md).
+Sorting is exempt: the curve is strictly monotonic, so `ORDER BY` on the linear
+column is correct and cheaper.
+
+### Band thresholds come from the curve, not from `AVG_OK = 70`
+
+`assessmentBands.js` resolves Communication and Aptitude cutoffs from
+`communicationBandBoundaries()` / `aptitudeBandBoundaries()`. The old
+`AVG_OK = 70` green threshold made **every row amber forever** under either
+scheme and is gone for these two types. The DEFAULT ladder (Role_Based /
+AI_Interview / Custom) still uses the design's 40/55/70/85 percentage cutoffs.
+
+### Label the column honestly
+
+"Avg score" implies a percentage and NPS is not one. Communication reuses the
+CEFR names; Aptitude does **not** reuse its percentage ladder wording — its NPS
+bands are `Beginner / Learner / Competent / Advanced`, while its percentage
+bands read `Beginner / Intermediate / Upper Intermediate / Advanced`. Those are
+two different vocabularies for the same type and `assessmentBands` keeps them
+apart on purpose.
+
+### A Communication NPS average silently drops half the cohort
+
+Communication diagnosis #1 stores `nps: null` by design, which on UAT is **48%
+of Communication students** (they have taken exactly one assessment). Averaging
+"whatever has NPS" describes only students who came back for a second sitting —
+survivorship bias toward the more able half. Show `n` with the number. Aptitude
+has no equivalent gap.
+
+## Usage widget — real pack usage in the top bar (2026-08-25)
+
+`285211c` → `1dc5397` + `7c1d86d` institute-react-v2. **DEV + UAT. PROD pending.**
+
+The top-bar `UsageWidget` (renamed from `UsagePill` in `0652c01`) shows the
+institute's assessment pack consumption. It is **hover-only** — the
+click-through modal was dropped in `0edf71e`.
+
+Data comes from a new BFF route, `GET /v2/api/usage`
+(`src/app/api/usage/route.ts`). **admin-node owns subscriptions**, so the route
+proxies the existing `assessment/getInstituteSubscriptionQuota` — the same
+endpoint the admin Feature Access screen reads — rather than duplicating the
+`subscribed_institutes` query in institute-node. It needs `ADMIN_API_URL` set on
+the v2 app (server-side, read at runtime, not baked).
+
+The institute id is taken from **the caller's JWT only**, never a query param;
+admin-node resolves a campus id to its parent institute itself.
+
+Two gotchas already fixed here:
+
+- A non-zero rate rendered as a flat `0%` (`7c1d86d`).
+- Unlimited packs are a separate state from a numeric quota. `total > 0` with
+  `hasUnlimited` is a real combination — a metered pack *and* an unlimited one —
+  so the widget cannot treat "unlimited" as simply `total === 0`.

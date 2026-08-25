@@ -413,6 +413,10 @@ NPS(row) = avg( communicationNPS(progression_predecessor, total_predecessor),
 ```
 where `communicationNPS(level, score) = (rankIndex × 100 + score) / 6` (A1=0 … C2=5). When the predecessor has no progression yet (diagnosis #1), both halves anchor at the current progression.
 
+This is the **linear, stored** value. Since 2026-08-25 every *display* surface curves it at read time (`NPS_CURVATURE_K`, default `k=4`), which moves the visible band edges to A1 `0–31.74` · A2 `31.74–52.65` · B1 `52.65–68.26` · B2 `68.26–80.73` · C1 `80.73–91.11` · C2 `91.11–100`. The progression algorithm itself is bit-for-bit unchanged — the bridge above still averages *linear* values. See [nps-scale-and-curve.md](nps-scale-and-curve.md).
+
+**Diagnosis #1 stores `nps: null` (and `assessment_cefr: null`) on purpose** — there is no predecessor and no confirmed level to anchor on. On UAT that is **104 of 189 scored rows, i.e. 48% of Communication students, with no NPS at all**. They are invisible to every NPS-based average, not merely under-weighted, so any cohort NPS must be shown with its `n`. Aptitude has no equivalent gap (it backfills both halves at `diagnosis_number = 2`).
+
 **Worked example (set levels B1,B1,A2,A2,A2,B1,B1; non-practice):**
 
 | # | set | score | progression | suggested | note |

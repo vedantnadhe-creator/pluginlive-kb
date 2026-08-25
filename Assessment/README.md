@@ -19,6 +19,7 @@ This folder contains detailed documentation for each assessment type and cross-c
 - `institute.md` -- Institute Assessment (TPO view, two-API architecture, StudentListInfo schedules, score format differences, PDF browser pool)
 - `ios-device-support.md` -- iOS / iPad / macOS Safari support (device capability tiers, LITE proctoring on iPhone, mp4/AAC audio, Safari listening/review audio, AI-interview TTS unlock + STT resample, BiometricCheck audio-only mic, video playsInline)
 - `download-button-guard.md` -- Shared `useDownloadGuard` hook + `DownloadButton` component across admin-react / institute-react / Assessment-React; stops rage-clicks firing N report/export requests. Live DEV + UAT.
+- `nps-scale-and-curve.md` -- NPS (difficulty-anchored progress score): linear stored ladder + read-time logarithmic curve (`NPS_CURVATURE_K`, default k=4), curved band boundaries, the byte-identical `npsScale.js` rule, and the Communication diagnosis-#1 coverage gap. Communication + Aptitude ONLY. Live DEV + UAT.
 - `proctoring.md` -- Report-only proctoring (silent gaze/head + interaction + Deepgram read-aloud signals → after-the-fact integrity report; admin panel + PDF banner/section). Aptitude, AI Interview, Communication, Role_Based. Live DEV + UAT.
 
 ---
