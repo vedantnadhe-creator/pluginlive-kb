@@ -1,0 +1,436 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PluginLive | Infrastructure Cost — Summary of All Plans</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&family=Playfair+Display:ital,wght@0,600;0,700;1,600&display=swap');
+  :root { --ink:#17231f; --paper:#f5f2ea; --card:#fffdf8; --line:#d7d2c7; --moss:#2f624b; --moss-deep:#1f4435; --lime:#c7d966; --sand:#e9dfca; --muted:#68736d; --orange:#c66738; }
+  * { box-sizing:border-box; }
+  html { background:var(--paper); color:var(--ink); }
+  body { margin:0; font-family:Manrope, sans-serif; font-size:15px; line-height:1.6; }
+  .sheet { max-width:1180px; margin:0 auto; padding:26px clamp(20px,5vw,72px) 72px; }
+  .topline { display:flex; justify-content:space-between; gap:18px; align-items:center; border-bottom:1px solid var(--line); padding-bottom:18px; color:var(--muted); font-size:12px; letter-spacing:.08em; text-transform:uppercase; }
+  .brand { color:var(--moss); font-weight:800; letter-spacing:.13em; }
+  .hero { padding:clamp(48px,8vw,92px) 0 56px; display:grid; grid-template-columns:1.4fr .6fr; gap:36px; align-items:end; }
+  .eyebrow { margin:0 0 14px; color:var(--moss); font-family:'DM Mono',monospace; font-size:12px; letter-spacing:.08em; text-transform:uppercase; }
+  h1,h2,h3,p { margin-top:0; }
+  h1 { max-width:800px; margin-bottom:20px; font-family:'Playfair Display',serif; font-size:clamp(40px,6.6vw,78px); letter-spacing:-.055em; line-height:.98; font-weight:600; }
+  h1 em { color:var(--moss); font-weight:600; }
+  .intro { max-width:660px; margin-bottom:0; font-size:18px; color:#3f4b45; }
+  .decision { padding:22px; border-left:4px solid var(--moss); background:var(--sand); }
+  .decision strong { display:block; font-size:13px; letter-spacing:.08em; text-transform:uppercase; color:var(--moss-deep); }
+  .decision span { display:block; margin-top:7px; font-size:15px; }
+  .section { padding:56px 0; border-bottom:1px solid var(--line); }
+  h2 { font-size:27px; letter-spacing:-.035em; line-height:1.2; margin-bottom:9px; }
+  h3 { letter-spacing:-.02em; }
+  .lede { color:var(--muted); max-width:760px; margin-bottom:28px; }
+  .numbers { display:grid; grid-template-columns:repeat(5,1fr); gap:1px; background:var(--line); border:1px solid var(--line); }
+  .number { background:var(--card); padding:24px 20px 20px; }
+  .number .label { color:var(--muted); font-family:'DM Mono',monospace; font-size:11px; letter-spacing:.06em; text-transform:uppercase; }
+  .number b { display:block; margin:6px 0 2px; color:var(--moss-deep); font-size:clamp(24px,3vw,34px); letter-spacing:-.06em; line-height:1; }
+  .number small { color:var(--muted); font-size:12px; }
+  table { width:100%; border-collapse:collapse; text-align:left; }
+  th { padding:11px 12px; border-bottom:2px solid var(--ink); color:var(--muted); font-family:'DM Mono',monospace; font-size:11px; font-weight:500; letter-spacing:.06em; text-transform:uppercase; }
+  td { padding:15px 12px; border-bottom:1px solid var(--line); vertical-align:top; }
+  td:first-child { font-weight:800; }
+  tr.total td { border-bottom:2px solid var(--ink); background:var(--sand); }
+  .money { color:var(--moss-deep); font-weight:700; white-space:nowrap; }
+  .save { color:var(--moss); font-weight:800; white-space:nowrap; }
+  .warn { color:var(--orange); font-weight:700; }
+  .pill { display:inline-block; padding:3px 9px; border:1px solid var(--moss); border-radius:999px; color:var(--moss); font:600 10px 'DM Mono',monospace; letter-spacing:.06em; text-transform:uppercase; white-space:nowrap; }
+  .pill.done { border-color:var(--moss-deep); background:var(--moss-deep); color:var(--lime); }
+  .pill.alt { border-color:var(--orange); color:var(--orange); }
+  .cards { display:grid; grid-template-columns:repeat(3,1fr); gap:1px; background:var(--line); border:1px solid var(--line); }
+  .plan { background:var(--card); padding:26px 22px; }
+  .plan.rec { background:#f0f3e6; }
+  .plan h3 { margin:8px 0 4px; font-size:20px; }
+  .plan .cost { display:block; margin:10px 0 14px; color:var(--moss-deep); font-size:34px; font-weight:800; letter-spacing:-.05em; }
+  .plan .cost span { font-size:13px; font-weight:600; color:var(--muted); letter-spacing:0; }
+  ul { margin:0; padding:0; list-style:none; }
+  li { position:relative; margin:0 0 11px; padding-left:22px; }
+  li::before { content:'+'; position:absolute; left:0; color:var(--moss); font-weight:800; }
+  .neg li::before { content:'–'; color:var(--orange); }
+  .scope { display:grid; grid-template-columns:1fr 1fr; gap:clamp(22px,5vw,70px); }
+  .environment { display:grid; grid-template-columns:150px 1fr; gap:26px; padding:26px 0; border-top:1px solid var(--line); }
+  .environment:first-of-type { border-top:2px solid var(--ink); }
+  .env-tag { color:var(--moss); font-family:'DM Mono',monospace; font-size:13px; letter-spacing:.09em; font-weight:500; }
+  .environment h3 { margin:0 0 9px; font-size:21px; }
+  .environment p { margin:0 0 8px; color:#4c5751; }
+  .guardrails { background:var(--moss-deep); color:#edf0e4; padding:clamp(27px,5vw,48px); margin-top:38px; }
+  .guardrails h2 { color:var(--lime); }
+  .guardrails p { max-width:800px; color:#e3e7dc; }
+  .guardrails ul { display:grid; grid-template-columns:1fr 1fr; gap:0 30px; }
+  .guardrails li::before { color:var(--lime); }
+  .assumption { margin-top:28px; padding:16px 18px; border:1px solid #d8c7aa; background:#faf3e5; color:#655945; font-size:13px; }
+  footer { display:flex; justify-content:space-between; gap:24px; padding-top:24px; color:var(--muted); font-size:12px; }
+  button { border:1px solid var(--moss); background:transparent; color:var(--moss); padding:8px 12px; font:600 11px 'DM Mono',monospace; letter-spacing:.04em; text-transform:uppercase; cursor:pointer; }
+  button:hover { background:var(--moss); color:var(--paper); }
+  @media (max-width:820px) { .numbers { grid-template-columns:1fr 1fr; } .cards { grid-template-columns:1fr; } }
+  @media (max-width:700px) { .hero,.scope { grid-template-columns:1fr; } .numbers { grid-template-columns:1fr; } .environment { grid-template-columns:1fr; gap:7px; } .guardrails ul { grid-template-columns:1fr; } .topline { align-items:flex-start; flex-direction:column; } footer { flex-direction:column; } }
+  @media print { @page { margin:14mm; } .sheet { max-width:none; padding:0; } button { display:none; } .section { padding:24px 0; } .hero { padding:40px 0; } .guardrails,.cards,table { break-inside:avoid; } }
+</style>
+</head>
+<body>
+<div class="sheet">
+
+  <div class="topline">
+    <span class="brand">PluginLive</span>
+    <span>Infrastructure cost — summary of all plans</span>
+    <button onclick="window.print()">Print / Save PDF</button>
+  </div>
+
+  <section class="hero">
+    <div>
+      <p class="eyebrow">Executive summary · Phase 0 · Plan A · Plan B1 · Plan B2</p>
+      <h1>Every plan,<br><em>one page.</em></h1>
+      <p class="intro">Three costed routes from today's ₹84,800/month run-rate, plus the ₹44,000/month already banked. Plan A re-shapes the platform on Oracle Cloud for ≈₹21,000/month. Plan B moves it to Google Cloud Run in Mumbai for ₹44,000 as a lift-and-shift, or ₹26,000 only after the queue engine is rewritten.</p>
+    </div>
+    <div class="decision">
+      <strong>Recommendation</strong>
+      <span><b>Plan A.</b> Half the cost of the best Cloud Run outcome at today's measured load, first saving in week 0 rather than week 10, no data migration, reversible at every step.</span>
+    </div>
+  </section>
+
+  <section class="section">
+    <h2>The numbers</h2>
+    <p class="lede">Monthly, rounded, excluding taxes. OCI figures are derived from the June 2026 usage statement; Cloud Run figures are modelled from list prices at ±20%.</p>
+    <div class="numbers">
+      <div class="number"><span class="label">Where we started</span><b>₹1,27,600</b><small>before Phase 0</small></div>
+      <div class="number"><span class="label">Already banked</span><b>₹44,000</b><small>Phase 0, complete</small></div>
+      <div class="number"><span class="label">Run-rate today</span><b>₹84,800</b><small>current baseline</small></div>
+      <div class="number"><span class="label">Plan A — OCI</span><b>₹21,000</b><small>−75% vs today</small></div>
+      <div class="number"><span class="label">Plan B — Cloud Run</span><b>₹26k–44k</b><small>B2 / B1</small></div>
+    </div>
+  </section>
+
+  <section class="section">
+    <h2>The plans, side by side</h2>
+    <p class="lede">All plans satisfy the two hard requirements: everything stays in an India region, and performance must be no worse than today.</p>
+    <div class="cards">
+      <div class="plan rec">
+        <span class="pill">Recommended</span>
+        <h3>Plan A · Re-shape on OCI</h3>
+        <span class="cost">₹21,000<span> / month</span></span>
+        <ul>
+          <li>−75% versus today, −84% versus the original bill</li>
+          <li>₹8,488 saved in week 0</li>
+          <li>No data migration at all</li>
+          <li>Reversible at every step</li>
+          <li>7 weeks, moderate effort</li>
+        </ul>
+      </div>
+      <div class="plan">
+        <span class="pill alt">Alternative</span>
+        <h3>Plan B1 · Cloud Run, lift &amp; shift</h3>
+        <span class="cost">₹44,000<span> / month</span></span>
+        <ul>
+          <li>−48% versus today</li>
+          <li>Native scale-to-zero, no cluster to operate</li>
+          <li>First saving lands week 10</li>
+        </ul>
+        <ul class="neg">
+          <li>Queue workers cannot scale to zero — ₹11,500/mo held warm</li>
+          <li>10 GB database + 160 GB media must move</li>
+          <li>Rollback is painful once data has moved</li>
+        </ul>
+      </div>
+      <div class="plan">
+        <span class="pill alt">Alternative</span>
+        <h3>Plan B2 · + queue rewrite</h3>
+        <span class="cost">₹26,000<span> / month</span></span>
+        <ul>
+          <li>−69% versus today — near-parity with Plan A</li>
+          <li>Workers become request-driven, scale to zero</li>
+          <li>fast-api warm only during scheduled windows</li>
+        </ul>
+        <ul class="neg">
+          <li>Requires rewriting BullMQ to Cloud Tasks / Pub&nbsp;Sub push</li>
+          <li>Retry, back-off, dedup and delayed-job semantics re-derived</li>
+          <li>14 weeks, very high effort — and still ₹5,000/mo worse than Plan A</li>
+        </ul>
+      </div>
+    </div>
+
+    <table style="margin-top:34px">
+      <thead><tr><th>Dimension</th><th>Plan A — OCI</th><th>Plan B1 — lift &amp; shift</th><th>Plan B2 — + queue rewrite</th></tr></thead>
+      <tbody>
+        <tr><td>Monthly cost</td><td class="money">₹21,000</td><td class="money">₹44,000</td><td class="money">₹26,000</td></tr>
+        <tr><td>Versus today (₹84,800)</td><td class="save">−75%</td><td class="save">−48%</td><td class="save">−69%</td></tr>
+        <tr><td>Versus original (₹1,27,600)</td><td class="save">−84%</td><td class="save">−66%</td><td class="save">−80%</td></tr>
+        <tr><td>First saving lands</td><td>Week 0</td><td>Week 10</td><td>Week 14</td></tr>
+        <tr><td>Engineering effort</td><td>Moderate</td><td>High</td><td>Very high</td></tr>
+        <tr><td>Data migration</td><td>None</td><td>10 GB DB + 160 GB media</td><td>Same</td></tr>
+        <tr><td>Application code changes</td><td>Resource requests only</td><td>Upload path</td><td>Upload path + queue engine</td></tr>
+        <tr><td>India region</td><td>✅ Mumbai</td><td>✅ Mumbai</td><td>✅ Mumbai</td></tr>
+        <tr><td>Performance</td><td>✅ Equal or better</td><td class="warn">⚠ Cold starts</td><td class="warn">⚠ Cold starts</td></tr>
+        <tr><td>Automatic on/off</td><td>KEDA + Resource Scheduler + calendar scaler</td><td>Native</td><td>Native</td></tr>
+        <tr><td>Who operates the platform</td><td>Your team</td><td>Google</td><td>Google</td></tr>
+        <tr><td>Rollback if it goes wrong</td><td>Trivial</td><td class="warn">Painful</td><td class="warn">Painful</td></tr>
+      </tbody>
+    </table>
+
+    <p class="assumption"><b>Why Plan A wins on the numbers.</b> The comparison reduces to one ratio: an always-on vCPU costs <b>₹584/month</b> on OCI Ampere A1 and roughly <b>₹6,900/month</b> on Cloud Run in Mumbai — about <b>12×</b>. The workload needs 4–5 permanently warm cores (auth, student, the AI/proctoring service, the queue workers). Serverless only beats a cheap ARM VM below roughly 10% duty cycle — and the parts of the estate that <i>are</i> that idle (DEV, UAT, the builder, batch jobs) can simply be switched off on a schedule, for free. <b>Where Plan B genuinely wins</b> is not cost: non-production becomes almost free, there is no cluster or database to operate, and on/off is native rather than assembled. If the binding constraint were engineering <i>time</i> rather than money, Plan B would be the better answer.</p>
+  </section>
+
+  <section class="section">
+    <h2>Phase 0 — already executed</h2>
+    <p class="lede">Common to every plan and complete since 17 August 2026. <span class="pill done">₹44,000/month banked</span></p>
+    <div class="scope">
+      <div>
+        <h3>What was removed</h3>
+        <p style="color:#4c5751">The production database was cut over to <code>pl-prod-pg16</code> on 31 July, but the previous PostgreSQL 14 system — two instances of 2 OCPU / 32 GB — kept running in parallel with nothing connected to it.</p>
+        <ul>
+          <li>Zero client connections; 2 inserts / 3 updates / 0 deletes across 8 days</li>
+          <li>Data had diverged by 295 students and 5,629 assignment records — a frozen snapshot, never a fallback</li>
+          <li>Zero references in configmaps, secrets, deployments, cronjobs or Grafana across all 10 namespaces</li>
+        </ul>
+      </div>
+      <div>
+        <h3>Archived before deletion</h3>
+        <ul>
+          <li>Logical dump — 2.17 GB, <code>pg_restore -l</code> verified at 2,603 objects, private bucket <code>pl-prod-db-archive</code></li>
+          <li>Manual system backup — 1 GB, 35-day retention, covering the four legacy side-databases</li>
+          <li>Post-deletion: all pods Running, no new restarts, live database writing normally</li>
+        </ul>
+        <p style="color:#4c5751"><b>Side-fix:</b> three read-only helper scripts had been querying the frozen host since 3 August, silently returning stale production data. All repointed.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <h2>The evidence every plan rests on</h2>
+    <p class="lede">Measured from the live estate and the production database on 17 August 2026.</p>
+    <table>
+      <thead><tr><th>Measurement</th><th>Value</th><th>Implication</th></tr></thead>
+      <tbody>
+        <tr><td>Assessment submissions, last 30 days</td><td class="money">648 (~21/day)</td><td>Peak hour was 32 submissions — one every 112 seconds.</td></tr>
+        <tr><td>Hours with any activity</td><td class="money">251 of 720 (34.9%)</td><td>Two thirds of the month is completely idle.</td></tr>
+        <tr><td>PROD Kubernetes CPU in use</td><td class="money">1.35 of 20 cores</td><td>Nodes run at 2–11%.</td></tr>
+        <tr><td>PROD memory in use</td><td class="money">44 of 120 GB</td><td>Memory is not the binding constraint either.</td></tr>
+        <tr><td>Sum of pod CPU <i>requests</i></td><td class="money">~6.5 cores</td><td><code>fast-api</code> alone reserves 3 cores across 3 replicas — 5× the cluster's real usage.</td></tr>
+        <tr><td>Production database size</td><td class="money">10 GB</td><td>Held by a managed service costing ₹21,870/month.</td></tr>
+        <tr><td>Open database connections</td><td class="money">213</td><td>~2 GB of DB RAM on idle pooled connections. PgBouncer takes this to ~20.</td></tr>
+        <tr><td>Block + boot storage provisioned</td><td class="money">~2,900 GB</td><td>A static-website VM carries a 500 GB boot volume; each OKE node carries 250 GB.</td></tr>
+        <tr><td>Container images in registry</td><td class="money">407 GB + 151 GB</td><td>No retention policy has ever run.</td></tr>
+        <tr><td><code>verify-frame</code> cold vs warm</td><td class="money">3.3 s → 8 ms</td><td>Model-weight loading. The proctoring path can never scale to zero during exams — in either plan.</td></tr>
+      </tbody>
+    </table>
+    <p class="assumption"><b>Reading the invoice correctly.</b> The two <code>ODSP — Compute — Standard — E5</code> lines are not application servers; they are the x86 nodes underneath the managed PostgreSQL service. Grouped properly, the database was <b>48%</b> of the June bill rather than the 29% the "PostgreSQL OCPU" line alone suggests. That correction is what surfaced Phase 0.</p>
+  </section>
+
+  <section class="section">
+    <h2>Plan A in detail — the recommended route</h2>
+    <p class="lede">Everything stays on OCI, in Mumbai. The saving comes entirely from matching capacity to measured load, and from switching capacity off when it is genuinely not needed.</p>
+
+    <div class="scope" style="margin-bottom:30px">
+      <div>
+        <h3>Target architecture</h3>
+        <ul>
+          <li><b>PROD</b> — OKE Basic cluster (free control plane); 2 × A1 4 OCPU/24 GB baseline nodes always on; 1 preemptible calendar-driven burst node (~40 h/month); self-managed PostgreSQL 16 on A1 4/24 with PgBouncer</li>
+          <li><b>Frontends</b> — OCI Object Storage behind the existing Flexible Load Balancer</li>
+          <li><b>DEV / UAT</b> — one VM each, database merged in, Resource Scheduler off nights and weekends</li>
+          <li><b>Batch</b> — parsers and normalisation on OCI Container Instances, per-second billing</li>
+        </ul>
+      </div>
+      <div>
+        <h3>Three rules baked into the design</h3>
+        <ul>
+          <li><b>The exam path never sleeps.</b> <code>auth-node</code>, <code>student-node</code> and <code>fast-api</code> stay warm during exam hours — 3.3 s cold versus 8 ms warm is why.</li>
+          <li><b>App and database stay together.</b> Documented N+1 patterns turn a 2 ms hop into 100 ms+ per page. If the database moves, the applications move with it.</li>
+          <li><b>Capacity leads demand.</b> Scale from the assessment schedule table 20 minutes ahead, not from CPU metrics after the fact. Zero cold start — better than serverless.</li>
+        </ul>
+      </div>
+    </div>
+
+    <h3 style="margin-bottom:10px">Week by week</h3>
+    <table>
+      <thead><tr><th>When</th><th>Work</th><th>Saving</th><th>Run-rate after</th></tr></thead>
+      <tbody>
+        <tr><td>Week 0<br><span class="pill">Do first</span></td><td>Raise <code>pl-prod-pg16</code> backup retention 1 → 30 days — the only production database currently has a 24-hour restore window. Enable OCI Resource Scheduler on DEV, UAT and the builder: stop 20:00 IST, start 08:00 IST, weekdays only.</td><td class="save">₹8,488</td><td class="money">₹76,300</td></tr>
+        <tr><td>Week 1</td><td>Merge the DEV and UAT database VMs into their app boxes (Docker Postgres, nightly dumps to Object Storage) · prune 407 GB of registry images and 151 GB of custom images to a retention policy · drop block-volume performance from VPU 10 to VPU 0 everywhere except the database · tag every resource · capture the 7-day performance baseline.</td><td class="save">₹10,300</td><td class="money">₹66,000</td></tr>
+        <tr><td>Weeks 2–3</td><td>Right-size pod CPU and memory requests to measured p95 + 20% — <code>fast-api</code> first · add requests to the three BestEffort deployments · add PodDisruptionBudgets to every customer-facing API · install KEDA <b>in report-only mode</b> so it reports which services would have scaled to zero before it is allowed to act.</td><td>enabler</td><td class="money">₹66,000</td></tr>
+        <tr><td>Week 4</td><td><b>One migration instead of two.</b> Build a new OKE Basic cluster with a 2-node pool on 50 GB boot volumes — boot volumes cannot shrink in place, so the rebuild you already need happens inside the free-control-plane cluster. Drain node by node, flip DNS, keep the old cluster warm 48 hours, then delete it. Move the static sites to Object Storage and delete both VMs and the 500 GB boot volume.</td><td class="save">₹21,500</td><td class="money">₹44,500</td></tr>
+        <tr><td>Weeks 5–6</td><td>Deploy PgBouncer in transaction mode (213 connections → ~20) · build the self-managed PostgreSQL 16 VM (A1 4/24, 100 GB at VPU 20) · nightly <code>pg_dump</code> to Object Storage plus WAL archiving · <b>complete a timed restore test</b> · seed and catch up with logical replication · cut over in a maintenance window, update the 19 configmap references · 7-day soak before deleting the managed instance.</td><td class="save">₹17,449</td><td class="money">₹27,000</td></tr>
+        <tr><td>Week 7</td><td><b>The calendar scaler.</b> ~200 lines reading <code>assessment_institute_map.start_time</code> and <code>assessment_corporate_map.start_time</code>: bring a preemptible burst node up 20 minutes before each scheduled window, pre-warm model weights, confirm <code>/health/ready</code>, drain 15 minutes after the window closes. Enable KEDA scale-to-zero on the idle services identified in week 3.</td><td class="save">₹3,000–6,000</td><td class="money">≈₹21,000</td></tr>
+      </tbody>
+    </table>
+
+    <h3 style="margin:34px 0 10px">Plan A cost build-up</h3>
+    <table>
+      <thead><tr><th>Component</th><th>Shape</th><th>₹ / month</th></tr></thead>
+      <tbody>
+        <tr><td>2 baseline OKE nodes</td><td>A1 4 OCPU / 24 GB each</td><td class="money">8,842</td></tr>
+        <tr><td>Calendar burst node</td><td>Preemptible, ~40 h/month</td><td class="money">200</td></tr>
+        <tr><td>Self-managed PostgreSQL</td><td>A1 4 OCPU / 24 GB + 100 GB</td><td class="money">4,421</td></tr>
+        <tr><td>DEV + UAT + builder</td><td>3 VMs, scheduled 36% of hours</td><td class="money">4,774</td></tr>
+        <tr><td>OKE Basic control plane</td><td>—</td><td class="money">0</td></tr>
+        <tr><td>Frontends</td><td>Object Storage + existing load balancer</td><td class="money">0</td></tr>
+        <tr><td>Block storage + performance units</td><td>~950 GB, VPU 0 except database</td><td class="money">2,620</td></tr>
+        <tr><td>Images, object storage, email, DNS, health checks</td><td>—</td><td class="money">1,083</td></tr>
+        <tr class="total"><td>Plan A total</td><td>±5%; folding the builder onto the DEV box takes a further ₹1,341 off</td><td class="money">≈ ₹21,940</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section class="section">
+    <h2>Plan A by environment</h2>
+    <p class="lede">Where the money is today, and what changes in each environment.</p>
+
+    <div class="environment">
+      <span class="env-tag">DEV · Week 0–1</span>
+      <div>
+        <h3>Make development disposable outside working hours</h3>
+        <p>Today ₹6,631/month — <code>Pluginlive-DEV</code> (4 OCPU / 24 GB, ₹4,421) plus <code>Pluginlive-DEV-Database</code> (2 OCPU / 12 GB, ₹2,211).</p>
+        <p><b>Change:</b> consolidate PostgreSQL onto the existing DEV application VM and delete the database VM; schedule the box off 20:00–08:00 IST and all weekend via OCI Resource Scheduler, with a one-click manual wake-up for developers; prune unused OCI Registry images. <b>Target ≈₹2,200/month.</b></p>
+      </div>
+    </div>
+
+    <div class="environment">
+      <span class="env-tag">UAT · Week 0–1</span>
+      <div>
+        <h3>Mirror the DEV saving without blocking QA</h3>
+        <p>Today ₹7,673/month — <code>PL-UAT-App-Server</code> (4 OCPU / 32 GB, ₹5,115) plus <code>PluginLive_UAT_DATABASE</code> (2 OCPU / 16 GB, ₹2,558).</p>
+        <p><b>Change:</b> the same VM consolidation and off-hours schedule, with an override retained for planned test windows and release validation. Validate database performance after consolidation before retiring the UAT DB VM. <b>Target ≈₹2,500/month.</b></p>
+      </div>
+    </div>
+
+    <div class="environment">
+      <span class="env-tag">PROD · Week 2–7</span>
+      <div>
+        <h3>Reduce fixed capacity, not service reliability</h3>
+        <p>Today ₹70,500/month — 5 OKE worker nodes (₹22,100), managed PostgreSQL (₹21,870), OKE Enhanced control plane (₹6,834), builder (₹3,726), two static-site VMs (₹1,862), plus storage, images and network.</p>
+        <p><b>Change, in order:</b> set realistic pod requests from observed load → move to an OKE Basic cluster with 2 baseline nodes plus a calendar burst node → static sites to Object Storage → PgBouncer and self-managed PostgreSQL 16 after a completed restore drill → KEDA scale-to-zero for asynchronous work only. <b>Target ≈₹16,300/month.</b></p>
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <h2>Plan B in detail — Google Cloud Run, asia-south1</h2>
+    <p class="lede">A fully serverless target: request-driven containers, managed database, no cluster to operate. It meets both hard requirements — but the cost depends entirely on whether the queue engine is also rewritten.</p>
+
+    <p class="assumption" style="margin-top:0"><b>The blocker that decides the price: BullMQ.</b> Cloud Run bills a container only while it is handling a request. A queue worker blocking on Redis is not handling a request — so it must run with CPU always allocated and <code>min-instances=1</code>, which is a virtual machine at roughly twelve times the price. Escaping that means rewriting BullMQ to Cloud Tasks or Pub/Sub push so workers become request-driven — which changes the retry and back-off semantics assessment scoring depends on.</p>
+
+    <div class="scope" style="margin-top:30px">
+      <div>
+        <h3>B1 — lift and shift · ≈₹44,000</h3>
+        <table>
+          <tbody>
+            <tr><td>Always-warm tier</td><td>auth + student + fast-api ≈ 3 vCPU / 5.5 GiB</td><td class="money">24,600</td></tr>
+            <tr><td>Queue workers always-on</td><td>≈1.5 vCPU — cannot scale to zero</td><td class="money">11,500</td></tr>
+            <tr><td>Scale-to-zero tier</td><td>real usage is tiny</td><td class="money">700</td></tr>
+            <tr><td>Cloud SQL PostgreSQL</td><td>2 vCPU / 8 GB, no HA</td><td class="money">10,000</td></tr>
+            <tr><td>Memorystore Redis</td><td>1 GB basic</td><td class="money">2,000</td></tr>
+            <tr><td>Storage, registry, LB, egress, logging</td><td>—</td><td class="money">4,000</td></tr>
+            <tr><td>DEV + UAT</td><td>true scale-to-zero</td><td class="money">2,000</td></tr>
+            <tr class="total"><td>B1 total</td><td>—</td><td class="money">≈ ₹44,000</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div>
+        <h3>B2 — after the queue rewrite · ≈₹26,000</h3>
+        <table>
+          <tbody>
+            <tr><td>Workers → Pub/Sub push</td><td>scale to zero between jobs</td><td class="save">−11,500</td></tr>
+            <tr><td>fast-api warm on schedule</td><td>min-instances from the assessment calendar, ~35% of hours</td><td class="save">−6,600</td></tr>
+            <tr><td>All other lines</td><td>unchanged</td><td>—</td></tr>
+            <tr class="total"><td>B2 total</td><td>—</td><td class="money">≈ ₹26,000</td></tr>
+          </tbody>
+        </table>
+        <h3 style="margin-top:26px">Migration — 10 to 14 weeks</h3>
+        <ul>
+          <li>Landing zone: project, VPC, IAM, Artifact Registry, Cloud Build, Secret Manager — <i>low risk</i></li>
+          <li>Stateless services: 20 images to Cloud Run, warm/cold classification, LB and domains — <i>low risk</i></li>
+          <li><b>Data platform:</b> Cloud SQL, 10 GB via logical replication, Memorystore, ~160 GB media moved and every stored object URL re-signed — <b>high risk</b></li>
+          <li><b>Queue engine:</b> rewrite BullMQ producers/consumers; re-derive retry, back-off, dedup and delayed-job semantics; replay-test against historic jobs — <b>high risk</b></li>
+          <li>Upload path: signed-URL uploads straight to Cloud Storage — <i>medium</i></li>
+          <li>Integrations: Google OAuth redirects, MSG91 and Meta webhooks, PostHog, LiteLLM, every external callback — <i>medium</i></li>
+          <li>Cutover: dual-run, shadow traffic, DNS flip, 7-day soak, decommission OCI — <i>medium</i></li>
+        </ul>
+      </div>
+    </div>
+
+    <p class="assumption"><b>Pricing confidence.</b> Plan B figures are modelled from published per-vCPU-second and per-GiB-second rates with a Tier-2 regional uplift for asia-south1, not from a quote. Treat them as ±20% and confirm against the GCP pricing calculator before committing. Plan A's figures come from your own OCI invoice and are firm.</p>
+  </section>
+
+  <section class="section">
+    <h2>Region feasibility — requirement 1 checked, not assumed</h2>
+    <p class="lede">Several popular options fail the India requirement outright, including two from the original proof-of-concept stack.</p>
+    <table>
+      <thead><tr><th>Platform</th><th>India region</th><th>Verdict</th></tr></thead>
+      <tbody>
+        <tr><td>Render</td><td class="warn">✕ none</td><td>Oregon, Ohio, Virginia, Frankfurt, Singapore. The POC's API host cannot run in India.</td></tr>
+        <tr><td>Neon (serverless Postgres)</td><td class="warn">✕ none</td><td>US ×3, Frankfurt, Singapore, Tel Aviv. Mumbai requested two years ago, still not shipped.</td></tr>
+        <tr><td>Google Cloud Run</td><td>✓ asia-south1</td><td>Plan B foundation</td></tr>
+        <tr><td>Cloud SQL / AlloyDB</td><td>✓ Mumbai</td><td>Plan B database</td></tr>
+        <tr><td>Azure Container Apps</td><td>✓ Central India</td><td>Viable alternative to Cloud Run; KEDA scaling built in</td></tr>
+        <tr><td>Aiven</td><td>✓ Mumbai, Hyderabad, Bangalore, Delhi</td><td>Best India coverage for managed PostgreSQL</td></tr>
+        <tr><td>AWS RDS / Aurora</td><td>✓ Mumbai</td><td>Viable</td></tr>
+        <tr><td>DigitalOcean</td><td>✓ Bangalore only</td><td>Viable</td></tr>
+        <tr><td>Cloudflare Pages / Netlify</td><td>✓ edge PoPs</td><td>Region is irrelevant for static bundles; Mumbai, Chennai and Delhi PoPs serve them</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section class="section">
+    <h2>Decisions to sign off</h2>
+    <p class="lede">Weeks 0 and 1 of Plan A are unconditional — they apply whichever direction is chosen, and none of them touches production's data path.</p>
+    <table>
+      <thead><tr><th>ID</th><th>Decision</th><th>Owner</th><th>If accepted</th><th>If declined</th></tr></thead>
+      <tbody>
+        <tr><td>D-0</td><td>Plan A or Plan B</td><td>CTO</td><td class="save">A → ₹21,000</td><td>B → ₹26,000–44,000</td></tr>
+        <tr><td>D-1</td><td>Self-manage PostgreSQL — your team owns backups and recovery for a 10 GB database</td><td>CTO</td><td class="save">−₹17,449</td><td>Floor becomes ₹38,000</td></tr>
+        <tr><td>D-2</td><td>2 baseline nodes with a calendar-driven burst node, instead of 3 always on</td><td>Infra</td><td class="save">−₹4,421</td><td>₹25,400</td></tr>
+        <tr><td>D-3</td><td>Migrate to an OKE Basic cluster (new cluster, DNS cutover, one-way)</td><td>Infra</td><td class="save">−₹6,834</td><td>₹27,800</td></tr>
+        <tr><td>D-4</td><td>DEV, UAT and builder off nights and weekends, with a one-click wake-up override</td><td>Eng + QA</td><td class="save">−₹8,488</td><td>₹29,500</td></tr>
+        <tr><td>D-5</td><td>Rewrite BullMQ to Pub/Sub push — only relevant under Plan B</td><td>Backend</td><td class="save">−₹11,500</td><td>B stays at ₹44,000</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section class="section" style="border-bottom:none;padding-bottom:12px">
+    <h2>Open risks — outside the cost case, but gating it</h2>
+    <table>
+      <thead><tr><th>Item</th><th>Severity</th><th>Detail and action</th></tr></thead>
+      <tbody>
+        <tr><td><code>pg16</code> backup retention is 1 day</td><td class="warn">HIGH</td><td>The only production database has a 24-hour restore window. Raise to 30 days before anything else — this gates the database work in both plans.</td></tr>
+        <tr><td>Credentials stored in ConfigMaps</td><td class="warn">HIGH</td><td>Cloud provider keys, AI provider keys, database URLs and the Mongo connection string sit in plain ConfigMaps — readable by any cluster user, unencrypted at rest. Move to Kubernetes Secrets or OCI Vault. Not a cost item; worth doing regardless of plan.</td></tr>
+        <tr><td><code>tester-ro-query.sh</code> authentication</td><td>MEDIUM</td><td>The <code>pl_tester_ro</code> role exists on the new host with a different password than the script holds; it now fails loudly rather than returning stale data. Requires a production role password reset.</td></tr>
+        <tr><td>Self-managed database ownership</td><td>MEDIUM</td><td>Decision D-1 transfers backup, patching and recovery to your team. Mitigation is a completed restore drill before cutover, not after.</td></tr>
+        <tr><td>Always Free allowance applicability</td><td>VERIFY</td><td>DEV could approach ₹0 if the Always Free A1 allowance applies to this child tenancy. Neither plan depends on it.</td></tr>
+        <tr><td>OKE Enhanced → Basic is one-way</td><td>VERIFY</td><td>New cluster and DNS cutover, not a settings change. Confirm against current OCI documentation before scheduling week 4.</td></tr>
+        <tr><td>Non-Oracle spend is out of scope</td><td>NOTED</td><td>Separate bills for AWS (S3, CloudFront, SES, SQS, Athena), MongoDB Atlas, per-usage AI vendors (Gemini, OpenAI, Azure Speech, Deepgram, ElevenLabs, Sarvam), MSG91 and PostHog. Media storage appears to be dual-running across S3 and OCI Object Storage — likely a further saving, to be addressed separately.</td></tr>
+      </tbody>
+    </table>
+
+    <div class="guardrails">
+      <h2>Performance guardrails &amp; rollback</h2>
+      <p>Requirement 2 says performance must be no worse than today. These criteria enforce it, and they apply to both plans. If a guardrail breaches, restore the previous node count or instance shape immediately, then investigate — never debug in a degraded production state.</p>
+      <ul>
+        <li>API p95 latency does not worsen by more than 10% against the week-1 baseline</li>
+        <li>Error rate and timeout rate do not increase</li>
+        <li>No sustained node CPU above 70–75% after right-sizing</li>
+        <li>No OOM kills, memory pressure or unexpected pod eviction</li>
+        <li>Database connections stay below 70% of the configured limit</li>
+        <li>Queue delay and assessment processing time do not materially increase</li>
+        <li>Login, assessment, scoring, proctoring and dashboard smoke tests all pass</li>
+        <li>Every capacity change has a written, tested rollback before it starts</li>
+      </ul>
+      <p style="margin-top:18px"><b>Observation windows:</b> 48 hours after a node drain · 7 days after the database cutover · 48 hours before deleting any replaced resource.</p>
+      <p style="margin-bottom:0"><b>What does not change under either plan:</b> no reduction in production replica counts for customer-facing APIs · the proctoring and exam path stays warm during scheduled windows · all data stays in India · no production change without a captured baseline, acceptance criteria and a rollback · email, DNS and the observability stack are untouched.</p>
+    </div>
+
+    <p class="assumption"><b>Basis of estimate.</b> OCI rates from the usage statement for 1–30 June 2026, subscription 30377954, applied to the estate as measured on 17 August 2026. Effective unit rates: A1 OCPU ₹584.26/month · A1 memory ₹86.82/GB · managed PostgreSQL OCPU service fee ₹6,697.52 · OKE Enhanced control plane ₹6,834.21 · block volume ₹2.4206/GB · Cloud Run (modelled) ≈₹6,900 per always-on vCPU. Cloud Run and Cloud SQL rates are modelled from published list prices and require a quote before commitment. Figures exclude taxes.</p>
+  </section>
+
+  <footer>
+    <span>PluginLive · Infrastructure cost — summary of all plans</span>
+    <span>Consolidates Cost Plan v3 (17 Aug 2026) and the Plan A decision brief (24 Aug 2026) · Internal planning document</span>
+  </footer>
+
+</div>
+</body>
+</html>
