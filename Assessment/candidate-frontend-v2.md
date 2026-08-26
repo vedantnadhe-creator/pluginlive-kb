@@ -71,15 +71,18 @@ mobile-call auto-submit fix. An incoming call backgrounds the page, and mobile
 browsers report that identically to a deliberate app switch, so three calls
 auto-submitted the paper. Fixed independently in each app, because there is
 nothing to share — v1 as `Assessment-React` `448f87f` (DEV 2026-08-26), v2 as
-`assessment-react-v2` `078241a` (DEV + UAT 2026-08-26, UAT merge `013ee9c`). In v2 the helpers
-(`isMobileDevice`, `markMobileInterruption`, `isMobileInterruptionFullscreenExit`)
-live in `src/lib/deviceTier.ts` rather than a new module — `node --test`
+`assessment-react-v2` `078241a` + `17bfa86` (DEV + UAT 2026-08-26). In v2 the
+`isMobileDevice()` helper lives in `src/lib/deviceTier.ts` rather than a new
+module — `node --test`
 resolves sibling `.ts` imports by real path with no extension, so a test-covered
 lib file here has to stay import-free (`proctoringEvents.ts` documents the same
 constraint). `watchVisibility` and the `fullscreenTransition` exit in
 `src/app/assessment/take/page.tsx` both now check
-`isMobileInterruptionFullscreenExit()` / `markMobileInterruption()` before
-counting a `TAB_VIOLATION`.
+`isMobileDevice()` before counting a `TAB_VIOLATION` on the visibility change —
+but **not** on the fullscreen exit, which counts everywhere (`17bfa86`; a phone
+reports a deliberate app switch as a fullscreen exit and nothing else, so
+exempting it made switching away free). See
+[mix-match-candidate-journey.md](mix-match-candidate-journey.md) for the table.
 
 One structural advantage when you do port: v1 repeats the violation logic once
 per assessment type (Aptitude, Communication, Hinglish, Custom, Role-Based), so
