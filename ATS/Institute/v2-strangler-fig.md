@@ -1048,6 +1048,50 @@ students). Attempt rate now uses the current roster members who have assessment
 history, and Performance is the scored subset of that same population. The
 historical Assessments-sent/taken KPIs deliberately retain assignment history.
 
+### The cohort filters had to join that roster too (2026-08-26)
+
+Fixed 2026-08-26 (`038b99c` Development, `7f19eb6` UAT). The same roster rule
+now governs the cockpit topbar's **Degree-Dept / Passing-year** filters, which
+were still resolving an assessed email to a student profile **platform-wide**.
+Assessment rows key on `institute_id` and carry only an email, so that lookup
+answers with whichever college the person actually belongs to — and an
+institute that assesses outsiders inherits that college's degree, department
+and passing year.
+
+Swadha Foundation was offered a **2024 Passing-year pill it has no batch for**:
+one invitee of 181 belongs to a different college and carries placeholder
+course dates (1 Jan 2023 -> 1 Jan 2024 on a three-year B.Com). 12 of Swadha's
+181 assessed emails resolve off-roster; the other 11 happen to be 2026, so only
+this one surfaced as a phantom year. The roster-scoped screens — student-node's
+`GET /students/institutes/:campusId/yearOfPassing`, which the v1 Placement page
+reads — only ever showed 2026 and 2027.
+
+`app/helpers/cohortSql.js` now exports **`rosterScopeJoin(studentAlias,
+campusAlias)`**, the join the risk block above already applied
+(`institute.institutes_campuses` by `institute_id = $1`, minus deleted
+students). `DashboardV2` applies it at BOTH filter sites, which have to agree
+or the pills disagree with the rows behind them:
+
+- `getFilterOptions` — which years/degrees are **offered**
+- `buildCohort` — which students a chosen year **keeps**
+
+Swadha's pills go from `2027·100 / 2026·78 / 2024·1` to `2027·100 / 2026·69`.
+Checked across every institute with >20 assessed candidates: none loses its
+filters.
+
+The two per-assessment `audienceSql` blocks ("Assigned to") are deliberately
+left unscoped — they describe who an assessment was **sent** to, and scoping
+them would silently shrink sent counts. They inherit the fix whenever a filter
+is applied.
+
+Side effect: `buildCohort`'s subquery previously carried no institute predicate
+at all and parallel-seq-scanned `current_course` on every filtered query. On
+PROD data that subquery goes **21.1ms -> 2.16ms**, now index-driven from
+`idx_ic_institute_id` -> `idx_students_institute_campus_id`.
+
+The underlying record is untouched: that student's course still reads 2024. The
+fix stops it leaking into a college it does not belong to.
+
 ### Competency axes cannot be summed into a headcount
 
 Fixed 2026-08-13 (`f729856` Development, `fa3a4e7` UAT; frontend `7042ee1`).
