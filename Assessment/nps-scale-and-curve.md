@@ -177,3 +177,60 @@ compared against** — `/3` difficulty vs `/4` competency, inside the same
 admin-node institute report ("baseline → peak → % of change"). Pre-existing, and
 deliberately not silently changed; it is now at least named as
 `DIFFICULTY_BAND_COUNT` in `npsScale.js`. Needs a product call.
+
+## Where the progress score is surfaced (institute v2)
+
+As of **26 Aug 2026 (UAT)**, every institute-v2 surface that reports a
+Communication or Aptitude result speaks in the **curved progress score**, and
+every other type keeps its raw percentage. Before this, `curveNPS` existed in
+only two of five `institute-node` models, so one student read **53** on the
+Students table and **21** on the assessment they had actually sat.
+
+| Surface | Model | Reports |
+|---|---|---|
+| Dashboard → Active Assessments "Avg progress" | `DashboardV2` | curved NPS + band |
+| Dashboard → Student at-risk donut | `DashboardV2` | banded by **ladder position** |
+| Dashboard → Competency ladder | `DashboardV2` | placed on the progression ladder |
+| Dashboard → Year-on-year (`b6`) | `DashboardV2.getYoy` | one series **per type** |
+| Assessments list → "Avg progress" | `AssessmentV2` | curved NPS + band |
+| Students (institute-wide) | `StudentWiseV2` | curved NPS, score **and** delta |
+| Assessment detail (all tabs) | `AssessmentDetailV2` | curved NPS |
+
+### Three rules that are easy to get wrong
+
+1. **A delta is `curve(latest) − curve(first)`, never `curve(latest − first)`.**
+   The curve is concave and defined on 0–100 band space; a delta does not live
+   there, and curving one clamps every decline to zero.
+2. **Never band a progress score against `assessmentBands.LADDERS`.** Those are
+   the raw-percentage cutoffs (Communication `30/45/60/75/90`) and they do
+   **not** match the curved boundaries `npsScale` derives
+   (`31.74 / 52.65 / 68.26 / 80.73 / 91.11`). Band via `npsBandOf`, which reads
+   the derived values, or re-tuning `NPS_CURVATURE_K` silently desyncs the
+   colours.
+3. **Risk bands on an NPS type are ladder POSITIONS, not a 40/70 cut.** A flat
+   "below 40 is high risk" paints an A2 cohort the same red as an A1 one,
+   because after the curve A1 alone spans `0–31.74`. The dashboard's risk
+   sub-labels therefore read "Lowest level / Mid levels / Top level" and no
+   longer quote a percentage.
+
+### Year-on-year is per type, one at a time
+
+`getYoy` used to average **every** type into a single line labelled `/100` —
+Aptitude against Communication against Role_Based, on ladders that mean
+different things. It now returns **one series per assessment type**, ordered
+longest-history-first (ties broken on sample size), each carrying `unit`
+(`""` for a progress score, `"/100"` for a percentage) and `isProgressScore`.
+
+Both scales round to **1 dp**: `curveNPS` returns 2 dp, which printed `63.98`
+beside a percentage series reading `42.7` in the same panel.
+
+The panel renders **one series at a time** behind a type tab strip (the same
+control the Competency block above it uses). Rendering a card per type shrank
+each chart to a third of the panel width, where the line is a smudge and the
+axis labels are illegible. One full-width chart, and still never two scales on
+one axis.
+
+**Types with no `SCORE_EXPR` entry produce no series at all** — AI_Interview and
+Behavior. On UAT that silently drops 25 submitted AI_Interview attempts from the
+panel. Pre-existing, unchanged, and consistent with those types being absent
+from every other score roll-up.

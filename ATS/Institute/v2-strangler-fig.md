@@ -999,8 +999,29 @@ announce an action list that is not on the page.
 
 Blocks now rendered: `b1` needs-attention (queue hidden) + 3 season KPIs, `b4a` active
 assessment schedules, `b4c` student at-risk, `b4d` department distribution,
-`b4b` competency, `b6` year-on-year (only with 2+ years of data), plus the
+`b4b` competency, `b6` year-on-year (renders from ONE year — it states how much
+history it has rather than vanishing), plus the
 "This week" rail.
+
+### `b6` year-on-year is per type, one series at a time
+
+The panel used to plot a single mean across every assessment type, labelled
+`/100`. That averaged a Communication progress score against an Aptitude one
+against a Role_Based percentage — scales that mean different things.
+
+`getYoy` now returns **one series per type**, longest-history-first, each with
+its own `unit` and `isProgressScore`. The panel shows **one at a time** behind a
+type tab strip, reusing the `.ar-typebar` control from `b4b` directly above it.
+
+The first attempt at this rendered a card per type. Do not go back to it: three
+cards in a panel sized for one collapse each chart to a third of the width,
+where the line is a smudge and the axis labels are unreadable, and three copies
+of the same footnote fill the rest. The `[data-block="b6"]` CSS is written for a
+single full-width card (`flex: 1 1 0`, `min-height: 200px` on the chart).
+
+The "N-year" chip reads the SELECTED series, not `series[0]` — they differ.
+
+See `Assessment/nps-scale-and-curve.md` for the scale rules.
 
 ### Student at-risk bands only judge windows that have CLOSED
 
