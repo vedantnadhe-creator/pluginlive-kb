@@ -50,67 +50,118 @@ Input (e.g., "BVRIT Narsapur")
 
 **Graceful Degradation:** When embedding/LLM API is down, circuit breaker skips vector signal and LLM — serves trigram/acronym/exact only.
 
-### Role-family clustering (Development, 2026-08-24)
+### Role-family clustering (DEV + UAT, updated 2026-08-25)
 
-Role search also supports transitive semantic families. This solves cases where
+Role search supports transitive semantic families. This solves cases where
 `software developer` is close to `full stack engineer`, and `full stack engineer`
 is close to `DevOps engineer`, even when the first and last titles do not clear a
 direct cosine threshold.
 
+**Taxonomy first, embeddings for the tail.** A curated list of **25 occupational
+families** (`_ROLE_FAMILIES` in `src/core/role_cluster.py`) routes every title
+that matches a family pattern — software/DevOps/cloud, data & AI, IT
+infrastructure, cybersecurity, product/project, design & content, sales & BD,
+marketing, education, healthcare, finance & banking, HR, customer support,
+operations, mechanical, civil, electrical/telecom, chemical, manufacturing,
+supply chain, legal, hospitality, retail, aviation/defence, agriculture. The
+first family whose pattern matches wins, so ordering inside the dict is
+meaningful. Only titles that match nothing are clustered by the graph.
+
+**Why:** short job titles give MiniLM too little signal. Before 2026-08-25,
+generic and placeholder titles (`role 03`, `testi`, `new user role`) sat
+near-equidistant from everything and acted as hubs, chaining nurses,
+accountants, designers, teachers and drivers into a single 1,897-posting blob —
+only the one reviewed software family stayed clean. Searching `nurse` and
+searching `accountant` returned the same 1,217 UAT candidates.
+
 - `POST /api/v1/admin/role-clusters/rebuild` loads every `role`, cleans its
   description/JD, weights the title more heavily, and embeds that combined text
   locally with the open-source `sentence-transformers/all-MiniLM-L6-v2` model
-  through FastEmbed/ONNX. It folds
-  case/whitespace-equivalent duplicate job postings into one title concept,
-  builds a cosine k-nearest-neighbour graph, and partitions it with deterministic
-  Louvain community detection. A small reviewed taxonomy supplies intentional
-  long-range bridges that embeddings miss; the first family combines software,
-  full-stack, frontend/backend, DevOps, SRE and cloud titles. All original
-  job-role IDs are mapped back to the resulting cluster.
-- Defaults: `neighbours=12`, `edge_threshold=0.68`, `resolution=0.8`, seed `42`.
-  Parameters are query parameters so they can be tuned against reviewed DEV
-  examples without a code release.
+  through FastEmbed/ONNX. It folds case/whitespace-equivalent duplicate job
+  postings into one title concept, builds a **mutual** cosine k-nearest-neighbour
+  graph, and partitions it with deterministic Louvain community detection. Family
+  titles are then lifted out into their reviewed clusters. All original job-role
+  IDs are mapped back to the resulting cluster.
+- **Mutual k-NN** keeps an edge only when both titles rank each other in their own
+  top-k. A hub title is near everything, but the titles it points at do not point
+  back, so the false bridges disappear while real families survive.
+- Defaults: `neighbours=12`, `edge_threshold=0.68`, `resolution=1.0`, seed `42`.
+  Parameters are query parameters so they can be tuned against reviewed examples
+  without a code release.
 - Clusters are stored in `public.role_clusters`; membership is stored in
   `public.role_cluster_memberships`. Local 384-dimensional role embeddings are
   cached by content hash in `public.role_cluster_embeddings`, so later rebuilds
   generate vectors only for new or edited roles. Rebuild replacement is
   transactional.
-- When the embedding queue processes a new or renamed `role`, it assigns the row
-  to the cluster of its nearest embedded member at similarity `>= 0.68`; otherwise
-  it creates a singleton. Periodic full rebuilds allow later bridge roles to
-  reshape communities globally.
-- `POST /api/v1/role-clusters/search` embeds free text locally and returns the
-  complete family (`method=local_minilm_cluster_seed`). Reviewed family terms
-  route to that family before nearest-role selection; this is how `full stack
-  engineer` and `cloud engineer` reliably reach the software/DevOps/cloud family
-  even when no exact canonical title exists.
-  `GET /api/v1/admin/role-clusters/{role_id}` returns a family directly from a
-  known role ID.
 
-Title+JD DEV backfill result (2026-08-24): 7,505 role rows, 1,585 unique
-normalized titles, 76 clusters. Acceptance queries `software developer`,
-`full stack engineer`, `devops engineer`, and `cloud engineer` all resolve to
-cluster `Software Engineering, DevOps & Cloud` (269 role rows).
+**New-role lifecycle.** `corporate.job_roles` has trigger
+`trg_job_roles_embedding` → `public.embedding_queue`. When the queue processes an
+INSERT/UPDATE for a `role`, the worker embeds it and calls
+`assign_role_to_cluster`: reviewed family first (`method=taxonomy_family`),
+otherwise the nearest embedded member at similarity `>= 0.68`
+(`method=nearest_cluster`), otherwise a singleton (`method=new_singleton`).
+On DELETE the worker calls `remove_role_from_cluster`, which drops the membership
+row and the cached vector and recomputes `member_count` — without it, deleted
+roles stayed in clusters and analytics kept expanding to dead role IDs.
+Incremental assignment only joins an existing cluster or opens a singleton; it
+never re-partitions, so periodic full rebuilds are still needed.
 
-UAT received the same implementation in merge commit `36c336e` on 2026-08-24.
-The UAT backfill produced the same 7,505 rows / 1,585 titles / 76 clusters and
-reused all 7,505 content-identical cached vectors. The four acceptance queries
-pass through `https://vector-search.uat.pluginlive.com` and expand to the same
-269-row software/DevOps/cloud family.
+**Endpoints**
 
-Role clustering and cluster search make no paid embedding API calls. The model
-is baked into the service image and runs on DEV CPU. This is separate from the
-existing Gemini-backed entity-normalizer fallback and its startup health check.
+| Endpoint | Purpose |
+| --- | --- |
+| `POST /api/v1/role-clusters/search` | Free text → matched role → complete family (`method=local_minilm_cluster_seed`) |
+| `POST /api/v1/role-clusters/assign` | Place one role into its cluster synchronously — body `{"role_id": "<job_roles.id>"}`. For callers that create a role and need its cluster before the queue worker gets to it. Upsert, so re-assigning is safe. 404 when the role does not exist, 422 on empty id |
+| `POST /api/v1/admin/role-clusters/rebuild` | Full rebuild; accepts `neighbours`, `edge_threshold`, `resolution` |
+| `GET /api/v1/admin/role-clusters/{role_id}` | Family for a known role ID |
 
-DEV backfill after deployment:
+**UAT state (2026-08-25, merge `0ac8b52`):** 7,505 role rows, 1,585 unique
+titles, **304 clusters**, largest 684 postings (was 1,897), 201 singletons, all
+7,505 cached vectors reused — zero paid embedding calls, rebuild ~13 s.
+
+Verified through `https://vector-search.uat.pluginlive.com` and the analytics API
+`https://data-normalization.uat.pluginlive.com/api/student-metrics?role_search=`:
+
+| Query | Cluster | Analytics candidates |
+| --- | --- | --- |
+| software developer / cloud engineer / devops / full stack | Software Engineering, DevOps & Cloud (357p) | 1,218 |
+| nurse | Healthcare & Life Sciences (447p) | 35 |
+| accountant | Finance, Accounting & Banking (11p) | 0 |
+| graphic designer | Design, Content & Creative (471p) | 7 |
+| sales executive | Sales & Business Development (251p) | 224 |
+| teacher | Education & Training (344p) | — |
+| data scientist | Data, Analytics & AI (27p) | — |
+
+Before the fix every one of those queries returned the same 1,217 candidates.
+
+New-role E2E on UAT: inserting `Senior Cloud Platform Engineer` fired the trigger,
+`POST /role-clusters/assign` returned `taxonomy_family` → Software Engineering,
+DevOps & Cloud (357 → 358 postings), the devops cluster search contained the new
+role, and deleting the role took the count back to 357.
+
+Role clustering and cluster search make no paid embedding API calls. The model is
+baked into the service image and runs on CPU. This is separate from the existing
+Gemini-backed entity-normalizer fallback and its startup health check.
+
+Backfill after deployment:
 
 ```bash
-curl -X POST 'https://vector-search.dev.pluginlive.com/api/v1/admin/role-clusters/rebuild?neighbours=12&edge_threshold=0.68&resolution=0.8'
+curl -X POST 'https://vector-search.uat.pluginlive.com/api/v1/admin/role-clusters/rebuild?neighbours=12&edge_threshold=0.68&resolution=1.0'
 ```
 
-Implementation: `pg-vector-api-service` Development commits `a862470`,
-`103f842`, `c84fdb8`, and `386d664` (following the original title-only commits
-`f200744` and `888c322`).
+**Not in PROD.** `pg-vector-api-service` PROD runs `release-v1.37` and returns 404
+for `/api/v1/role-clusters/search`; `prod_pluginlive` has no `role_cluster*`
+tables. `form-data-normalization` `release-v1.38` carries commit `791b5f2`, an
+explicit revert of the cluster role search, and PROD FDN has no
+`SEMANTIC_ROLE_SEARCH_ENABLED`. PROD `corporate.job_roles` holds 2,361 rows
+(1,612 active) and already has the `trg_job_roles_embedding` trigger, so a PROD
+rollout needs: both services on a branch carrying the code, the three
+`role_cluster*` tables, one rebuild, and `SEMANTIC_ROLE_SEARCH_ENABLED=true`.
+
+Implementation: `pg-vector-api-service` Development commits `bae86f9` and the
+delete-cleanup follow-up (UAT merges `ae903d0`, `0ac8b52`), on top of the original
+clustering commits `f200744`, `888c322`, `a862470`, `103f842`, `c84fdb8`,
+`386d664`.
 
 > **Known issue (partially fixed, 2026-08-11) — degree aliases must resolve to the canonical master.**
 > `/normalize/multi` with `entity_types=["degree","degree_level"]` for input `"B.E./B.Tech"` returns the
