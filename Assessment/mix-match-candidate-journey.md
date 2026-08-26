@@ -632,6 +632,17 @@ Requires `FASTAPI_URL` (server-side only, v1's `REACT_APP_FASTAPI_URL`).
 
 `beforeunload` raises the browser's own confirmation while an attempt is live, dropped once it is submitted so the completion page never argues about leaving. No site can choose that prompt's wording — every major engine has shown fixed text since 2016 — so the consequence is also stated in plain sight next to the timer: *"Don't reload or close this tab — your assessment will be submitted as it stands."*
 
+**And it now is (2026-08-26).** That sentence was empty for as long as it existed: dismissing the prompt and reloading landed back in the exam with *"Welcome back — we picked up where you left off"*, because the take page resumed the localStorage attempt (`isResumable` → `reconcileAttempt`). A candidate could reload out of any position with no consequence at all. The rule now matches the warning — **re-entering a live attempt submits it**:
+
+- The stored record is still hydrated, so the answers go with it, and the submission runs through the **same `finish()`** the third tab violation already used — every non-AI part submitted as it stands, unanswered questions included, recordings drained first.
+- That load never shows the exam again. It shows *"Submitting your assessment"*, then the completion screen; a failed submit turns the same card into a retry rather than stranding the candidate.
+- **Back is trapped** (`popstate` re-pushes the entry while the attempt is live, as `Assessment-React` v1 does). Back is a client-side navigation, so `beforeunload` never fires on it — untrapped, it would have submitted a paper the candidate was never warned about.
+- The AI Interview part is not submitted here (it owns its own completion endpoint); its `startSession` single-attempt guard already flips a reloaded interview to `DROPOUT`, and the sitting-level dropout cron covers the rest.
+
+Scope, deliberately: the record is per-browser (`examStorage.ts` ponytail), so leaving on one device and re-opening the invite on **another** still resumes — the server's own start guard treats an `INPROGRESS` part as a resume. Closing and re-opening in the same browser is covered; a different device is not. Worth knowing: an OS-level tab eviction on mobile also comes back as a reload, and therefore now submits.
+
+Deployed DEV + UAT 2026-08-26; PROD pending.
+
 ### The completion page is a dead end, deliberately
 
 It used to offer a Done button routing to `/`, which is the sign-in screen: a candidate who had just submitted could enter their email, take a fresh OTP and walk back into a finished assessment. The invite and candidate sessions are now cleared on arrival and the button is gone, so neither it nor the back button leads anywhere that can reopen the sitting.
