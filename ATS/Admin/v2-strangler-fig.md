@@ -239,6 +239,45 @@ config panel but the field remains in `AiInterviewConfig`, `defaultConfig` and
 the mix-match payload defaulting to `"Flat"`, the same way Probing Style was
 removed earlier and still defaults to `"Neutral"`.
 
+**Assessment validity is the window, said the other way round** (2026-08-26).
+Step 3's Assessment Configuration panel shows an **Assessment validity (days)**
+box next to Assessment duration on every **one-time** float, corporate and
+college. It is not a field of its own: typing `N` moves the **end date**, and
+moving the end date re-derives `N` (`windowDays` / `addDays` in
+`src/lib/assessments/schedule.ts`, wired through `windowValidityDays` /
+`setWindowValidityDays` in `useAssessmentWizard`). `end = start + N` matches the
+arithmetic admin-node applies to a schedule's `assessment_validity_days`, so
+both flows mean the same thing by "N days".
+
+It is derived rather than stored because **a standalone number here would be a
+dead control, and was one**. `POST /assessment/assignMixMatchAssessment` takes
+`startDate`/`endDate` verbatim and has no `assessment_validity_days` — the BFF
+has only ever sent validity on the recurring-schedule branch. The corporate
+panel nonetheless carried its own validity input from the start, posted nowhere,
+so every one-time float ignored whatever was typed into it. That is the
+"Corporate: Assessment Validity — whatever we set it gives the default only"
+report. `d176182` (UAT) / `bd45305` (Development) answered it by **deleting** the
+input on 2026-08-21, which left the admin with no way to say how long a
+candidate gets; deriving it from the window restores the control and makes it
+impossible for the box to disagree with what is actually sent.
+
+**A recurring schedule keeps its own separate validity input** inside
+`RecurringSchedule`, and that one really is a stored column
+(`assessment_schedules.assessment_validity_days`) sizing **each generated run** —
+a different number from the schedule's overall start/end window, which the single
+window cannot express. Corporate never reaches it: recurring schedules are
+college-only (`unschedulableSelectionReason`), because the nightly scheduler
+assigns with `isOtpInvite: false` and would send a corporate candidate the
+password-flow email instead of an OTP. v1 draws the same boundary — its validity
+input lives inside the `entityType !== 'corporate'` scheduled-distribution block
+(`AssessmentSelect.js`), so corporate never had one there either.
+
+Round-trip, month/year-boundary and empty/backwards-window cases are covered in
+`src/lib/assessments/schedule.test.ts`. See also
+[Assessment/schedule.md](../../Assessment/schedule.md) for the matching
+admin-node fix — the immediate diagnosis assign used to hard-code a 10-year
+window and ignore the configured validity.
+
 ## Auth — admin-node wants the RAW token
 
 v2 is same-origin with v1, so it reads v1's JWT from `localStorage.token` (falling
