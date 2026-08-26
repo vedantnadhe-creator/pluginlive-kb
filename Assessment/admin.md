@@ -736,6 +736,46 @@ Two decisions worth keeping:
   `"<title> - Behavior"`; the type is already its own column, so the suffix only
   repeated it. Same reasoning applied to the candidate email.
 
+## The float detail screen dates its rows across the parts (2026-08-26)
+
+A float detail screen is served by **`getMixMatchAssessmentDetails`**, not by the
+per-assessment branch of `getAssessmentDetails` — the Active list hands the
+detail screen a **group id** where a normal row gives a map id, and
+`getAssessmentDetails` routes anything that resolves to a
+`assessment.mix_match_groups` row down the float path.
+
+That path builds its candidate rows out of `getMixMatchConsolidatedReport`,
+which carries scores and statuses but **no timestamps at all**. So until
+2026-08-26 `sentDate` / `startDate` / `endDate` were simply absent from the
+payload and **every date column on every tab of a float was blank** —
+ASSESSMENT SENT DATE and ASSMT. START & END DATE on Assessment Sent / Pending,
+plus the Inprogress and Dropped Off timestamp columns. The columns were never
+broken; they had nothing to render.
+
+**A float row is a candidate across every part, not a candidate in one
+assessment**, so there is no single assignment to read these off.
+`floatCandidateDates(parts)` (`app/helpers/candidateTimestamps.js`) derives them:
+
+| Cell | Derivation |
+|---|---|
+| `sentDate` | earliest `invite_sent_at` of any part (then `created_at`, then the map `start_time`) via `resolveSentDate` — **one invitation covers the whole float**, and it is recorded against only the owner part, so the other parts carry no invite instant |
+| `startDate` / `startedDateTime` | earliest `assessment_started_at` — the candidate starts the float when they open the first part |
+| `endDate` | **latest** part `end_time` — the window closes when the last part closes |
+| `droppedOffDateTime` | **latest** `dropped_at` — the last part they walked out of |
+
+The shapes match the per-assessment payload exactly, because the same
+admin-react table renders both: pre-formatted `DD MMM YYYY` for the map columns
+(IST wall-clock in a UTC column → `moment.utc`), **ISO** for genuine instants
+(`assessment_started_at`, `dropped_at` → the browser renders them in the
+viewer's zone), and `"-"` rather than a missing key for start/end — the cell
+renders `{start} - {end}` and only emits the separator when **both** keys are
+truthy, so an absent key would glue the sent date to the end date. No frontend
+change was needed. Covered by `test/floatCandidateDates.spec.js`.
+
+Note the START & END cell shows the **attempt** start (falling back to the sent
+date), not the window start — that is the per-assessment screen's long-standing
+semantics, mirrored here deliberately rather than fixed on one screen only.
+
 ## Aptitude: the three blueprints, and two ways they were being missed
 
 30 min → **25** questions, 45 → **30**, 60 → **40**. Difficulty changes the MIX

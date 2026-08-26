@@ -2004,3 +2004,26 @@ Two gotchas already fixed here:
 - Unlimited packs are a separate state from a numeric quota. `total > 0` with
   `hasUnlimited` is a real combination — a metered pack *and* an unlimited one —
   so the widget cannot treat "unlimited" as simply `total === 0`.
+
+## The breakdown columns sort too (2026-08-26)
+
+Speaking / Listening / Reading / Writing — the columns the Performance Score
+header's caret expands — were the only plain `<th>` left in the Student-wise
+performance table. Every other column already carried `SortHeader`, so ranking a
+cohort by one language skill (the reason the breakdown is opened at all) meant
+reading down the roster by eye.
+
+They were left out because they are the table's only **dynamic** columns:
+`SCORE_SUB_CATEGORIES` gives Communication its four language skills and Aptitude
+its three reasoning sections, so they never fitted the fixed `SortKey` union.
+
+`SortKey` now also admits `` `sec:${string}` `` — one key per breakdown column —
+and `sortValue(key)` in `PerformanceTab.tsx` resolves a `sec:` key against the
+row's own `sections`, with everything else falling through to the existing
+`SORT_VALUE` map. A student whose attempt carries no such section sinks with the
+nulls, the same way every other column treats missing data. First click opens
+best-first, matching the other performance columns.
+
+**Collapsing the breakdown hands the sort back to Performance.** Otherwise the
+column driving the row order would be hidden and the table would sit in an order
+nothing on screen explains.
