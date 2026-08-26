@@ -161,6 +161,12 @@ Verified on "Communication - Schedules" (20 daily runs from 12 Aug 2026,
 
 ### Diagnosis maps fold into their schedule (2026-08-11)
 
+> **Superseded on 2026-08-26.** The `(institute_id, assessment_type)` +
+> `DISTINCT ON (type)` key described here was an *inference*, and the detail
+> page inferred differently — see "Diagnosis ownership is stored, not inferred"
+> below for the rule in force now. The three traps below still apply verbatim;
+> they are properties of a folded group, not of how the group is resolved.
+
 `abc15aa`/`589a466` institute-node, `6ab1a89` frontend. Shared helper
 `app/helpers/assessmentGrouping.js` holds the grouping so the assessments list
 and the dashboard cannot drift — both resolve the same group key.
@@ -220,6 +226,79 @@ Verified on UAT for the institute behind the report: the list collapses to one
 row (`Communication - Schedules`, Recurring, 0/20, 12–31 Aug, 4 students) and
 its Schedule tab opens on **Diagnosis · Ongoing · Assessment #1 1/4 ·
 Assessment #2 0/4 · 1/8** — matching admin exactly.
+
+### Diagnosis ownership is stored, not inferred (2026-08-26)
+
+`c62d619` admin-node, `28666db` + `a18f4d8` institute-node, `3eacaf9`
+institute-react-v2, DB-Scripts `20260826T072914Z__aas_is_diagnosis_flag.sql`.
+
+Folding (2026-08-11) had to **guess** which schedule owned a diagnosis map,
+because there is no FK to guess from. The dashboard and the detail page guessed
+differently, so one schedule reported two sets of numbers:
+
+| Screen | Old rule | On UAT's `acsac` |
+|---|---|---|
+| Dashboard + Assessments list | `DIAG_PARENT_CTE` — `DISTINCT ON (assessment_type) ORDER BY created_at DESC`, so the **newest** schedule of a type absorbed **every** diagnosis map in the college | 80 units / 36 students / Avg progress **64 (B1)** |
+| Detail page (all 3 tabs) | `DIAG_OWNER_CTE` — re-derived the owner by matching each map's assigned students against every schedule's roster | 6 units / 1 student / **18.30 (A1)** |
+
+`acsac` was merely the newest of that institute's 38 Communication schedules,
+so it inherited 76 foreign diagnosis maps and reported the cohort average of
+nine *other* schedules' students. `DIAG_OWNER_CTE` was right but expanded every
+roster in the institute on every call — **19.5s** on PROD's largest.
+
+**Both are gone.** `assessment.assessment_assigned_students.is_diagnosis`
+(`NOT NULL DEFAULT false`, partial index `ix_aas_diagnosis` on
+`(lower(btrim(primary_email)), is_diagnosis) WHERE is_diagnosis`) now stores the
+fact at write time, and membership is an indexed join.
+
+**The rule, evaluated identically on every screen:** a diagnosis belongs to the
+**student**, so a schedule shows **the diagnosis attempts of its own students,
+of its own type**.
+
+- `MEMBER_CTE` in `app/helpers/assessmentGrouping.js` replaces both old CTEs and
+  is consumed by `DashboardV2`, `AssessmentV2`, `AssessmentDetailV2` and
+  `StudentWiseV2` — one definition, so the screens cannot drift again.
+- **Membership is per ATTEMPT (`assessment_assigned_id`), not per map.** It has
+  to be: one diagnosis map can carry students belonging to different schedules
+  (the largest on UAT carries 1,000), so the map cannot be attributed as a unit.
+- **A student in N schedules of a type contributes their diagnosis to all N.**
+  That is the rule working, not a bug — but it means an institute-wide total
+  must count **DISTINCT attempts**, never a sum of per-group subtotals
+  (`getSummary` in `DashboardV2.js`).
+- **An orphan diagnosis still lists.** A student in no schedule of that type (a
+  manual send) keeps their map's own id as the group key, so the map heads its
+  own row instead of vanishing. `folded_diag` / `LISTABLE` excludes only maps
+  that *found* a home, so nothing is listed twice.
+- `sched_roster` is built from the schedule's **own assigned students**, not
+  `student_lists.students_data` — the planned roster can name students who were
+  never assigned, and it is that jsonb expansion that cost the old owner
+  inference 19.5s.
+
+**Gotchas worth keeping:**
+
+- **Deploy order is not optional: admin-node before institute-node.** Diagnosis
+  created in the gap would be written `is_diagnosis = false` and disappear from
+  every institute screen. Honoured on DEV and UAT.
+- **`assessment_institute_map.schedule_id` is still deliberately NULL on
+  diagnosis maps.** Stamping it would flip student-node's own
+  `is_diagnosis: !assessmentInstituteMap?.scheduleId`
+  (`student-node/app/models/Assessment.js:1676`) and drop the pair out of the
+  student's assessment list. That contract is untouched; the flag is a side
+  fact, not a replacement for it.
+- The flag also retires the *three* different derivations that used to exist —
+  institute-node's `schedule_id IS NULL AND NOT is_one_time AND type IN
+  (comm, aptitude)`, student-node's `!assessmentInstituteMap.scheduleId`, and
+  the student app's `"Assessment #N"` title match.
+
+**Backfill reproduces the old derivation exactly, so nothing moved on landing
+day:** DEV 3,777 / 27,790 rows flagged, UAT 4,117 / 21,314 — **0 mismatches**
+against the old predicate on both. PROD pending.
+
+Verified on UAT after deploy: `acsac` now reports **6 units / 1 student / 2
+diagnosis units** on every screen (the detail page's figure, not the dashboard's
+80), and the institute invariant holds — **302 distinct attempts in `member` ==
+302 non-practice assignments**, nothing double-counted and nothing dropped.
+`test/assessmentGrouping.spec.js` (7 cases) pins the rule.
 
 ### Counting: assessments, not people (2026-08-12)
 
