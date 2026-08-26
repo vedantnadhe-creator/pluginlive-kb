@@ -55,6 +55,12 @@ DEV-built bundle sends UAT users to DEV. Both new deploy branches therefore
 than serving it. This is the same failure that once bounced UAT assessment-invite
 recipients into DEV.
 
+`NEXT_PUBLIC_DEMO_MODE` is baked the same way and must stay **absent** from
+UAT's `.env.uat` / `.env.prod`: it is what switches on the invite-less demo
+journey (mock assignments, OTP `123456`) that the v2 root serves when the URL
+carries no invite token. Only the DEV box sets it — see
+[[Assessment/mix-match-candidate-journey]].
+
 Server-only vars (`STD_API_URL`, `AUTH_API_URL`, `CORP_V2_API_URL`, …) are read
 at runtime and are *not* baked — which is why grepping the bundle for
 `uat.pluginlive.com` correctly returns **nothing**. Absence of dev URLs is the

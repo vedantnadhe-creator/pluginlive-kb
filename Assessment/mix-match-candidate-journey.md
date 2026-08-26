@@ -8,6 +8,19 @@ Universal Mix & Match OTP invites resolve to:
 
 After OTP verification, the browser stores a candidate-scoped `assessment:run` JWT in session storage. The JWT identifies the owner assignment; it is not replaced with a second token.
 
+### The invite-less demo route is DEV-only (2026-08-26)
+
+Opening the v2 root **without** an `inviteToken` never resolved an invite — it fell through to the mock journey in `src/app/_mock/journey.ts`: the real sign-in UI wired to a fixed OTP `123456` (shown on screen as a "Demo code" hint) and mock assignments from `fetchDemoAssessmentSummary`. Because the app is deployed on every environment, a bare visit to `assessment.uat.pluginlive.com` or `assessment.pluginlive.com` served that screen, and anyone typing any email plus `123456` walked into a fake assessment.
+
+That entry point is now gated on **`NEXT_PUBLIC_DEMO_MODE`** (`src/lib/demoMode.ts` — `process.env.NEXT_PUBLIC_DEMO_MODE === "true"`), baked into the bundle at build time from the box's own env file, and **off unless explicitly set**:
+
+- **DEV** — `.env.local` / `.env.prod` on the DEV box carry `NEXT_PUBLIC_DEMO_MODE=true`, so the demo journey and the `123456` hint still work for testing.
+- **UAT / PROD** — the env files carry no such key (and `.dockerignore` keeps a stray `.env.local` out of the image), so a token-less URL renders the fatal "Invite unavailable → *Open your assessment from the invite link we emailed you*" card, and `/assessment` reached without an `assessment:run` session redirects back to sign-in instead of loading mock assignments. The invite path itself is untouched — a bogus `?inviteToken=` still hits the resolver and reports "Invalid invite link".
+
+Failure mode to remember: the flag defaults **off**, so a new environment that forgets it simply has no demo — the safe direction. Adding it anywhere candidates can reach re-opens a passwordless door.
+
+Deployed DEV + UAT 2026-08-26; PROD pending (ships with the next hotfix).
+
 ## The candidate is invited to "an assessment", never to a "Mix & Match" (2026-08-20)
 
 A float that bundles several types is still **one assessment** to the person
