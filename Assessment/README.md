@@ -2,6 +2,12 @@
 
 This folder contains detailed documentation for each assessment type and cross-cutting infrastructure in the PluginLive Assessment platform.
 
+> **Candidate frontend: write new work in `assessment-react-v2`, not `Assessment-React`.**
+> As of 2026-08-26 the candidate-facing app has moved to v2; the legacy
+> `Assessment-React` app is maintenance-only, and the two share no code — a fix in
+> one is not in the other. Which app a given candidate lands in still depends on
+> their invite URL. Read `candidate-frontend-v2.md` before editing either.
+
 ## Assessment Types
 
 - `communication.md` -- Communication Assessment (reading, listening, speaking, writing with CEFR levels)
@@ -14,6 +20,7 @@ This folder contains detailed documentation for each assessment type and cross-c
 - `assignment-calculation-queue.md` -- Async assignment + calculation/progression queues (flag-gated), real-time Activity UI with Detail page + Assignment/Calculation toggle + retry. Live on DEV + UAT.
 - `auto-reminders.md` -- Automated 24h candidate reminders (hourly cron, atomic claim, capped at 3, queue-backed). DEV + UAT, ships disabled.
 - `email-delivery-tracking.md` -- Invite/reminder delivery + candidate journey tracking (email_events, candidate_journey_events, DELIVERY column + Excel column). Live DEV + UAT.
+- `candidate-frontend-v2.md` -- **Candidate frontend v2 migration** (`assessment-react-v2` is where changes go; strangler-fig topology, the invite-URL seam that still reaches v1, the duplicated deviceTier/fullscreen/proctoring code, deploy)
 - `admin.md` -- Admin Assessment Workflow (dashboard, listing, assignment, analytics, proctoring review)
 - `admin-frontend.md` -- Admin-React Assessment Frontend (UnifiedAssessmentTable, StudentReport, NPS, pagination, corporate clickability)
 - `institute.md` -- Institute Assessment (TPO view, two-API architecture, StudentListInfo schedules, score format differences, PDF browser pool)

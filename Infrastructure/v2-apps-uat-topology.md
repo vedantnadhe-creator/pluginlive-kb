@@ -5,7 +5,9 @@ and given `deploy.sh` entries. Before this, only `institute-react-v2` was on the
 box and it was deployed **by hand** — UAT's `deploy.sh` had no v2 entry at all.
 
 Companion docs: [ATS/Institute/v2-strangler-fig.md](../ATS/Institute/v2-strangler-fig.md),
-[ATS/Corporate/v2-strangler-fig.md](../ATS/Corporate/v2-strangler-fig.md).
+[ATS/Corporate/v2-strangler-fig.md](../ATS/Corporate/v2-strangler-fig.md),
+[Assessment/candidate-frontend-v2.md](../Assessment/candidate-frontend-v2.md) — which of the
+two assessment apps to edit, and which candidates still reach v1.
 
 ## What runs where on UAT
 

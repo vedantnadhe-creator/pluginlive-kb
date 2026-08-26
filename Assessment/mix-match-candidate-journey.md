@@ -1,5 +1,9 @@
 # Mix & Match candidate journey (v2)
 
+> The app described here, `assessment-react-v2`, is now **the** candidate
+> frontend — all new assessment work lands in it, not in `Assessment-React`.
+> See [candidate-frontend-v2.md](candidate-frontend-v2.md).
+
 ## DEV entry point
 
 Universal Mix & Match OTP invites resolve to:

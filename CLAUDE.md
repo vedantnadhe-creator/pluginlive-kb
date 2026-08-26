@@ -6,6 +6,7 @@ When working on a feature, check the relevant file here **before asking the user
 
 - `pluginlive.md` — company overview (SaaS hiring platform, Assessment + ATS products)
 - `Assessment/README.md` — assessment system overview
+- `Assessment/candidate-frontend-v2.md` — **the candidate app is `assessment-react-v2`; `Assessment-React` is legacy/maintenance-only** — read this before editing either frontend
 - `Assessment/aptitude.md` — aptitude test scoring, flow, proctoring
 - `Assessment/communication.md` — video/audio assessment scoring
 - `Assessment/custom.md` — custom question assessments
