@@ -524,6 +524,78 @@ The Add Candidate button in `UnifiedAssessmentTable` detects standalone/one-time
 
 Supports: Communication, Aptitude, Behavior, Role_Based
 
+### A CORPORATE late joiner gets their own deadline (2026-08-26)
+
+A candidate added after a corporate assessment was created used to inherit
+whatever was left of the shared window: added on the 27th of a 21→30 assessment
+they got **3 days**, while the day-one candidates got 9. The attempt window
+lived **only on the map row** (`assessment_corporate_map.end_time`) and
+`assessment_assigned_students` had no window column at all, so there was no
+per-candidate deadline to give them.
+
+Two nullable columns fix it (migration
+`20260826T143820Z__corporate_per_candidate_validity.sql`, DEV+UAT 2026-08-26,
+**PROD pending**):
+
+| Column | Meaning |
+|---|---|
+| `assessment_corporate_map.assessment_validity_days` | how many days ONE candidate gets, set when the assessment is created |
+| `assessment_assigned_students.end_time_override` | that candidate's own deadline; `NULL` = use the map |
+
+**Why an override and not the obvious alternatives.** Extending the map's
+`end_time` would move the deadline for **everyone** on the assessment. Putting
+late joiners on a second map would fragment every report, count and at-risk band
+that groups by map. The override is the only shape that moves one candidate.
+
+**Every deadline is now `COALESCE(aas.end_time_override, map.end_time)`** —
+resolved in all of:
+
+- `admin-node` `InviteShortLinkService.fetchAttemptWindowEnd` — the invite short
+  link and the click-token TTL. **Corporate's primary gate**, since corporate
+  candidates arrive through the OTP link rather than the portal.
+- `admin-node` `AutoReminderService` — the window-open guard, the final-call
+  guard, and the deadline printed in the reminder.
+- `admin-node` `_addStudentsToOneTimeAssessment` — the "complete by" date in the
+  invite mail, resolved from the same value the link is minted against.
+- `student-node` `getActiveAssessments` — the list where-clause **and** the date
+  shown to the candidate.
+
+Miss one and a late joiner is stranded between a list that hides the assessment
+and a link that still opens it. Note the **attempt handler itself has no window
+check** — enforcement is the listing plus the link, which is why those two
+matter most.
+
+**The arithmetic** lives in `admin-node/app/helpers/lateJoinerDeadline.js`
+(`lateJoinerEndTime`), unit-tested in `test/lateJoinerDeadline.spec.js`. It is
+deliberately **extend-only**: joining early with a short validity returns `null`
+rather than cutting a window short. It closes at the **same time of day** the
+assessment does, so a late joiner's final day is as long as everyone else's.
+Do not confuse it with the older `helpers/candidateDeadline.js`, which *renders*
+a deadline as email copy — this one *decides* what the deadline is.
+
+**Timezone:** `end_time_override` is stored in the SAME frame as the map's
+`end_time` — **IST wall-clock digits tagged UTC**, not the true instant. Compare
+it against `NOW() + interval '5:30'` exactly like the map columns.
+
+**Institute is untouched by construction** — admin-node only ever writes the
+column on the corporate path, so institute rows (and every pre-existing
+corporate row) stay `NULL` and resolve to the map exactly as before. Prisma
+cannot `COALESCE` across a relation, so student-node's filter spells the two
+cases out as an `OR` behind one shared predicate (`corporateWindowClause`).
+
+**Caveat worth knowing:** a corporate assessment can now have **live candidates
+past its own `end_time`**. Anything that assumes the map's end is the last
+possible attempt — closed-window at-risk bands, archival, "expired" counts —
+should be read with that in mind. Assessment-level status in `corporate-node`
+(`statusOf`, the funnel's `MAX(acm.end_time)`) deliberately still reports the
+**assessment's** window, not any one candidate's.
+
+Set in the UI on corporate assessment creation (admin-react-v2, Step 3 →
+Assessment Configuration → **Assessment validity (days)**). Left blank, nothing
+is stored and late joiners inherit the remaining window as before. See
+[ATS/Admin/v2-strangler-fig.md](../ATS/Admin/v2-strangler-fig.md) for why the
+college control is a view of the window instead.
+
 ---
 
 ## Question Generation (Admin-Triggered)

@@ -261,6 +261,20 @@ input on 2026-08-21, which left the admin with no way to say how long a
 candidate gets; deriving it from the window restores the control and makes it
 impossible for the box to disagree with what is actually sent.
 
+**Corporate's validity became a real stored number** (2026-08-26). The
+derived treatment above now applies to **college** one-time floats only.
+Corporate's box stores an independent day count, posted to
+`assignMixMatchAssessment` and stamped on every corporate map in the group
+(`assessment_corporate_map.assessment_validity_days`). It answers something the
+start/end dates cannot: a candidate added on the 27th of a 21→30 assessment
+would otherwise inherit the 3 days everyone else has left, when the admin meant
+them to get the full run counted from their own join date. See
+[Assessment/admin.md](../../Assessment/admin.md) for the `end_time_override`
+mechanism behind it. Left blank, nothing is stored and late joiners inherit the
+remaining window. College keeps the derived view because a college float has no
+late-joiner concept and no column to store validity in — a standalone number
+there would be posted nowhere, which is the dead control that started this.
+
 **A recurring schedule keeps its own separate validity input** inside
 `RecurringSchedule`, and that one really is a stored column
 (`assessment_schedules.assessment_validity_days`) sizing **each generated run** —
