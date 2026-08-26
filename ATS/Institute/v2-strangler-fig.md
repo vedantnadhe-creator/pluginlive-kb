@@ -300,6 +300,65 @@ diagnosis units** on every screen (the detail page's figure, not the dashboard's
 302 non-practice assignments**, nothing double-counted and nothing dropped.
 `test/assessmentGrouping.spec.js` (7 cases) pins the rule.
 
+#### The other half: an orphan diagnosis is not a schedule (same day)
+
+`eb7e267` institute-node, `c13d746` institute-react-v2.
+
+Refusing the wrong parent left the orphans with nowhere to go, so they began
+heading rows of their own **on the cockpit** — where the old
+`DIAG_PARENT_CTE` had been hiding them by gluing them onto the newest schedule.
+On UAT institute `1f78e8f3` the "Active Assessment Schedules" panel showed
+**53 active rows where only 7 are real schedules**: 46 single-student
+`Assessment #1` / `Assessment #2` rows at 0%, each also filing its own "needs
+attention" chip. They were badged **ONE-TIME**, because `DashboardV2` emits only
+`recurring | one_time` and has no word for a diagnosis.
+
+New shared predicate **`IS_DIAGNOSIS_MAP`** in `assessmentGrouping.js`, applied
+to **both** dashboard row-heading sites — `getAssessmentBlocks` (the panel) and
+`getSummary` (the "Active assessments" KPI + action queue). **Both, or neither:**
+patching one alone puts the KPI card back in disagreement with the panel
+directly beneath it, which is a self-contradiction the cockpit has already been
+fixed for once.
+
+- **Safe by construction, verified on UAT:** 0 maps carrying a `schedule_id`
+  hold any diagnosis attempt, and 0 maps mix diagnosis with ordinary rows — so
+  the predicate can never drop a real schedule. A diagnosis that found a home is
+  already excluded by `LISTABLE`, so among listable maps this matches exactly
+  the orphans.
+- **KPI totals are unaffected:** "Assessments sent / taken" comes from
+  `totalsSql`, which is built on `member`, not on `occ`.
+- **`getSchedule` (week rail) is deliberately untouched** — it is a calendar, it
+  already renders diagnosis as its own `kind`, and an orphan diagnosis is a real
+  dated event.
+- **The assessments list is deliberately untouched** — it is an inventory, and
+  hiding them there would delete real student-bearing assessments from the UI
+  (the original 2026-08-11 concern). Instead the **Schedule filter gained a
+  `Diagnosis` option** (`_constants.ts` `SCHEDULE_OPTIONS`): the rows already
+  badged themselves "Diagnosis" but could be neither selected nor excluded.
+  `valueLabel` in `lib/assessments/filters.ts` had to lose its
+  recurring/else ternary too, or the applied-filter chip read "One-time" over
+  rows badged "Diagnosis".
+
+Verified live on UAT after deploy, institute `1f78e8f3`: the cockpit returns
+**7 rows, 0 titled `Assessment #N`** (was 53), while the assessments list still
+returns all **236** — `{one_time: 124, diagnosis: 55, recurring: 57}` — with the
+55 now filterable. Spec is 9 cases, one of which pins that the LIST does *not*
+get the exclusion.
+
+**Trap for next time:** `institute-node` has a **dead** `getAssessmentsList`
+(pagination, `scheduleType` filter, `SCHEDULE_TYPES = ["recurring","one_time"]`).
+The `/institutes/assessments/v2/list` route calls **`getAssessmentsFull`**
+instead, and all list filtering is **client-side**. Do not "fix" the filter in
+that model — nothing calls it.
+
+**Known inconsistency, not yet consolidated:** `AssessmentV2.js` and
+`DashboardV2.js` (`getSchedule`) still carry their own inline copies of the
+diagnosis-map EXISTS, and those copies **omit `is_practice = false`**. Harmless
+today (0 practice rows are flagged `is_diagnosis`), but if one ever appears
+those screens would classify it differently from the cockpit — the same
+two-screens-disagree shape this whole entry is about. Fold them onto
+`IS_DIAGNOSIS_MAP` when next in the file.
+
 ### Counting: assessments, not people (2026-08-12)
 
 `5fa5787` `0f64d52` institute-node, `2889378` `06a49ae` frontend. Three screens
