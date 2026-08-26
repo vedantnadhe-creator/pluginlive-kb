@@ -345,6 +345,56 @@ returns all **236** — `{one_time: 124, diagnosis: 55, recurring: 57}` — with
 55 now filterable. Spec is 9 cases, one of which pins that the LIST does *not*
 get the exclusion.
 
+#### The Progress trend: baseline first, and on the ladder scale (2026-08-26)
+
+`d0e0949` institute-node, `d14c5c7` institute-react-v2.
+
+The Overview contradicted itself on UAT's `acsac`: **Average progress 18.30**
+sat beside a Progress trend reading *"A trend appears once attempts across runs
+are scored."* Both were right, about different populations — all four of the
+series' own runs have **0 attempts**, and the 18.30 **was the diagnosis**, which
+the trend did not plot. The Completion rate trend beside it has always drawn the
+baseline as its first point (`CompletionAnalysis.tsx` prepends a `"D"` point).
+
+It was also **the one screen the NPS sweep (`3eacaf9`) missed**. It plotted
+`occurrences[].avgScore`, a RAW PERCENT, under a card named for a progress
+score. For `acsac` the pair averages **35.05%** raw against **18.30** curved —
+the same "53 here, 21 there" mismatch that commit existed to kill.
+
+Both fixed:
+
+- `occurrences[]` gain **`progressScore`** — the page's scale, curved once at
+  presentation. `avgScore` stays a raw percent for anything that wants one.
+- `diagnosis` gains **`progressScore`** and **`avgScore`**, averaged **across
+  both maps** and curved once. Per-map scoring would be wrong twice over: the
+  first paper of a Communication pair carries **no NPS until its partner lands**,
+  so a per-map point plots a null and half a baseline instead of the real
+  starting rung. (`acsac`: #1 raw 15.96 / no NPS, #2 raw 54.13 / linear 8.56 A1
+  → curved **18.30**, byte-identical to the KPI.)
+- `meanOf` / `present` are **hoisted** in `getOverview` so the trend, the
+  baseline and the KPI cards pass through ONE presentation — npsScale.js THE ONE
+  RULE (aggregate linear, curve last, curve once) is now applied in one place on
+  this page instead of three.
+
+**The fallback, and why it is not optional.** NPS coverage is **partial** — on
+UAT, of submitted attempts: Aptitude runs **51.8%**, Aptitude diagnosis 86.1%,
+Communication runs **55.2%**, Communication diagnosis 40.3% (low because
+first-of-pair never has one). So both scales are collected per map, and a ladder
+series holding scores but **no progression rows anywhere** keeps the raw-percent
+trend it has always drawn. Verified on DEV: `e40b0d01` has 9 scored runs and
+zero NPS — without the fallback its chart would have gone **blank**, trading one
+empty-state complaint for a worse one. The fallback is **all-or-nothing per
+series**; the two scales are never mixed inside one chart.
+
+Verified live on UAT: `acsac` returns `kpis.avgScore 18.3` and
+`diagnosis.progressScore 18.3` (raw would have been 35.05), so the trend now
+draws its baseline instead of an empty state. On DEV `3fbb2b11` plots
+baseline 2.91 → runs 4.71, 1.91, and its latest point equals `kpis.avgScore`
+exactly.
+
+**`ScheduleTab`'s diagnosis row deliberately carries `progressScore: null`** —
+that row reports attendance, not attainment, and never showed a score.
+
 **Trap for next time:** `institute-node` has a **dead** `getAssessmentsList`
 (pagination, `scheduleType` filter, `SCHEDULE_TYPES = ["recurring","one_time"]`).
 The `/institutes/assessments/v2/list` route calls **`getAssessmentsFull`**
