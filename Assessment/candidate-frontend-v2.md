@@ -66,14 +66,20 @@ languages:
 | Proctoring events | `src/utils/useProctoringCollector.js` | `src/lib/proctoringEvents.ts` |
 | Tab-switch / violation counting | per-assessment-type, 5 copies | `src/app/assessment/take/page.tsx` (one place) |
 
-So **porting is manual and is never automatic**. A worked example, live right
-now: the mobile-call auto-submit fix (Assessment-React `448f87f`, DEV
-2026-08-26) taught v1 to ignore an OS interruption — an incoming call
-backgrounds the page and mobile browsers report it identically to a deliberate
-app switch, so three calls auto-submitted the paper. v2 has **not** received it:
-`watchVisibility` in `src/app/assessment/take/page.tsx` still counts every
-`document.visibilityState === "hidden"` as a `TAB_VIOLATION`, and
-`MAX_TAB_VIOLATIONS = 3` still ends the attempt. Same bug, different file.
+So **porting is manual and is never automatic**. A worked example: the
+mobile-call auto-submit fix. An incoming call backgrounds the page, and mobile
+browsers report that identically to a deliberate app switch, so three calls
+auto-submitted the paper. Fixed independently in each app, because there is
+nothing to share — v1 as `Assessment-React` `448f87f` (DEV 2026-08-26), v2 as
+`assessment-react-v2` `078241a` (DEV 2026-08-26). In v2 the helpers
+(`isMobileDevice`, `markMobileInterruption`, `isMobileInterruptionFullscreenExit`)
+live in `src/lib/deviceTier.ts` rather than a new module — `node --test`
+resolves sibling `.ts` imports by real path with no extension, so a test-covered
+lib file here has to stay import-free (`proctoringEvents.ts` documents the same
+constraint). `watchVisibility` and the `fullscreenTransition` exit in
+`src/app/assessment/take/page.tsx` both now check
+`isMobileInterruptionFullscreenExit()` / `markMobileInterruption()` before
+counting a `TAB_VIOLATION`.
 
 One structural advantage when you do port: v1 repeats the violation logic once
 per assessment type (Aptitude, Communication, Hinglish, Custom, Role-Based), so
