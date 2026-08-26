@@ -1721,6 +1721,33 @@ of Communication students** (they have taken exactly one assessment). Averaging
 survivorship bias toward the more able half. Show `n` with the number. Aptitude
 has no equivalent gap.
 
+### The Overview Competency card is NOT height-locked (2026-08-26)
+
+`96c9d5d` institute-react-v2. **DEV + UAT branches; DEV deployed, UAT pending.**
+
+The Overview tab has two `.ov-2col` rows. Section 2 (Completion analysis +
+Progress trend) is deliberately locked to `--ca-card-h: 416px` with
+`overflow: hidden`, so flipping the completion card's funnel/department toggle
+never reflows the row. That rule was originally written unscoped —
+`.ov-2col > .panel` — and the **Competency + Student-at-risk** row underneath
+reuses the same `.ov-2col` class, so it silently inherited both the fixed height
+and the hidden overflow.
+
+A 6-rung CEFR ladder needs **555px**. Under the lock, **C1 and C2 were cut off
+mid-row with no scrollbar** — the two highest Communication bands were
+unreachable on the page that exists to report them. Aptitude's 4-rung ladder fit
+inside 416px, which is why this only showed on Communication.
+
+The lock is now scoped to `.ov-2col-wrap .ov-2col` (Section 2, the only row with
+a toggle to hold still). The bottom row sizes to its content; `align-items:
+stretch` keeps the at-risk donut card level with it.
+
+**If you add a rung to any ladder, check this row.** The ladder length is data
+(4 for Aptitude, 6 for CEFR, 5 for the DEFAULT ladder) and the card must follow
+it — do not reintroduce a fixed height there, and do not "fix" a future overflow
+with an inner scrollbar, which buries bands a TPO has no reason to expect below
+the fold.
+
 ## Usage widget — real pack usage in the top bar (2026-08-25)
 
 `285211c` → `1dc5397` + `7c1d86d` institute-react-v2. **DEV + UAT. PROD pending.**
