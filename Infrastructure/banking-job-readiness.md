@@ -772,3 +772,17 @@ Rollback assets use stamp `20260825T015122Z`:
 taken — the migration deleted 0 rows and is otherwise additive. **Disk remains at 90% (13G free)** —
 now three releases running without a prune of the accumulated `dist.bak-*`/`.env.bak-*` directories;
 worth clearing on the next deploy.
+
+## 2026-08-26 — repaired candidate OTP login for `9769440000`
+
+Candidate **Himanshu Bhagat** (`9769440000`) received the candidate-login toast "Account not
+found" after entering the correct demo OTP `1234`. The public profile was present, active and
+approved, and its reconstructed auth identity (`9769440000@bankready.app`) was confirmed, but
+`auth.users.encrypted_password` was empty. This is one of the imported identities documented in
+`banking-postgres-migration.md`; the hosted password hash was unavailable during reconstruction.
+
+Provisioned the app's policy-compliant derived credential with
+`~/banking-sb/set-user-password.sh 9769440000 'Otp_9769440000_1234'`. No source change, frontend
+deployment or migration was required. Exact fresh-browser verification against the live candidate
+form — mobile `9769440000`, Send OTP, OTP `1234`, Verify — redirected to `/candidate/home`, rendered
+Himanshu's full student console, and produced **0 page errors and 0 `/sb` API errors**.
