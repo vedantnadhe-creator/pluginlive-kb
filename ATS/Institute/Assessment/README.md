@@ -151,7 +151,17 @@ The Assessment module provides the TPO-facing dashboard for managing and trackin
   Aptitude). `assessment_assigned_students.resulting_cefr` is a legacy copy and
   must not drive reporting because it can drift from progression history.
 - **Diagnosis grouping:** Diagnosis attempts are folded into their owning
-  schedules and do not appear as standalone rows in Assessment Sent.
+  schedules and do not appear as standalone rows in Assessment Sent. The rule
+  that hides an orphan diagnosis (`IS_DIAGNOSIS_MAP`, helpers/assessmentGrouping)
+  tests the ATTEMPT rows, so a diagnosis map with **no** assignments is invisible
+  to it and used to head its own TPO-dashboard row ("Assessment #1, ONE-TIME,
+  1/1 sent, 0%", no audience) and inflate the "Active assessments" KPI.
+- **Never-sent assessments are dropped:** both dashboard cockpit queries
+  (`getAssessmentBlocks`, `getSummary` in `models/DashboardV2.js`) now end in
+  `HAVING COALESCE(MAX(st.assigned), 0) > 0`, the same rule the assessments list
+  (`models/AssessmentV2.getAssessmentsFull`) already applied. A group nobody was
+  ever assigned can only read "0 students / 0 / 0%", so the two screens now show
+  the same set of assessments and the same count.
 - **Proctoring integration:** Media keys/URLs for proctoring review
 - **Chart-based filters:** Interactive chart filtering with `setChartFilters`/`clearChartFilters`
 - **Mock data support:** `useMockData` flag or `localStorage.ASSESSMENT_MOCK` for frontend development
