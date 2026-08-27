@@ -1401,6 +1401,31 @@ pending.** Full rules in `Assessment/nps-scale-and-curve.md`; what matters here:
 - The API gained `assessment.supportsNps` / `levelCount`, mirroring
   `meta.supportsNps` on the roster endpoint, so no type list lives in the UI.
 
+**The breakdown reports latest section/category progress (2026-08-27).**
+`d1d411b` institute-node, `6518220` institute-react-v2; UAT merges `9add25e` /
+`273a1ff`. **DEV + UAT deployed; PROD pending.** Communication and Aptitude no
+longer show a series-average percentage as the breakdown's primary value:
+
+- Communication mirrors the progression engine's immediate-predecessor pair.
+  At the same confirmed CEFR this is ordinary pair NPS. It is a **bridge** only
+  when predecessor and current confirmed CEFR differ; each half is anchored to
+  its own CEFR, the linear values are averaged, then curved once. Diagnosis #1
+  uses the level confirmed by diagnosis #2, matching the write path. The UI
+  prints the canonical weights: Speaking **40%**, Writing **30%**, Reading
+  **20%**, Listening **10%**.
+- Aptitude replays the existing two-score rolling window per topic and computes
+  each category competency from only that category's topics using
+  `sub_sections.weight`. Each category is anchored to the assessment's stored
+  overall `assessment_aptitude_level`; it does not invent a parallel category
+  level or category-specific no-downgrade chain.
+- Raw skill/category values remain secondary context. A component without the
+  inputs for a real progress score is omitted — there is no percentage or zero
+  fallback. As everywhere else, aggregate linear and curve once at output.
+
+Real UAT smoke checks covered same-level Communication (`isBridge=false`), an
+A2→B1 result (`isBridge=true`), and all three Aptitude categories. Both services
+answered 200 and the UAT bundle contained no DEV hostnames.
+
 **Baselines are numbered FIRST in the roster's trend too, from this ship.**
 `loadGroupMaps` returns `[...runs, ...diagnosisMaps]`, and `getStudents` numbered
 occurrences in that raw order — so a February baseline got the HIGHEST index and
