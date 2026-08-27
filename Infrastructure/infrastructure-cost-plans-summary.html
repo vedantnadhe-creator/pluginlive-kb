@@ -192,11 +192,11 @@
     <nav class="toc" aria-label="Contents">
       <div class="toc-title">Contents</div>
       <ol>
-        <li><a href="#s1">Executive summary</a></li>
+        <li><a href="#s1">Purpose and position</a></li>
         <li><a href="#s2">Options appraisal</a></li>
         <li><a href="#s3">Phase 0 — completed</a></li>
         <li><a href="#s4">Evidence base</a></li>
-        <li><a href="#s5">Plan A — recommended</a></li>
+        <li><a href="#s5">Plan A — Oracle Cloud</a></li>
         <li><a href="#s6">Plan A by environment</a></li>
         <li><a href="#s7">Plan B — Cloud Run</a></li>
         <li><a href="#s8">Platform &amp; region feasibility</a></li>
@@ -204,6 +204,7 @@
         <li><a href="#s10">Risk register</a></li>
         <li><a href="#s11">Guardrails &amp; rollback</a></li>
         <li><a href="#s12">Appendices</a></li>
+        <li><a href="#s13">Recommendation &amp; next steps</a></li>
       </ol>
     </nav>
 
@@ -212,11 +213,11 @@
       <div class="cover">
         <p class="kicker">Board decision paper · Phase 0 · Plan A · Plan B1 · Plan B2</p>
         <h1>Infrastructure cost optimisation: summary of all plans</h1>
-        <p class="standfirst">Three fully costed routes from the current run-rate of ₹84,800 per month, in addition to the ₹44,000 per month already banked under Phase 0. Plan A re-shapes the platform on Oracle Cloud at approximately ₹21,000 per month. Plan B relocates it to Google Cloud Run in Mumbai at ₹44,000 as a lift-and-shift, or ₹26,000 only after the queue engine has been rewritten. Every figure traces to a measurement taken from the live estate or to the June 2026 usage statement.</p>
+        <p class="standfirst">Three fully costed routes from the current run-rate of ₹84,800 per month, in addition to the ₹44,000 per month already banked under Phase 0. Plan A re-shapes the platform on Oracle Cloud at approximately ₹21,000 per month. Plan B relocates it to Google Cloud Run in Mumbai at ₹44,000 as a lift-and-shift, or ₹26,000 only after the queue engine has been rewritten. Every figure traces to a measurement taken from the live estate or to the June 2026 usage statement. The options are presented on their merits first; the recommendation is set out in section 13, after the evidence, the appraisal, the decisions and the risks.</p>
 
         <dl class="meta">
           <div><dt>Document</dt><dd>Infrastructure Cost — All Plans</dd></div>
-          <div><dt>Version</dt><dd>3.2 · consolidated</dd></div>
+          <div><dt>Version</dt><dd>3.3 · consolidated</dd></div>
           <div><dt>Date</dt><dd>25 August 2026</dd></div>
           <div><dt>Prepared by</dt><dd>Infrastructure / FinOps</dd></div>
           <div><dt>Decision owner</dt><dd>CTO</dd></div>
@@ -226,20 +227,20 @@
 
       <!-- 1 -->
       <section id="s1">
-        <h2><span class="num">1</span> Executive summary</h2>
+        <h2><span class="num">1</span> Purpose and financial position</h2>
         <p class="lede">The programme has two hard constraints: all data and compute remain in an India region, and performance must be no worse than today. All three options satisfy both. They differ by roughly ₹5,000–₹23,000 per month, and by an order of magnitude in migration risk.</p>
 
         <div class="kpis">
           <div class="kpi"><span class="k">Original run-rate</span><span class="v">₹1,27,600</span><span class="n">before Phase 0</span></div>
           <div class="kpi"><span class="k">Already banked</span><span class="v">₹44,000</span><span class="n">Phase 0, complete</span></div>
           <div class="kpi"><span class="k">Current run-rate</span><span class="v">₹84,800</span><span class="n">baseline for this paper</span></div>
-          <div class="kpi hi"><span class="k">Plan A target</span><span class="v">₹21,000</span><span class="n">−75% versus today</span></div>
+          <div class="kpi"><span class="k">Plan A target</span><span class="v">₹21,000</span><span class="n">−75% versus today</span></div>
           <div class="kpi"><span class="k">Plan B range</span><span class="v">₹26k–44k</span><span class="n">B2 / B1</span></div>
         </div>
 
         <div class="callout">
-          <div class="h">Recommendation — approve Plan A</div>
-          <p>At the measured load, Plan A costs approximately half of the best achievable Cloud Run outcome. It delivers ₹8,488 of monthly saving in week 0 rather than week 10, requires no data migration, and is reversible at every step. Plan B2 reaches near-parity only <em>after</em> a queue-engine rewrite — substantial risk incurred to finish approximately ₹5,000 per month worse off.</p>
+          <div class="h">How this paper is ordered</div>
+          <p>Sections 2 to 8 set out the three options, the measurements behind them and the platforms considered. Sections 9 to 11 cover the decisions to be taken, the open risks and the performance guardrails. Section 12 holds the supporting inventory and rates. <strong>The recommendation, and the actions that approval would authorise, are stated last, in section 13.</strong></p>
         </div>
 
         <p class="caption">Table 1 — Consolidated financial position</p>
@@ -249,12 +250,12 @@
             <tr><td>Original estate</td><td class="num">1,27,600</td><td class="num">—</td><td>Superseded</td></tr>
             <tr><td>Phase 0 — duplicate PG14 estate removed</td><td class="num">−44,000</td><td class="num">—</td><td><span class="chip done">Complete</span></td></tr>
             <tr><td>Current run-rate</td><td class="num">84,800</td><td class="num">baseline</td><td>Live</td></tr>
-            <tr class="total"><td>Plan A — re-shape on Oracle Cloud</td><td class="num">≈ 21,000</td><td class="num pos">−75%</td><td><span class="chip solid">Recommended</span></td></tr>
-            <tr><td>Plan B1 — Cloud Run, lift and shift</td><td class="num">≈ 44,000</td><td class="num pos">−48%</td><td><span class="chip alt">Alternative</span></td></tr>
-            <tr><td>Plan B2 — Cloud Run, after queue rewrite</td><td class="num">≈ 26,000</td><td class="num pos">−69%</td><td><span class="chip alt">Alternative</span></td></tr>
+            <tr><td>Plan A — re-shape on Oracle Cloud</td><td class="num">≈ 21,000</td><td class="num pos">−75%</td><td><span class="chip alt">Under appraisal</span></td></tr>
+            <tr><td>Plan B1 — Cloud Run, lift and shift</td><td class="num">≈ 44,000</td><td class="num pos">−48%</td><td><span class="chip alt">Under appraisal</span></td></tr>
+            <tr><td>Plan B2 — Cloud Run, after queue rewrite</td><td class="num">≈ 26,000</td><td class="num pos">−69%</td><td><span class="chip alt">Under appraisal</span></td></tr>
           </tbody>
         </table></div>
-        <p class="lede" style="margin-top:14px">Plan A represents a reduction of ₹63,800 per month against the current run-rate, or approximately ₹7.66 lakh per annum; ₹1,06,600 per month against the original estate.</p>
+        <p class="lede" style="margin-top:14px">The spread between the options is ₹21,000 to ₹44,000 per month. At the lowest figure the reduction against the current run-rate is ₹63,800 per month, or approximately ₹7.66 lakh per annum; at the highest it is ₹40,800 per month. Which figure is realistic depends on the evidence in section 4 and the migration risk in sections 7 and 10.</p>
       </section>
 
       <!-- 2 -->
@@ -263,8 +264,8 @@
         <p class="lede">Each option is presented with its cost, its principal advantages, and the constraints that qualify it.</p>
 
         <div class="options">
-          <div class="opt rec">
-            <span class="chip solid">Recommended</span>
+          <div class="opt">
+            <span class="chip alt">Option A</span>
             <h3>Plan A — Re-shape on Oracle Cloud</h3>
             <span class="price">₹21,000</span>
             <p class="per">per month · 7 weeks · moderate effort</p>
@@ -277,7 +278,7 @@
             </ul>
           </div>
           <div class="opt">
-            <span class="chip alt">Alternative</span>
+            <span class="chip alt">Option B1</span>
             <h3>Plan B1 — Cloud Run, lift and shift</h3>
             <span class="price">₹44,000</span>
             <p class="per">per month · 10 weeks · high effort</p>
@@ -291,7 +292,7 @@
             </ul>
           </div>
           <div class="opt">
-            <span class="chip alt">Alternative</span>
+            <span class="chip alt">Option B2</span>
             <h3>Plan B2 — Cloud Run + queue rewrite</h3>
             <span class="price">₹26,000</span>
             <p class="per">per month · 14 weeks · very high effort</p>
@@ -326,11 +327,6 @@
           </tbody>
         </table></div>
 
-        <div class="callout">
-          <div class="h">Why Plan A prevails on cost</div>
-          <p>The comparison reduces to a single ratio. An always-on vCPU costs <strong>₹584 per month</strong> on OCI Ampere A1 and approximately <strong>₹6,900 per month</strong> on Cloud Run in Mumbai — a factor of roughly <strong>twelve</strong>. The workload requires four to five permanently warm cores (auth, student, the AI and proctoring service, and the queue workers). Serverless pricing only outperforms a low-cost ARM virtual machine below approximately 10% duty cycle; the parts of the estate that are genuinely that idle — DEV, UAT, the builder and batch jobs — can instead be switched off on a schedule at no cost.</p>
-          <p><strong>Where Plan B has genuine merit</strong> is not cost. Non-production becomes almost free through true scale-to-zero, there is no Kubernetes cluster or database for the team to operate, and automatic on/off behaviour is native rather than assembled from KEDA and a scheduler. Were the binding constraint engineering <em>time</em> rather than money, Plan B would be the stronger answer.</p>
-        </div>
       </section>
 
       <!-- 3 -->
@@ -390,7 +386,7 @@
 
       <!-- 5 -->
       <section id="s5">
-        <h2><span class="num">5</span> Plan A — recommended route</h2>
+        <h2><span class="num">5</span> Plan A — re-shape on Oracle Cloud</h2>
         <p class="lede">The platform remains entirely on Oracle Cloud, in Mumbai. The saving derives from matching capacity to measured load, and from switching capacity off when it is genuinely not required.</p>
 
         <div class="two-col">
@@ -716,11 +712,45 @@
         </div>
       </section>
 
+      <!-- 13 -->
+      <section id="s13">
+        <h2><span class="num">13</span> Recommendation and next steps</h2>
+        <p class="lede">Stated after the evidence, the appraisal, the decisions and the risks, so that the reasoning above stands on its own.</p>
+
+        <div class="callout">
+          <div class="h">Recommendation — approve Plan A</div>
+          <p>At the measured load, Plan A costs approximately half of the best achievable Cloud Run outcome. It delivers ₹8,488 of monthly saving in week 0 rather than week 10, requires no data migration, and is reversible at every step. Plan B2 reaches near-parity only <em>after</em> a queue-engine rewrite — substantial risk incurred to finish approximately ₹5,000 per month worse off. Cloud Run should be revisited if traffic becomes genuinely spiky at ten times today's volume, or if the organisation would rather pay a premium than operate infrastructure at all.</p>
+        </div>
+
+        <div class="callout">
+          <div class="h">Why the numbers point to Plan A</div>
+          <p>The comparison reduces to a single ratio. An always-on vCPU costs <strong>₹584 per month</strong> on OCI Ampere A1 and approximately <strong>₹6,900 per month</strong> on Cloud Run in Mumbai — a factor of roughly <strong>twelve</strong>. The workload requires four to five permanently warm cores (auth, student, the AI and proctoring service, and the queue workers). Serverless pricing only outperforms a low-cost ARM virtual machine below approximately 10% duty cycle; the parts of the estate that are genuinely that idle — DEV, UAT, the builder and batch jobs — can instead be switched off on a schedule at no cost.</p>
+          <p><strong>Where Plan B has genuine merit</strong> is not cost. Non-production becomes almost free through true scale-to-zero, there is no Kubernetes cluster or database for the team to operate, and automatic on/off behaviour is native rather than assembled from KEDA and a scheduler. Were the binding constraint engineering <em>time</em> rather than money, Plan B would be the stronger answer.</p>
+        </div>
+
+        <p class="caption">Table 15 — What approval authorises, in order</p>
+        <div class="tw"><table>
+          <thead><tr><th>Sequence</th><th>Action</th><th>Owner</th><th class="num">Effect</th></tr></thead>
+          <tbody>
+            <tr><td>Immediately</td><td>Raise <code>pl-prod-pg16</code> backup retention from 1 to 30 days. Unconditional; it gates the database work under either option.</td><td>Infra</td><td class="num soft">Risk fix</td></tr>
+            <tr><td>Week 0</td><td>Enable OCI Resource Scheduler on DEV, UAT and the builder, with a one-click wake-up override, after resolving the overnight CI dependency in section 10.</td><td>Infra, Eng, QA</td><td class="num pos">₹8,488</td></tr>
+            <tr><td>Week 1</td><td>Merge the DEV and UAT database hosts, apply registry retention, reduce block-volume performance units, and capture the seven-day baseline.</td><td>Infra</td><td class="num pos">₹10,300</td></tr>
+            <tr><td>Before week 2</td><td>Close the instrumentation gaps in section 5.3 — Alertmanager in production and 30-day metric retention.</td><td>Infra</td><td class="num soft">Enabler</td></tr>
+            <tr><td>Weeks 2–7</td><td>Proceed through right-sizing, the OKE Basic rebuild, static-site migration and the database cutover, each behind the guardrails in section 11 and the decisions in section 9.</td><td>Infra, Backend, DBA</td><td class="num pos">₹45,000</td></tr>
+          </tbody>
+        </table></div>
+
+        <div class="callout">
+          <div class="h">What is being asked</div>
+          <p>Decision D-0 in section 9 — adopt Plan A. Weeks 0 and 1 are unconditional and apply whichever option is chosen, so they may proceed while the remaining decisions, D-1 to D-4, are considered. No production data path is touched before week 4, and every subsequent step carries a written, tested rollback.</p>
+        </div>
+      </section>
+
     </main>
   </div>
 
   <footer>
-    <span>PluginLive · Infrastructure Cost Optimisation — Summary of All Plans · Version 3.1</span>
+    <span>PluginLive · Infrastructure Cost Optimisation — Summary of All Plans · Version 3.3</span>
     <span>Consolidates Cost Plan v3 (17 August 2026) and the Plan A decision brief (24 August 2026) · Internal — Confidential</span>
   </footer>
 
