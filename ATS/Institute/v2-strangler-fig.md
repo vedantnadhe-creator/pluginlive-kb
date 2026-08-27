@@ -2138,3 +2138,15 @@ wheel/touch gesture into the dashboard behind it.
 Frontend commit `700888c`; deployed to DEV and promoted/deployed to UAT in
 merge `1c0f861`. UAT verification: dashboard 200 locally and publicly, fix
 present in the deployed checkout, and zero DEV URLs in built client JavaScript.
+
+## Average progress is dashboard-only (2026-08-27)
+
+The cohort's average progression metric belongs only to Dashboard → Active
+Assessments. It renders as the rounded numeric score (for example `51`), without
+the ladder band/level beside it. The Manage Assessments table deliberately has
+no Avg progress column; its seven columns end with Completion and Status.
+
+Frontend commits `71b996d` and `4702ddf`; deployed to DEV and promoted/deployed
+to UAT in merge `764c00e`. Both public assessment pages returned 200 after the
+restart, the UAT checkout matched the merge SHA, and the UAT client bundle had
+zero `dev.pluginlive.com` references.
