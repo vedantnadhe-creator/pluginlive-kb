@@ -117,7 +117,7 @@
   .callout.risk{border-left-color:var(--alert)}
 
   /* ---------- option cards ---------- */
-  .options{display:grid;grid-template-columns:repeat(3,1fr);gap:0;background:var(--paper);border-top:1px solid var(--rule);border-left:1px solid var(--rule);margin-top:8px}
+  .options{display:grid;grid-template-columns:repeat(2,1fr);gap:0;background:var(--paper);border-top:1px solid var(--rule);border-left:1px solid var(--rule);margin-top:8px}
   .opt{background:var(--paper);padding:20px 18px;border-right:1px solid var(--rule);border-bottom:1px solid var(--rule)}
   .opt.rec{background:var(--tint);border-top:3px solid var(--navy)}
   .opt h3{margin:10px 0 2px;font-size:17px}
@@ -164,7 +164,7 @@
     tr,.kpi,.opt,.callout,.env{break-inside:avoid}
     .meta{break-inside:avoid;grid-template-columns:repeat(3,1fr)}
     .kpis{grid-template-columns:repeat(5,1fr);break-inside:avoid}
-    .options{grid-template-columns:repeat(3,1fr)}
+    .options{grid-template-columns:repeat(2,1fr)}
     .two-col{grid-template-columns:1fr 1fr;gap:14pt}
     .env{grid-template-columns:120px 1fr;gap:14pt}
     .kpi .v{font-size:14pt}
@@ -199,25 +199,26 @@
         <li><a href="#s5">Plan A — Oracle Cloud</a></li>
         <li><a href="#s6">Plan A by environment</a></li>
         <li><a href="#s7">Plan B — Cloud Run</a></li>
-        <li><a href="#s8">Platform &amp; region feasibility</a></li>
-        <li><a href="#s9">Decisions required</a></li>
-        <li><a href="#s10">Risk register</a></li>
-        <li><a href="#s11">Guardrails &amp; rollback</a></li>
-        <li><a href="#s12">Appendices</a></li>
-        <li><a href="#s13">Recommendation &amp; next steps</a></li>
+        <li><a href="#s8">Plan C — Azure</a></li>
+        <li><a href="#s9">Platform, region &amp; data stores</a></li>
+        <li><a href="#s10">Decisions required</a></li>
+        <li><a href="#s11">Risk register</a></li>
+        <li><a href="#s12">Guardrails &amp; rollback</a></li>
+        <li><a href="#s13">Appendices</a></li>
+        <li><a href="#s14">Recommendation &amp; next steps</a></li>
       </ol>
     </nav>
 
     <main>
 
       <div class="cover">
-        <p class="kicker">Board decision paper · Phase 0 · Plan A · Plan B1 · Plan B2</p>
+        <p class="kicker">Board decision paper · Phase 0 · Plan A · Plan B1 · Plan B2 · Plan C</p>
         <h1>Infrastructure cost optimisation: summary of all plans</h1>
-        <p class="standfirst">Three fully costed routes from the current run-rate of ₹84,800 per month, in addition to the ₹44,000 per month already banked under Phase 0. Plan A re-shapes the platform on Oracle Cloud at approximately ₹21,000 per month. Plan B relocates it to Google Cloud Run in Mumbai at ₹44,000 as a lift-and-shift, or ₹26,000 only after the queue engine has been rewritten. Every figure traces to a measurement taken from the live estate or to the June 2026 usage statement. The options are presented on their merits first; the recommendation is set out in section 13, after the evidence, the appraisal, the decisions and the risks.</p>
+        <p class="standfirst">Three fully costed routes from the current run-rate of ₹84,800 per month, in addition to the ₹44,000 per month already banked under Phase 0. Plan A re-shapes the platform on Oracle Cloud at approximately ₹21,000 per month. Plan B relocates it to Google Cloud Run in Mumbai at ₹44,000 as a lift-and-shift, or ₹26,000 only after the queue engine has been rewritten. Plan C relocates it to Azure Container Apps in Central India at ₹41,300, or ₹27,000 fully optimised. Every figure traces to a measurement taken from the live estate or to the June 2026 usage statement. The options are presented on their merits first; the recommendation is set out in section 14, after the evidence, the appraisal, the decisions and the risks.</p>
 
         <dl class="meta">
           <div><dt>Document</dt><dd>Infrastructure Cost — All Plans</dd></div>
-          <div><dt>Version</dt><dd>3.3 · consolidated</dd></div>
+          <div><dt>Version</dt><dd>4.0 · consolidated</dd></div>
           <div><dt>Date</dt><dd>25 August 2026</dd></div>
           <div><dt>Prepared by</dt><dd>Infrastructure / FinOps</dd></div>
           <div><dt>Decision owner</dt><dd>CTO</dd></div>
@@ -228,19 +229,19 @@
       <!-- 1 -->
       <section id="s1">
         <h2><span class="num">1</span> Purpose and financial position</h2>
-        <p class="lede">The programme has two hard constraints: all data and compute remain in an India region, and performance must be no worse than today. All three options satisfy both. They differ by roughly ₹5,000–₹23,000 per month, and by an order of magnitude in migration risk.</p>
+        <p class="lede">The programme has two hard constraints: all data and compute remain in an India region, and performance must be no worse than today. All four options satisfy both. They differ by roughly ₹5,000–₹23,000 per month, and by an order of magnitude in migration risk.</p>
 
         <div class="kpis">
           <div class="kpi"><span class="k">Original run-rate</span><span class="v">₹1,27,600</span><span class="n">before Phase 0</span></div>
           <div class="kpi"><span class="k">Already banked</span><span class="v">₹44,000</span><span class="n">Phase 0, complete</span></div>
           <div class="kpi"><span class="k">Current run-rate</span><span class="v">₹84,800</span><span class="n">baseline for this paper</span></div>
           <div class="kpi"><span class="k">Plan A target</span><span class="v">₹21,000</span><span class="n">−75% versus today</span></div>
-          <div class="kpi"><span class="k">Plan B range</span><span class="v">₹26k–44k</span><span class="n">B2 / B1</span></div>
+          <div class="kpi"><span class="k">Alternatives</span><span class="v">₹26k–44k</span><span class="n">B2 · C · B1</span></div>
         </div>
 
         <div class="callout">
           <div class="h">How this paper is ordered</div>
-          <p>Sections 2 to 8 set out the three options, the measurements behind them and the platforms considered. Sections 9 to 11 cover the decisions to be taken, the open risks and the performance guardrails. Section 12 holds the supporting inventory and rates. <strong>The recommendation, and the actions that approval would authorise, are stated last, in section 13.</strong></p>
+          <p>Sections 2 to 9 set out the four options, the measurements behind them, and the platforms and data stores considered. Sections 10 to 12 cover the decisions to be taken, the open risks and the performance guardrails. Section 13 holds the supporting inventory and rates. <strong>The recommendation, and the actions that approval would authorise, are stated last, in section 14.</strong></p>
         </div>
 
         <p class="caption">Table 1 — Consolidated financial position</p>
@@ -253,9 +254,10 @@
             <tr><td>Plan A — re-shape on Oracle Cloud</td><td class="num">≈ 21,000</td><td class="num pos">−75%</td><td><span class="chip alt">Under appraisal</span></td></tr>
             <tr><td>Plan B1 — Cloud Run, lift and shift</td><td class="num">≈ 44,000</td><td class="num pos">−48%</td><td><span class="chip alt">Under appraisal</span></td></tr>
             <tr><td>Plan B2 — Cloud Run, after queue rewrite</td><td class="num">≈ 26,000</td><td class="num pos">−69%</td><td><span class="chip alt">Under appraisal</span></td></tr>
+            <tr><td>Plan C — Azure Container Apps, self-managed database</td><td class="num">≈ 41,300</td><td class="num pos">−51%</td><td><span class="chip alt">Under appraisal</span></td></tr>
           </tbody>
         </table></div>
-        <p class="lede" style="margin-top:14px">The spread between the options is ₹21,000 to ₹44,000 per month. At the lowest figure the reduction against the current run-rate is ₹63,800 per month, or approximately ₹7.66 lakh per annum; at the highest it is ₹40,800 per month. Which figure is realistic depends on the evidence in section 4 and the migration risk in sections 7 and 10.</p>
+        <p class="lede" style="margin-top:14px">The spread between the options is ₹21,000 to ₹44,000 per month. At the lowest figure the reduction against the current run-rate is ₹63,800 per month, or approximately ₹7.66 lakh per annum; at the highest it is ₹40,800 per month. Which figure is realistic depends on the evidence in section 4, the rate comparison in section 2.1, and the migration risk in sections 7, 8 and 11.</p>
       </section>
 
       <!-- 2 -->
@@ -305,27 +307,63 @@
               <li class="con">Still ₹5,000 per month worse than Plan A</li>
             </ul>
           </div>
+          <div class="opt">
+            <span class="chip alt">Option C</span>
+            <h3>Plan C — Azure Container Apps</h3>
+            <span class="price">₹41,300</span>
+            <p class="per">per month · 9–12 weeks · high effort · ₹27,000 fully optimised</p>
+            <ul>
+              <li>−51% versus today; −68% versus the original estate</li>
+              <li>KEDA is built in — BullMQ workers scale to zero with <em>no</em> queue-engine rewrite</li>
+              <li>Warm replicas bill at roughly one-eighth the active rate, unlike Cloud Run</li>
+              <li>Central India region</li>
+              <li class="con">Same migration as Plan B — 10 GB database and 160 GB of media</li>
+              <li class="con">Memory bills flat at ₹690 per GiB whether idle or active, setting a floor near ₹30,000</li>
+              <li class="con">Self-managing the database removes the “nothing to operate” benefit</li>
+              <li class="con">Rollback is difficult once data has moved</li>
+            </ul>
+          </div>
         </div>
 
         <p class="caption">Table 2 — Comparison against decision criteria</p>
         <div class="tw"><table>
-          <thead><tr><th>Criterion</th><th>Plan A — OCI</th><th>Plan B1 — lift &amp; shift</th><th>Plan B2 — + queue rewrite</th></tr></thead>
+          <thead><tr><th>Criterion</th><th>Plan A — OCI</th><th>Plan B1 — lift &amp; shift</th><th>Plan B2 — + queue rewrite</th><th>Plan C — Azure</th></tr></thead>
           <tbody>
-            <tr><td>Monthly cost</td><td class="fig">₹21,000</td><td class="fig">₹44,000</td><td class="fig">₹26,000</td></tr>
-            <tr><td>Versus today (₹84,800)</td><td class="fig pos">−75%</td><td class="fig pos">−48%</td><td class="fig pos">−69%</td></tr>
-            <tr><td>Versus original (₹1,27,600)</td><td class="fig pos">−84%</td><td class="fig pos">−66%</td><td class="fig pos">−80%</td></tr>
-            <tr><td>First saving realised</td><td>Week 0</td><td>Week 10</td><td>Week 14</td></tr>
-            <tr><td>Engineering effort</td><td>Moderate</td><td>High</td><td>Very high</td></tr>
-            <tr><td>Data migration</td><td>None</td><td class="neg">10 GB DB + 160 GB media</td><td class="neg">As B1</td></tr>
-            <tr><td>Application code changes</td><td>Resource requests only</td><td>Upload path</td><td class="neg">Upload path and queue engine</td></tr>
-            <tr><td>Requirement 1 — India region</td><td>Met — Mumbai</td><td>Met — Mumbai</td><td>Met — Mumbai</td></tr>
-            <tr><td>Requirement 2 — performance</td><td class="pos">Met — equal or better</td><td class="neg">Qualified — cold starts</td><td class="neg">Qualified — cold starts</td></tr>
-            <tr><td>Automatic on/off</td><td>KEDA, Resource Scheduler and calendar scaler</td><td>Native</td><td>Native</td></tr>
-            <tr><td>Platform operated by</td><td>Your team</td><td>Google</td><td>Google</td></tr>
-            <tr><td>Rollback</td><td class="pos">Trivial</td><td class="neg">Difficult</td><td class="neg">Difficult</td></tr>
-            <tr><td>Pricing confidence</td><td>Firm — from invoice</td><td>±20% — modelled</td><td>±20% — modelled</td></tr>
+            <tr><td>Monthly cost</td><td class="fig">₹21,000</td><td class="fig">₹44,000</td><td class="fig">₹26,000</td><td class="fig">₹41,300</td></tr>
+            <tr><td>Versus today (₹84,800)</td><td class="fig pos">−75%</td><td class="fig pos">−48%</td><td class="fig pos">−69%</td><td class="fig pos">−51%</td></tr>
+            <tr><td>Versus original (₹1,27,600)</td><td class="fig pos">−84%</td><td class="fig pos">−66%</td><td class="fig pos">−80%</td><td class="fig pos">−68%</td></tr>
+            <tr><td>First saving realised</td><td>Week 0</td><td>Week 10</td><td>Week 14</td><td>Week 9</td></tr>
+            <tr><td>Engineering effort</td><td>Moderate</td><td>High</td><td>Very high</td><td>High</td></tr>
+            <tr><td>Data migration</td><td>None</td><td class="neg">10 GB DB + 160 GB media</td><td class="neg">As B1</td><td class="neg">10 GB DB + 160 GB media</td></tr>
+            <tr><td>Application code changes</td><td>Resource requests only</td><td>Upload path</td><td class="neg">Upload path and queue engine</td><td>Upload path</td></tr>
+            <tr><td>Requirement 1 — India region</td><td>Met — Mumbai</td><td>Met — Mumbai</td><td>Met — Mumbai</td><td>Met — Central India</td></tr>
+            <tr><td>Requirement 2 — performance</td><td class="pos">Met — equal or better</td><td class="neg">Qualified — cold starts</td><td class="neg">Qualified — cold starts</td><td class="neg">Qualified — cold starts</td></tr>
+            <tr><td>Automatic on/off</td><td>KEDA, Resource Scheduler and calendar scaler</td><td>Native</td><td>Native</td><td>Native, KEDA built in</td></tr>
+            <tr><td>Platform operated by</td><td>Your team</td><td>Google</td><td>Google</td><td>Microsoft, database by your team</td></tr>
+            <tr><td>Rollback</td><td class="pos">Trivial</td><td class="neg">Difficult</td><td class="neg">Difficult</td><td class="neg">Difficult</td></tr>
+            <tr><td>Pricing confidence</td><td>Firm — from invoice</td><td>±20% — modelled</td><td>±20% — modelled</td><td>±20% — modelled</td></tr>
           </tbody>
         </table></div>
+
+        <h3>2.1 The rate that decides the outcome</h3>
+        <p class="lede">The appraisal reduces to one comparison. The estate is memory-heavy and CPU-light — 44 GiB resident against 1.35 cores in use — so the deciding figure is what a provider charges for a permanently resident unit of capacity. The table prices the nearest available equivalent of one OCI baseline node, 4 OCPU and 24 GB, held warm for a month.</p>
+        <p class="caption">Table 3 — Cost of one always-on 4 vCPU / 24 GB unit, by provider</p>
+        <div class="tw"><table>
+          <thead><tr><th>Provider</th><th>Nearest equivalent shape</th><th class="num">₹ per month</th><th class="num">× OCI</th></tr></thead>
+          <tbody>
+            <tr><td>OCI Ampere A1 — current</td><td>4 OCPU / 24 GB</td><td class="num">4,421</td><td class="num pos">1.0×</td></tr>
+            <tr><td>AWS Graviton, ap-south-1</td><td>m7g.xlarge — 4 vCPU / 16 GiB</td><td class="num">≈ 11,000</td><td class="num neg">2.5×</td></tr>
+            <tr><td>DigitalOcean, Bangalore</td><td>General purpose — 4 vCPU / 16 GB</td><td class="num">≈ 11,100</td><td class="num neg">2.5×</td></tr>
+            <tr><td>Azure VM, Central India</td><td>D4ps_v5 — 4 vCPU / 16 GiB</td><td class="num">≈ 12,200</td><td class="num neg">2.8×</td></tr>
+            <tr><td>Azure Container Apps — idle rate</td><td>4 vCPU / 24 GiB warm</td><td class="num">≈ 19,300</td><td class="num neg">4.4×</td></tr>
+            <tr><td>Google Cloud Run — always on</td><td>4 vCPU / 24 GiB warm</td><td class="num">≈ 41,300</td><td class="num alert">9.3×</td></tr>
+          </tbody>
+        </table></div>
+        <div class="callout">
+          <div class="h">They cannot beat the number that decides the outcome</div>
+          <p>The workload requires four to five permanently warm cores — authentication, student, the AI and proctoring service and the queue workers — and holds 44 GiB resident. OCI Ampere A1 prices memory at <strong>₹86.82 per GB-month</strong>; every alternative screened charges between ₹300 and ₹700 for the same gigabyte. Compute is where the alternatives are closest, at two to three times OCI; memory is where they are five to ten times more expensive, and memory is what this estate consumes.</p>
+          <p>Serverless pricing only outperforms a low-cost ARM virtual machine below approximately 10% duty cycle. The parts of the estate that are genuinely that idle — DEV, UAT, the builder and batch jobs — can instead be switched off on a schedule at no cost. <strong>Practical screening rule for any future proposal: if a provider cannot price memory below roughly ₹150 per GB-month, it cannot reach Plan A, and the remaining modelling is wasted effort.</strong></p>
+        </div>
 
       </section>
 
@@ -362,7 +400,7 @@
       <section id="s4">
         <h2><span class="num">4</span> Evidence base</h2>
         <p class="lede">Measured from the live estate and the production database on 17 August 2026. Every recommendation in this paper rests on these figures rather than on assumption.</p>
-        <p class="caption">Table 3 — Measurements and their implications</p>
+        <p class="caption">Table 4 — Measurements and their implications</p>
         <div class="tw"><table>
           <thead><tr><th>Measurement</th><th class="num">Value</th><th>Implication</th></tr></thead>
           <tbody>
@@ -409,7 +447,7 @@
           </div>
         </div>
 
-        <p class="caption">Table 4 — Plan A delivery schedule</p>
+        <p class="caption">Table 5 — Plan A delivery schedule</p>
         <div class="tw"><table>
           <thead><tr><th>Period</th><th>Work</th><th class="num">Saving</th><th class="num">Run-rate after</th></tr></thead>
           <tbody>
@@ -422,7 +460,7 @@
           </tbody>
         </table></div>
 
-        <p class="caption">Table 5 — Plan A steady-state cost build-up</p>
+        <p class="caption">Table 6 — Plan A steady-state cost build-up</p>
         <div class="tw"><table>
           <thead><tr><th>Component</th><th>Shape</th><th class="num">₹ per month</th></tr></thead>
           <tbody>
@@ -439,8 +477,8 @@
         </table></div>
 
         <h3>5.3 Instrumentation prerequisites</h3>
-        <p class="lede">Verified against the live cluster on 27 August 2026. Prometheus, kube-state-metrics, node-exporter, Grafana, Loki, Promtail and metrics-server are already deployed in production, and DEV and UAT already run the equivalent Docker stack; no new monitoring platform is required. Four gaps remain, and each one gates a specific week of the schedule. Their combined cost is approximately ₹100–200 per month, which sits inside the ±5% stated on Table 5.</p>
-        <p class="caption">Table 6 — Prerequisites, and the week each one gates</p>
+        <p class="lede">Verified against the live cluster on 27 August 2026. Prometheus, kube-state-metrics, node-exporter, Grafana, Loki, Promtail and metrics-server are already deployed in production, and DEV and UAT already run the equivalent Docker stack; no new monitoring platform is required. Four gaps remain, and each one gates a specific week of the schedule. Their combined cost is approximately ₹100–200 per month, which sits inside the ±5% stated on the Plan A cost build-up.</p>
+        <p class="caption">Table 7 — Prerequisites, and the week each one gates</p>
         <div class="tw"><table>
           <thead><tr><th>Prerequisite</th><th>Current state</th><th>Gates</th><th>Why it is required</th><th class="num">Cost</th></tr></thead>
           <tbody>
@@ -510,7 +548,7 @@
 
         <div class="two-col" style="margin-top:24px">
           <div>
-            <p class="caption" style="margin-top:0">Table 7 — Plan B1, lift and shift</p>
+            <p class="caption" style="margin-top:0">Table 8 — Plan B1, lift and shift</p>
             <div class="tw"><table>
               <thead><tr><th>Component</th><th class="num">₹ / month</th></tr></thead>
               <tbody>
@@ -526,7 +564,7 @@
             </table></div>
           </div>
           <div>
-            <p class="caption" style="margin-top:0">Table 8 — Plan B2, after the queue rewrite</p>
+            <p class="caption" style="margin-top:0">Table 9 — Plan B2, after the queue rewrite</p>
             <div class="tw"><table>
               <thead><tr><th>Change from B1</th><th class="num">₹ / month</th></tr></thead>
               <tbody>
@@ -539,7 +577,7 @@
           </div>
         </div>
 
-        <p class="caption">Table 9 — Migration workstream, 10 to 14 weeks</p>
+        <p class="caption">Table 10 — Migration workstream, 10 to 14 weeks</p>
         <div class="tw"><table>
           <thead><tr><th>Stage</th><th>Work</th><th>Risk</th></tr></thead>
           <tbody>
@@ -566,9 +604,117 @@
 
       <!-- 8 -->
       <section id="s8">
-        <h2><span class="num">8</span> Platform and region feasibility</h2>
+        <h2><span class="num">8</span> Plan C — Azure Container Apps, Central India</h2>
+        <p class="lede">A serverless container platform with a self-managed PostgreSQL host alongside it. Costed against the live production inventory: 20 API deployments, 12 frontends, four queue workers, and measured resident memory per service — <code>fast-api</code> at 1.9 GiB across three replicas, <code>litellm</code> at 1.4 GiB, <code>admin-node</code> at 957 MiB, <code>student-node</code> between 283 and 667 MiB, <code>auth-node</code> at 155 MiB.</p>
+
+        <h3>8.1 Service mapping</h3>
+        <p class="caption">Table 11 — How the estate maps onto Azure</p>
+        <div class="tw"><table>
+          <thead><tr><th>Today</th><th>Plan C</th></tr></thead>
+          <tbody>
+            <tr><td>20 API deployments on OKE</td><td>Azure Container Apps, Consumption plan</td></tr>
+            <tr><td>Four BullMQ workers</td><td>Container Apps with the built-in KEDA Redis scaler, scaled to zero</td></tr>
+            <tr><td><code>form-data-normalization-cron</code></td><td>Container Apps Jobs, cron trigger</td></tr>
+            <tr><td>12 React frontends</td><td>Blob static websites behind Azure Front Door</td></tr>
+            <tr><td>Managed PostgreSQL, 10 GB</td><td>Self-managed PostgreSQL 16 on a D2pds_v5 virtual machine, with PgBouncer</td></tr>
+            <tr><td>Redis</td><td>Azure Cache for Redis, Basic C1</td></tr>
+            <tr><td>OCI Registry, 407 GB</td><td>Azure Container Registry, Standard, after pruning</td></tr>
+            <tr><td>Loki and Promtail</td><td>Log Analytics workspace</td></tr>
+            <tr><td>160 GB of media</td><td>Azure Blob Storage, Hot tier</td></tr>
+          </tbody>
+        </table></div>
+
+        <h3>8.2 Two structural differences from Plan B</h3>
+        <ul class="list">
+          <li><strong>Container Apps charges a reduced idle rate.</strong> A replica held open by a minimum-replica setting but not serving a request bills at roughly one-eighth of the active vCPU rate. Cloud Run charges the full rate for the same warm instance. That single difference is worth tens of thousands of rupees per month across the always-warm tier.</li>
+          <li><strong>KEDA is built into the platform.</strong> The BullMQ workers can scale from zero on Redis queue depth <em>without</em> rewriting the queue engine. Plan C therefore obtains Plan B2's worker saving without Plan B2's four weeks of high-risk rewrite, and without disturbing retry, back-off or delayed-job semantics. This is the strongest argument available for Azure.</li>
+        </ul>
+
+        <h3>8.3 Rate card</h3>
+        <p class="caption">Table 12 — Container Apps consumption rates, Central India</p>
+        <div class="tw"><table>
+          <thead><tr><th>Item</th><th class="num">Rate</th><th class="num">Per month</th></tr></thead>
+          <tbody>
+            <tr><td>vCPU — active</td><td class="num">$0.000024 / vCPU-s</td><td class="num">₹5,500 per vCPU</td></tr>
+            <tr><td>vCPU — idle</td><td class="num">$0.000003 / vCPU-s</td><td class="num">₹690 per vCPU</td></tr>
+            <tr><td>Memory — active or idle</td><td class="num">$0.000003 / GiB-s</td><td class="num">₹690 per GiB</td></tr>
+            <tr><td>Free grant per subscription</td><td class="num">180k vCPU-s · 360k GiB-s · 2M requests</td><td class="num">≈ ₹480</td></tr>
+          </tbody>
+        </table></div>
+        <div class="callout risk">
+          <div class="h">The constraint that sets Plan C's floor</div>
+          <p>Memory bills at the same rate whether a replica is idle or active, and Container Apps enforces one vCPU for every two GiB allocated. With 44 GiB resident across the estate, memory rather than compute determines the outcome — which is why no configuration of Plan C reaches Plan A.</p>
+        </div>
+
+        <h3>8.4 Compute allocation</h3>
+        <p class="caption">Table 13 — Container Apps compute build-up</p>
+        <div class="tw"><table>
+          <thead><tr><th>Tier</th><th>Allocation</th><th>Billing basis</th><th class="num">₹ / month</th></tr></thead>
+          <tbody>
+            <tr><td><code>fast-api</code> — exam path</td><td>2 replicas × 1 vCPU / 2 GiB, minimum 1</td><td>20% active, 80% idle, plus 4 GiB flat</td><td class="num">6,100</td></tr>
+            <tr><td><code>student-node</code></td><td>2 × 0.5 vCPU / 1 GiB, minimum 1</td><td>as above</td><td class="num">3,000</td></tr>
+            <tr><td><code>auth-node</code></td><td>2 × 0.25 vCPU / 0.5 GiB, minimum 1</td><td>as above</td><td class="num">1,500</td></tr>
+            <tr><td>Four queue workers</td><td>0.25 vCPU / 0.5 GiB each, minimum 0</td><td>KEDA Redis scaler, bursty active only</td><td class="num">800</td></tr>
+            <tr><td>12 scale-to-zero services</td><td>0.5–1 vCPU / 1–2 GiB</td><td>warm ≈ 220 hours per month, mostly idle</td><td class="num">5,500</td></tr>
+            <tr class="total"><td>Container Apps compute</td><td>—</td><td>—</td><td class="num">16,900</td></tr>
+          </tbody>
+        </table></div>
+        <p class="lede">Holding the four workers warm instead of scaling them to zero would add ₹6,100 per month — Plan C's equivalent of the ₹11,500 worker line in Plan B1. KEDA removes it at no cost and with no code change.</p>
+
+        <h3>8.5 Full cost</h3>
+        <p class="caption">Table 14 — Plan C steady-state cost build-up</p>
+        <div class="tw"><table>
+          <thead><tr><th>Component</th><th>Basis</th><th class="num">₹ / month</th></tr></thead>
+          <tbody>
+            <tr><td>Container Apps — always-warm APIs</td><td>auth, student, <code>fast-api</code></td><td class="num">10,600</td></tr>
+            <tr><td>Container Apps — queue workers</td><td>KEDA scale-to-zero on queue depth</td><td class="num">800</td></tr>
+            <tr><td>Container Apps — scale-to-zero tier</td><td>12 services, warm in working hours</td><td class="num">5,500</td></tr>
+            <tr><td>PostgreSQL host</td><td>D2pds_v5, 2 vCPU / 8 GiB, self-managed</td><td class="num">5,550</td></tr>
+            <tr><td>Database storage</td><td>128 GB Premium SSD P10</td><td class="num">1,730</td></tr>
+            <tr><td>Backup target</td><td>Blob for <code>pg_dump</code> and WAL archiving</td><td class="num">400</td></tr>
+            <tr><td>Redis</td><td>Azure Cache, Basic C1, 1 GB, no SLA</td><td class="num">3,500</td></tr>
+            <tr><td>Frontends</td><td>Blob static websites and Front Door Standard</td><td class="num">3,300</td></tr>
+            <tr><td>Container Registry</td><td>Standard, 100 GB, after pruning</td><td class="num">1,750</td></tr>
+            <tr><td>Log Analytics</td><td>≈30 GB ingestion per month</td><td class="num">3,000</td></tr>
+            <tr><td>Blob media, egress, DNS, Key Vault</td><td>160 GB Hot plus transfer</td><td class="num">900</td></tr>
+            <tr><td>DEV and UAT</td><td>Container Apps scale-to-zero plus two small database hosts</td><td class="num">4,300</td></tr>
+            <tr class="total"><td>Plan C total</td><td>±20%; ₹39,100 with a one-year reserved database host</td><td class="num">≈ 41,300</td></tr>
+          </tbody>
+        </table></div>
+        <p class="lede"><strong>Lean variant — approximately ₹27,000</strong>, applying every available lever: a one-year reserved database host, Static Web Apps Free in place of Front Door and its service-level agreement, Redis C0 at 250 MB, log ingestion moved to Basic Logs, and <code>fast-api</code> warmed by a KEDA cron scaler only during scheduled examination windows.</p>
+
+        <h3>8.6 Migration workstream — 9 to 12 weeks</h3>
+        <p class="caption">Table 15 — Plan C migration stages</p>
+        <div class="tw"><table>
+          <thead><tr><th>Stage</th><th>Work</th><th>Risk</th></tr></thead>
+          <tbody>
+            <tr><td>1 · Landing zone</td><td>Subscription, virtual network, managed identity, Container Registry, Key Vault, pipelines</td><td>Low</td></tr>
+            <tr><td>2 · Stateless services</td><td>Deploy 20 images; set minimum replicas per the warm and cold classification; ingress and custom domains</td><td>Low</td></tr>
+            <tr><td>3 · Data platform</td><td>Build and harden the PostgreSQL host; migrate 10 GB by logical replication; deploy Redis; move 160 GB of media to Blob and re-sign every stored object URL</td><td class="alert">High</td></tr>
+            <tr><td>4 · Queue workers</td><td>KEDA scalers on the four workers; verify BullMQ behaviour from zero replicas; tune polling interval and cooldown</td><td>Medium</td></tr>
+            <tr><td>5 · Jobs and observability</td><td>Container Apps Jobs for the cron workload; Log Analytics, dashboards and alert rules rebuilt</td><td>Medium</td></tr>
+            <tr><td>6 · Integrations</td><td>Re-point Google OAuth redirect URIs, MSG91 and Meta webhooks, PostHog, LiteLLM and every external callback</td><td>Medium</td></tr>
+            <tr><td>7 · Cutover</td><td>Dual-run, DNS switch, seven-day soak, decommission OCI</td><td>Medium</td></tr>
+          </tbody>
+        </table></div>
+
+        <div class="callout risk">
+          <div class="h">Plan C risks</div>
+          <ul class="list" style="margin-top:8px">
+            <li><strong>The database decision cuts both ways.</strong> Self-managing saves approximately ₹5,300 per month — against ₹17,449 for the same decision under Plan A, because Azure's managed premium is roughly 1.7× a virtual machine while OCI's is closer to eleven times. It also removes the principal reason to choose Azure, since the team then operates a database anyway, in a second cloud.</li>
+            <li><strong>Migration exposure is identical to Plan B.</strong> Ten gigabytes of database and 160 gigabytes of media must move, every integration must be re-pointed, and rollback after the data moves is difficult.</li>
+            <li><strong>Platform limits.</strong> A Consumption replica caps at 4 vCPU and 8 GiB, which <code>fast-api</code> fits today but which constrains growth. Redis Basic carries no service-level agreement and Standard doubles that line. The Container Apps environment must be injected into the virtual network to reach a private database host, which imposes a subnet-sizing constraint.</li>
+            <li><strong>Sleeper costs.</strong> Log Analytics ingestion is the line most Azure estimates omit. A worker scaled to zero also adds up to 30 seconds of KEDA polling latency before the first job is collected.</li>
+          </ul>
+        </div>
+      </section>
+
+      <!-- 9 -->
+      <section id="s9">
+        <h2><span class="num">9</span> Platform, region and data-store feasibility</h2>
+        <h3 style="margin-top:0">9.1 Compute platforms with an India region</h3>
         <p class="lede">Requirement 1 was checked rather than assumed. Several widely used options fail the India requirement outright, including two from the original proof-of-concept stack.</p>
-        <p class="caption">Table 10 — India region availability by platform</p>
+        <p class="caption">Table 16 — India region availability by platform</p>
         <div class="tw"><table>
           <thead><tr><th>Platform</th><th>India region</th><th>Assessment</th></tr></thead>
           <tbody>
@@ -576,39 +722,82 @@
             <tr><td>Neon (serverless PostgreSQL)</td><td class="alert">None</td><td>United States ×3, Frankfurt, Singapore, Tel Aviv. Mumbai requested two years ago and still not shipped.</td></tr>
             <tr><td>Google Cloud Run</td><td class="pos">asia-south1</td><td>Plan B foundation.</td></tr>
             <tr><td>Cloud SQL / AlloyDB</td><td class="pos">Mumbai</td><td>Plan B database.</td></tr>
-            <tr><td>Azure Container Apps</td><td class="pos">Central India</td><td>Viable alternative to Cloud Run; KEDA scaling built in.</td></tr>
+            <tr><td>Azure Container Apps</td><td class="pos">Central India</td><td>Plan C foundation; KEDA scaling built in. Costed in full in section 8.</td></tr>
             <tr><td>Aiven</td><td class="pos">Mumbai, Hyderabad, Bangalore, Delhi</td><td>Best India coverage for managed PostgreSQL.</td></tr>
             <tr><td>Supabase</td><td class="pos">Mumbai</td><td>Functional, but previously ruled out for production.</td></tr>
             <tr><td>AWS RDS / Aurora</td><td class="pos">Mumbai</td><td>Viable.</td></tr>
-            <tr><td>DigitalOcean</td><td class="pos">Bangalore only</td><td>Viable.</td></tr>
+            <tr><td>DigitalOcean</td><td class="pos">Bangalore only</td><td>Region requirement met; rejected on the memory rate — see section 9.2.</td></tr>
             <tr><td>Cloudflare Pages / Netlify</td><td class="pos">Edge PoPs</td><td>Region is not material for static bundles; Mumbai, Chennai and Delhi PoPs serve them.</td></tr>
           </tbody>
         </table></div>
-      </section>
-
-      <!-- 9 -->
-      <section id="s9">
-        <h2><span class="num">9</span> Decisions required</h2>
-        <p class="lede">Weeks 0 and 1 of Plan A are unconditional — they apply whichever direction is chosen, and none of them touches the production data path.</p>
-        <p class="caption">Table 11 — Decision register</p>
+      
+        <h3>9.2 Providers screened and rejected</h3>
+        <p class="lede">Screened on five criteria: an India region, the price of an always-on core and of resident memory, migration cost and reversibility, operational ecosystem and hiring, and procurement or sovereignty risk.</p>
+        <p class="caption">Table 17 — Additional providers screened</p>
         <div class="tw"><table>
-          <thead><tr><th>Ref</th><th>Decision</th><th>Owner</th><th class="num">If accepted</th><th class="num">If declined</th></tr></thead>
+          <thead><tr><th>Platform</th><th>India region</th><th>Assessment</th></tr></thead>
           <tbody>
-            <tr><td>D-0</td><td>Adopt Plan A or Plan B</td><td>CTO</td><td class="num pos">A → ₹21,000</td><td class="num txt">B → ₹26,000–44,000</td></tr>
-            <tr><td>D-1</td><td>Self-manage PostgreSQL — the team owns backups and recovery for a 10 GB database</td><td>CTO</td><td class="num pos">−₹17,449</td><td class="num txt">Floor becomes ₹38,000</td></tr>
-            <tr><td>D-2</td><td>Two baseline nodes with a calendar-driven burst node, rather than three always on</td><td>Infra</td><td class="num pos">−₹4,421</td><td class="num">₹25,400</td></tr>
-            <tr><td>D-3</td><td>Migrate to an OKE Basic cluster — new cluster and DNS cutover, one-way</td><td>Infra</td><td class="num pos">−₹6,834</td><td class="num">₹27,800</td></tr>
-            <tr><td>D-4</td><td>DEV, UAT and builder off overnight and at weekends, with a one-click wake-up override</td><td>Eng + QA</td><td class="num pos">−₹8,488</td><td class="num">₹29,500</td></tr>
-            <tr><td>D-5</td><td>Rewrite BullMQ to Pub/Sub push — relevant only under Plan B</td><td>Backend</td><td class="num pos">−₹11,500</td><td class="num txt">B remains ₹44,000</td></tr>
+            <tr><td>Alibaba Cloud</td><td class="alert">Withdrawn</td><td>The India data centre was closed in 2022–23. Fails requirement 1 outright; no further analysis is possible. Re-verify before the option is raised again.</td></tr>
+            <tr><td>Tencent Cloud</td><td>Mumbai</td><td><strong class="neg">Rejected on procurement and sovereignty grounds rather than price.</strong> The platform holds student personal data for Indian institutes and corporates; a Chinese-owned cloud invites regulatory scrutiny and will fail security review with your own customers. No pricing advantage justifies that exposure.</td></tr>
+            <tr><td>IBM Cloud</td><td>Chennai classic infrastructure only</td><td>No full multi-zone India region for the managed services this estate would need. No Ampere-class ARM pricing, a small local ecosystem and a thin hiring pool. Code Engine is a credible Container Apps equivalent, but no cost case sits behind it.</td></tr>
+            <tr><td>DigitalOcean</td><td>Bangalore only</td><td>The only one of the five that merits a second look, and it still loses. Compute is competitive at roughly 2.5× OCI, but memory-optimised capacity prices memory near ₹700 per GB-month against OCI's ₹86.82. At 44 GiB resident the memory bill alone would exceed ₹30,000. A single Indian region also means no in-country failover.</td></tr>
+            <tr><td>Salesforce</td><td>n/a</td><td>Not an infrastructure provider. It is software-as-a-service, plus Heroku — a platform running on AWS and priced per dyno at levels above Cloud Run. Nothing in the portfolio hosts 20 containers and a 10 GB database.</td></tr>
           </tbody>
         </table></div>
+
+        <h3>9.3 Vector databases as a PostgreSQL alternative</h3>
+        <p class="lede">Qdrant, Weaviate and Pinecone were assessed as a replacement for, or supplement to, PostgreSQL. Measured in production on 27 August 2026, the entire vector estate is approximately 104,000 embeddings occupying 1.7 GB, inside an 11 GB database that is otherwise students, assessments, assignments and scores.</p>
+        <p class="caption">Table 18 — Production vector estate</p>
+        <div class="tw"><table>
+          <thead><tr><th>Table</th><th class="num">Size</th><th class="num">Rows</th></tr></thead>
+          <tbody>
+            <tr><td><code>institute.institutes_campuses</code></td><td class="num">1,380 MB</td><td class="num">86,903</td></tr>
+            <tr><td><code>admin.mongo_db_cities</code></td><td class="num">91 MB</td><td class="num">5,736</td></tr>
+            <tr><td><code>institute.degrees</code></td><td class="num">70 MB</td><td class="num">4,454</td></tr>
+            <tr><td><code>corporate.job_roles</code></td><td class="num">69 MB</td><td class="num">2,359</td></tr>
+            <tr><td><code>institute.streams</code></td><td class="num">64 MB</td><td class="num">4,078</td></tr>
+            <tr><td>Three smaller tables</td><td class="num">≈ 5 MB</td><td class="num">≈ 300</td></tr>
+            <tr class="total"><td>Total</td><td class="num">≈ 1.7 GB</td><td class="num">≈ 104,000</td></tr>
+          </tbody>
+        </table></div>
+        <div class="callout risk">
+          <div class="h">They cannot replace PostgreSQL</div>
+          <p>Qdrant, Weaviate and Pinecone are similarity-search engines over embeddings and metadata. They have no joins, no foreign keys and no cross-entity transactions, all three of which the system of record requires. They would be an additional data store, never a substitute. Four findings follow.</p>
+          <ul class="list" style="margin-top:10px">
+            <li><strong>Cost.</strong> pgvector on the existing database costs nothing additional. Pinecone, Qdrant Cloud and Weaviate Cloud each start near $25 per month, roughly ₹2,200 to ₹4,400 — between 10% and 20% of the entire Plan A target, to serve 104,000 vectors.</li>
+            <li><strong>Region.</strong> Pinecone serverless has no India region, which fails requirement 1 outright. India availability for Qdrant Cloud and Weaviate Cloud requires verification; self-hosting either in Mumbai is possible but adds a service to operate and patch.</li>
+            <li><strong>Correctness.</strong> Ranking is hybrid — taxonomy gating, trigram matching and vector similarity fused in a single query. Separating the vectors means fetching identifiers from the vector store and re-querying PostgreSQL, which removes the ability to gate by family before ranking. That gate is precisely what corrected the documented "nurse resembles accountant" and "product development ranks as sales" failures.</li>
+            <li><strong>Direction of travel.</strong> Elasticsearch was recently consolidated into PostgreSQL to remove a data store. Adding a vector store puts one back.</li>
+          </ul>
+          <p style="margin-top:12px"><strong>When this would change:</strong> at roughly ten million vectors, or when pgvector index build time or recall becomes a measured bottleneck. At 104,000 the estate is two orders of magnitude away. A cheaper improvement is available now — <code>institutes_campuses</code> holds about 16 KB per row, indicating unquantised embeddings; <code>halfvec</code> or binary quantisation would shrink that table substantially with no new service and no migration.</p>
+        </div>
+
       </section>
 
       <!-- 10 -->
       <section id="s10">
-        <h2><span class="num">10</span> Risk register</h2>
+        <h2><span class="num">10</span> Decisions required</h2>
+        <p class="lede">Weeks 0 and 1 of Plan A are unconditional — they apply whichever direction is chosen, and none of them touches the production data path.</p>
+        <p class="caption">Table 19 — Decision register</p>
+        <div class="tw"><table>
+          <thead><tr><th>Ref</th><th>Decision</th><th>Owner</th><th class="num">If accepted</th><th class="num">If declined</th></tr></thead>
+          <tbody>
+            <tr><td>D-0</td><td>Adopt Plan A, Plan B or Plan C</td><td>CTO</td><td class="num pos">A → ₹21,000</td><td class="num txt">B → ₹26,000–44,000 · C → ₹27,000–41,300</td></tr>
+            <tr><td>D-1</td><td>Self-manage PostgreSQL — the team owns backups and recovery for a 10 GB database</td><td>CTO</td><td class="num pos">−₹17,449</td><td class="num txt">Floor becomes ₹38,000</td></tr>
+            <tr><td>D-2</td><td>Two baseline nodes with a calendar-driven burst node, rather than three always on</td><td>Infra</td><td class="num pos">−₹4,421</td><td class="num">₹25,400</td></tr>
+            <tr><td>D-3</td><td>Migrate to an OKE Basic cluster — new cluster and DNS cutover, one-way</td><td>Infra</td><td class="num pos">−₹6,834</td><td class="num">₹27,800</td></tr>
+            <tr><td>D-4</td><td>DEV, UAT and builder off overnight and at weekends, with a one-click wake-up override</td><td>Eng + QA</td><td class="num pos">−₹8,488</td><td class="num">₹29,500</td></tr>
+            <tr><td>D-5</td><td>Rewrite BullMQ to Pub/Sub push — relevant only under Plan B; unnecessary under Plan C, where KEDA is built in</td><td>Backend</td><td class="num pos">−₹11,500</td><td class="num txt">B remains ₹44,000</td></tr>
+            <tr><td>D-6</td><td>Move embeddings from pgvector to a dedicated vector database — assessed in section 9.3 and not recommended</td><td>CTO</td><td class="num neg">+₹2,200–4,400</td><td class="num pos">₹0 — pgvector retained</td></tr>
+          </tbody>
+        </table></div>
+      </section>
+
+      <!-- 11 -->
+      <section id="s11">
+        <h2><span class="num">11</span> Risk register</h2>
         <p class="lede">Items outside the cost case that nonetheless gate it, or that warrant action regardless of the option selected.</p>
-        <p class="caption">Table 12 — Open risks and actions</p>
+        <p class="caption">Table 20 — Open risks and actions</p>
         <div class="tw"><table>
           <thead><tr><th>Item</th><th>Severity</th><th>Detail and action</th></tr></thead>
           <tbody>
@@ -625,9 +814,9 @@
         </table></div>
       </section>
 
-      <!-- 11 -->
-      <section id="s11">
-        <h2><span class="num">11</span> Performance guardrails and rollback</h2>
+      <!-- 12 -->
+      <section id="s12">
+        <h2><span class="num">12</span> Performance guardrails and rollback</h2>
         <p class="lede">Requirement 2 states that performance must be no worse than today. The following acceptance criteria enforce it and apply to both plans. Should a guardrail be breached, the previous node count or instance shape is restored immediately and investigation follows; production is never debugged in a degraded state.</p>
         <div class="two-col">
           <div>
@@ -666,12 +855,12 @@
         </div>
       </section>
 
-      <!-- 12 -->
-      <section id="s12">
-        <h2><span class="num">12</span> Appendices</h2>
+      <!-- 13 -->
+      <section id="s13">
+        <h2><span class="num">13</span> Appendices</h2>
 
         <h3>Appendix A — Current compute inventory</h3>
-        <p class="caption">Table 13 — Estate as measured on 17 August 2026</p>
+        <p class="caption">Table 21 — Estate as measured on 17 August 2026</p>
         <div class="tw"><table>
           <thead><tr><th>Env</th><th>Instance</th><th class="num">OCPU / GB</th><th>Purpose</th><th class="num">₹ / month</th><th>Plan A action</th></tr></thead>
           <tbody>
@@ -689,7 +878,7 @@
         </table></div>
 
         <h3>Appendix B — Effective unit rates</h3>
-        <p class="caption">Table 14 — Rates applied throughout this paper</p>
+        <p class="caption">Table 22 — Rates applied throughout this paper</p>
         <div class="tw"><table>
           <thead><tr><th>Resource</th><th class="num">Rate</th><th class="num">Per month (720 h)</th></tr></thead>
           <tbody>
@@ -703,23 +892,28 @@
             <tr><td>Block volume — performance units</td><td class="num">₹0.16137 per GB×VPU</td><td class="num">₹1.6137 per GB at VPU 10</td></tr>
             <tr><td>Container and custom image storage</td><td class="num">—</td><td class="num">₹2.39 per GB</td></tr>
             <tr><td>Cloud Run, asia-south1 (modelled)</td><td class="num">≈ $0.000024 / vCPU-s + Tier-2 uplift</td><td class="num">≈ ₹6,900 per always-on vCPU</td></tr>
+            <tr><td>Azure Container Apps — active vCPU (modelled)</td><td class="num">$0.000024 / vCPU-s</td><td class="num">≈ ₹5,500 per vCPU</td></tr>
+            <tr><td>Azure Container Apps — idle vCPU (modelled)</td><td class="num">$0.000003 / vCPU-s</td><td class="num">≈ ₹690 per vCPU</td></tr>
+            <tr><td>Azure Container Apps — memory (modelled)</td><td class="num">$0.000003 / GiB-s</td><td class="num">≈ ₹690 per GiB</td></tr>
+            <tr><td>AWS Graviton m7g, ap-south-1 (modelled)</td><td class="num">4 vCPU / 16 GiB on demand</td><td class="num">≈ ₹11,000 per instance</td></tr>
+            <tr><td>DigitalOcean general purpose, Bangalore (modelled)</td><td class="num">4 vCPU / 16 GB</td><td class="num">≈ ₹11,100 per droplet</td></tr>
           </tbody>
         </table></div>
 
         <div class="callout">
           <div class="h">Basis of estimate</div>
-          <p>OCI rates are taken from the usage statement for 1–30 June 2026, subscription 30377954, applied to the estate as measured on 17 August 2026. Cloud Run and Cloud SQL rates are modelled from published list prices and require a quotation before commitment. All figures exclude taxes. Savings should be reconfirmed against OCI pricing, storage egress, support requirements, reserved capacity and performance results before each production change is executed.</p>
+          <p>OCI rates are taken from the usage statement for 1–30 June 2026, subscription 30377954, applied to the estate as measured on 17 August 2026. Cloud Run, Cloud SQL, Azure and all comparator rates are modelled from published list prices and require a quotation before commitment; treat them as ±20%. Live-estate measurements for the Kubernetes cluster, the monitoring stack and the vector tables were taken on 27 August 2026. All figures exclude taxes. Savings should be reconfirmed against OCI pricing, storage egress, support requirements, reserved capacity and performance results before each production change is executed.</p>
         </div>
       </section>
 
-      <!-- 13 -->
-      <section id="s13">
-        <h2><span class="num">13</span> Recommendation and next steps</h2>
+      <!-- 14 -->
+      <section id="s14">
+        <h2><span class="num">14</span> Recommendation and next steps</h2>
         <p class="lede">Stated after the evidence, the appraisal, the decisions and the risks, so that the reasoning above stands on its own.</p>
 
         <div class="callout">
           <div class="h">Recommendation — approve Plan A</div>
-          <p>At the measured load, Plan A costs approximately half of the best achievable Cloud Run outcome. It delivers ₹8,488 of monthly saving in week 0 rather than week 10, requires no data migration, and is reversible at every step. Plan B2 reaches near-parity only <em>after</em> a queue-engine rewrite — substantial risk incurred to finish approximately ₹5,000 per month worse off. Cloud Run should be revisited if traffic becomes genuinely spiky at ten times today's volume, or if the organisation would rather pay a premium than operate infrastructure at all.</p>
+          <p>At the measured load, Plan A costs approximately half of the best achievable Cloud Run outcome. It delivers ₹8,488 of monthly saving in week 0 rather than week 10, requires no data migration, and is reversible at every step. Plan B2 reaches near-parity only <em>after</em> a queue-engine rewrite — substantial risk incurred to finish approximately ₹5,000 per month worse off. Plan C is the strongest of the three migration options on engineering risk, because Container Apps bills warm replicas at a reduced idle rate and its built-in KEDA removes the need for any queue rewrite; it nonetheless lands between ₹27,000 and ₹41,300, because memory at ₹690 per GiB against 44 GiB resident sets a floor that no configuration clears. A move should be revisited if traffic becomes genuinely spiky at ten times today's volume, or if the organisation would rather pay a premium than operate infrastructure at all.</p>
         </div>
 
         <div class="callout">
@@ -728,21 +922,21 @@
           <p><strong>Where Plan B has genuine merit</strong> is not cost. Non-production becomes almost free through true scale-to-zero, there is no Kubernetes cluster or database for the team to operate, and automatic on/off behaviour is native rather than assembled from KEDA and a scheduler. Were the binding constraint engineering <em>time</em> rather than money, Plan B would be the stronger answer.</p>
         </div>
 
-        <p class="caption">Table 15 — What approval authorises, in order</p>
+        <p class="caption">Table 23 — What approval authorises, in order</p>
         <div class="tw"><table>
           <thead><tr><th>Sequence</th><th>Action</th><th>Owner</th><th class="num">Effect</th></tr></thead>
           <tbody>
             <tr><td>Immediately</td><td>Raise <code>pl-prod-pg16</code> backup retention from 1 to 30 days. Unconditional; it gates the database work under either option.</td><td>Infra</td><td class="num soft">Risk fix</td></tr>
-            <tr><td>Week 0</td><td>Enable OCI Resource Scheduler on DEV, UAT and the builder, with a one-click wake-up override, after resolving the overnight CI dependency in section 10.</td><td>Infra, Eng, QA</td><td class="num pos">₹8,488</td></tr>
+            <tr><td>Week 0</td><td>Enable OCI Resource Scheduler on DEV, UAT and the builder, with a one-click wake-up override, after resolving the overnight CI dependency in section 11.</td><td>Infra, Eng, QA</td><td class="num pos">₹8,488</td></tr>
             <tr><td>Week 1</td><td>Merge the DEV and UAT database hosts, apply registry retention, reduce block-volume performance units, and capture the seven-day baseline.</td><td>Infra</td><td class="num pos">₹10,300</td></tr>
             <tr><td>Before week 2</td><td>Close the instrumentation gaps in section 5.3 — Alertmanager in production and 30-day metric retention.</td><td>Infra</td><td class="num soft">Enabler</td></tr>
-            <tr><td>Weeks 2–7</td><td>Proceed through right-sizing, the OKE Basic rebuild, static-site migration and the database cutover, each behind the guardrails in section 11 and the decisions in section 9.</td><td>Infra, Backend, DBA</td><td class="num pos">₹45,000</td></tr>
+            <tr><td>Weeks 2–7</td><td>Proceed through right-sizing, the OKE Basic rebuild, static-site migration and the database cutover, each behind the guardrails in section 12 and the decisions in section 10.</td><td>Infra, Backend, DBA</td><td class="num pos">₹45,000</td></tr>
           </tbody>
         </table></div>
 
         <div class="callout">
           <div class="h">What is being asked</div>
-          <p>Decision D-0 in section 9 — adopt Plan A. Weeks 0 and 1 are unconditional and apply whichever option is chosen, so they may proceed while the remaining decisions, D-1 to D-4, are considered. No production data path is touched before week 4, and every subsequent step carries a written, tested rollback.</p>
+          <p>Decision D-0 in section 10 — adopt Plan A. Weeks 0 and 1 are unconditional and apply whichever option is chosen, so they may proceed while the remaining decisions, D-1 to D-4, are considered. No production data path is touched before week 4, and every subsequent step carries a written, tested rollback.</p>
         </div>
       </section>
 
@@ -750,7 +944,7 @@
   </div>
 
   <footer>
-    <span>PluginLive · Infrastructure Cost Optimisation — Summary of All Plans · Version 3.3</span>
+    <span>PluginLive · Infrastructure Cost Optimisation — Summary of All Plans · Version 4.0</span>
     <span>Consolidates Cost Plan v3 (17 August 2026) and the Plan A decision brief (24 August 2026) · Internal — Confidential</span>
   </footer>
 
