@@ -2112,6 +2112,19 @@ Both environments were rebuilt. UAT verification: backend health 200, frontend
 `unless-stopped`, stored-dropout mapping present in the running container, and
 zero `dev.pluginlive.com` references in built client JavaScript.
 
+## Upcoming schedule roster dates (2026-08-27)
+
+An upcoming occurrence has no map/attempt rows yet, so its drawer intentionally
+falls back to the series roster to show who is lined up for that run. The Sent
+and Taken cells were incorrectly rendering each student's most recent historic
+series dates from that fallback payload. For an upcoming occurrence both cells
+now render `—`; historical dates remain visible for current/completed runs.
+
+Frontend commit `867009b`, with build-compatibility follow-up `d8a3fc2` for an
+unrelated test import that blocked Next's TypeScript phase. Promoted and deployed
+to UAT in merge `5f6657d`. UAT verification: assessment page 200 locally and
+publicly, fix present in the deployed checkout, and zero DEV URLs in client JS.
+
 ## Assigned-batches popover scrolling (2026-08-27)
 
 The shared `BatchPopover`/`ValuePopover` previously closed as soon as its own
