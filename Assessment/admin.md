@@ -569,14 +569,39 @@ assessment and the candidate disagreed about when it closed. That approach was
 reverted in full — code and columns — see
 `DB-Scripts/Corporate Per Candidate Validity/*__revert_corporate_per_candidate_validity.sql`.
 
-**Where it shows:** corporate floats, and **individual** (one-time / standalone)
-college assessments. A **scheduled** row is one generated RUN of a schedule —
-its dates come from the schedule's frequency and validity and the next run would
-overwrite anything set here — so no end date is passed for those and the band
-does not render. Its end date is edited on the schedule itself (Edit Schedule).
-The gate is `isOneTime || isStandalone` on the record, **not** absence of
-`scheduleId`: `UnifiedAssessmentTable` spreads `...record` into the standalone
-branch, so a one-time row can still carry a `scheduleId`.
+**Where it shows.** `POST /assessment/addStudentsToAssessment` has **four**
+callers in admin-react and the gate is wired into three of them — every one that
+opens the drawer with `mode="addCandidate"`:
+
+| Caller | Screen |
+|---|---|
+| `Assessment/index.js` | the global **Assessments** page (Active College / Corporate Assessment card) |
+| `ActiveCorporateList/CorporateAssessmentDashboard.js` | a company's assessment dashboard |
+| `ActiveCollegeList/InstituteAssessmentDashboard.js` | a campus's assessment dashboard |
+| `AssessmentDetails/index.js` | **not gated** — opens the drawer in the default `create` mode, a different add-students flow |
+
+Corporate rows always carry it. A **scheduled** college row is one generated RUN
+of a schedule — its dates come from the schedule's frequency and validity and the
+next run would overwrite anything set here — so no end date is passed and the
+band does not render. Its end date is edited on the schedule itself (Edit
+Schedule).
+
+**The "is this scheduled?" signal differs per table, which is easy to get wrong:**
+
+- `UnifiedAssessmentTable` (college dashboard) → gate on **`isOneTime ||
+  isStandalone`**, *not* on absence of `scheduleId`. It spreads `...record` into
+  the standalone branch, so a genuine one-time row can still carry a
+  `scheduleId` and would be wrongly skipped.
+- `ActiveAssessmentTable` (global Assessments page) → **`scheduleId` is
+  trustworthy**; `handleActiveAddCandidate` already branches on it to raise the
+  scheduled-assessment confirm dialog.
+
+Each caller passes the **same map id the add itself posts**, so the date the
+admin settles is the one the candidates land on. Each also passes an
+`onEndDateUpdated` refetch — extending rewrites the row's dates, and the global
+page shares one `refreshActiveAssessments()` between the post-add refresh and
+the extend action so a stale end date is never left on the row behind the
+drawer.
 
 **Backend.** `POST /assessment/updateAssessmentEndDate` now accepts
 `assessmentCorporateMapId` as an alternative to `assessmentInstituteMapId` —
