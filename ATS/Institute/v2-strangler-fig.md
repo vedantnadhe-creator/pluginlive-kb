@@ -2103,3 +2103,17 @@ Both environments were rebuilt. UAT verification: backend health 200, frontend
 `/v2/assessments` 200 locally and publicly, backend restart policy
 `unless-stopped`, stored-dropout mapping present in the running container, and
 zero `dev.pluginlive.com` references in built client JavaScript.
+
+## Assigned-batches popover scrolling (2026-08-27)
+
+The shared `BatchPopover`/`ValuePopover` previously closed as soon as its own
+list was scrolled. Their capture-phase `window.scroll` listener could not
+distinguish internal list scrolling from movement of the page beneath the
+fixed-position portal. The listener now ignores scroll events originating
+inside the popover, while page/table scroll still dismisses it. The list also
+uses `overscroll-behavior: contain` so reaching either end cannot chain the
+wheel/touch gesture into the dashboard behind it.
+
+Frontend commit `700888c`; deployed to DEV and promoted/deployed to UAT in
+merge `1c0f861`. UAT verification: dashboard 200 locally and publicly, fix
+present in the deployed checkout, and zero DEV URLs in built client JavaScript.
