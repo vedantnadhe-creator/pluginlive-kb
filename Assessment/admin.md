@@ -524,77 +524,53 @@ The Add Candidate button in `UnifiedAssessmentTable` detects standalone/one-time
 
 Supports: Communication, Aptitude, Behavior, Role_Based
 
-### A CORPORATE late joiner gets their own deadline (2026-08-26)
+### Adding candidates warns how long is left, and offers to extend (2026-08-27)
 
-A candidate added after a corporate assessment was created used to inherit
-whatever was left of the shared window: added on the 27th of a 21→30 assessment
-they got **3 days**, while the day-one candidates got 9. The attempt window
-lived **only on the map row** (`assessment_corporate_map.end_time`) and
-`assessment_assigned_students` had no window column at all, so there was no
-per-candidate deadline to give them.
+Adding a candidate to an assessment that is nearly over handed them a window
+measured in hours, and nothing in the drawer said so. The Add Candidate drawer
+now opens with a band stating when the assessment closes, plus an **Extend end
+date** control:
 
-Two nullable columns fix it (migration
-`20260826T143820Z__corporate_per_candidate_validity.sql`, DEV+UAT 2026-08-26,
-**PROD pending**):
+| Days left | Tone | Copy |
+|---|---|---|
+| already closed | error | "This assessment closed on 20 Aug 2026." |
+| 0 | error | "closes today" |
+| 1 | warning | "closes tomorrow" |
+| 2–7 | warning | "closes in N days" |
+| 8+ | info | "closes in N days" |
 
-| Column | Meaning |
-|---|---|
-| `assessment_corporate_map.assessment_validity_days` | how many days ONE candidate gets, set when the assessment is created |
-| `assessment_assigned_students.end_time_override` | that candidate's own deadline; `NULL` = use the map |
+**Extending moves the assessment's OWN end date**, so everyone already on it
+moves too — the control says so before confirming. This was a deliberate
+reversal: a first attempt gave the late joiner a *private* deadline
+(`assessment_assigned_students.end_time_override`), which is invisible on every
+assessment-level screen (the dates column, reports, at-risk bands), so the
+assessment and the candidate disagreed about when it closed. That approach was
+reverted in full — code and columns — see
+`DB-Scripts/Corporate Per Candidate Validity/*__revert_corporate_per_candidate_validity.sql`.
 
-**Why an override and not the obvious alternatives.** Extending the map's
-`end_time` would move the deadline for **everyone** on the assessment. Putting
-late joiners on a second map would fragment every report, count and at-risk band
-that groups by map. The override is the only shape that moves one candidate.
+**Where it shows:** corporate floats, and **individual** (one-time / standalone)
+college assessments. A **scheduled** row is one generated RUN of a schedule —
+its dates come from the schedule's frequency and validity and the next run would
+overwrite anything set here — so no end date is passed for those and the band
+does not render. Its end date is edited on the schedule itself (Edit Schedule).
+The gate is `isOneTime || isStandalone` on the record, **not** absence of
+`scheduleId`: `UnifiedAssessmentTable` spreads `...record` into the standalone
+branch, so a one-time row can still carry a `scheduleId`.
 
-**Every deadline is now `COALESCE(aas.end_time_override, map.end_time)`** —
-resolved in all of:
+**Backend.** `POST /assessment/updateAssessmentEndDate` now accepts
+`assessmentCorporateMapId` as an alternative to `assessmentInstituteMapId` —
+previously it only ever read `assessment_institute_map`, so a corporate
+assessment could not have its end date moved at all. The roster top-up that
+follows the date change stays college-only by construction (a corporate map has
+no `scheduleId` to satisfy the branch). The response reports which map changed
+and `previousEndDate` read from the row as it was before the write.
 
-- `admin-node` `InviteShortLinkService.fetchAttemptWindowEnd` — the invite short
-  link and the click-token TTL. **Corporate's primary gate**, since corporate
-  candidates arrive through the OTP link rather than the portal.
-- `admin-node` `AutoReminderService` — the window-open guard, the final-call
-  guard, and the deadline printed in the reminder.
-- `admin-node` `_addStudentsToOneTimeAssessment` — the "complete by" date in the
-  invite mail, resolved from the same value the link is minted against.
-- `student-node` `getActiveAssessments` — the list where-clause **and** the date
-  shown to the candidate.
-
-Miss one and a late joiner is stranded between a list that hides the assessment
-and a link that still opens it. Note the **attempt handler itself has no window
-check** — enforcement is the listing plus the link, which is why those two
-matter most.
-
-**The arithmetic** lives in `admin-node/app/helpers/lateJoinerDeadline.js`
-(`lateJoinerEndTime`), unit-tested in `test/lateJoinerDeadline.spec.js`. It is
-deliberately **extend-only**: joining early with a short validity returns `null`
-rather than cutting a window short. It closes at the **same time of day** the
-assessment does, so a late joiner's final day is as long as everyone else's.
-Do not confuse it with the older `helpers/candidateDeadline.js`, which *renders*
-a deadline as email copy — this one *decides* what the deadline is.
-
-**Timezone:** `end_time_override` is stored in the SAME frame as the map's
-`end_time` — **IST wall-clock digits tagged UTC**, not the true instant. Compare
-it against `NOW() + interval '5:30'` exactly like the map columns.
-
-**Institute is untouched by construction** — admin-node only ever writes the
-column on the corporate path, so institute rows (and every pre-existing
-corporate row) stay `NULL` and resolve to the map exactly as before. Prisma
-cannot `COALESCE` across a relation, so student-node's filter spells the two
-cases out as an `OR` behind one shared predicate (`corporateWindowClause`).
-
-**Caveat worth knowing:** a corporate assessment can now have **live candidates
-past its own `end_time`**. Anything that assumes the map's end is the last
-possible attempt — closed-window at-risk bands, archival, "expired" counts —
-should be read with that in mind. Assessment-level status in `corporate-node`
-(`statusOf`, the funnel's `MAX(acm.end_time)`) deliberately still reports the
-**assessment's** window, not any one candidate's.
-
-Set in the UI on corporate assessment creation (admin-react-v2, Step 3 →
-Assessment Configuration → **Assessment validity (days)**). Left blank, nothing
-is stored and late joiners inherit the remaining window as before. See
-[ATS/Admin/v2-strangler-fig.md](../ATS/Admin/v2-strangler-fig.md) for why the
-college control is a view of the window instead.
+**Timezone.** The day count is built in the IST-wall-clock-as-UTC frame these
+end dates are stored in. Local midnight puts it a day out for every admin west
+of IST, and for IST itself after 18:30 UTC. Date-only payloads default to
+`23:59:59` in that same frame. Covered in
+`admin-react/src/modules/Assessment/Partials/CreateAssessment/Drawers/assessmentEndDateNotice.test.js`
+(plain-node, no runner: `node <path>`).
 
 ---
 

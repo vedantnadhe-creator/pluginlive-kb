@@ -239,41 +239,14 @@ config panel but the field remains in `AiInterviewConfig`, `defaultConfig` and
 the mix-match payload defaulting to `"Flat"`, the same way Probing Style was
 removed earlier and still defaults to `"Neutral"`.
 
-**Assessment validity is the window, said the other way round** (2026-08-26).
-Step 3's Assessment Configuration panel shows an **Assessment validity (days)**
-box next to Assessment duration on every **one-time** float, corporate and
-college. It is not a field of its own: typing `N` moves the **end date**, and
-moving the end date re-derives `N` (`windowDays` / `addDays` in
-`src/lib/assessments/schedule.ts`, wired through `windowValidityDays` /
-`setWindowValidityDays` in `useAssessmentWizard`). `end = start + N` matches the
-arithmetic admin-node applies to a schedule's `assessment_validity_days`, so
-both flows mean the same thing by "N days".
-
-It is derived rather than stored because **a standalone number here would be a
-dead control, and was one**. `POST /assessment/assignMixMatchAssessment` takes
-`startDate`/`endDate` verbatim and has no `assessment_validity_days` — the BFF
-has only ever sent validity on the recurring-schedule branch. The corporate
-panel nonetheless carried its own validity input from the start, posted nowhere,
-so every one-time float ignored whatever was typed into it. That is the
-"Corporate: Assessment Validity — whatever we set it gives the default only"
-report. `d176182` (UAT) / `bd45305` (Development) answered it by **deleting** the
-input on 2026-08-21, which left the admin with no way to say how long a
-candidate gets; deriving it from the window restores the control and makes it
-impossible for the box to disagree with what is actually sent.
-
-**Corporate's validity became a real stored number** (2026-08-26). The
-derived treatment above now applies to **college** one-time floats only.
-Corporate's box stores an independent day count, posted to
-`assignMixMatchAssessment` and stamped on every corporate map in the group
-(`assessment_corporate_map.assessment_validity_days`). It answers something the
-start/end dates cannot: a candidate added on the 27th of a 21→30 assessment
-would otherwise inherit the 3 days everyone else has left, when the admin meant
-them to get the full run counted from their own join date. See
-[Assessment/admin.md](../../Assessment/admin.md) for the `end_time_override`
-mechanism behind it. Left blank, nothing is stored and late joiners inherit the
-remaining window. College keeps the derived view because a college float has no
-late-joiner concept and no column to store validity in — a standalone number
-there would be posted nowhere, which is the dead control that started this.
+**The Step 3 validity control was added and then removed** (2026-08-27). A
+"Per-assessment validity (days)" box briefly appeared on one-time floats — first
+derived from the start/end window, then, for corporate, as a real stored column.
+Both are gone: the whole per-assessment-validity idea was dropped in favour of
+warning the admin how long is left **when they add a candidate** and letting
+them extend the assessment's own end date there. See
+[Assessment/admin.md](../../Assessment/admin.md). Step 3 is back to the state
+`bd45305` left it in — validity appears only inside `RecurringSchedule`.
 
 **A recurring schedule keeps its own separate validity input** inside
 `RecurringSchedule`, and that one really is a stored column
