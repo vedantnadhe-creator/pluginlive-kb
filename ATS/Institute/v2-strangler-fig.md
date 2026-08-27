@@ -2160,5 +2160,8 @@ negative delta renders as a neutral `—` rather than a red decline. The underly
 delta is unchanged and remains available in exports; this is a presentation rule,
 not a data rewrite.
 
-Frontend commit `19c644b` on Development. Production build and targeted ESLint
-passed; deployment/promotion is pending.
+Frontend commit `19c644b` on Development, promoted to UAT in merge `13935de`.
+Deployed to DEV and UAT: both public assessment pages returned HTTP 200, both
+systemd services were active on their environment-specific ports, and the UAT
+client/server bundle contained zero `dev.pluginlive.com` references. Production
+build and targeted ESLint passed. PROD remains pending.
