@@ -39,6 +39,7 @@ nvm use 20 && npm install && npm run build
 | 2026-08-12 | `bade695` | **none** | 9 commits; multilingual AI coach; edge functions 82 → 83 (`elevenlabs-tts`). Ships **three upstream defects** — see *Upstream defects in the 2026-08-12 release*. One needed a local patch to avoid data loss. |
 | 2026-08-24 | `6815d28` | `20260824183000_interview_proctoring_lifecycle` (additive, no fixup) | 6 commits; admin password reset across roles, auth-lock re-entry, assessment question dedup, interview proctoring lifecycle. `interview_sessions` 19 → 48 columns. Unit suite 291/301 → **335/335**. |
 | 2026-08-25 | `423fd65` | `20260824220000_assessment_question_canonical_uniqueness` (0 rows deleted, no fixup) | 9 commits; raises `LLM_PROVIDER_TIMEOUT_MS` 15000 → 45000 and widens provider failover to 400/404/422 (fixes generation timeouts), adds a DB-level unique index rejecting duplicate prompts per assessment, fixes a detached-ArrayBuffer bug in Gemini TTS. Unit suite 340/341 (1 stale test literal, not a regression — see below). |
+| 2026-08-27 | `5b4b5f2` | none (161 migrations unchanged, no new files) | 7 commits (`423fd65`→`5b4b5f2`); fixes taxonomy 400 errors, bulk-created-candidate OTP compatibility (`bulk-create-users` now writes `Otp_<mobile>_1234`, matching the login policy fix from 2026-08-21). No `supabase/migrations` or fixed-up edge function touched. Unit suite 348/349 (same stale `LLM_PROVIDER_TIMEOUT_MS = 15000` literal from 2026-08-25, still not a regression). |
 
 `20260810100000` needed **no fixup** — it is `ALTER COLUMN … SET DEFAULT` plus a distinct-union
 `UPDATE`, so it is naturally idempotent. Effect on UAT: per-admin `allowed_tabs` went 56 → 58 and
@@ -786,3 +787,52 @@ Provisioned the app's policy-compliant derived credential with
 deployment or migration was required. Exact fresh-browser verification against the live candidate
 form — mobile `9769440000`, Send OTP, OTP `1234`, Verify — redirected to `/candidate/home`, rendered
 Himanshu's full student console, and produced **0 page errors and 0 `/sb` API errors**.
+
+## 2026-08-27 — redeployed to `5b4b5f2` (7 commits, no migrations)
+
+`423fd65` → `5b4b5f2`: `1240e26` work in progress, `426ed22` fixes module creation with schema
+drift, `83fab4d` fixes bulk-candidate mobile login compatibility, two `Changes` commits, `77e9d0a`
+`Changes`, `5b4b5f2` fixes taxonomy 400 errors. `supabase/migrations` stayed at 161 files (`git diff
+--stat` between the two commits shows no path under `supabase/migrations`), so this release is a
+functions + frontend deploy only — no `replay-migrations.sh` or `sql/` fixup step needed.
+
+`83fab4d` changes `supabase/functions/bulk-create-users/index.ts`'s derived password from
+`otp_<mobile>_1234` to `Otp_<mobile>_1234`, i.e. it upstreams the same policy-compliant capitalization
+fix that was hand-patched into `Login.tsx` on 2026-08-21 (see "candidate OTP login policy fix"
+above) — new bulk-imported candidates now get a GoTrue-acceptable password on creation instead of
+needing a follow-up `set-user-password.sh` repair.
+
+### Local patches — verified as five, matching the standing inventory
+
+`git status` after the pull showed exactly the five expected dirty files (`.env`,
+`src/components/pil-admin/LearningPathsManager.tsx`, `src/hooks/useLearningPaths.ts`,
+`src/lib/adminErrorLogger.ts`, `supabase/functions/mcp/index.ts`) plus the disposable
+`package-lock.json`. None of the 7 incoming commits touched a patched file, so `git pull` fast-forwarded
+cleanly with zero stash/merge dance required. Deployed edge functions are unaffected by the working-tree
+`mcp/index.ts` diff either way — `sync-functions.sh` always overlays `~/banking-sb/function-fixups/mcp/`
+on top of whatever the repo ships (verified: deployed `banking-sb/functions/mcp/index.ts` and
+`banking-sb/functions/live-session-rsvp/index.ts` byte-match their fixup-dir source both before and
+after this sync).
+
+### Verification
+
+Site / REST / auth-health all 200. Served bundle `index-4Krcghy0.js` matches the freshly built `dist`
+(confirmed via the live page's script tag). No hosted `*.supabase.co` data-plane URL in the bundle (the
+one `api.supabase.co`-shaped grep hit is the documented inert `AdminSecurityMigration.tsx` Management-API
+remnant, not a data-plane leak) and no `.dev.pluginlive.com` leak. 83 edge functions synced with the
+three standing fixups (`live-session-rsvp`, `main`, `mcp`); functions container restarted clean with zero
+new boot errors. All seven `banking-sb-*` containers up, `banking-sb-db` healthy.
+
+**Browser E2E**, two independent candidate accounts plus admin, via a fresh headless Chromium context
+each: mobile `9820065335` (task-specified) and `9100000021` (standing demo account) both Send OTP →
+`1234` → Verify → `/candidate/home` with the full student console, **0 page errors, 0 `/sb` API
+errors**. Trainer `9100000022` → `/journey/trainer`. Admin `demo.admin@bankready.app` /
+`Demo@Admin2026` signs in with 0 errors, landing on `/` — the guarded `/admin` console route is
+separate, per the existing note above.
+
+Unit suite: 348 passed / 349 (1 failing — the same stale `llmFallbackCoverage.test.ts` literal
+documented under the 2026-08-25 release; not touched by this release's commits, not a regression).
+
+Rollback assets use stamp `20260827T023655Z`: `~/bankingjobreadiness/dist.bak-predeploy-20260827T023655Z`.
+No DB dump or functions-predeploy archive was taken — no migration and no fixed-up function changed, so
+there was nothing destructive to snapshot beyond the frontend `dist/`.
