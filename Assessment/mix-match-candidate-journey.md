@@ -762,6 +762,49 @@ question, top-left, with a `.qtag-sep` divider when both are present. Desktop
 layout is unchanged. Grep the built bundle for `qtag-sep` to confirm a deploy
 actually carried it.
 
+### The last module's commit-on-open regressed, and the finish button had a second stuck state (fixed 2026-08-27, DEV + UAT)
+
+The 2026-08-20 fix above made `commitModule` the single place a module closes,
+on confirm — but `finishCurrentModule` (`app/assessment/take/page.tsx`) still
+dispatched `COMPLETE_PART` for the **last** module before opening
+`FinalSubmitDialog`, not after. That dialog dismisses on scrim-click and
+Escape, same as `ModuleFinishDialog`, so backing out of it re-landed the
+candidate on a last question that was already `readOnly`: the control read
+**"Module completed"** and was `disabled` (`doneReviewing` in
+`QuestionPanel.tsx`), the clock kept running, and there was no route back to
+the review or to submit. The dispatch was also duplicated (fired twice,
+harmless but pointless). Fix: for a multi-module batch, `COMPLETE_PART` no
+longer fires on the way into the final review — only submission itself closes
+the part, mirroring `commitModule`. A single-assessment batch still commits
+immediately, since `finish()` follows in the same call with no dismissable
+dialog in between.
+
+**Separate bug, same symptom ("stuck"), different cause:** finishing a module
+— draining the upload queue, saving the last response — reused the `busy`
+flag that means "media is playing or recording" (owned by `QuestionPanel` for
+recordings/audio playback). On a slow recording upload the Finish button
+showed **"Finish what is playing or recording first"** with nothing actually
+playing, and no indication anything was happening. `busy` and the finish flow
+now have separate state (`finishingModule` in the page, `submitting` prop on
+`QuestionPanel`); the button shows a spinner and "Finishing…" instead of the
+media hint while draining.
+
+**Third bug, found alongside it:** `uploadQueue.ts`'s module-global `failed`
+counter was never reset once a recording exhausted its 8-attempt retry budget
+and was dropped. From that point every later `drainUploads()` — including the
+one `finish()` awaits — rejected on the stale count, so **one undeliverable
+recording could permanently block that candidate from finishing the module or
+submitting the attempt** for the rest of the sitting. `drainUploads` now
+reports the failure once and clears it (`reportFailure()` in
+`lib/uploadQueue.ts`), so the candidate is warned but can still submit
+everything else.
+
+Reported via two screenshots from the same UAT sitting
+(`prabha+bwuo80@pluginlive.com`, "mix and match apt and comm", Communication →
+Video Response, recording saved but Finish stuck) and a second candidate stuck
+on Aptitude's last question reading "Module completed" mid-review. Commit
+`18987eb` on Development, merged to UAT as `6484f0a`.
+
 ### Communication locks its subsections one at a time
 
 `loadCommunication` in `liveExam.ts` was hardcoded to `freeNavigation: true` on
