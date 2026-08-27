@@ -2150,3 +2150,15 @@ Frontend commits `71b996d` and `4702ddf`; deployed to DEV and promoted/deployed
 to UAT in merge `764c00e`. Both public assessment pages returned 200 after the
 restart, the UAT checkout matched the merge SHA, and the UAT client bundle had
 zero `dev.pluginlive.com` references.
+
+## Manage Assessments Student-wise progression deltas (2026-08-27)
+
+The Communication and Aptitude score cells in Manage Assessments → Student-wise
+now follow the same display rule as Assessment Details → Student-wise
+performance → Progress trend: zero and positive deltas remain visible, while a
+negative delta renders as a neutral `—` rather than a red decline. The underlying
+delta is unchanged and remains available in exports; this is a presentation rule,
+not a data rewrite.
+
+Frontend commit `19c644b` on Development. Production build and targeted ESLint
+passed; deployment/promotion is pending.
