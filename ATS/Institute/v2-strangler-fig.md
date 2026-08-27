@@ -2036,6 +2036,14 @@ it — do not reintroduce a fixed height there, and do not "fix" a future overfl
 with an inner scrollbar, which buries bands a TPO has no reason to expect below
 the fold.
 
+## Missed schedule rows cannot download reports (2026-08-27)
+
+`institute-react-v2` Development `e7e530d`, UAT `8a09f4c`. **DEV + UAT deployed; PROD pending.**
+
+In Assessment Details → Student-wise performance → per-student drawer, a schedule row with status `missed` now renders its report-download icon disabled even when the API retained an `attemptId` for the assignment. The action title explains that no report exists for a missed assessment. The same eligibility check also guards the click handler, so the rule is not only visual. Completed rows with an attempt remain downloadable; rows without an attempt remain disabled as before.
+
+The import-free `src/lib/occurrenceReport.ts` owns the rule and has focused Node tests for completed, missed-with-assignment-id, and no-attempt cases. Both target builds passed and both services returned HTTP 200 after restart; deployed DEV and UAT bundles contain the disabled-action copy.
+
 ## Usage widget — real pack usage in the top bar (2026-08-25)
 
 `285211c` → `1dc5397` + `7c1d86d` institute-react-v2. **DEV + UAT. PROD pending.**
