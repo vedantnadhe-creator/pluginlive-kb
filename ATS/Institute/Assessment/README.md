@@ -145,6 +145,13 @@ The Assessment module provides the TPO-facing dashboard for managing and trackin
 - **Assessment types:** Communication, Aptitude, Role-Based, Behavioral, Custom
 - **CEFR levels:** Communication assessments track A1–C2 levels
 - **Aptitude levels:** Beginner, Learner, Competent, Advanced
+- **Canonical achieved level:** All v2 overview, competency, performance, and
+  report views read the stored grade from `assessment.progression_history`
+  (`assessment_cefr` for Communication, `assessment_aptitude_level` for
+  Aptitude). `assessment_assigned_students.resulting_cefr` is a legacy copy and
+  must not drive reporting because it can drift from progression history.
+- **Diagnosis grouping:** Diagnosis attempts are folded into their owning
+  schedules and do not appear as standalone rows in Assessment Sent.
 - **Proctoring integration:** Media keys/URLs for proctoring review
 - **Chart-based filters:** Interactive chart filtering with `setChartFilters`/`clearChartFilters`
 - **Mock data support:** `useMockData` flag or `localStorage.ASSESSMENT_MOCK` for frontend development
