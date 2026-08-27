@@ -1,6 +1,8 @@
 # Auto-submit on the Fourth Proctoring Violation
 
-**Status:** Requested; not yet implemented
+**Status:** Live on DEV + UAT (2026-08-27); PROD pending
+
+**Commits:** `Assessment-React` Development `07b7f81`, UAT `8524995`; `assessment-react-v2` Development `9dd66d4`, UAT `d805c3c`.
 
 ## Requirement
 
@@ -45,4 +47,10 @@ The v1 and v2 candidate applications do not share this logic, so each must be ch
 
 ## Implementation Note
 
-The existing constant is commonly named `MAX_TAB_SWITCH_WARNINGS` and is currently documented as `3`. Avoid implementing the change as only a blind constant replacement: the fourth event needs the new blocking modal and delayed submission state, while the first three events retain the warning flow.
+The legacy runners use `MAX_TAB_SWITCH_WARNINGS = 4`; AI Interview uses `MAX_FULLSCREEN_VIOLATIONS = 4`; v2 uses `MAX_TAB_VIOLATIONS = 4`. The fourth event opens the new blocking modal and delayed submission state, while the first three events retain the warning flow. The immediate button and timeout paths converge on guarded/single-flight finalization.
+
+## Verification and Deployment
+
+- `assessment-react-v2`: 226 tests passed, ESLint passed, and the production Next.js build passed.
+- `Assessment-React`: the production webpack build passed. Its repository-wide lint remains unusable as a release gate because of pre-existing baseline violations unrelated to this change.
+- DEV and UAT containers were rebuilt on their target hosts. Both legacy endpoints returned HTTP 200, both v2 endpoints resolved through their canonical redirect, and all four running bundles contained the new "more than 3 times" modal copy.

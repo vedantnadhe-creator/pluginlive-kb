@@ -2,7 +2,7 @@
 
 Behavioural / integrity proctoring that runs **silently during an assessment** and produces an **after-the-fact integrity report** for human review. It never interrupts, warns, or auto-submits the candidate — that existing in-exam flow (tab-switch / fullscreen warnings → auto-submit at `MAX_TAB_SWITCH_WARNINGS`) is unchanged. Proctoring here only *collects signals* and *computes a report*.
 
-> **Pending candidate-enforcement change:** auto-submit is requested to move from the third to the fourth counted violation, with a blocking five-second acknowledgement modal before submission. See [Auto-submit on the Fourth Proctoring Violation](fourth-violation-auto-submit.md). This does not change report-only signal collection.
+> **Candidate enforcement (DEV + UAT, 2026-08-27):** auto-submit now occurs on the fourth counted violation, with a blocking five-second acknowledgement modal before submission. See [Auto-submit on the Fourth Proctoring Violation](fourth-violation-auto-submit.md). This does not change report-only signal collection. PROD is pending.
 
 **Live on:** DEV + UAT. PROD pending.
 **Enabled for assessment types:** Aptitude, AI Interview, Communication, Role_Based (the `PROCTORED_TYPES` set in `student-node/app/models/ProctoringReport.js`). Other types are short-circuited.
