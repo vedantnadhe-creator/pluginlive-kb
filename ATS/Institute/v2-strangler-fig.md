@@ -2083,3 +2083,23 @@ best-first, matching the other performance columns.
 **Collapsing the breakdown hands the sort back to Performance.** Otherwise the
 column driving the row order would be hidden and the table would sit in an order
 nothing on screen explains.
+
+## Schedule-history report and stored dropout status fix (2026-08-27)
+
+The Schedule tab's occurrence roster now returns each submitted attempt's
+`assessment_assigned_id` and the matching student id, enabling its per-student
+PDF report action. It also reads `assessment_assigned_students.status` as the
+lifecycle source of truth: `DROPOUT` renders Dropped, `INPROGRESS`/`IN_PROGRESS`
+renders In progress, and `COMPLETED` renders Completed. Dropout is not inferred
+from the schedule window or attempted/submitted flags; only never-started
+absence remains derived.
+
+Shipped to DEV and UAT on 2026-08-27:
+
+- `institute-node`: Development `16fb221`, UAT merge `e402f55`.
+- `institute-react-v2`: Development `01314f0`, UAT merge `163a999`.
+
+Both environments were rebuilt. UAT verification: backend health 200, frontend
+`/v2/assessments` 200 locally and publicly, backend restart policy
+`unless-stopped`, stored-dropout mapping present in the running container, and
+zero `dev.pluginlive.com` references in built client JavaScript.
