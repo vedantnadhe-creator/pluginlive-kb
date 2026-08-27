@@ -539,6 +539,27 @@ date** control:
 | 2–7 | warning | "closes in N days" |
 | 8+ | info | "closes in N days" |
 
+**It is a gate, not a notice** (2026-08-27). Until the admin either extends the
+end date or presses **Keep this date**, the drawer body is blurred and the
+footer action is disabled — otherwise they pick candidates first and discover
+the deadline afterwards, which is the problem this exists to solve. Extending
+counts as settling it (nobody confirms the same date twice). Once settled the
+band collapses to one line with a **Change end date** link, so confirming too
+fast does not mean reopening the drawer.
+
+The blur is decoration: the subtree also carries **`inert`**, which is what
+actually removes it from pointer events, tab order and the accessibility tree.
+The CSS (`filter: blur`, `opacity`, `pointer-events: none` under
+`[data-gated='true']`) is the fallback for browsers without `inert`, where it
+would otherwise still be reachable by keyboard. **React 18 only forwards
+`inert` as a string** — passing a boolean drops it as an unknown attribute — so
+it is spread in as `{...(gated ? { inert: '' } : {})}`.
+
+Gating applies whenever there IS an end date, including comfortable ones: the
+deadline is a decision made once per add, not a warning that only fires when it
+is nearly too late. No end date means no gate, so the create flow and scheduled
+rows are untouched.
+
 **Extending moves the assessment's OWN end date**, so everyone already on it
 moves too — the control says so before confirming. This was a deliberate
 reversal: a first attempt gave the late joiner a *private* deadline
