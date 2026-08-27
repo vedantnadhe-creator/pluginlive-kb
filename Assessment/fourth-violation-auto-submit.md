@@ -2,7 +2,7 @@
 
 **Status:** Live on DEV + UAT (2026-08-27); PROD pending
 
-**Commits:** `Assessment-React` Development `07b7f81`, UAT `8524995`; `assessment-react-v2` Development `9dd66d4`, UAT `d805c3c`.
+**Commits:** implementation — `Assessment-React` Development `07b7f81`, UAT `8524995`; `assessment-react-v2` Development `9dd66d4`, UAT `d805c3c`. Modal-copy refinement — legacy Development `2e9c287`, UAT `bab42ea`; v2 Development `8adf92b`, UAT `21f2b06`.
 
 ## Requirement
 
@@ -14,6 +14,7 @@ Change the candidate assessment violation flow so that an assessment is auto-sub
   > You've violated the rules more than 3 times, so your assessment will be auto-submitted.
 
 - The modal has one action: **Understood**.
+- The modal contains only the violation message and **Understood** action; it does not repeat instructions explaining the button or five-second timeout.
 - Clicking **Understood** submits the assessment immediately.
 - If the candidate does not click it, the modal remains visible for **5 seconds** and the assessment is then submitted automatically.
 - The submit path must be idempotent so the button and five-second timeout cannot create duplicate submissions.
