@@ -1418,9 +1418,12 @@ longer show a series-average percentage as the breakdown's primary value:
   `sub_sections.weight`. Each category is anchored to the assessment's stored
   overall `assessment_aptitude_level`; it does not invent a parallel category
   level or category-specific no-downgrade chain.
-- Raw skill/category values remain secondary context. A component without the
-  inputs for a real progress score is omitted — there is no percentage or zero
-  fallback. As everywhere else, aggregate linear and curve once at output.
+- Raw skill/category values and the repeated per-row achieved-level badge were
+  removed from the visible breakdown on 2026-08-27 (`e04fc69`, UAT merge
+  `f87c569`); the row now keeps its weight, optional Bridge marker, progress
+  value and bar. A component without the inputs for a real progress score is
+  omitted — there is no percentage or zero fallback. As everywhere else,
+  aggregate linear and curve once at output.
 
 Real UAT smoke checks covered same-level Communication (`isBridge=false`), an
 A2→B1 result (`isBridge=true`), and all three Aptitude categories. Both services
