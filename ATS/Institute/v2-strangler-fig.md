@@ -1353,6 +1353,41 @@ invited to 3". The timeline walks `occRows` and folds the attempt on:
 a miss), `upcoming`, `in_progress`, `missed` (window closed, no attempt),
 `completed`.
 
+**The Diagnosis row is scoped to the pair THAT student sat (2026-08-27).**
+`cd93091` institute-node. **DEV + UAT. PROD pending** (PROD runs
+`release-v1.38-hotfix-1`, which carries the same block).
+
+The merged Diagnosis milestone folded in every occurrence `loadGroupMaps`
+returned, and a group owns every cohort's baseline pair — **124 diagnosis maps
+on the PROD Communication series `e2af2c73`** (62 batches × 2 papers), of which
+a student holds two. The other 122 came back `not_enrolled` and broke both
+aggregates the row is built from: `statuses.every(=== "completed")` failed, so
+it fell through to `some(completed)` and **every student in the series read "In
+progress"**, and `every(score !== null)` failed, so **score and time blanked to
+"—"** beside a trend chart that was already plotting the diagnosis point from
+`history` (which was correct all along — it only ever held the student's own
+attempts). Verified on PROD: `sivanandinipolu73@gmail.com` had both papers
+`attempted=t submitted=t` on 2025-12-21 and still read "In progress · — · —".
+
+`ownDiagnosisOccurrences` (`app/helpers/assessmentTimelineStatus.js`) now drops
+the `not_enrolled` siblings before the fold, and every aggregate on the row —
+`startTime`, `endTime`, `status`, `score`, `timeSec`, `cohortAvg` — reads the
+scoped set. It falls back to the full set only so a student who sat NO diagnosis
+still reports `not_enrolled` rather than losing the row. Partial baselines are
+unchanged: one of two papers submitted still reads `in_progress`.
+
+The same fix drops the **`Current` badge from a completed baseline**. Diagnosis
+windows are minted ten years wide (see "Diagnosis maps stay open for roughly ten
+years" below), so `phase === "current"` is true for the rest of the decade and
+badged a finished 2025 baseline as the run being sat right now.
+
+**`getStudentReport` never bound `npsType`** — the attempt query has read it
+since `2d72c04` moved achieved levels onto progression history, but nothing in
+that scope declared it, so every call threw `npsType is not defined` before
+reaching the database and **the drawer 500d for every student on Development**.
+Bound the same way `getSummary`/`getStudents` do. PROD predates NPS in this
+file and was never affected.
+
 **Ladder labels are shared, so they move everywhere at once.** `headline.level`
 and the new `headline.levelBand` ("90+", "60–75") both come from
 `assessmentBands` — the drawer, the roster's Achieved Level column and the
