@@ -858,3 +858,46 @@ are up and function logs have no boot errors.
 Rollback/snapshots: `~/pilvidya-predeploy-20260824T090606Z/`; the immediately previous frontend
 container is retained as `eduspeakreact-old-20260824T090606Z` and the earlier image rollback is
 tagged `eduspeakreact:rollback-20260824T090039Z`.
+
+## 2026-08-27 — redeployed to `8e58cf54` (16 commits, 7 migrations, AI proctoring + MSQ + student assessments menu)
+
+16 commits forward from `64628ef7`. Notable: `f65db285` ships complete Student/Teacher/Admin/Parent
+journeys with JEE Advanced, MSQ (multi-select) questions, file upload and AI proctoring; later
+commits fix JEE Advanced exam-generation compatibility, route it around a stale exam endpoint, and
+add a `student.assessments` sidebar entry with RBAC.
+
+Frontend rebuilt on the UAT box as `eduspeakreact:8e58cf54`; served bundle `assets/index-DvTd8Ht1.js`
+matches the fresh build. Local patches (`vite.config.ts` `pilvidya.uat.pluginlive.com` in
+`allowedHosts`, the `DashboardHub.tsx` crash guard for `hod`/`principal` roles, `schema.sql`) all
+survived the pull, staged but not committed — same pattern as prior deploys.
+
+**7 new migrations, all idempotent (`IF NOT EXISTS` / `ON CONFLICT` / `DROP POLICY IF EXISTS`),
+no destructive statements**: `fix_plan_menu_access_rls`, `add_ai_proctoring` (proctoring columns
+on `assessments`, `proctoring_events`/`proctoring_sessions`/`proctoring_rules` tables, 34 seeded
+rules), `add_msq_support` + `add_msq_columns` (multi-select question type on `question_bank`), two
+`add_student_assessments_menu` revisions, and a bare `GRANT`.
+
+**Trap hit while applying:** `eduspeak_owner` (the role in `~/eduspeak-sb/.env` /
+`SUPABASE_DB_URL`) does **not** own the application tables — `pluatadmin` does (the same shared
+OCI-cluster admin role documented in [[project_pilvidya_uat_demo_logins]] for `auth.*`/`user_roles`).
+Running migrations as `eduspeak_owner` fails with `must be owner of relation` / `permission denied
+for table` on every DDL statement. Connect as `pluatadmin` instead (creds in
+`~/scripts/rw-query.sh` on the ops box, `uat` case — same host/port/user/password, just override
+`-d eduspeak_uat` since that script defaults to `-d uat_pluginlive`).
+
+**`add_ai_proctoring` is not idempotent** — its `CREATE POLICY` statements have no `DROP POLICY IF
+EXISTS` guard (unlike the sibling `fix_plan_menu_access_rls` migration, which does this correctly).
+It had already fully applied in a prior partial deploy attempt (all 3 tables, 8 indexes, 8 policies,
+34 rules present before this run); re-running it inside `--single-transaction` hit `policy ... already
+exists` on the second `CREATE POLICY` and rolled back harmlessly (everything it touches is otherwise
+`IF NOT EXISTS`/idempotent, so the rollback lost nothing — the DB was already in the target state).
+Confirmed via direct column/policy/row-count queries rather than trusting the rollback message. Not
+fixed upstream; worth a `DROP POLICY IF EXISTS` pass if this file is ever replayed from empty.
+
+PostgREST (`eduspeak-sb-rest`) was restarted to pick up the new columns/tables immediately rather
+than waiting on `NOTIFY pgrst`. Verification: site/`/admin`/REST/Auth all 200, all containers up,
+live parent OTP login (`9100000010` / `1234`) reached the Dashboard Hub with a "Welcome to
+NovaFamily" toast and zero page/network errors. No PROD — EduSpeak/PilVidya has no PROD.
+
+Rollback snapshot: `~/pilvidya-predeploy-20260827T023826Z/` (DB dump, function set, `.env.uat`,
+local-patch diff).
