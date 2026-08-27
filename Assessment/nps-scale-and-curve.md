@@ -195,12 +195,56 @@ Students table and **21** on the assessment they had actually sat.
 | Assessments list → "Avg progress" | `AssessmentV2` | curved NPS + band |
 | Students (institute-wide) | `StudentWiseV2` | curved NPS, score **and** delta |
 | Assessment detail (all tabs) | `AssessmentDetailV2` | curved NPS |
+| Assessment detail → **student report drawer** | `AssessmentDetailV2.getStudentReport` | curved NPS — headline, every schedule row, the trend line and its cohort line |
+
+**The drawer was the last percentage holdout, closed 27 Aug 2026** (`4e769ea`
+institute-node, `ff6fd7a` institute-react-v2 — DEV + UAT; PROD pending). It
+averaged every attempt's raw percentage while the row that opened it reported
+curved NPS, so one student read **19.56** in the roster and **45.27%** in the
+drawer. The two were not even the same underlying score: the drawer's percentage
+is `AVG(communication_scores.score)` over ~43 raw section rows, while NPS anchors
+on `progression_history.final_score` (Video 40 / Reading 20 / Audio 10 / Writing
+30). On a DEV row those are **20.84 vs 33.88**.
+
+Averaging raw percentages across a series is meaningless in the first place: the
+papers adapt to the student's level, so 60% on an A1 paper and 60% on a B2 one
+are not the same result.
+
+Three shapes to keep straight in that payload:
+
+- **`headline.nps` is the LATEST progress score, not a mean of them.** NPS is
+  level-anchored, so it already contains the history — averaging it drags a
+  student who has climbed a band back below where they actually stand, and an
+  average of curved values is not a point on the curve at all. Same selection
+  rule as the roster's Performance cell: the latest attempt that PRODUCED a
+  score, which is not always the latest attempt.
+- **`timeline[].nps` is what the attempt LANDED the student on**, read straight
+  off `progression_history` for that `assessment_assigned_id` — never
+  re-derived. `score` (the raw percentage) stays beside it: it still decides
+  which attempt the breakdown card and the PDF hang off.
+- **The folded Diagnosis row is deliberately asymmetric.** `score` requires both
+  papers scored; `nps` does not, because Communication grades the PAIR and
+  writes the result onto whichever half it could anchor. So the baseline row can
+  show a progress score where the percentage column reads "—" — that is correct,
+  not a bug, and it *fills in* a row that used to be blank.
+
 
 ### Three rules that are easy to get wrong
 
 1. **A delta is `curve(latest) − curve(first)`, never `curve(latest − first)`.**
    The curve is concave and defined on 0–100 band space; a delta does not live
    there, and curving one clamps every decline to zero.
+
+   The Progress Trend delta has ONE definition —
+   `assessmentBands.progressTrendDelta(series)` — because two surfaces a TPO
+   reads side by side quote it: the roster's sparkline column and the report
+   drawer's headline. It is **peak minus the first plotted point**, so a student
+   who improved and then dipped keeps the progress they made, and it is
+   non-negative by construction. Nulls are skipped, never scored as zero (a
+   first-of-pair diagnosis has no NPS; treating that as 0 invents a starting
+   point at the floor and inflates every delta). The drawer's caption says
+   **"best gain"** — it used to say "vs last", describing a run-over-run change
+   this has never been.
 2. **Never band a progress score against `assessmentBands.LADDERS`.** Those are
    the raw-percentage cutoffs (Communication `30/45/60/75/90`) and they do
    **not** match the curved boundaries `npsScale` derives

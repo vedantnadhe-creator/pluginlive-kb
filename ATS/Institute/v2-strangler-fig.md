@@ -1381,6 +1381,33 @@ windows are minted ten years wide (see "Diagnosis maps stay open for roughly ten
 years" below), so `phase === "current"` is true for the rest of the decade and
 badged a finished 2025 baseline as the run being sat right now.
 
+**The drawer speaks in progress scores, not percentages (2026-08-27).**
+`4e769ea` institute-node, `ff6fd7a` institute-react-v2. **DEV + UAT. PROD
+pending.** Full rules in `Assessment/nps-scale-and-curve.md`; what matters here:
+
+- `headline.nps` is the student's **latest** curved NPS — the same value the
+  roster's Performance cell shows, so the drawer can no longer contradict the
+  row that opened it (Abhinayaa AM on UAT `c73de8f7`: roster 25.13, drawer was
+  60.87%, now 25.13). The raw average is not deleted, it captions the headline
+  ("Avg raw score 60.87%").
+- The **Schedule-wise performance** table's score column reports the NPS each
+  sitting landed the student on, with the raw percentage one hover away. The
+  Trend card and its cohort line plot the same scale, and `TrendChart` takes a
+  `unit` prop so the Y axis drops the `%` rather than lying.
+- `headline.npsDelta` and the roster's `trendDelta` both call
+  `assessmentBands.progressTrendDelta` — one helper, so they cannot drift. The
+  frontend still accepts the threaded prop as a fallback for a frontend
+  deployed ahead of its backend.
+- The API gained `assessment.supportsNps` / `levelCount`, mirroring
+  `meta.supportsNps` on the roster endpoint, so no type list lives in the UI.
+
+**Baselines are numbered FIRST in the roster's trend too, from this ship.**
+`loadGroupMaps` returns `[...runs, ...diagnosisMaps]`, and `getStudents` numbered
+occurrences in that raw order — so a February baseline got the HIGHEST index and
+was drawn at the far right of a sparkline that reads left-to-right as time, and
+`trendDelta` measured the gain from run #1 instead of from the baseline. The
+report drawer had always ordered them correctly; the roster now matches it.
+
 **`getStudentReport` never bound `npsType`** — the attempt query has read it
 since `2d72c04` moved achieved levels onto progression history, but nothing in
 that scope declared it, so every call threw `npsType is not defined` before
