@@ -50,7 +50,7 @@ Input (e.g., "BVRIT Narsapur")
 
 **Graceful Degradation:** When embedding/LLM API is down, circuit breaker skips vector signal and LLM — serves trigram/acronym/exact only.
 
-### Role-family clustering (DEV + UAT, updated 2026-08-25)
+### Role-family clustering (DEV + UAT, updated 2026-08-27)
 
 Role search supports transitive semantic families. This solves cases where
 `software developer` is close to `full stack engineer`, and `full stack engineer`
@@ -66,6 +66,25 @@ operations, mechanical, civil, electrical/telecom, chemical, manufacturing,
 supply chain, legal, hospitality, retail, aviation/defence, agriculture. The
 first family whose pattern matches wins, so ordering inside the dict is
 meaningful. Only titles that match nothing are clustered by the graph.
+
+**A missing family pattern is a live bug, not a soft edge.** `find_nearest_role_local`
+gates the vector search by family *only when the query matches one*; with no match it
+falls back to an ungated nearest-neighbour over every embedded role and takes the single
+top hit. On short titles that fallback is exactly the failure the taxonomy exists to
+prevent. Fixed 2026-08-27 (`c4b2ad3`): `product development` scored 0.8813 against
+`Business Development` versus 0.8691 against `Software Development` — MiniLM was keying
+on the shared token *development* — so the search returned the whole **Sales & Business
+Development** cluster (`key account holder`, `relationship manager`, `telecaller`). The
+same gap left `head of product`, `vp of product` and `vp of products` in their own
+"head of product" cluster instead of joining product management. `product_project` now
+carries `\bproduct (?:manager|owner|management|lead|head|analyst|specialist)\b`,
+`\bproduct development\b(?!\s+engineer\b)` and
+`\b(?:head|vp|director|chief) of products?\b`. Deliberately **not** a bare
+`\bproducts?\b` — `product_project` is scanned before manufacturing and retail, so a
+broad pattern would hijack `structural metal products` and `product promoter`.
+`product development engineer` is hardware/NPD and is left to the graph, where it still
+lands in Software Engineering. When a search returns an obviously wrong family, check
+`_role_family(query)` first — `None` means add a pattern, not retune the threshold.
 
 **Why:** short job titles give MiniLM too little signal. Before 2026-08-25,
 generic and placeholder titles (`role 03`, `testi`, `new user role`) sat
@@ -115,9 +134,11 @@ never re-partitions, so periodic full rebuilds are still needed.
 | `POST /api/v1/admin/role-clusters/rebuild` | Full rebuild; accepts `neighbours`, `edge_threshold`, `resolution` |
 | `GET /api/v1/admin/role-clusters/{role_id}` | Family for a known role ID |
 
-**UAT state (2026-08-25, merge `0ac8b52`):** 7,505 role rows, 1,585 unique
-titles, **304 clusters**, largest 684 postings (was 1,897), 201 singletons, all
-7,505 cached vectors reused — zero paid embedding calls, rebuild ~13 s.
+**UAT state (2026-08-27, merge `c4b2ad3`):** 7,506 role rows, 1,586 unique
+titles, **303 clusters**, largest 587 postings (was 1,897), 201 singletons, all
+7,506 cached vectors reused — zero paid embedding calls, rebuild ~13 s. The largest
+cluster is the UAT test-role tail (`Corporate role 1`, `scenario 4`, `Retest 011`),
+not a real profession.
 
 Verified through `https://vector-search.uat.pluginlive.com` and the analytics API
 `https://data-normalization.uat.pluginlive.com/api/student-metrics?role_search=`:
@@ -128,7 +149,9 @@ Verified through `https://vector-search.uat.pluginlive.com` and the analytics AP
 | nurse | Healthcare & Life Sciences (447p) | 35 |
 | accountant | Finance, Accounting & Banking (11p) | 0 |
 | graphic designer | Design, Content & Creative (471p) | 7 |
-| sales executive | Sales & Business Development (251p) | 224 |
+| sales executive / key account holder | Sales & Business Development (251p) | 224 |
+| product development / product / head of product / product manager | Product, Project & Business Analysis (110p) | — |
+| product development engineer | Software Engineering, DevOps & Cloud (357p) | — |
 | teacher | Education & Training (344p) | — |
 | data scientist | Data, Analytics & AI (27p) | — |
 
