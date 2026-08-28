@@ -41,6 +41,7 @@ nvm use 20 && npm install && npm run build
 | 2026-08-25 | `423fd65` | `20260824220000_assessment_question_canonical_uniqueness` (0 rows deleted, no fixup) | 9 commits; raises `LLM_PROVIDER_TIMEOUT_MS` 15000 → 45000 and widens provider failover to 400/404/422 (fixes generation timeouts), adds a DB-level unique index rejecting duplicate prompts per assessment, fixes a detached-ArrayBuffer bug in Gemini TTS. Unit suite 340/341 (1 stale test literal, not a regression — see below). |
 | 2026-08-27 | `5b4b5f2` | none (161 migrations unchanged, no new files) | 7 commits (`423fd65`→`5b4b5f2`); fixes taxonomy 400 errors, bulk-created-candidate OTP compatibility (`bulk-create-users` now writes `Otp_<mobile>_1234`, matching the login policy fix from 2026-08-21). No `supabase/migrations` or fixed-up edge function touched. Unit suite 348/349 (same stale `LLM_PROVIDER_TIMEOUT_MS = 15000` literal from 2026-08-25, still not a regression). |
 | 2026-08-28 | `6f87c4c` | none | 1 commit; **module topics now auto-link real YouTube videos** — see *Module videos: search queries vs. playable URLs*. Also the day the UAT **YouTube Data API key was finally configured**. Unit suite 370/371 (same stale `LLM_PROVIDER_TIMEOUT_MS` literal). |
+| 2026-08-28 | `9ab7c00` | `20260828083515_llm_settings_tts_columns_and_audit_actor_text` (applied) | Schema-only; **no rebuild** (the commit touches no `src/`). Fixes both Admin → LLM Config save failures — see *Admin → LLM Config could not save*. |
 
 `20260810100000` needed **no fixup** — it is `ALTER COLUMN … SET DEFAULT` plus a distinct-union
 `UPDATE`, so it is naturally idempotent. Effect on UAT: per-admin `allowed_tabs` went 56 → 58 and
@@ -1109,3 +1110,35 @@ the LLM ever sees them. Until `~/banking-sb/sync-functions.sh` is run, match qua
 weaker of the two. Relevance is also capped by the topic titles themselves: AI-generated titles that
 fuse two domains ("Wave-Particle Duality: The Dual Nature of *Financial Systems*") send the search to
 one domain or the other and never both.
+
+## Admin → LLM Config could not save (2026-08-28)
+
+Two unrelated failures on the same screen, both schema drift, both fixed by
+`20260828083515_llm_settings_tts_columns_and_audit_actor_text.sql` (app repo
+`supabase/migrations/`, mirrored in DB-Scripts under *Banking Supabase to Postgres*).
+**The frontend was already correct** — nothing needed rebuilding, only the database.
+
+**1. "Could not find the `tts_default_language` column of `llm_settings` in the schema cache."**
+`LLMSettings.tsx` has written `tts_voice_id`, `tts_languages`, `tts_default_language`,
+`tts_enabled` and `tts_stream_audio` since the multilingual AI coach release (2026-08-12), but no
+migration ever added them — this is the same class of gap as the hand-written migrations that live
+only in git. The five columns were added with defaults copied from the component's own fallbacks
+(`21m00Tcm4TlvDq8ikWAM`, `{en,hi}`, `en`, `true`, `false`), so the single existing row renders
+unchanged.
+
+**2. Save Key → HTTP 500, `invalid input syntax for type uuid: "admin"`.**
+`llm_provider_configs.created_by` and `updated_by` were declared `uuid`, but every writer records an
+actor *string*: `manage-llm-providers` computes `body.updatedBy || body.adminEmail || "admin"`, and
+the admin UI sends `sessionStorage.getItem("adminEmail") || "admin"`. There is no `auth.users` id in
+that path to write. `llm_settings.updated_by` is already `text`, so these two columns were the
+outliers — both were widened to `text`. Nothing references them by foreign key and every row was
+NULL, so the change was lossless.
+
+Note the failure mode is asymmetric and easy to misread: **Test** and the key *display* both worked
+(the UI read `AIzaSy…Oa7k (stored)` and reported *"Key works — found video ID …"*) because those
+paths only `SELECT`. Only the `UPDATE` carrying `updated_by` blew up. A working Test button does not
+mean the key was saved through the UI.
+
+**Always `NOTIFY pgrst, 'reload schema'` after adding columns here.** PostgREST caches the schema, and
+the error text names the cache explicitly — without the reload the new columns stay invisible and the
+save keeps failing identically after a correct migration.
