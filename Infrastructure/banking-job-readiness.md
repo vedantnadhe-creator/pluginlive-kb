@@ -888,3 +888,27 @@ console (67 candidates, all sidebar groups), 0 page errors.
 `Demo@Admin2026`, `banking.admin@pluginlive.com`. If a gmail-addressed admin login is genuinely
 wanted, it needs a **new** auth user — renaming `ce86d36b`'s auth email would break mobile OTP for
 `9820065336`, since that path looks up `<mobile>@bankready.app`.
+
+## 2026-08-28 — the four source local patches are now upstream (`d6b9e0c`)
+
+The long-standing "five local patches carried on the UAT checkout" inventory is **now one**. The four
+*source* patches were committed and pushed to `origin/main` as `d6b9e0c`, so a fresh clone builds
+correct code and there is nothing to reapply after a pull:
+
+| File | What it fixes |
+|---|---|
+| `src/components/pil-admin/LearningPathsManager.tsx` | saving an existing path ran `delete from learning_paths where id = pathId` — **it deleted the path being saved**, silently, while the UI said "Learning path updated" |
+| `src/hooks/useLearningPaths.ts` | both assignment reads selected from `learning_paths`, so every path rendered as an unscoped assignment |
+| `src/lib/adminErrorLogger.ts` | `SUPABASE_URL` was the hardcoded hosted project URL, so post-migration none of the `startsWith()` prefix checks matched and admin error logging **recorded nothing** |
+| `supabase/functions/mcp/index.ts` | pins `@lovable.dev/mcp-js` to `0.26.3` so the function boots |
+
+**`.env` remains the one deliberate local patch** and must never be committed — it holds the UAT
+self-hosted keys. `package-lock.json` also shows as modified on the box; that is npm-version noise
+(`libc` fields dropped by the older npm on the UAT host), not a real change — leave it uncommitted.
+
+So the post-pull check is now: **`.env` intact, and `git status` shows only `.env` +
+`package-lock.json`** (plus the `*.bak-predeploy-*` / `dist.*` rollback dirs, which are untracked by
+design). Anything else appearing modified means a patch regressed.
+
+Also note the earlier inventory table in this doc that lists only four patch files is stale — it
+predates the `mcp/index.ts` entry. The authoritative list is the one above.
