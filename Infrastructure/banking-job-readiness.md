@@ -968,3 +968,78 @@ Deployed by copying the three files into `~/banking-sb/functions/` and restartin
 `banking-sb-functions` (zero boot errors). No frontend rebuild was needed: `adminPasswordReset.ts`
 already surfaces the function's `error` string, and a 400 does not trigger its
 `shouldTryDedicatedReset` fallback (that requires status >= 500).
+
+---
+
+## 2026-08-28 — plan upgrade returned 409 on every submit (`fd0355a`)
+
+Selecting a plan in **Upgrade Plan — Manual Payment** and hitting *Submit for Verification* failed
+for every candidate:
+
+```
+POST /sb/rest/v1/rpc/submit_payment_request  ->  409 Conflict
+insert or update on table "payment_requests" violates foreign key constraint
+"payment_requests_student_id_fkey"
+```
+
+### Cause — two migrations disagree about `student_id`, and the newer one silently lost
+
+`payment_requests` is declared **twice** in the repo, by two different authors, with two different
+meanings for `student_id`:
+
+| Migration | `student_id` means | What it did |
+|---|---|---|
+| `20260711113000_payment_requests_and_journey_access.sql` | a row in `public.students` | `create table` + FK `student_id -> public.students(id) on delete set null not valid` |
+| `20260818080751_4527d448-...sql` | the **auth user id** | `create table if not exists` — a **no-op** on any DB that already had the table |
+
+Everything shipped by the August migration reads `student_id` as the auth uid: RLS is
+`student_id = auth.uid()`, `admin_list_payment_requests` joins
+`profiles.user_id = r.student_id or profiles.id = r.student_id`, and
+`admin_approve_payment_request` updates `public.profiles`, not `public.students`. The frontend
+agrees — `TechStudentJourney.tsx` passes `sessionStorage.studentId || user.id`.
+
+But because its `create table if not exists` never fired, the July FK survived, still pointing at
+`public.students` (52 legacy rows, no candidates in it). `not valid` only exempts *existing* rows —
+**new inserts are still checked** — so every submission was rejected. The live function bodies were
+the August ones while the live constraint was the July one.
+
+**The general trap:** this repo uses `create table if not exists` to "redefine" tables across
+merges. It never alters an existing table. Only the `alter table ... add column if not exists`
+lines in those files actually take effect. Check `pg_constraint` / `information_schema.columns`
+against the live DB before trusting the newest migration file.
+
+### The fix
+
+`supabase/migrations/20260828070000_payment_requests_drop_legacy_students_fkey.sql`:
+
+```sql
+alter table public.payment_requests
+  drop constraint if exists payment_requests_student_id_fkey;
+```
+
+The profiles-based design is the live one, and the table had 0 rows, so nothing was orphaned.
+**Do not re-point the FK at `auth.users` instead** — `ai_coach_student_allowed` also accepts a
+`profiles.id` that differs from `auth.uid()`, so that would just move the breakage. No frontend
+rebuild was needed; this is purely a DB constraint.
+
+### Verification
+
+Driven through the real UI (candidate `9100000021` / OTP `1234` → *Subscriptions Status* →
+*View Upgrade Options* → Beginner ₹499 → UTR `1234567` → Submit):
+`submit_payment_request` **200**, **0 `/sb` 4xx**, **0 page errors**, and the dialog's *Your
+Submissions* list read the row back as `beginner · ₹499 … Pending`.
+
+The rest of the chain was exercised with a real admin token: `admin_list_payment_requests` returned
+the request with the candidate resolved via `profiles` ("Demo Candidate"), and
+`admin_approve_payment_request` flipped `profiles.subscription_tier` to `beginner` with
+`subscription_expires_at` +30 days.
+
+Test data removed afterwards — `payment_requests` back to 0 rows and the demo candidate restored to
+`enterprise` / `active` / `expires_at NULL`.
+
+### PROD is still broken
+
+PROD runs on hosted Supabase `kbwjokmmzkgjwiqelrdc`, where **both** migrations also ran, so it has
+the identical stale constraint and identical 409. Applying the fix there needs dashboard/DB
+credentials for that hosted project, which nobody on the team currently holds (see
+`banking-postgres-migration.md`). **Pending.**
