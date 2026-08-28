@@ -901,3 +901,21 @@ NovaFamily" toast and zero page/network errors. No PROD — EduSpeak/PilVidya ha
 
 Rollback snapshot: `~/pilvidya-predeploy-20260827T023826Z/` (DB dump, function set, `.env.uat`,
 local-patch diff).
+
+## 2026-08-28 — the three local patches are now upstream (`d7836bb3`)
+
+The three standing local patches on `~/frontend/eduspeak-india-react` were committed and pushed to
+`origin/main` as `d7836bb3`. **There are no source local patches left to reapply after a pull.**
+
+| File | What it fixes |
+|---|---|
+| `frontend/public/schema.sql` | three `cron.schedule` blocks embedded a **live hosted-Supabase anon JWT** plus the hosted project URL — in a file served publicly out of `frontend/public`. Key replaced with an `<ANON_KEY>` placeholder, URLs repointed at the self-hosted `/sb` gateway |
+| `frontend/src/pages/DashboardHub.tsx` | `roleBadge[currentRole]` used a `\|\| "dashboard"` fallback that only catches an *empty* role, not an unknown one — signing in as `hod` or `principal` returned `undefined` and the next `.icon` access threw, **blanking the page**. Both roles added; the fallback now applies to the lookup result, not the key |
+| `frontend/vite.config.ts` | adds `pilvidya.uat.pluginlive.com` to `preview.allowedHosts`; without it Vite 403s every route after the host rename while `/sb/*` keeps returning 200 and looks healthy |
+
+`frontend/package-lock.json` still shows as modified on the box — that is npm-version noise (`libc`
+fields dropped by the older npm on the UAT host), not a real change. Leave it uncommitted.
+
+Post-pull check is now: **`git status` shows only `frontend/package-lock.json`.** Anything else
+modified means a patch regressed. Earlier sections of this doc that describe these three as
+permanent uncommitted patches are superseded by this entry.
