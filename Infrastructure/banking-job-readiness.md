@@ -912,3 +912,59 @@ design). Anything else appearing modified means a patch regressed.
 
 Also note the earlier inventory table in this doc that lists only four patch files is stale — it
 predates the `mcp/index.ts` entry. The authoritative list is the one above.
+
+## 2026-08-28 — admin "Reset Password" bricked every mobile/OTP account (fixed, `3a4d977`)
+
+**The bug.** Candidates and trainers sign in with mobile + OTP on a screen that has **no password
+field** — `src/lib/candidateMobileAuth.ts` calls `signInWithPassword` with a password *derived from
+the mobile number* (`Otp_<mobile>_1234`, with a legacy lowercase `otp_` fallback). That derived value
+is the account's only usable credential. So the admin console's **Reset Password** action, which
+stored an admin-chosen password via `admin.auth.admin.updateUserById`, left the account in a state
+where the OTP screens could no longer authenticate it **and there was nowhere to type the new
+password** — locked out of every route, silently, while the UI reported success.
+
+Worse, the natural reaction to the lockout is to reset the password again, which re-breaks it. The
+audit log shows exactly that loop: resets on **2026-08-18, 08-21, 08-23, 08-24** and four more on
+**08-28 05:35–05:36**, across five accounts, every one of them an attempt to fix the previous one.
+Five logins were dead at the time of the fix (`9820065335`, `9820098200`, `5555555555`,
+`7777777777`, and `9820065336`).
+
+**The fix** (`supabase/functions/_shared/otp-login.ts` + both reset paths): look the target up first
+and **refuse** when its auth email matches a 10-digit mobile at `bankready.app`, returning 400 with a
+message that names the mobile and points at OTP 1234. The lookup was moved *ahead of* password
+validation so the admin sees the real reason instead of a password-strength complaint.
+
+Two details that matter:
+
+- **`admin-reset-password` needed the same guard.** `src/lib/adminPasswordReset.ts` calls
+  `admin-user-actions` first and falls back to `admin-reset-password`; that function is also callable
+  directly. Guarding only one leaves the hole open.
+- **The match is anchored** (`^(\d{10})@bankready\.app$`, case-insensitive) so real email accounts —
+  `demo.admin@bankready.app`, `banking.admin@pluginlive.com` — stay resettable, and a lookalike
+  domain like `...@bankready.app.evil.com` is not mistaken for an OTP login.
+
+Verified live against the deployed functions with a real admin token: resetting `9820065336` is
+refused on **both** endpoints with the OTP message; a throwaway email user
+(`guardprobe@example.com`) still resets successfully and logs in with the new password (probe
+deleted afterwards, 0 rows left). Unit tests `src/lib/otpLoginGuard.test.ts` (6 cases) cover
+detection, the lookalike domain, and the derived-password format. Full suite 360 passed / 361 — the
+one failure is the long-standing stale `LLM_PROVIDER_TIMEOUT_MS` literal in
+`llmFallbackCoverage.test.ts`, untouched by this change.
+
+**Data repair.** The five already-bricked accounts were restored to the derived credential:
+
+```sql
+update auth.users
+   set encrypted_password = extensions.crypt('Otp_' || substring(email,1,10) || '_1234',
+                                             extensions.gen_salt('bf')),
+       updated_at = now()
+ where email in ('9820065335@bankready.app', ...);
+```
+
+All five now return 200 on a password grant, and `9820065335` was driven through the real UI —
+Send OTP → `1234` → Verify → `/candidate/home` as "Prakash Chinnadurai", zero page errors.
+
+Deployed by copying the three files into `~/banking-sb/functions/` and restarting
+`banking-sb-functions` (zero boot errors). No frontend rebuild was needed: `adminPasswordReset.ts`
+already surfaces the function's `error` string, and a 400 does not trigger its
+`shouldTryDedicatedReset` fallback (that requires status >= 500).
