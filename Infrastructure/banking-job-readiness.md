@@ -40,6 +40,7 @@ nvm use 20 && npm install && npm run build
 | 2026-08-24 | `6815d28` | `20260824183000_interview_proctoring_lifecycle` (additive, no fixup) | 6 commits; admin password reset across roles, auth-lock re-entry, assessment question dedup, interview proctoring lifecycle. `interview_sessions` 19 → 48 columns. Unit suite 291/301 → **335/335**. |
 | 2026-08-25 | `423fd65` | `20260824220000_assessment_question_canonical_uniqueness` (0 rows deleted, no fixup) | 9 commits; raises `LLM_PROVIDER_TIMEOUT_MS` 15000 → 45000 and widens provider failover to 400/404/422 (fixes generation timeouts), adds a DB-level unique index rejecting duplicate prompts per assessment, fixes a detached-ArrayBuffer bug in Gemini TTS. Unit suite 340/341 (1 stale test literal, not a regression — see below). |
 | 2026-08-27 | `5b4b5f2` | none (161 migrations unchanged, no new files) | 7 commits (`423fd65`→`5b4b5f2`); fixes taxonomy 400 errors, bulk-created-candidate OTP compatibility (`bulk-create-users` now writes `Otp_<mobile>_1234`, matching the login policy fix from 2026-08-21). No `supabase/migrations` or fixed-up edge function touched. Unit suite 348/349 (same stale `LLM_PROVIDER_TIMEOUT_MS = 15000` literal from 2026-08-25, still not a regression). |
+| 2026-08-28 | `6f87c4c` | none | 1 commit; **module topics now auto-link real YouTube videos** — see *Module videos: search queries vs. playable URLs*. Also the day the UAT **YouTube Data API key was finally configured**. Unit suite 370/371 (same stale `LLM_PROVIDER_TIMEOUT_MS` literal). |
 
 `20260810100000` needed **no fixup** — it is `ALTER COLUMN … SET DEFAULT` plus a distinct-union
 `UPDATE`, so it is naturally idempotent. Effect on UAT: per-admin `allowed_tabs` went 56 → 58 and
@@ -1043,3 +1044,68 @@ PROD runs on hosted Supabase `kbwjokmmzkgjwiqelrdc`, where **both** migrations a
 the identical stale constraint and identical 409. Applying the fix there needs dashboard/DB
 credentials for that hosted project, which nobody on the team currently holds (see
 `banking-postgres-migration.md`). **Pending.**
+
+## Module videos: search queries vs. playable URLs
+
+The student **Videos** tab renders a topic's video only if the stored string parses as a real
+YouTube URL (`getYouTubeId()` in `ModuleVideosPanel`). Anything else — a search phrase, a
+`youtube.com/results?search_query=…` link — is filtered out and the tab reads
+*"No videos linked to \<topic\> yet."* Two independent sources kept producing exactly that.
+
+**1. AI module generation stores queries, not links.** `AIModuleCreator` prompts the LLM for
+"2-3 suggested YouTube video **search queries**" and writes those raw strings into
+`admin_module_topics.suggested_videos` (`text[]`). Every AI-created module therefore shipped with an
+empty Videos tab. As of `6f87c4c`, `autoLinkTopicVideos()` runs immediately after the topics are
+inserted: one `ai-video-suggest` call per topic, sequential with a 1.5 s gap (the YouTube Data API
+is quota-limited and the function issues ~3 searches per topic), writing the resolved URL to the
+front of `suggested_videos` via `withResolvedVideoFirst()`. The original queries stay behind it as
+reading hints. Progress is shown as *"Fetching YouTube videos — 2 of 6"*.
+
+**2. The old fallback payload was persisted.** When `ai-video-suggest` cannot verify a video it
+returns `{fallback: true, video_url: "https://www.youtube.com/results?search_query=…", reason}`
+rather than an error. Before `isPersistableVideoSuggestion()` gated the write, those search-results
+URLs were saved as if they were videos. **510 rows in `public.topics` still hold one** — they render
+as "no videos" and are only fixable by re-resolving. The 10 topics of the *Quantum Physics* module
+(`0eb1c470-098d-425d-a9d7-3868a4e03ce4`) were re-resolved on 2026-08-28; the rest were not.
+
+**Manual recovery for an empty topic.** Any viewer now gets a **"Fetch video from YouTube"** button
+in the empty state. The result plays immediately for whoever clicked it, but is only written back
+when the viewer is an admin or trainer — the RLS write policy on `admin_module_topics` is
+`has_role(admin) OR has_role(trainer)`, so a student write would fail. `AdminModuleTopic` carries
+`source_table` so the write reaches the right column: `suggested_videos` on `admin_module_topics`,
+`video_url` on the legacy `topics` table (which has no `suggested_videos` column at all — that is
+why `useAdminModules` folds `video_url` into a one-element `suggested_videos` array for legacy rows).
+
+### The YouTube Data API key
+
+`getYouTubeApiKey()` in both `ai-video-suggest` and `youtube-search` reads the key from the
+`llm_provider_configs` row where `provider_key = 'youtube'` (Admin → **LLM Settings** → *YouTube Data
+API*), using the service-role client; `Deno.env.get("YOUTUBE_API_KEY")` is only a fallback and is
+**not** set on UAT. That row existed with `api_key IS NULL` from the start, so every suggest call
+silently returned the fallback payload. A key was written into it on **2026-08-28** and video
+resolution works on UAT now.
+
+Two traps when sourcing a key:
+
+- The ATS Google-Sheets export credential is a **service account**
+  (`sheet-reader-dev@data-eng-dev-486917`). YouTube Data API v3 **does not accept service accounts** —
+  it needs an API key or user OAuth. It cannot be reused here.
+- A Gemini key is also an `AIza…` Google API key but is normally restricted to the Generative
+  Language API. Test any candidate key before wiring it in:
+  `curl -s -o /dev/null -w '%{http_code}\n' 'https://www.googleapis.com/youtube/v3/search?part=snippet&q=test&type=video&maxResults=1&key=<KEY>'`
+
+### Calling the function directly
+
+nginx exposes the edge functions under `/sb/`, so `https://banking.uat.pluginlive.com/functions/v1/…`
+returns **405** — use `/sb/functions/v1/<name>` with the `ANON_KEY` from `~/banking-sb/.env` as the
+bearer. Note also that reads on `public.topics` require the `authenticated` role (`anon` gets `[]`);
+mint a candidate token with a GoTrue password grant against `<mobile>@bankready.app` /
+`Otp_<mobile>_1234`.
+
+**The deployed function lags the repo.** `~/banking-sb/functions/ai-video-suggest/index.ts` is the
+304-line version (LLM query maker + LLM picker); the repo copy is 395 lines and adds a deterministic
+metadata checker that rejects non-public, non-embeddable, too-short or off-topic candidates before
+the LLM ever sees them. Until `~/banking-sb/sync-functions.sh` is run, match quality on UAT is the
+weaker of the two. Relevance is also capped by the topic titles themselves: AI-generated titles that
+fuse two domains ("Wave-Particle Duality: The Dual Nature of *Financial Systems*") send the search to
+one domain or the other and never both.
