@@ -836,3 +836,55 @@ documented under the 2026-08-25 release; not touched by this release's commits, 
 Rollback assets use stamp `20260827T023655Z`: `~/bankingjobreadiness/dist.bak-predeploy-20260827T023655Z`.
 No DB dump or functions-predeploy archive was taken — no migration and no fixed-up function changed, so
 there was nothing destructive to snapshot beyond the frontend `dist/`.
+
+## 2026-08-28 — admin login for `prakash.chinnadurai@gmail.com`: two distinct causes
+
+Reported as `POST /sb/auth/v1/token?grant_type=password` → **400 Bad Request**, "Login failed /
+Invalid credentials", on the Admin tab. Two independent problems, neither a deploy regression.
+
+**1. The Admin tab cannot accept a personal email that has no auth user.** `handleAdminLogin` in
+`src/pages/Login.tsx` passes the User ID straight through as the GoTrue email, only appending the
+domain when there is no `@`:
+
+```js
+const email = adminId.toLowerCase().includes("@") ? adminId : `${adminId.toLowerCase()}@bankready.app`;
+```
+
+There is **no auth user with email `prakash.chinnadurai@gmail.com`** (`auth.users` has exactly one
+non-`@bankready.app` address, `banking.admin@pluginlive.com`). So GoTrue correctly returns 400. The
+gmail address only exists as a **`public.profiles.email` value**, on profile
+`6f18325e-5f93-4499-87bd-74d77086054a` → user `ce86d36b-8987-4d0e-b685-3d3ebf953761`, whose auth
+identity is the mobile-derived `9820065336@bankready.app`. **`profiles.email` is display data and is
+never consulted at sign-in** — do not read a profile email as a usable login.
+
+**2. That account's password hash did not match the app-derived password.** `ce86d36b` holds
+`admin` + `trainer` + `candidate` roles, but was part of the **2026-08-09 04:46:48 import batch** —
+the same batch as `9769440000` (repaired 2026-08-26). Both `Otp_9820065336_1234` and the legacy
+lowercase `otp_` variant returned `invalid_grant`, and `last_sign_in_at` was NULL, i.e. the account
+had **never once been able to log in**, by any route — admin *or* mobile OTP.
+
+Repaired in place, matching the earlier fix:
+
+```sql
+update auth.users
+   set encrypted_password = extensions.crypt('Otp_9820065336_1234', extensions.gen_salt('bf')),
+       updated_at = now()
+ where id = 'ce86d36b-8987-4d0e-b685-3d3ebf953761';
+```
+
+Note `pgcrypto` lives in the **`extensions` schema** on this DB — bare `gen_salt()`/`crypt()` fail
+with `function gen_salt(unknown) does not exist`; schema-qualify them.
+
+Setting this password is **not** a side-effect-free admin reset: the mobile OTP path
+(`src/lib/candidateMobileAuth.ts`) signs in with exactly `Otp_<mobile>_1234`, so the admin password
+and the OTP-derived password are the same secret. Setting it to anything else would silently break
+that user's Candidate/Trainer OTP login. Here it was already broken, so this restored both.
+
+Verified live: password grant returns an access token; through the real UI, Admin tab User ID
+`9820065336` + password `Otp_9820065336_1234` signs in as **Prakash** and `/admin` renders the full
+console (67 candidates, all sidebar groups), 0 page errors.
+
+**Working admin logins on UAT:** `9820065336` (Prakash, above), `demo.admin@bankready.app` /
+`Demo@Admin2026`, `banking.admin@pluginlive.com`. If a gmail-addressed admin login is genuinely
+wanted, it needs a **new** auth user — renaming `ce86d36b`'s auth email would break mobile OTP for
+`9820065336`, since that path looks up `<mobile>@bankready.app`.
