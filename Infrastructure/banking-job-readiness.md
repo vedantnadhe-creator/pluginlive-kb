@@ -1142,3 +1142,49 @@ mean the key was saved through the UI.
 **Always `NOTIFY pgrst, 'reload schema'` after adding columns here.** PostgREST caches the schema, and
 the error text names the cache explicitly — without the reload the new columns stay invisible and the
 save keeps failing identically after a correct migration.
+
+## 2026-08-31 — interview auto-transcription was broken for every recording (fixed, `4d88c18`)
+
+`/practice/interview` showed **"Transcribe failed"** and *"Auto-transcription unavailable for Qn —
+Edge Function returned a non-2xx status code"* on every answer. Grading still worked because the
+candidate could type the transcript by hand, which is why this survived unnoticed.
+
+**Cause.** `ai-interview`'s `transcribe` action sent the recording to Gemini through its
+**OpenAI-compatibility layer** as an `input_audio` content part. That layer accepts only two
+container formats:
+
+```
+Invalid audio format "webm" for audio generation. Valid formats are: [wav, mp3]
+```
+
+The browser records `video/webm` (`new MediaRecorder(stream, { mimeType: "video/webm" })`), so the
+call was rejected **400 every single time**. The fetch fallback then walked the remaining providers —
+`openai` has **no api_key** in `llm_provider_configs`, and `nvidia`'s nemotron is **text-only** — and
+whatever text came back contained no JSON, so `extractJson` threw and the function returned a **500
+`No JSON found`**. The real reason never reached the UI.
+
+**Fix.** Gemini's **native** `generateContent` endpoint *does* accept `audio/webm` inline data —
+confirmed against the live API with a real WebM/Opus clip before writing any code. Transcription now
+calls it directly via `transcribeAudioWithGemini()` in `_shared/llm.ts`.
+
+Three details worth keeping:
+
+- **The stored `base_url` points at the shim.** `llm_provider_configs.base_url` for gemini is
+  `https://generativelanguage.googleapis.com/v1beta/**openai**`; the helper strips the trailing
+  `/openai` to reach the native API. Don't "fix" that column — the chat path needs the shim.
+- **The JSON wrapper was the trap.** The old prompt asked the model to reply
+  `{"transcript":"..."}`, so *any* provider failure became the misleading `No JSON found`.
+  Transcription now takes plain text, and when both paths fail the function returns **502 with the
+  provider's own message**, so the toast says something actionable.
+- **The chat-completions path is kept as a fallback** for the wav/mp3 inputs it can genuinely handle.
+
+**Verified on UAT** through both input modes — inline `audioBase64`, and the `storagePath` mode the
+interview page actually uses (server downloads from the `interview-recordings` bucket) — each
+returning 200 with an accurate transcript of a real spoken clip. `generate` and `grade` still 200.
+Tests 370 passed / 371 (the one failure is the standing stale `LLM_PROVIDER_TIMEOUT_MS` literal in
+`llmFallbackCoverage.test.ts`).
+
+**Note on the checkout:** it was **32 commits behind** origin/main when this was written (heavy
+upstream activity that day, including a default-model bump to `gemini-3.6-flash`). The fix was
+committed, rebased onto latest main, pushed, and only then redeployed — `git fetch` before assuming
+the UAT box is current.
