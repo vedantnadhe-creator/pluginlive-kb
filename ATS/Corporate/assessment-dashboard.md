@@ -107,6 +107,35 @@ every one of these handlers calls it first (403 on mismatch). Every other
 `/corporates/:corporateId/*` route in the service still has that gap — worth a
 separate audit.
 
+## Loading states
+
+All three screens (dashboard, assessment-wise, candidate-wise) show **skeleton
+loaders**, not text. Two rules make them worth the code:
+
+- The skeleton reuses the **real structural classes** — `.kpi-grid`/`.kpi`,
+  `.panel`, `.aa-split`, `.rail` on the dashboard; the real `<table class="ma-tbl
+  ma-tbl--assessments">` shell on the lists. Only the content atoms become
+  `.skeleton` spans. So the card chrome, the grid and the fixed column widths are
+  already final and nothing reflows when data lands.
+- `CockpitSkeleton` must carry `data-block="attempt"|"competency"|"yoy"`. That
+  attribute is what the rule `.content-col > [data-block=…] { grid-column: span 1 }`
+  keys off. Without it those blocks inherit `grid-column: 1 / -1`, render
+  full-width, then re-flow into pairs — the exact shift the skeleton exists to
+  prevent.
+
+Counts that are not known yet shimmer rather than render `0` (status tabs, type
+legend, candidate total, the `Updated` stamp). A `0` and "we have not loaded it"
+look identical, and the first claims the corporate has nothing.
+
+Two gotchas found building this:
+
+- `.cal` (the rail's mini calendar) sits on `--bg-surface`, which is **also the
+  `.skeleton` base colour** — placeholders inside it vanish into one solid grey
+  block. `dashboard.css` steps the ramp up inside `.cal` only.
+- The DS `.skeleton-overlay` is `position: absolute` and collapses to a strip
+  with no real layout behind it. These skeletons are deliberately **in-flow**
+  instead.
+
 ## Deploy
 
 - `corporate-node` → `./auto_deploy.sh corporate-node UAT` (docker, container `corporate`).
@@ -126,6 +155,6 @@ separate audit.
 
 DEV and UAT: live. PROD: not deployed, and the index is not applied there.
 
-On UAT the newest assessment closes 2026-08-15, so all 96 floats read
-completed/expired and the schedule's week view is legitimately empty — that is
-the data, not a bug.
+UAT now carries open assessments (288 floats, 9 active as of 2026-08-31), so
+the schedule's week view populates. The earlier "Nothing open" state was the
+data being stale, not a bug.
