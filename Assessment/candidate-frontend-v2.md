@@ -72,6 +72,17 @@ scoped session an invited candidate holds, via
 student-node `POST /students/assessments/:id/session`. Past that point the two
 kinds of candidate are indistinguishable, which is the point.
 
+**Completion returns institute students to v1 (2026-08-31).** The v2 completion
+page uses the trusted return-path marker created by the signed-in handoff to
+distinguish institute students from invite candidates. After clearing the
+scoped sitting, an institute student is hard-redirected with
+`window.location.replace('/assessment')`, crossing the nginx seam back to the
+v1 student assessment dashboard without leaving the completed flow in browser
+history. Invite/OTP candidates have no return marker and remain on the existing
+completion screen. Implemented in `src/app/assessment/complete/page.tsx` with
+the pure `src/lib/completionRedirect.ts` policy. Development `c20751e`; UAT
+merge `317b46a`; deployed and HTTP 200 verified on DEV and UAT.
+
 **The `assigned` id is used once, to mint the token — and never again.**
 Everything downstream (`/students/mix-match/summary`, questions, save, submit,
 proctoring) takes the assignment from `req.user.assessmentAssignedId` inside the
