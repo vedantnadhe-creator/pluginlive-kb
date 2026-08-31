@@ -195,7 +195,18 @@ Students table and **21** on the assessment they had actually sat.
 | Assessments list → "Avg progress" | `AssessmentV2` | curved NPS + band |
 | Students (institute-wide) | `StudentWiseV2` | curved NPS, score **and** delta |
 | Assessment detail (all tabs) | `AssessmentDetailV2` | curved NPS |
+| Schedule/diagnosis roster → Score hover | `AssessmentDetailV2.getStudents` | curved section progress for Communication/Aptitude; raw percentages for every other type |
 | Assessment detail → **student report drawer** | `AssessmentDetailV2.getStudentReport` | curved NPS — headline, every schedule row, the trend line and its cohort line |
+
+The roster hover uses the same component calculation as the student report
+drawer. Communication pairs each skill across the immediate predecessor and
+current confirmed CEFR (including a bridge when the level changes); Aptitude
+replays topic rolling windows into category competencies and anchors each one
+to the stored overall aptitude level. Both aggregate on the linear ladder and
+call `curveNPS` exactly once. Communication diagnosis #1 remains blank because
+it has no confirmed NPS. The API retains the latest raw percentage/competency
+as `sections[].rawScore`, but the hover prints the curved `sections[].score`
+without a percent sign.
 
 **The drawer was the last percentage holdout, closed 27 Aug 2026** (`4e769ea`
 institute-node, `ff6fd7a` institute-react-v2 — DEV + UAT; PROD pending). It
