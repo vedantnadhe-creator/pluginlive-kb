@@ -331,10 +331,11 @@ admin-react renders `-`. There is no trustworthy historical source, and inventin
 re-create the class of bug this removed. Applied DEV + UAT 2026-08-05; **PROD pending**
 (`DB-Scripts/Assessment Dropout Timestamp/20260805T120510Z__assessment_assigned_students_dropped_at.sql`).
 
-> Still unfixed nearby: `startedDateTime` is formatted with `moment()` on a real UTC instant,
-> so the In-progress "STARTED DATE & TIME" column reads 5:30 behind IST; and the **corporate**
-> path builds it from `aas.submitted_at` (aliased `attempted_at`), so it shows the submit
-> time, not the start. The college path uses `assessment_started_at` correctly.
+As of 2026-08-31, `startedDateTime` is rendered with
+`moment(...).tz("Asia/Kolkata")`, so genuine UTC event instants display in IST in the admin
+table and its export. The **corporate** query still sources this cell from
+`aas.submitted_at` (aliased `attempted_at`), so for completed corporate rows it describes
+submission rather than assessment start; the college path uses `assessment_started_at`.
 
 ### Sent date (`created_at` / `invite_sent_at`, August 2026)
 
@@ -408,6 +409,17 @@ This is intentional and **must stay consistent on both sides**:
   (as of July 2026) `getCorporateAssessmentsInfo` add `+5.5h` (`330 min`) before computing
   Ongoing/Upcoming/Expired status; the admin-node back-assign window
   (`assignStudentsToActiveScheduleAssessments`) also adds +5.5h to its `now+24h` cutoff.
+  The hard question-fetch/start boundary (`getAssessmentQuestions`) independently loads the
+  assigned row's map and converts both stored bounds to real instants by subtracting 5.5h.
+  It returns HTTP 410 / `ASSESSMENT_WINDOW_CLOSED` outside the window, so a stale dashboard
+  tab or direct request cannot start late. Practice assessments remain exempt.
+- **Invite short links** — `InviteShortLinkService.computeLinkExpiry` converts the stored
+  `end_time` to the real IST instant (subtract 5.5h) before persisting `expiresAt`. Link
+  resolution and its scoped JWT clamp therefore stop at the same deadline instead of 5.5h
+  late. The fallback TTL is used only when the map has no valid deadline.
+- **Legacy candidate UI (v1)** — `Assessment-React` renders deadline digits with
+  `moment.utc(... [IST])` and subtracts 5.5h for countdown arithmetic. This is display and
+  guidance only; the student-node hard boundary above is authoritative.
 
 **Gotcha (Communication/Behavior/Hinglish fixed June 2026; Aptitude/Role_Based/AI_Interview
 fixed July 2026):** these assign helpers previously built the Date with `+05:30` /
