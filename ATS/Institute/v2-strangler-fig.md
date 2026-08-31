@@ -1137,6 +1137,27 @@ mean of each student's per-type average). The tooltip used to print a bare
 `Current 45`; it reads `Avg. score 45/100` with a matching legend, because the
 panel is titled "competency" and an unlabelled 45 reads as a level.
 
+### Radar tab didn't resync when a filter dropped it below 3 axes
+
+Fixed 2026-08-31 (frontend only, `a1eb6b7` Development, `0dd819e` UAT).
+`Competency.tsx` kept the selected `.ar-types` tab in local `useState`,
+seeded once from `tabs[0]`. The radar (`components/charts/Radar.tsx`)
+refuses to draw below 3 axes, so `tabs` only includes the `"all"` tab when
+`axes.length >= 3` — but nothing re-derived the selection when a filter
+(e.g. Passing year) changed the axis count on refetch. Filtering to a
+cohort with < 3 scored types dropped `"all"` from `tabs` while `type`
+state stayed `"all"`: the radar's header/caption/legend kept rendering
+(`showRadar = type === ALL` was still true) while `<Radar>` itself
+returned `null`, i.e. a caption with a blank chart underneath it.
+
+Fix derives `activeType = tabs.includes(type) ? type : (tabs[0] ?? "")`
+and reads that everywhere instead of the raw `type` state, so an
+invalidated selection falls back to a real tab (a per-type readiness
+ladder, or its own "No scored attempts yet." empty state) instead of a
+dead radar. Note the "Avg Progress" column can legitimately show `—` for
+a young/future cohort too — that one is `DashboardV2.js` correctly
+returning `null` for rows with no *submitted* attempt yet, not a bug.
+
 **`high` means opposite things in the two modes** — high RISK (red) on
 performance, high CONSISTENCY (green) on attempt rate. The frontend therefore
 keys colours per mode (`PERFORMANCE_COLORS` / `CONSISTENCY_COLORS` in
