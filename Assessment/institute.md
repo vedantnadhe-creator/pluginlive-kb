@@ -303,3 +303,14 @@ try {
   await page.close(); // close page, NOT browser
 }
 ```
+## TPO dashboard v2: real difficulty and raw-score fields (2026-08-31)
+
+The assessment-detail UI must never derive difficulty or raw scores locally. `AssessmentDetailV2`
+now joins each assignment to `assessment.assessment_sets` and returns the real
+`assessment_sets.cefr_level` as the assigned difficulty, alongside the raw percentage behind a
+level-anchored progress score. The Overview KPI returns `kpis.avgDifficulty`; roster rows return
+`assignedLevel` and `rawScore`; student-report timeline rows return `difficulty` and the existing
+raw `score`. The former frontend `_difficulty.ts` stable-hash placeholders were deleted.
+
+Shipped to DEV (`institute-node` `0589a6e`, `institute-react-v2` `201798e`) and UAT
+(`institute-node` merge `e194913`, `institute-react-v2` merge `8528236`).
