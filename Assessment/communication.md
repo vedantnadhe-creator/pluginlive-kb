@@ -69,6 +69,25 @@ Speaking 6, Reading + Listening + Writing 28).
 Delivery serves one or the other via `IsEmailWriting`, and the admin cannot see
 which, so the clock is never short for whoever draws the email.
 
+**How `IsEmailWriting` is decided** (set on the assignment row the first time
+its questions are served, in `student-node` `Assessment.js`):
+
+| Assignment | Rule |
+|---|---|
+| Practice | alternates on the student's practice count — even → Email Writing |
+| **Diagnosis** (`is_diagnosis = true`) | takes whichever format its **sibling sitting** did not, via `app/helpers/diagnosisPair.js`. If neither has started, a stable split on the two map ids; whichever runs second then sees the sibling's stored `IsEmailWriting` and takes the opposite |
+| Everything else | random, 50/50 |
+
+> **Changed 2026-08-31.** The diagnosis rule used to match the map's **name**
+> against `Assessment #1` (→ Email Writing) and `Assessment #2` (→ Dictation).
+> Renaming a diagnosis float dropped **both** sittings into the random branch,
+> where the pair could draw the same written format twice and the diagnosis
+> would cover only one writing skill. Deriving it from the pair also makes it
+> order-independent, which matters because a student can sit #2 first. Tests:
+> `student-node/test/diagnosisPair.spec.js`. See
+> [candidate-frontend-v2.md](candidate-frontend-v2.md) → *What counts as a
+> diagnosis*.
+
 ### The `enabled_sections` trap
 
 `enabled_sections` on `assessment_corporate_map` / `assessment_institute_map`

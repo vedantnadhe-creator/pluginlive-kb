@@ -53,6 +53,86 @@ a candidate can hit *today*, check which of the two URLs their invite carries.
 The direction of travel is that everything moves to the v2 URL; the branch is
 the thing to delete when it does.
 
+## The signed-in student handoff (`?assigned=`)
+
+Institute students never get an invite: they sign in, see their assessments on
+the **v1** dashboard, and pick one. v1 no longer runs any assessment itself —
+`Assessment-React` `src/modules/Assessments/index.js` hands every chosen
+assignment straight over, in the same tab:
+
+```js
+window.location.assign(
+  `/candidate-assessment-journey/v2/assessment?assigned=<assessment_assigned_id>&back=<dashboard path>`
+)
+```
+
+v2 (`src/app/assessment/page.tsx`) trades the student's login for the same
+scoped session an invited candidate holds, via
+`POST /v2/api/assessment/session/:assessmentAssignedId` →
+student-node `POST /students/assessments/:id/session`. Past that point the two
+kinds of candidate are indistinguishable, which is the point.
+
+**The `assigned` id is used once, to mint the token — and never again.**
+Everything downstream (`/students/mix-match/summary`, questions, save, submit,
+proctoring) takes the assignment from `req.user.assessmentAssignedId` inside the
+scoped JWT. The URL is not consulted.
+
+> **Bug fixed 2026-08-31 — the session must be keyed on WHICH assignment.**
+> The guard was `if (assigned && !sessionStorage.getItem(scopedJwt))`: mint a
+> session only when the tab holds none. But a scoped session survives every exit
+> except `/assessment/complete` (the only caller of `clearInviteSession()`) — a
+> Back out of the summary, the error screen's *Return to overview*, an abandoned
+> readiness check. And v1 hands over **in the same tab on the same origin**, so
+> `sessionStorage` carries across the seam by design.
+>
+> So the second assessment a student opened silently ran the **first one's**
+> session, and nothing downstream could notice because nothing downstream reads
+> the URL. On a diagnosis pair this surfaced as *"took Assessment #2 first, now
+> I can't take Assessment #1"*: opening #1 re-served #2, which the start guard
+> refused with 409 `ALREADY_COMPLETED`. It worked on another machine because
+> `sessionStorage` is per tab.
+>
+> The guard is now `needsNewStudentSession(assigned, heldAssignedId)`
+> (`src/lib/sessionSwitch.ts`, import-free so `node --test` can reach it):
+> re-mint whenever the URL names a different assignment, after
+> `clearInviteSession()` and `forgetReturnTo()` drop the previous sitting. A
+> refresh mid-attempt still resumes, because the id matches.
+
+## What counts as a diagnosis
+
+**The stored `assessment_assigned_students.is_diagnosis` flag, written by
+admin-node at assignment time — never the assessment's name, and never a
+missing `schedule_id`.** Both guesses were in the candidate path until
+2026-08-31 and both hid assessments students still had to sit:
+
+| Guess | Where it was | How it broke |
+|---|---|---|
+| `title === "Assessment #1" \|\| "Assessment #2"` | v1 `AssessmentTable.js` — hid diagnosis from the regular table | A **scheduled** float named that way vanished from the dashboard (38 such rows on UAT); a renamed diagnosis appeared twice |
+| same names | student-node `Assessment.js`, choosing Email Writing vs Dictation | Renaming the float dropped **both** sittings into the random branch, so the pair could get the same written format twice |
+| `!corporateMapId && !instituteMap.scheduleId` | student-node `getActiveAssessments`, start guard, reload guard; admin-node TPO diagnosis-score queries | Every unscheduled Behavior / Role_Based / Custom / AI Interview assignment was labelled a diagnosis (2,532 rows on DEV, 740 on UAT) — and v1 hides diagnosis rows from its regular table, so that label is what made them unreachable |
+
+Two further v1 rules changed with it:
+
+- The diagnosis section shows **every** diagnosis still on the active list. It
+  used to trim to `slice(0, 2 - completedOfThisType)`, counting unrelated
+  completed papers — and the trimmed-off row was hidden by the table's title
+  filter too, so it could be reached from nowhere. A submitted diagnosis has
+  already left the active list, so there is nothing to trim.
+- Regular assessments lock while *a diagnosis of that type is still
+  outstanding*, rather than while *fewer than 2 of that type are completed*.
+  The old rule locked a student who was never assigned a diagnosis at all.
+
+The Communication pair now derives its written format from the pair itself
+(`student-node/app/helpers/diagnosisPair.js`): a sitting serves whichever format
+its sibling did not, so the pair is correct **whichever one is sat first**, and
+falls back to a stable id-based split when neither has started. Tests:
+`student-node/test/diagnosisPair.spec.js`.
+
+The institute side already read the flag — see
+[institute.md](institute.md) → *Assessment type classification* and
+`ATS/Institute/v2-strangler-fig.md` → *Diagnosis ownership is stored, not
+inferred*.
+
 ## The code is not shared
 
 v2 is a rewrite, not a wrapper. There is **no shared package** between the two

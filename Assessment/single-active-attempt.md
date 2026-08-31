@@ -38,10 +38,24 @@ state.
 
 ### Resume rule — diagnosis only
 
-Resume is gated on whether the assessment is a **diagnosis** assessment:
-`isDiagnosis = !assessmentCorporateMapId && !assessmentInstituteMap.scheduleId`
-(institute-assigned, no schedule — same definition used for `is_diagnosis` in
-`getActiveAssessments`).
+Resume is gated on whether the assessment is a **diagnosis** assessment. That is
+read from the stored **`assessment_assigned_students.is_diagnosis`** flag, which
+admin-node writes at assignment time.
+
+> **Changed 2026-08-31.** It used to be derived:
+> `isDiagnosis = !assessmentCorporateMapId && !assessmentInstituteMap.scheduleId`.
+> That predicate is only correct for Communication and Aptitude. Every
+> **unscheduled** institute assignment of any other type — Behavior,
+> Role_Based, Custom_Assessment, AI_Interview — also satisfied it, plus
+> standalone unscheduled Communication/Aptitude floats: 2,532 such rows on DEV
+> and 740 on UAT. They were silently granted diagnosis
+> resume-after-refresh rights they were never meant to have, and were reported
+> to the candidate dashboard as diagnosis. Both the start guard
+> (`getAssessmentQuestions`) and the reload guard
+> (`/students/assessments/invite/reloadGuard`) now read the flag. Same change in
+> `getActiveAssessments` — see
+> [candidate-frontend-v2.md](candidate-frontend-v2.md) → *What counts as a
+> diagnosis*.
 
 `resolveAssessmentStartConflict({ status, isPractice, isResume, isDiagnosis })`:
 
@@ -82,7 +96,9 @@ when the candidate dropped rather than the assessment deadline — see
 - `AssessmentTable.js` — in-progress assessments still appear in the Active tab,
   but the action button is a **disabled "In Progress"** unless
   `is_diagnosis === true && this tab holds the marker` (only then is it an
-  enabled "Take Assessment" for resume).
+  enabled "Take Assessment" for resume). `is_diagnosis` on that payload is now
+  the stored flag rather than the map derivation, so the button state matches
+  the server's resume rule exactly.
 
 ## Notes / limitations
 

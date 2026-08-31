@@ -79,8 +79,11 @@ A short name here fails every BFF call at runtime while the pod stays happily
 `1/1 Running`. `student-node`'s `CORPORATE_ATS_URL=http://corporate-node-v2` is
 fine unqualified — student-node is itself in ns `api`.
 
-v1 (`corporate-react` :3001, `corporate-node` :8080) is untouched and still serves
-every vertical. v2 reads the existing corporate tables and owns only additive
+v1 (`corporate-react` :3001, `corporate-node` :8080) still serves every vertical.
+`corporate-node` is no longer untouched: it now also hosts the ten read
+endpoints behind the v2 assessment screens (see
+[assessment-dashboard.md](./assessment-dashboard.md)) — those do NOT live in
+`corporate-node-v2`. v2 reads the existing corporate tables and owns only additive
 tables of its own.
 
 ## The handoff: v1's nav is what routes users into v2
@@ -94,6 +97,12 @@ into it. The handoff is two lines in v1:
 
 Flipping a vertical to v2 means pointing that `path` at `/v2/<route>`; reverting
 means pointing it back at the v1 route (Roles ↔ `/rolePage`).
+
+**As of 2026-08-27 the flips are: Roles → v1 `/rolePage`, Assessments →
+`/v2/dashboard`.** Roles moved back deliberately — v2's own sidebar now bridges
+to v1 for Roles, and both ends must agree or the two sidebars point at each
+other. The Assessments entry is gated on a per-corporate subscription and its
+own env flag; see [assessment-dashboard.md](./assessment-dashboard.md).
 
 ## Gotcha — the nav flip must not reach an env without the v2 app
 

@@ -49,13 +49,24 @@ WHERE aim.schedule_id = ANY($1::uuid[])           -- scheduled assessments
 - **Diagnosis**: Communication/Aptitude with `schedule_id = NULL` and `is_one_time = false` — these are auto-created diagnosis assessments that belong to schedules
 - **Standalone other types**: Role_Based, Custom, Behavior, AI_Interview, etc. with `schedule_id = NULL` and `is_one_time = false` — these are NOT diagnosis; they never have schedules. Shown as individual rows.
 
-> **This derivation is v1-only (since 2026-08-26).** The **v2** institute
-> screens no longer infer "is this a diagnosis?" — they read the stored
-> `assessment_assigned_students.is_diagnosis` flag, written by admin-node at
-> assign time. v1 still derives it from the map as described above, and the two
-> agree exactly (the backfill reproduced this predicate: 0 mismatches on DEV and
-> UAT). See `ATS/Institute/v2-strangler-fig.md` → "Diagnosis ownership is
+> **This derivation is v1-institute-only, and it is the last one left.** The
+> **v2** institute screens read the stored
+> `assessment_assigned_students.is_diagnosis` flag (written by admin-node at
+> assign time) rather than inferring it — since 2026-08-26 — and since
+> **2026-08-31** so does the whole candidate path: student-node
+> `getActiveAssessments`, the start guard and the reload guard, admin-node's
+> TPO diagnosis-score queries and its duplicate-map scan, and both candidate
+> frontends. See
+> [candidate-frontend-v2.md](candidate-frontend-v2.md) → *What counts as a
+> diagnosis* and `ATS/Institute/v2-strangler-fig.md` → "Diagnosis ownership is
 > stored, not inferred".
+>
+> The two agree exactly **for Communication and Aptitude** (0 mismatches on DEV
+> and UAT). They do **not** agree for anything else: the predicate above also
+> matches every unscheduled Behavior / Role_Based / Custom / AI_Interview
+> assignment and every standalone unscheduled Communication/Aptitude float —
+> 2,532 rows on DEV, 740 on UAT — which the flag correctly leaves `false`. Do
+> not reuse this derivation in new code.
 
 **CANDIDATES = active roster count (`is_active`), 2026-07-03:** For scheduled rows, `totalCandidates` is the count of **active** students in the schedule's list — roster students whose `students_data` object is **not** flagged `is_active === false` (absent/`true` = active), scoped by `passingYear`. Soft-removed students stay in the list and in all history/stats but are excluded from this count because they receive no further assessments (see `schedule.md` → "Soft-removed students"). The row also returns `activeCandidates` (= `totalCandidates`), `inactiveCandidates` (soft-removed count), and `totalListCandidates` (full roster size for the passing-year scope). Diagnosis (`diagnosisCompleted`/`totalDiagnosisTaken`/`diagnosisStatus`) is scoped to the **full roster** (`studentEmails`), NOT the active subset — diagnosis was sent to everyone historically and the drill-in shows all of them, so the row must match (fixed 2026-07-09; a prior build wrongly narrowed it to active, making the Diagnosis row show `taken/active×2` e.g. `34/36` while the drill-in showed 57). The diagnosis state itself is read from `assessment_assigned_students` by `primary_email` via the pre-computed `diagnosisCountMap`. The **frontend** Diagnosis sub-row (`ExpandableContent.js`) computes `assessmentsSent = (totalListCandidates ?? totalCandidates) * 2` — full roster × 2. **Sent / taken / expired and the per-run "Schedule N" sub-rows remain assigned-table based** (`assignedByMapId[map_id]`) — so historically-assigned-but-now-inactive students still appear in run counts and the drill-in. (One-time/standalone rows keep their own `totalCandidates = studentEmailsSet.size` from assigned students and do not carry the active/inactive breakdown.)
 

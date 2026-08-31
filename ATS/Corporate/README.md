@@ -120,3 +120,4 @@ Each module folder contains a `README.md` covering:
 - Redux actions & API endpoints
 - Filters, sorting, pagination
 - Related backend services
+- [Assessment Dashboard](./assessment-dashboard.md) — /v2 cockpit, list, detail and schedule on corporate-node; accessLevel gate
