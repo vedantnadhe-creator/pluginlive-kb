@@ -1188,3 +1188,51 @@ Tests 370 passed / 371 (the one failure is the standing stale `LLM_PROVIDER_TIME
 upstream activity that day, including a default-model bump to `gemini-3.6-flash`). The fix was
 committed, rebased onto latest main, pushed, and only then redeployed — `git fetch` before assuming
 the UAT box is current.
+
+## 2026-08-31 — "we have 24k videos but they don't show": there were none
+
+Reported against `Banking - AML Basics` (`5d7bd4c6-…`) — the module's **Videos** tab was empty
+despite a belief that ~24,000 YouTube videos already existed in the app. Measured, rather than
+assumed:
+
+| Store | Rows | Real watchable videos |
+|---|---|---|
+| `admin_module_topics.suggested_videos` (what the Student Journey reads) | 555 | **0** |
+| `topics.video_url` (legacy) | 532 | **22** — 505 are `youtube.com/results?search_query=…` placeholders |
+| `curriculum_videos` / `video_lessons` / `curriculum_topics` | 0 / 0 / 0 | — |
+
+**There is no 24k video store in this database.** The largest table of any kind is
+`assessment_responses` at ~11k rows. The belief almost certainly comes from the **505 placeholder
+rows**, which look populated in the DB but are YouTube *search* links, not videos —
+`getYouTubeId()` returns null for them, so the panel renders "no videos". This is not a display bug:
+the module genuinely had nothing linked.
+
+**Where the placeholders come from — and the trap.** `ai-video-suggest` returns a *fallback* payload
+(`{video_url: "…/results?search_query=…", fallback: true}`) instead of erroring when its checker
+can't verify a video. Anything that writes that response without gating on
+`isPersistableVideoSuggestion()` mints another dead placeholder. **Never store a `results?search_query`
+URL.**
+
+**Fixed / done:**
+
+- Deployed the current `ai-video-suggest` (repo 395 lines; the running copy was a stale 304-line
+  build) plus `_shared/youtube-video-validator.ts`, **which was not deployed at all** — so the
+  deterministic metadata checker had never run on UAT.
+- Verified the YouTube Data API key in `llm_provider_configs` (`provider_key='youtube'`) works — a
+  live `search.list` returns 200.
+- Backfilled `Banking - AML Basics`: **9 of 15 topics** now carry real `watch?v=` URLs, confirmed
+  through the candidate's own PostgREST read (RLS-scoped), which is exactly what the Videos tab
+  fetches. The other 6 returned the search-query fallback and were **deliberately not written**.
+
+**Backfill tool:** `~/banking-sb/backfill-topic-videos.sh <module_id>` on the UAT box. It calls the
+maker→YouTube→checker pipeline per topic and writes only approved `watch?v=` URLs; it stops early if
+YouTube reports quota exhaustion. Two shell traps were hit writing it and are fixed in the saved
+copy: both `curl` and `docker exec -i` **consume the loop's stdin**, silently ending the `while read`
+after one iteration (it reported "linked=1" on a 15-row module twice before this was spotted).
+
+**The binding constraint for a full backfill is YouTube quota, not time.** `search.list` costs 100
+units against a default 10,000/day project quota, i.e. **~100 topic resolutions per day**, and
+`ai-video-suggest` may issue up to 3 searches per topic. **546 topics still have no video**
+(`Banking - Key Duties…` 21, `Banking - AML/KYC…` 17, `Cloud Computing Fundamentals` 15, …), so
+completing them needs either a raised quota in the Google Cloud console or several days of batched
+runs. The 505 legacy `topics.video_url` placeholders are a separate re-resolution job.
