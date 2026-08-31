@@ -630,6 +630,15 @@ of IST, and for IST itself after 18:30 UTC. Date-only payloads default to
 `admin-react/src/modules/Assessment/Partials/CreateAssessment/Drawers/assessmentEndDateNotice.test.js`
 (plain-node, no runner: `node <path>`).
 
+**Completed scheduled runs use the standard assessment editor** (2026-08-31).
+The pencil beside an Ongoing, Completed or Expired child run in
+`UnifiedAssessmentTable/ExpandableContent` opens `EditAssessmentDrawer` for
+that run's `assessmentInstituteMapId`. It therefore reads and writes through
+`GET/PUT /assessment/details`, including the same end-date-and-time picker and
+validation as the normal **Edit Assessment** action. Do not restore the former
+inline popover or its separate `PUT /assessment/schedule/assessment-enddate`
+call; that duplicate path was the source of completed-run update errors.
+
 ---
 
 ## Question Generation (Admin-Triggered)
