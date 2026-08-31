@@ -1236,3 +1236,43 @@ units against a default 10,000/day project quota, i.e. **~100 topic resolutions 
 (`Banking - Key Duties…` 21, `Banking - AML/KYC…` 17, `Cloud Computing Fundamentals` 15, …), so
 completing them needs either a raised quota in the Google Cloud console or several days of batched
 runs. The 505 legacy `topics.video_url` placeholders are a separate re-resolution job.
+
+### 2026-08-31 (same day) — full backfill attempted, stopped by YouTube quota at 17 topics
+
+Ran `~/banking-sb/backfill-all-topic-videos.sh` across all 555 module topics. It linked **17** before
+the project's YouTube **daily search quota** ran out:
+
+```
+"Quota exceeded for quota metric 'Search Queries' and limit 'Search Queries per day'
+ of service 'youtube.googleapis.com' for consumer 'project_number:167734609581'"   HTTP 429
+```
+
+| Module | Linked / topics |
+|---|---|
+| Banking - AML Basics | 9 / 15 |
+| Advanced Banking | 5 / 9 |
+| AI Agents | 2 / 4 |
+| AI Agents & Workflow Automation | 1 / 10 |
+| **Total** | **17 / 555** |
+
+**The failure mode is silent and worth knowing.** `ai-video-suggest` catches the YouTube 429 and
+returns its normal fallback payload with `reason: "No YouTube videos found for generated queries"` —
+the words *quota*, *429* and *rateLimitExceeded* never appear in the function's response. A caller
+watching for quota strings therefore sees nothing and keeps going; the run produced **154 skips** in
+a row before this was spotted by querying the YouTube API directly. Note the reason string is
+`rateLimitExceeded` / `RESOURCE_EXHAUSTED`, **not** the `quotaExceeded` / `dailyLimitExceeded` most
+guards look for.
+
+The script now probes `youtube/v3/search` directly whenever it sees that fallback and aborts the run
+on a real quota error, so a rerun stops in seconds instead of walking the whole list.
+
+No placeholders were written at any point (`placeholders = 0`) — skipped topics were left empty
+rather than filled with `results?search_query=` URLs.
+
+**To finish the remaining 538 topics**, one of:
+1. Raise **Search Queries per day** for project `167734609581` in the Google Cloud console
+   (default 10,000 units/day ÷ 100 per search ≈ 100 searches, and the function may issue up to 3 per
+   topic — so ~33-100 topics/day at default). Then a single run completes it.
+2. Rerun the script daily; it skips already-linked topics, so it resumes where it stopped.
+
+Quota resets at **midnight Pacific**.
