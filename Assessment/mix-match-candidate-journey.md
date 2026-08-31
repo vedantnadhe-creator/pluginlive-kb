@@ -805,6 +805,86 @@ Video Response, recording saved but Finish stuck) and a second candidate stuck
 on Aptitude's last question reading "Module completed" mid-review. Commit
 `18987eb` on Development, merged to UAT as `6484f0a`.
 
+### A timed-out last Communication question stranded the candidate before Aptitude (fixed 2026-08-31, DEV + UAT — PROD pending)
+
+The most-reported Mix & Match failure — *"Aptitude questions don't load after
+Communication ends"* — was never a question-delivery problem. Every part's
+questions are fetched up front in one `Promise.all` (`lib/liveExam.ts`
+`fetchLiveTest`), so Aptitude was already in the browser. What failed was the
+**hand-over between modules**.
+
+Three correct behaviours collided:
+
+1. Communication is answered question by question, so `NEXT` refuses to leave an
+   unanswered one behind (`app/_mock/exam.ts`, the `a.type === "Communication"`
+   guard).
+2. A per-question section clock — Sentence Completion 25 s, Sentence Build 180 s,
+   Dictation 25 s (`lib/communicationTimers.ts`) — **deletes** whatever the
+   question held when it expires, so the server's explicit "not attempted"
+   marker is never overwritten by a half-typed value
+   (`EXPIRE_COMMUNICATION_TIMER`).
+3. `commitModule` closes a module with `COMPLETE_PART` and then hands over with
+   `NEXT` (`app/assessment/take/page.tsx`).
+
+So when the clock ran out on the **last** question of Communication — the common
+case, since `communicationTimerExpiryTarget` returns `undefined` there and
+finishes the module by itself — the guard refused the `NEXT` that was supposed to
+open Aptitude. Communication was already in `completedParts`, which means
+`readOnly`: the primary control reads **"Module completed"** and is disabled
+(`doneReviewing`), the module track cannot switch (`SWITCH_ASSESSMENT` is a
+deliberate no-op), and Aptitude never opened. The only exit was the exam menu's
+**End assessment**, and `finish()` submits *every* part — so Aptitude went in
+untouched and scored zero.
+
+**PROD evidence (2026-08-31, last 12 days of Communication + Aptitude floats):**
+11 sittings with a fully worked Communication part (24–36 saved answers) and
+**0 Aptitude answers out of 30**; 13 completed Aptitude parts hold a stored score
+of **0 out of 45–52** in `aptitude_scores`; three more sat there until the dropout
+sweep took them. The signature in the DB is both parts sharing the same
+`submitted_at` second (the one-shot `finish()`), and the last Communication answer
+landing in a section *before* the paper's final one — sittings that reached
+Aptitude all end on Sentence Build, answered by hand.
+
+**Fix:** the guard stands down once the module is closed —
+`if (a.type === "Communication" && !locked)`. It exists to stop the candidate
+skipping ahead *inside* Communication, which is unchanged; it has no business
+vetoing a hand-over `commitModule` has already authorised. Two regression tests
+in `app/_mock/exam.test.ts` cover both directions. Commit `e334371` on
+Development, merged to UAT as `59f4032`.
+
+**PROD is still on `release-v1.38-hotfix-1` and still has this bug.**
+
+### Promoted to UAT alongside the hand-over fix (2026-08-31)
+
+Three earlier `Development` commits rode into UAT with the promotion merge
+(`59f4032`) — the branch is promoted whole, never cherry-picked:
+
+- **`4ba399d` — the exam menu's dialogs are portalled, and Support is a real
+  form.** The topbar's `backdrop-filter` gives it a containing block, so a
+  `position: fixed` scrim rendered inside it (the menu lives in the topbar's
+  `aside` slot) sized against the 58px bar rather than the viewport and rendered
+  squeezed and clipped. Both dialogs now portal to `document.body` and return
+  focus to the `...` trigger on close. Support replaced its static mailto notice
+  with a name/email/message form (email pre-filled, submit disabled until
+  valid); **submission is still stubbed pending the backend endpoint** — it logs
+  in dev, resolves after a delay, and closes the dialog with the usual toast, so
+  a candidate's message currently goes nowhere.
+- **`575dbcf` — Sentence Build drag runs on Pointer Events.** iOS Safari never
+  fires `dragstart` for touch, so the HTML5 drag-and-drop API this reorder
+  question used fell through to the platform's text-selection gesture and the
+  cards could not be reordered on an iPhone. Pointer Events fire identically for
+  mouse, touch and pen; `touch-action` / `user-select` / `-webkit-touch-callout`
+  stop iOS claiming the gesture first. A guard test fails the build if the HTML5
+  DnD API is reintroduced here.
+- **`4e9fe59` — PostHog lands in v2.** v2 had no analytics; v1
+  `Assessment-React`'s configuration and event catalogue are ported character
+  for character, misspellings included (`after_voilation`, `voilation_type`,
+  `dropedoff`), so both candidate journeys land in one funnel and the existing
+  insights keep working. Init happens on mount in the root layout, never gated
+  on knowing who the candidate is — v1 initialised inside an effect waiting for
+  a signed-in profile and therefore dropped every event an OTP-invited candidate
+  produced.
+
 ### Communication locks its subsections one at a time
 
 `loadCommunication` in `liveExam.ts` was hardcoded to `freeNavigation: true` on
