@@ -265,6 +265,19 @@ Round-trip, month/year-boundary and empty/backwards-window cases are covered in
 admin-node fix — the immediate diagnosis assign used to hard-code a 10-year
 window and ignore the configured validity.
 
+**Assessment duration's date/time fields open their picker from anywhere in the
+box** (2026-08-31). The control is four native `<input type="date">`/`type="time"`
+elements inside one `.input-shell`, and a native date input only opens its picker
+from the trailing calendar/clock glyph — clicking the `mm/dd/yyyy` text just
+focuses a segment. That read as a dead End date field, especially since the CSS
+already paints the whole input with `cursor: pointer`. `StepSendAssessment`'s
+`openNativePicker` now calls `showPicker()` from an `onClick` on all four
+duration inputs plus the custom-recurrence date. Typing still works (the picker
+is dismissible, the segments stay editable), and the `try/catch` falls back to
+the old glyph-only behaviour where `showPicker` is missing (pre-Chrome 99 /
+Safari 16 / Firefox 101). Any new native date input in this wizard needs the same
+handler — the browser gives no way to widen the picker's hit area from CSS.
+
 ## Auth — admin-node wants the RAW token
 
 v2 is same-origin with v1, so it reads v1's JWT from `localStorage.token` (falling
