@@ -615,13 +615,14 @@ page shares one `refreshActiveAssessments()` between the post-add refresh and
 the extend action so a stale end date is never left on the row behind the
 drawer.
 
-**Backend.** `POST /assessment/updateAssessmentEndDate` now accepts
-`assessmentCorporateMapId` as an alternative to `assessmentInstituteMapId` —
-previously it only ever read `assessment_institute_map`, so a corporate
-assessment could not have its end date moved at all. The roster top-up that
-follows the date change stays college-only by construction (a corporate map has
-no `scheduleId` to satisfy the branch). The response reports which map changed
-and `previousEndDate` read from the row as it was before the write.
+**Backend.** The gate reuses the standard Edit Assessment contract:
+`PUT /assessment/details` with `{ mapId, mapType, endTime }`. This works for
+both institute and corporate maps and keeps the Add Candidate action aligned
+with the action-column editor. Do not call the legacy
+`POST /assessment/updateAssessmentEndDate` route from this UI: it is not
+available in every deployed admin-node environment and caused the gate to fail
+with a route-not-found error. The picker sends the same full wall-clock
+date-and-time value as `EditAssessmentDrawer`.
 
 **Timezone.** The day count is built in the IST-wall-clock-as-UTC frame these
 end dates are stored in. Local midnight puts it a day out for every admin west
