@@ -293,6 +293,21 @@ the compact variant is `calc(50% - 8px)` wide, so on a wide screen it is tight
 while the viewport query never fires. Anything added to this shell has to be
 sized from content — the viewport is the wrong measure here.
 
+**Step 4's Audience row showed raw ids, not a cohort name** (2026-08-31).
+`draft.audience` was `Record<batchKey, boolean>`, keyed by
+`degreeId|streamId|passingYear` — Step 3 fetches `degreeName`/`streamName` to
+render the picker row but discarded them on select, so Step 4 had nothing to
+show but the key itself, and its `k.replace("|", " ")` only replaces the
+*first* `|` — so a selected cohort rendered as two UUIDs, a space, then
+`|2026`. `audience` is now `Record<batchKey, label>`: still keyed by id
+(cohort names collide — a campus can hold two degree rows both called "BE"),
+valued by the label Step 3 already built for the picker
+(`batchLabelOf` in `StepSendAssessment.tsx`). A key is absent when unselected
+rather than `false`; `toggleAudience` and `removeRecipient`'s auto-uncheck
+`delete` it instead. Step 4 also names selected **saved lists** now — before,
+picking one cleared `audience` entirely and the row fell back to the generic
+"Existing batches".
+
 ## Auth — admin-node wants the RAW token
 
 v2 is same-origin with v1, so it reads v1's JWT from `localStorage.token` (falling
