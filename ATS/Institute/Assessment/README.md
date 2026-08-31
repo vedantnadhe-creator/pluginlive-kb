@@ -162,6 +162,15 @@ The Assessment module provides the TPO-facing dashboard for managing and trackin
   (`models/AssessmentV2.getAssessmentsFull`) already applied. A group nobody was
   ever assigned can only read "0 students / 0 / 0%", so the two screens now show
   the same set of assessments and the same count.
+- **Dashboard KPI default is all-time:** the v2 dashboard's Degree/Department
+  and Passing Year controls are cohort filters; they are not assessment-date
+  filters. With both controls on `All`, `DashboardV2.getSummary` counts every
+  distinct non-practice assignment for the institute. The sent/taken headline,
+  ratio and type bar all use that same all-time cohort. Do not reintroduce an
+  implicit `EXTRACT(YEAR FROM aim.start_time) = EXTRACT(YEAR FROM NOW())`
+  bucket: it makes an apparently unfiltered dashboard silently report only the
+  current calendar year. Since 2026-08-31 the frontend no longer prints the
+  former hard-coded `(Current Year: …)` suffix or a duplicate `All time` value.
 - **Proctoring integration:** Media keys/URLs for proctoring review
 - **Chart-based filters:** Interactive chart filtering with `setChartFilters`/`clearChartFilters`
 - **Mock data support:** `useMockData` flag or `localStorage.ASSESSMENT_MOCK` for frontend development
