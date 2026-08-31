@@ -925,3 +925,17 @@ Two kinds of timestamp reach the admin student table and they must be formatted 
 `admin-react` needs no change and was already correct: `StudentsTable/index.js` deliberately keeps two formatters — `formatDateOnly` (pinned `timeZone: 'UTC'`, for window columns) and `formatEventDateOnly` (browser-local, for instants). The server sends the started-at value **pre-formatted as a string**, which `formatEventDateOnly` re-parses and re-renders in the same local zone, so it round-trips unchanged — the displayed value is decided entirely by the `admin-node` format above.
 
 DEV + UAT 2026-08-31; **PROD pending**.
+
+### The counts and buckets that read the window (same pass)
+
+`admin-node/app/models/Assessment.js` compared map `end_time` against a bare `new Date()` at six sites, so every one of them treated an assessment as still open for **5 h 30 m past its deadline**:
+
+- `getActiveAssessmentCount` and `getAssessmentCompletedCount` — the Active / Expired tiles, so a just-expired assessment counted as Active all evening.
+- the two dashboard listing queries (`entityType` college + corporate) that filter `end_time >= :currentTime`.
+- the **pending** bucket in both the institute and corporate student-list builders (`assessment.endTime > currentTime`) — a candidate who never attempted stayed in *Pending* instead of moving to *Expired*.
+
+The shift now lives in one place, `admin-node/app/helpers/candidateDeadline.js` → **`nowInMapWindowFrame(now?)`**, which returns `now + 5:30` for comparison against a wall-clock column. **Use it for any `start_time`/`end_time` comparison and never for a genuine instant** — the `assessment_started_at` elapsed-minutes diffs in the same functions are real instants and were deliberately left on `new Date()`. Covered by `admin-node/test/candidateDeadline.spec.js`.
+
+`institute-node/app/models/DashboardV2.js` had the SQL version of the same bug: `window_closed` used `aim.end_time < NOW()` while `StudentListInfo.js` already used `NOW() + INTERVAL '5 hours 30 minutes'` — the two disagreed for 5.5h a day, and since only a *closed* window can be "missed", a missed attempt landed in the wrong at-risk band. Now uses the shifted `NOW()` in both places.
+
+DEV + UAT 2026-08-31; **PROD pending**.
