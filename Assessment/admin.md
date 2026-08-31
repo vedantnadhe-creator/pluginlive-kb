@@ -903,3 +903,16 @@ Two bugs, both silent:
    that fallback is **not** safe downstream — `aptitudeLengthFromDifficulty`
    reads a sum of 0 as the 30-question paper, so a 60-minute float silently
    built 30 questions instead of 40 rather than failing anywhere visible.
+
+## Event timestamps render in IST; window timestamps render as stored (2026-08-31)
+
+Two kinds of timestamp reach the admin student table and they must be formatted **differently**:
+
+- **Real UTC instants** — `assessment_started_at`, `attempted_at`, `dropped_at`, `invite_sent_at`, `submitted_at`. These are genuine instants and must be shifted into IST for display.
+- **Map window columns** — `assessment_institute_map` / `assessment_corporate_map` `start_time` / `end_time`. These hold **IST wall-clock digits in a UTC-shaped column**, so they must be rendered *as stored* (`moment.utc`) and never shifted again.
+
+`admin-node` `Assessment.js` built the in-progress `startDate` / `startedDateTime` cell with a bare `moment(...).format(...)` in a container whose `TZ` is unset (i.e. UTC), so a candidate who started at **10:56 IST** was shown as **"31 Aug 2026, 5:26 AM"** — the raw UTC digits of a real instant, the exact inverse of the window bug. Both call sites (the student list and the Excel export that inherits the same string) now use `moment(...).tz("Asia/Kolkata").format(...)`. The neighbouring `endDate` already used `moment.utc(...)` and was correct.
+
+`admin-react` needs no change and was already correct: `StudentsTable/index.js` deliberately keeps two formatters — `formatDateOnly` (pinned `timeZone: 'UTC'`, for window columns) and `formatEventDateOnly` (browser-local, for instants). The server sends the started-at value **pre-formatted as a string**, which `formatEventDateOnly` re-parses and re-renders in the same local zone, so it round-trips unchanged — the displayed value is decided entirely by the `admin-node` format above.
+
+DEV + UAT 2026-08-31; **PROD pending**.
