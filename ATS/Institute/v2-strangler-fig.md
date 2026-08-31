@@ -2241,3 +2241,55 @@ Deployed to DEV and UAT: both public assessment pages returned HTTP 200, both
 systemd services were active on their environment-specific ports, and the UAT
 client/server bundle contained zero `dev.pluginlive.com` references. Production
 build and targeted ESLint passed. PROD remains pending.
+
+## Schedule drawer filters on student status (2026-08-31)
+
+The Schedule tab's occurrence drawer could narrow its roster by degree/department
+and by free-text search, but not by the column a TPO opens it to read: who
+completed, who was absent. It now carries a staged **Status** pill beside
+Degree-Dept, offering the five states `AssessmentDetailV2` derives —
+Completed / In progress / Dropped / Absent / Not started.
+
+**It is a client-side filter, deliberately, and this is the rule for this
+screen.** `GET /institutes/assessments/v2/:id/students` takes only
+`instituteId`, `id` and `occurrence` — no limit, no offset, no filter params —
+so it already returns the whole roster and the browser is already holding every
+row. A server round trip per toggle would be strictly slower and would fetch a
+subset of data the client has. More importantly, **`status` is not a column**:
+it is derived in JS after aggregation (`AssessmentDetailV2.js`, ~L1888) by
+inspecting the student's set of assignment statuses across the occurrences —
+`COMPLETED` → completed, else `DROPOUT` → dropped, else `INPROGRESS` → in
+progress, else sent-with-window-closed → absent, else not started. A `WHERE`
+clause would be a second definition of "absent" that can drift from the chip.
+Every other filter here is client-side for the same reason: Degree-Dept, search,
+sort, and the Student-wise tab's Score / Risk / Attempt Rate popover. Server-side
+filtering becomes correct the day this endpoint paginates; it does not today.
+
+Three things worth not re-deriving:
+
+- **Counts are taken before the status filter, not after.** Row filtering splits
+  into `preStatus` (dept + search) and `rows` (+ status). Counting against the
+  fully filtered list would print `0` beside every option the user has not
+  selected yet — which is exactly the moment the count is useful.
+- **Hidden for upcoming runs and for Diagnosis.** Neither renders a status chip:
+  an upcoming run suppresses the column entirely (every row is not-started), and
+  the Diagnosis row prints `taken/sent` in that column instead. A filter there
+  would narrow on something invisible.
+- **One list drives both the chip and the filter.** `STUDENT_STATUS_OPTIONS` in
+  `assessments/[id]/_constants.ts` holds val / label / chip class / dot colour;
+  the Status column's two nested five-way ternaries were replaced by a lookup
+  against it. Two lists would drift the moment a sixth state is added, and the
+  filter would silently stop offering it.
+
+No new component: `MultiFilter` already existed (staged multi-select, portalled
+and viewport-clamped so a narrow drawer cannot clip it, supports per-option
+counts and the colour dots that make the menu read like the chips it selects).
+
+Frontend commit `f624157` on Development, promoted to UAT in merge `600176a`.
+Deployed to DEV and UAT. Verified past the usual lies: on both boxes the systemd
+main PID was the post-restart one (DEV :3011, UAT :3012 — see
+`Infrastructure/v2-apps-uat-topology.md`), and the chunk that owns the drawer
+(`Not proctored` + `Degree- Dept.`) was fetched over HTTP from the running server
+and confirmed to contain `label:"Status"`. `tsc --noEmit` clean; the single
+ESLint error in the file is pre-existing (`setState` in the fetch effect),
+confirmed by stashing and re-running. PROD pending.
