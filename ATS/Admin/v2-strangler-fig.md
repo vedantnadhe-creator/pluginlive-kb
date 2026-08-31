@@ -278,6 +278,21 @@ the old glyph-only behaviour where `showPicker` is missing (pre-Chrome 99 /
 Safari 16 / Firefox 101). Any new native date input in this wizard needs the same
 handler — the browser gives no way to widen the picker's hit area from CSS.
 
+**The same control used to truncate the time value** (2026-08-31). A styled
+native `<input type="time">` needs ~104px to show `hh:mm AM/PM` plus its clock
+glyph; `.cfg-datetime input[type="time"]` gave it `flex: 0 1 90px`, and
+`min-width: 0` on the inputs let it shrink further (down to ~70px in the compact
+college variant), so `02:29 PM` rendered as `02:29 PI`. A native date/time input
+has no scrollbar and no ellipsis — it truncates silently, and `scrollWidth`
+never exceeds `clientWidth` because the UA shadow DOM clips internally, so the
+usual overflow check cannot detect it. The time input is now `flex: none` (its
+content width), no `min-width: 0` survives in `.cfg-datetime`, and the row wraps
+rather than shrinking anything under its value. The arrow hides on
+`@container (max-width: 560px)` instead of the old 640px viewport media query:
+the compact variant is `calc(50% - 8px)` wide, so on a wide screen it is tight
+while the viewport query never fires. Anything added to this shell has to be
+sized from content — the viewport is the wrong measure here.
+
 ## Auth — admin-node wants the RAW token
 
 v2 is same-origin with v1, so it reads v1's JWT from `localStorage.token` (falling
