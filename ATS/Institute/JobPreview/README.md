@@ -126,3 +126,59 @@ placed differs from what the counter was incremented for.
   actions trigger `POST /corporate/metrics/update/trigger`); the rebuild also realigns
   the int counter to `placedCandidateIds.length`, which clears counters that had
   drifted above the real count.
+
+---
+
+## View Drive Report: how each round column is labelled (fixed 2026-08-31, DEV + UAT)
+
+The header's **View Drive Report** export (`PageHeader/Components/InformationHeader.js`
+→ `getOneRoleExports` → `POST /instituteReport/instituteCampusId/:id/export/role_wise_report`,
+xlsx / csv / Google Sheet) produces one row per applied candidate and **one column per
+round** of the role's `interview_workflow`, plus a trailing `Offer Status`. The
+per-round cell comes from `manual_status`, built in the SQL in
+`institute-node/app/models/iReports.js` → `roleWiseReport`. `INTERNSHIP` /
+`APPRENTICESHIP` roles only change the summary header from **CTC** to **Stipend** —
+the status logic is identical for every job category.
+
+**The labels are derived from the round's `order` relative to the candidate's current
+round** (`stage_orders.round_order`; `stage = 'offer'` counts as `rounds + 1`):
+
+| Situation | Cell |
+|---|---|
+| Candidate has no `stage` yet (applied only) | *(blank)* |
+| Round is **ahead** of the candidate's current round | *(blank)* — not reached |
+| Round is **behind**, and `stage_history` mentions it (`to` or `from`) | `Shortlisted` |
+| Round is **behind**, `stage_history` exists but omits it | `Skipped` |
+| Round is **behind** and `stage_history` is NULL/empty | `Shortlisted` |
+| Round **is** the candidate's current round | readable label for `_applyRoleStatus` |
+
+Current-round labels: `ACTIVE` → **In Progress**, `SHORTLISTED`/`SELECTED` →
+**Shortlisted**, `REJECTED`/`REJECT` → **Rejected**, `ABSENT` → **Absent**,
+`SCHEDULED` → **Scheduled**, `TO_BE_SCHEDULED` → **To be scheduled**,
+`RESCHEDULED` / `RESCHEDULE` / `RESCHEDULE_REQUESTED`, `HOLD`/`HOLD_TO_COMPARE`/
+`HELD_TO_COMPARE` → **On hold**, `OFFER_RECEIVED` → **Offer received**; anything
+else falls back to `INITCAP(REPLACE(status,'_',' '))`.
+
+⚠️ **Two traps this replaced — do not reintroduce either.**
+
+1. **Never emit `so.status::TEXT` directly.** The old query fell through to
+   `COALESCE(so.status::TEXT, '')`, so TPOs downloaded cells reading literally
+   `ACTIVE` and `SELECTED` — raw `_applyRoleStatus` enum values. Note `SKIPPED` is
+   **not** a member of that enum, so every "Skipped" in this report is produced by
+   the query, never read from the column.
+2. **`Skipped` must not be the `ELSE` branch.** It used to be, which meant every
+   round the candidate had simply *not reached yet* was reported as skipped — a
+   candidate at round 2 of 4 showed `Skipped` for rounds 3 and 4, and a candidate
+   who had only applied showed `Skipped` across the entire workflow.
+
+**`stage_history` is not always populated, and the report must tolerate that.** On
+UAT 229 of 3,377 staged mappings (and most of DEV's older test data) have
+`stage_history` NULL — for those, absence of a round is *no evidence* of a skip, so
+earlier rounds are credited as `Shortlisted`. Only mappings with a non-empty
+`stage_history` can produce a `Skipped` verdict. A first pass of this fix ignored
+that and turned the whole UAT `68d94ad5` drive into rows of `Skipped`.
+
+**The corporate twin was already correct.** `corporateRoleWiseReport` in the same
+file (`POST /instituteReport/corporateId/:id/export/role_wise_report`) maps its
+labels and blanks unreached rounds, so it was not touched — but the two queries are
+near-duplicates and drift easily; change them together.
