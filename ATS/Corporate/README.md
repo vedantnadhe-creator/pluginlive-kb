@@ -50,6 +50,7 @@ services:
 | `cv-jd-match-scoring.md` | AI resume-vs-JD scoring (corporate-node + fastapi-ai-engine) |
 | `shortlist-gate.md` | The shortlist gate for corporate-node-v2 — **built and reverted**, kept as the design record for a rework |
 | `v2-strangler-fig.md` | corporate-react-v2 / corporate-node-v2 (**DEV only**) and the v1 nav flip that routes users into them — read before promoting a vertical to UAT/PROD |
+| `bulk-candidate-upload.md` | Admin uploads a candidate spreadsheet (any columns) — LLM column mapping with a mandatory admin confirm, applicants enrolled straight into the workflow, and the screening stage's Resume/Form/Both option. **DEV + UAT** |
 
 ## Gotchas
 
@@ -121,3 +122,4 @@ Each module folder contains a `README.md` covering:
 - Filters, sorting, pagination
 - Related backend services
 - [Assessment Dashboard](./assessment-dashboard.md) — /v2 cockpit, list, detail and schedule on corporate-node; accessLevel gate
+- [Bulk candidate upload](./bulk-candidate-upload.md) — spreadsheet import with a confirmed column mapping; what the screening stage judges on
