@@ -183,7 +183,12 @@ Two gotchas found building this:
 
 - `corporate-node` → `./auto_deploy.sh corporate-node UAT` (docker, container `corporate`).
 - `corporate-react-v2` → systemd `:3014`; build **on the box** (`npm run build`),
-  then `sudo systemctl restart corporate-react-v2`. Needs `CORPORATE_API_URL`
+  then `sudo systemctl restart corporate-react-v2`. **`rm -rf .next` first if a
+  route was deleted since the last build.** `next build` does not prune a
+  removed route's artifacts, so an incremental build over a deletion leaves a
+  route entry whose client reference manifest is gone and that path answers
+  **500, not 404** (`InvariantError: The client reference manifest for route
+  "…" does not exist`). Hit exactly this on DEV after the report-v2 revert. Needs `CORPORATE_API_URL`
   in `.env.local` pointing at that env's corporate-node.
 - `corporate-react` → `./auto_deploy.sh corporate-react UAT`. **Must be built on
   the UAT box**: env values are inlined at build time, so a DEV-built bundle
@@ -197,6 +202,15 @@ Two gotchas found building this:
 ## Status
 
 DEV and UAT: live. PROD: not deployed, and the index is not applied there.
+
+**2026-09-01 (latest)** — "Mix N Match" is now a real option in the Filters
+panel's **Assessment type** list, not just a legend entry. The legend had been
+counting multi-type floats with their own colour swatch while the filter offered
+only the four real types, so there was no way to narrow to them. It is a
+sentinel value (`MIX_MATCH_FILTER_VALUE`, deliberately not a real type name so
+it cannot collide with `a.types`) that the predicate reads as
+`types.length > 1`; Assessment-wise view only, because `mixMatchCount` is
+undefined in the Candidate-wise view.
 
 **2026-09-01 (later)** — the candidate report drawer build-out and the whole
 `/v2/reports/*` report-v2 section were **reverted from DEV and UAT** on request
