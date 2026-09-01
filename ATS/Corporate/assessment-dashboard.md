@@ -198,6 +198,14 @@ Two gotchas found building this:
 
 DEV and UAT: live. PROD: not deployed, and the index is not applied there.
 
+**2026-09-01 (later)** — the candidate report drawer build-out and the whole
+`/v2/reports/*` report-v2 section were **reverted from DEV and UAT** on request
+(6 revert commits, tip `43cd239`). Those routes now 404 by design. The work is
+preserved in full on branch **`feat/candidate-report-drawer-report-v2`**, which
+also carries two later Mix N Match fixes that never reached Development/UAT.
+Re-landing it is not a plain merge: git will not reapply a commit the target has
+reverted, so merge that branch **and then revert the reverts**.
+
 **2026-09-01** — counts aligned to admin v1 and both missing score breakdowns
 shipped (DEV + UAT). Verified against meesho on UAT, which now matches the
 admin screen exactly: **11 active / 160 sent / 48 taken / 67 candidates**.
