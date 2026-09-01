@@ -92,6 +92,18 @@ now calls `getReturnTo()` synchronously first, derives the redirect, and only
 then clears the scoped session and marker. Development `ad366c2`; UAT merge
 `64359a9`; rebuilt and HTTP 200 verified in both environments.
 
+**Resumed-session origin gap corrected 2026-09-01.** The handoff originally
+wrote `pl.v2.return_to` only inside `needsNewStudentSession(...)`. If the tab
+already held a scoped session for the same assignment, the handoff reused it
+and skipped the write; completion then looked exactly like an invite attempt
+and stayed on “You can close this window now.” The handoff now refreshes the
+trusted return marker whenever the URL carries `assigned`, regardless of
+whether the scoped session is reused. Completion also treats the surviving v1
+student login (`localStorage.token` or redux-persist auth token) as a fallback
+institute-origin signal; v2 OTP invites store only their scoped token in
+sessionStorage and therefore remain on the completion screen. Development
+`0315804`; UAT merge `5b00951`; rebuilt in both environments.
+
 **The `assigned` id is used once, to mint the token — and never again.**
 Everything downstream (`/students/mix-match/summary`, questions, save, submit,
 proctoring) takes the assignment from `req.user.assessmentAssignedId` inside the
