@@ -84,9 +84,32 @@ card now offers Resume only / Form only / Resume + form**, stored as
 
 | Mode | Behaviour |
 |---|---|
-| `resume` | judge the résumé; a candidate without a readable one is recorded as an error, not guessed at |
+| `resume` | judge the résumé; with nothing else to fall back on, a candidate with no readable résumé and an empty form is recorded as unscreenable |
 | `form` | judge the application answers; the résumé is not read |
 | `both` *(default)* | use whatever the candidate has, falling back to answers when there is no résumé |
+
+### Every question reaches the agent
+
+Application answers are stored keyed by **field id**, so screening used to be
+handed `{"core_4": "I enjoy helping people…"}` with no idea `core_4` was
+*"Why this role?"*. Every qualifying question a recruiter added was unreadable by
+the stage whose job is to qualify candidates.
+
+Answers are now resolved against the role's form and rendered as
+`Question: answer` lines. A bulk-uploaded candidate never saw a form and its keys
+are already the spreadsheet's own headers, so **a question asked as a spreadsheet
+column reaches screening the same way**. Checkboxes read Yes/No rather than
+`true`, multi-selects are joined, and the budget is 12K characters — anything
+still cut is declared in the block rather than dropped silently.
+
+### An unreadable résumé is skipped, not fatal
+
+A dead link, a missing file or a parser that chokes is a problem with the
+plumbing, not the person. The résumé is skipped, the application carries the
+verdict, and the reason is recorded *and* put in front of the model so a skipped
+résumé stays visible instead of quietly becoming a low score. Screening refuses
+only when there is genuinely nothing to judge: no readable résumé **and** too
+little on the form.
 
 `both` matches the previous behaviour, so roles nobody reconfigures are
 unaffected. A résumé that **was** supplied but could not be read still errors
