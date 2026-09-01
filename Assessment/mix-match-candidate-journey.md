@@ -1100,6 +1100,23 @@ Fixed and deployed to DEV in `admin-node` `8c8464e` (2026-08-21). Verified on
 the live `Test assessment` float: `vedantmnadhe+ss@gmail.com` now resolves to
 `Opened` with its email leg present instead of `—`.
 
+### First AI turn after a module hand-over had no speech or live transcript
+
+On mobile, starting AI Interview after an earlier Mix & Match module could show
+the complete first question without playing its voice, and the first answer had
+no live transcript; later turns worked. The initial **Begin assessment** click
+had unlocked audio, but mobile browsers could suspend that session during the
+preceding module. The hand-over click changed modules without waking audio, and
+STT then created another `AudioContext` after user activation had ended.
+
+`assessment-react-v2` now re-primes audio synchronously from **Continue to AI
+Interview** and shares one assessment-wide, user-authorised `AudioContext`
+between TTS and the PCM transcription worklet. The worklet module is registered
+once per context and reused across turns. This keeps first-question subtitles
+locked to audible speech and lets first-answer PCM reach Deepgram immediately.
+Regression coverage is in `AIInterviewPanel.test.ts` and `ttsPlayback.test.ts`.
+Live DEV `d290bbc` and UAT `ced6ffd` on 2026-09-01; PROD pending.
+
 ## DEV deployments
 
 - `student-node` commits `e60c67b2`, `9f7dfca5`, `1f43c573`, `b6eeeb63`, `5fd5e9d7`, `69470352`
