@@ -627,6 +627,34 @@ Use this after fixing progression/scoring bugs to recalculate historical data, o
   - Per-section scores with detailed metrics
   - Progression comparison (if previous assessment exists)
 
+#### Canonical section and total score contract (2026-09-01)
+
+`assessment.communication_scores.score` is the source of truth for every
+exercise score. PDF, Excel and institute UI consumers must not reconstruct
+Dictation or Sentence Completion from `metadata`; metadata is detail-only.
+
+For an attempt, choose the retake rows when any exist (otherwise the original
+rows), and choose exactly one writing variant from
+`assessment_assigned_students.is_email_writing`:
+
+```text
+Writing = (Question Based Response + Email Writing/Dictation
+           + Sentence Completion + Sentence Build) / 4
+Total   = Reading*0.20 + Listening*0.10 + Speaking*0.40 + Writing*0.30
+```
+
+- `student-node/app/helpers/communicationDashboardScore.js` is the shared
+  implementation for the PDF and TPO workbook exports.
+- `institute-node/app/helpers/assessmentScoreSql.js` implements the identical
+  stored-section aggregation for UI APIs. Never restore the old flat
+  `AVG(communication_scores.score)`: it overweights Writing because Writing
+  owns several exercise rows.
+- Historical data needs no backfill; the final exercise scores were already
+  persisted. This is a read-time aggregation correction.
+- DEV commits: student-node `a87e60dc`, institute-node `e223682`.
+- UAT merge commits: student-node `e64f6409`, institute-node `d99d04b`.
+- Deployed and container-verified in DEV and UAT on 2026-09-01.
+
 ---
 
 ## Database Tables (Key)
