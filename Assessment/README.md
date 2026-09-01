@@ -13,7 +13,7 @@ This folder contains detailed documentation for each assessment type and cross-c
 - `communication.md` -- Communication Assessment (reading, listening, speaking, writing with CEFR levels)
 - `aptitude.md` -- Aptitude Assessment (quantitative, logical, critical reasoning with adaptive difficulty)
 - `rolebased.md` -- Role-Based Assessment (AI-generated MCQ/subjective/video with Gemini scoring)
-- `behaviour.md` -- Behaviour Assessment (pending)
+- `behaviour.md` -- Behaviour Assessment (competency proficiency levels + suitable job roles). Role matching is by competency **name** across the whole catalogue, proportionally scored -- requirements are almost all Expert/Master, so pass/fail matching returns nothing. Live DEV + UAT.
 - `custom.md` -- Custom Assessment (admin-defined sections with MCQs and image support)
 - `ai-interview.md` -- AI Interview Assessment (real-time adaptive interview with shortlisting)
 - `schedule.md` -- Assessment Scheduling (recurring auto-assignment via cron)
