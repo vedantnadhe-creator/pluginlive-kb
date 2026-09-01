@@ -15,7 +15,10 @@ Two entry points, both the same flow:
 - **Create-role wizard → "Invite institutes & NGOs" (step 4)** — an *Upload
   candidates* card below the two invitation columns.
 - **Role page → Applicants tab** — in the empty state, and above the pipeline
-  once applicants exist, so a list that arrives later still has a home.
+  once applicants exist, so a list that arrives later still has a home. The
+  role header's **⋮ → Upload candidates** jumps here; that menu, next to *Share
+  application form*, is where people look for it first, and both entries are
+  ways of getting candidates onto a role.
 
 Both offer **Download template** (a two-sheet `.xlsx`, `Candidates` +
 `Instructions`) and **Upload candidate list**. The template is a convenience,
