@@ -854,6 +854,64 @@ Development, merged to UAT as `59f4032`.
 
 **PROD is still on `release-v1.38-hotfix-1` and still has this bug.**
 
+### Ending the AI Interview stranded the whole batch (fixed 2026-09-01, DEV + UAT — PROD pending)
+
+The same hand-over defect as above, reached by a different door: the exam menu's
+**End interview** on a Mix & Match sitting left the candidate on the finished
+interview with Communication, Custom and Role Based never opening. Reported
+against a live DEV sitting ("Assessment 678") ended on turn 3 of 8.
+
+The root cause is one wrong signal used in three places. **`nextStep` answers
+where the *Next control* leads from the question in hand, not where a module
+ends.** It reports `{ kind: "question" }` whenever the current module still has
+slots left — and an AI Interview ended early *always* has slots left, because
+the interview is a conversation the server (or the candidate) can close at any
+turn while `aiAssessment` synthesises a fixed `questionCount` of them. Reading
+that signal at a module boundary produced two distinct wrong outcomes:
+
+1. **`completeInterview` never saw a boundary at all.** With `step.kind` reported
+   as `question`, it fell past the hand-over branch to `setFinalConfirming(true)`
+   — the **whole-test submit review**, offered with every later module still
+   locked and unattempted. Same ending as the Communication bug (the rest of the
+   batch submitted untouched, scored 0), reached without the candidate ever
+   choosing it.
+2. **`expireCurrentAssessment` submitted the entire test.** A module whose own
+   clock ran out mid-paper hit the `else` branch and called `finish()`. Each
+   module has its own timer (`START_ASSESSMENT_TIMER` per assessment), so this
+   was never meant to end anything but that module.
+3. **`NEXT` walked to the next SLOT, not the next module.** Even once the
+   hand-over dialog appeared, confirming it committed the cursor and moved to
+   slot 4 of a closed, read-only interview; `currentAssessmentId` never changed.
+   This is the same shape as the Communication guard fix — `NEXT` on a `locked`
+   module now means only the hand-over `commitModule` dispatched it for.
+
+**Fix:** module boundaries read the batch order through a new
+`followingAssessment(test, a)` in `app/_mock/exam.ts` (which `nextStep` now uses
+for its own last-slot case), and `NEXT` on a closed module hands straight over.
+All three call sites in `app/assessment/take/page.tsx` were converted.
+
+**Second, independent defect in the same click — ending submitted the answer in
+hand against the session it was closing.** `endInterview` called
+`stopResponse()`, which runs the full delivery pipeline (finalise Deepgram,
+batch-transcribe the local take, POST the turn) while `interviewAction("complete")`
+closed the session underneath it. That pipeline resolved seconds later and
+**overwrote `phase`**: an empty take took the silent-retry branch and re-asked
+the question, so the interviewer started speaking again behind the hand-over
+dialog; a non-empty one posted a turn the server rejected as *"Session already
+completed"* and dropped the candidate to "Ready when you are" on a finished
+interview. The answer in hand is now **abandoned** — ticket bumped, `onstop`
+detached before `stop()`, chunks dropped, STT aborted, narration paused —
+ending is single-flight behind `endingRef`, `beginResponse` refuses to reopen the
+microphone on a closing session (a TTS playback guard could still fire), and a
+failed completion hands back a `listening` screen that can record again instead
+of a dead recorder.
+
+**Verified** by replaying the reported sitting against the reducer — AI Interview
+ended on turn 3 of 8, `COMPLETE_PART` + `NEXT` — which lands on Communication on
+the fixed code and asserts `must open Communication, not stay on the closed
+interview` on the parent commit. 266 tests, lint and production build pass.
+Commits `bdbb6d5` + `874c95d` on Development, merged to UAT as `131cac3`.
+
 ### Promoted to UAT alongside the hand-over fix (2026-08-31)
 
 Three earlier `Development` commits rode into UAT with the promotion merge
