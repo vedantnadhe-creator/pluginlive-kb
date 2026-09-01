@@ -320,7 +320,9 @@ A candidate who re-opens their invite link (or re-verifies OTP) after submitting
 
 ## Analytics — PostHog (fixed 2026-07-31)
 
-PostHog project **"Assessment"** (id `241173`, US cloud). UAT/PROD builds use token `phc_y6PmDwg…` from `.env.<env>`; DEV uses a different project token.
+PostHog project **"Assessment"** (id `241173`, US cloud). UAT/PROD builds use token `phc_y6PmDwg…` from `.env.<env>`; DEV uses a different project token (`phc_YgAbqn…`).
+
+> **This section describes v1 `Assessment-React`.** As of 2026-08-31 the same configuration and event catalogue also run in **`assessment-react-v2`** (`4e9fe59`, DEV + UAT) — ported character for character so both apps share one funnel. See [candidate-frontend-v2.md](candidate-frontend-v2.md) *Analytics — PostHog in v2* for the v2 file locations, its three deliberate departures, and the **DEV/UAT token split** that sent v2's first UAT build into the dev project.
 
 **Until 2026-07-31 the entire OTP invite journey was invisible in PostHog — zero events, zero session replay, from the email screen through assessment submission.** `Assessment-React/src/App.js` called `initPostHog()` *inside* the effect gated on a logged-in student's email (`studentDetails`/`studentData`, populated only by `AuthPage`'s `getStudentData`). `AuthRouter` deliberately routes the invite journey (`/assessment/start/:token` → `/assessment/take/:id`, `/ai-interview/:id`) **around** `AuthPage`, so that email never arrived, `posthog.init()` never ran, and every `trackAssessment*` call in `utils/assessmentEvents.js` fired against an uninitialised posthog-js instance and was silently dropped. Confirmed by query: **0 events from any invite URL in 180 days** (the only hits were a handful of `PostHog initialized`/`$opt_in`/`$set` rows from browsers that already had a portal redux session — admins testing the link).
 

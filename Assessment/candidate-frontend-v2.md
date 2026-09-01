@@ -199,6 +199,105 @@ for `dev.pluginlive.com` and **fails the deploy** rather than serving it.
 invite-less demo journey with the fixed OTP `123456`. See
 [mix-match-candidate-journey.md](mix-match-candidate-journey.md).
 
+## Analytics — PostHog in v2 (DEV + UAT 2026-08-31, PROD pending)
+
+v2 shipped with **no analytics at all** until `4e9fe59`. v1's configuration and
+event catalogue are now ported character for character, so both candidate
+journeys land in **one funnel** and the existing insights keep working:
+
+| Piece | v1 | v2 |
+|---|---|---|
+| Init + identify | `src/utils/posthog.js` | `src/lib/posthog.ts` |
+| Event catalogue (36 events) | `src/utils/assessmentEvents.js` | `src/lib/assessmentEvents.ts` |
+| Init call site | mount effect in `src/App.js` | `src/app/_components/PostHogInit.tsx`, mounted in the root `layout.tsx` |
+| Passive view/section events | scattered per assessment type | `src/app/_components/useExamAnalytics.ts` |
+
+Init config is **identical** to v1 (`capture_pageview: false`, `autocapture:
+false`, `capture_heatmaps: false`, `capture_performance: false`,
+`capture_exceptions: true`, `maskAllInputs: true`,
+`session_recording.sampleRate: 0.3`) — see the v1 write-up in
+[otp-invite.md](otp-invite.md) for why the funnel is built from explicit
+`invite_*` / `assessment_*` events rather than `$pageview`.
+
+**Init is on mount, never gated on knowing the candidate.** This is the v1 bug
+(fixed 2026-07-31) that made the entire OTP invite journey invisible for months.
+v2 is invite-first, so the same mistake would cost more here.
+
+### The event names are a contract — including the misspellings
+
+`after_voilation`, `voilation_type`, `assessment_practice_session_dropedoff`,
+`assessment_droppedoff`, `assessment_diagnosis_droppedoff` are carried over
+**deliberately**. The existing insights are keyed on them; correcting them in
+one app silently splits every chart in two. They change in a single migration
+across both apps, or not at all. `src/lib/assessmentEvents.test.ts` pins the
+full catalogue and fails the build if a name drifts.
+
+The **diagnosis and practice events ship unwired** — v2 has no placement-prep
+surface yet. The catalogue stays whole so those screens need no second migration
+of event names when they land.
+
+### Three deliberate departures from v1 (emitted property names unchanged)
+
+- **The session spine is read, not threaded.** v1 passes
+  `assessmentAssignId / assessmentType / isCorporate / entityName` down as four
+  positional arguments through every component, which is why so many v1 events
+  carry `undefined`. v2 reads them once from the tab's session
+  (`INVITE_SESSION_KEYS`). **Invite events deliberately opt out** — they fire
+  before a session exists, and on a shared browser the only thing
+  `sessionStorage` could offer them is the *previous* candidate's assignment.
+  The test asserts every `invite_*` event bypasses the spine helper.
+- **`answer_value` reports prose by shape.** Choices go through exactly as v1
+  sends them; `text` / `email` / `code` report `{ kind, length }` instead of the
+  candidate's essay or source file, which is neither wanted nor readable in
+  analytics and is already held properly by `student-node`.
+- **Right-click is reported, not blocked.** v1 suppresses the context menu; in
+  v2 `assessment_right_click` is a listener only.
+
+### The DEV/UAT token split — the trap
+
+There are **two PostHog projects**, and v2's `.env.uat` must not inherit DEV's:
+
+| Env | Token | Project |
+|---|---|---|
+| DEV | `phc_YgAbqn…` | dev project |
+| **UAT / PROD** | **`phc_y6PmDwg…`** | **"Assessment" (241173)** — what v1 `assessmentreact` and the other UAT frontends use |
+
+The first UAT build of v2 went out carrying the **DEV** token, which sends UAT
+candidate traffic into the dev project and defeats the whole point of the port.
+Corrected the same day. `NEXT_PUBLIC_ENVIRONMENT` (`dev` / `uat`) is registered
+as a super-property on every event and is what keeps the environments separable
+inside the one project — set it, or every UAT row is indistinguishable from
+production.
+
+Confirm what a built image actually carries before trusting a deploy:
+
+```bash
+docker exec candidate-assessment-journey-v2 sh -c \
+  'grep -rhao "phc_[A-Za-z0-9]\{20,\}" /app/.next/static | sort -u;
+   grep -rho "environment:.[a-z]*." /app/.next/static | sort -u'
+```
+
+`.env*` is **gitignored**, so these three vars live only on the box. A new
+environment starts with PostHog silently disabled: `initPostHog` warns
+`PostHog API key or host is not provided` and captures nothing. That is
+deliberate — there is **no fallback key or host**, because a wrong default would
+post one environment's candidate telemetry into another's project.
+
+### Verifying it end-to-end (headless will lie to you)
+
+posthog-js `isLikelyBot()` suppresses **every** `capture()` under a plain
+headless browser while `init()` still runs normally — so the assets load, the
+config request fires, and no `/e/` POST is ever made. That looks exactly like a
+broken analytics deploy and is not; see the gotcha in
+[otp-invite.md](otp-invite.md). Launch with
+`--disable-blink-features=AutomationControlled`, a real desktop `userAgent`, and
+an init script setting `navigator.webdriver` to `undefined`. Ingest payloads are
+gzipped, so `gunzipSync` the request buffer to read event names.
+
+Verified on UAT 2026-08-31 by opening the app with a bogus `inviteToken`:
+`$opt_in`, `PostHog initialized` and **`invite_link_invalid`** (props
+`reason: "Invalid invite link."`, `environment: "uat"`) all POSTed to `/e/`.
+
 ## Still v1's job
 
 Nothing in this doc moves the **backend**. Both apps talk to the same

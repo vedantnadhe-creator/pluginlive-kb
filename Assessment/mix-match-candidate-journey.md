@@ -883,7 +883,11 @@ Three earlier `Development` commits rode into UAT with the promotion merge
   insights keep working. Init happens on mount in the root layout, never gated
   on knowing who the candidate is — v1 initialised inside an effect waiting for
   a signed-in profile and therefore dropped every event an OTP-invited candidate
-  produced.
+  produced. Reached UAT 2026-08-31; the first UAT build shipped the **DEV**
+  PostHog token and was rebuilt with the "Assessment" project token the same
+  day. Full write-up, including the token split and how to verify ingest past
+  posthog-js's headless-bot suppression, in
+  [candidate-frontend-v2.md](candidate-frontend-v2.md).
 
 ### Communication locks its subsections one at a time
 
