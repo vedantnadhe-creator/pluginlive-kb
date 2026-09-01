@@ -146,6 +146,28 @@ under its own column header.
 - A candidate the agent could not judge has no rationale but does have an error
   — the Why column shows it rather than leaving an unexplainable blank.
 
+## Reading a score breakdown
+
+Two things routinely confuse people comparing two candidates' breakdowns.
+
+**The tier is not a count of criteria met.** It is the model's holistic 0-100
+match score against the stage's own pass bar, with a fixed 20-point medium band
+below it (`fit.ts`). At `passBar: 75` that means **Strong >= 75, Medium 55-74,
+Weak < 55** — so a candidate on 53 lands in Weak two points short of Medium, and
+a candidate meeting *more* criteria can still score lower, because unmet
+REQUIRED criteria pull the score down hard while `(preferred)` ones are not
+gates at all.
+
+**Criterion names used to drift.** The model paraphrased the names it reported
+on — one UAT role showed **62 distinct names for 7 configured criteria across
+115 candidates** — so the same criterion appeared under a different label on
+each candidate's card and it looked as though the criteria had been edited
+between screenings when they had not. Names are now re-applied server-side from
+the configured criteria (`alignParameterNames`), and the prompt asks for them
+verbatim and in order. A mismatched count keeps the model's own names rather
+than pinning a verdict on the wrong criterion. **Verdicts stored before this
+keep their old labels; only re-screened candidates pick it up.**
+
 ## Gotchas
 
 - **Only sheets the admin mapped are ingested.** Our own template ships an
