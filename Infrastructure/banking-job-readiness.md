@@ -1276,3 +1276,29 @@ rather than filled with `results?search_query=` URLs.
 2. Rerun the script daily; it skips already-linked topics, so it resumes where it stopped.
 
 Quota resets at **midnight Pacific**.
+
+### 2026-09-01 — second API key, +32 topics, exhausted again at 49/555
+
+A second YouTube API key (`AIzaSyBKcVhGAp…`, a different Google Cloud project) was supplied and
+written into `llm_provider_configs.api_key` for `provider_key='youtube'`. The previous key
+(`AIzaSyAYeE6qO1…`) is preserved in that row's `metadata.previous_api_key_2026_08_31`. The edge
+function picks the key up from the DB at call time — **no redeploy or restart needed**.
+
+Run linked **32 more topics** before that key hit the same daily wall — total now **49 / 555
+linked, 506 pending, 0 placeholders**.
+
+**The important correction to the earlier note:** the ~50% skip rate observed on 2026-08-31 was
+**not** the quality checker rejecting videos — it was quota exhaustion being reported as
+"No YouTube videos found". With fresh quota the real rate is **32 linked / 4 skipped (89%)**. So
+throughput per quota-day is ~33 topics attempted and ~30 linked, not ~17.
+
+The fixed quota guard worked as intended: the run stopped at topic #37 with
+`QUOTA EXHAUSTED … rerun tomorrow` instead of walking the remaining 500 producing false skips.
+
+Modules fully done: `AI Agents & Workflow Automation` (10/10), `AI Tools for Candidates` (5/5),
+`AI & social responsibility` (4/4), `AI SaaS Development` (4/4), `AI Agents` (4/4).
+
+**Each key is its own 10,000-unit/day bucket**, so rotating a key from a *separate, legitimately
+owned* project is the only way to get more throughput per day short of Google approving a quota
+extension. At 301 units/topic that is ~33 topics per key per day; 506 pending ≈ **17 key-days**.
+Quota resets midnight Pacific.
