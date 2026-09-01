@@ -1302,3 +1302,39 @@ Modules fully done: `AI Agents & Workflow Automation` (10/10), `AI Tools for Can
 owned* project is the only way to get more throughput per day short of Google approving a quota
 extension. At 301 units/topic that is ~33 topics per key per day; 506 pending ≈ **17 key-days**.
 Quota resets midnight Pacific.
+
+### 2026-09-01 — 100 / 555 linked; the "raised" quota did NOT take effect
+
+Ran the backfill to exhaustion on **both** keys. Total is now **100 linked / 455 pending /
+0 placeholders**.
+
+**The quota increase was not in effect on either project.** Both keys hit
+`Search Queries per day` at the usual ~33-topic mark, which is the untouched 10,000-unit default:
+
+| Key | Project | Topics before exhaustion |
+|---|---|---|
+| `AIzaSyBKcVhGAp…` | `438222755561` | ~25 |
+| `AIzaSyAYeE6qO1…` | `167734609581` | 38 (26 linked) |
+
+So a YouTube quota-extension request either had not been approved yet, or was filed against a
+different project. **Verify the fix by project number**, not by the console showing a new value —
+the 429 body names the project (`consumer 'project_number:…'`), which is the only reliable check.
+
+**The two keys are separate daily buckets and can be alternated.** When one 429s, swapping
+`llm_provider_configs.api_key` to the other resumes immediately — the edge function reads the key
+per call, so no restart or redeploy. That doubled today's throughput (74 → 100).
+
+**Success rate with real quota is ~70-89%**, not the ~50% first assumed (that figure was polluted by
+quota-induced skips). Today: 26 linked / 38 processed, and earlier 32/36.
+
+**Do not be alarmed by two `backfill-all-topic-videos.sh` PIDs** — the script's
+`while … done < <(psql …)` process substitution forks a second copy of the script under the same
+name. It is one run, not a duplicate. Distinguish real concurrency by counting
+`=== backfill started` markers in the log, not by `pgrep -c`.
+
+**The log is append-only across runs** (`tee -a`), so `grep -c '^OK'` counts *all history*. Rotate
+it (`mv backfill-all.log backfill-all.log.hist-$(date +%H%M%S)`) before a run, or count only after
+the last start marker, otherwise progress looks stalled when it is not.
+
+Modules now fully covered: `Banking - AML in Practice` 12/12, `Banking - AML Attributes` 12/12,
+`AI Agents & Workflow Automation` 10/10, `Advanced Banking` 9/9, plus 8 smaller AI modules.
