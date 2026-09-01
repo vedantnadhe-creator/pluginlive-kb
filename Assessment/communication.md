@@ -196,6 +196,54 @@ Shipped to `assessment-react-v2` Development (`1608397`) and UAT (`470a13e`).
 DEV was deployed and verified at HTTP 200; UAT was updated only and not deployed
 by this change.
 
+### v2 rail: skill order and Writing split by exercise (2026-09-01)
+
+The `/candidate-assessment-journey/v2` rail presents Communication as the four
+skills a candidate recognises, built by `groupedCommunicationSubsections`
+(`src/lib/examShapes.ts`) from the API's granular section names. Two things were
+wrong with how it did that.
+
+**Order.** The groups were listed `Reading, Writing, Speaking, Listening`.
+Communication is `freeNavigation: false`, so the rail order *is* the delivery
+order — a candidate was made to write before they had heard the listening clips
+or spoken. The fixed order is now:
+
+| # | Rail section | API section types it groups |
+|---|---|---|
+| 1 | **Reading** | Paragraph Reading |
+| 2 | **Listening** | Audio Question |
+| 3 | **Speaking** | Video Response |
+| 4 | **Writing** | Question Based Response, Email Writing, Dictation, Sentence Completion, Sentence Build |
+
+**Writing was undifferentiated.** Writing is the only group built from more than
+one exercise — up to five — so its palette rendered as one flat run of cells
+(13 on a full paper) with nothing to say which was the email and which the
+dictation. Each question now carries `part` (the granular section name it came
+from); `questionParts()` in `src/app/_mock/exam.ts` splits a section's questions
+into consecutive runs of the same `part`, and `SubsectionRail` renders one
+labelled palette per run.
+
+Rules worth knowing:
+
+- **Numbering stays continuous across the parts** (Sentence Build 1–2, Question
+  Based Response 3, Email Writing 4, …). The palette, the `n/N` on the rail head
+  and the `Question X of Y` breadcrumb all read from `numberedQuestions()`, so
+  they cannot disagree.
+- A section made of a **single** exercise renders one *unlabelled* palette — i.e.
+  Reading, Listening, Speaking and every non-Communication assessment look
+  exactly as before.
+- Adjacent runs of the same exercise merge into one labelled block, so two
+  consecutive Dictation sections do not render as two identical headings.
+- Nothing about save/submit changed: each question keeps its `live.sectionKey`
+  (`paragraphReading`, `emailWriting`, …), which is what the API buckets on. The
+  per-exercise timers in `communicationTimers.ts` key off the answer surface
+  (`writingMode` / `communicationMode`), not display copy, so they are unaffected
+  by either the reorder or the labels.
+
+Shipped to `assessment-react-v2` Development (`e6fd99a`) and UAT (`e0af495`).
+Both DEV and UAT were deployed and verified — no DEV URLs in the UAT bundle, no
+page errors on load.
+
 ---
 
 ## File Reference
