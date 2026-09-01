@@ -83,6 +83,15 @@ completion screen. Implemented in `src/app/assessment/complete/page.tsx` with
 the pure `src/lib/completionRedirect.ts` policy. Development `c20751e`; UAT
 merge `317b46a`; deployed and HTTP 200 verified on DEV and UAT.
 
+**Hydration race corrected 2026-09-01.** The first implementation exposed the
+return marker through `useSyncExternalStore(..., serverSnapshot = null)`. On a
+hydrated completion page, the cleanup effect could run against that null server
+snapshot and delete `pl.v2.return_to` before React refreshed the client
+snapshot, leaving the institute student on the completion screen. The effect
+now calls `getReturnTo()` synchronously first, derives the redirect, and only
+then clears the scoped session and marker. Development `ad366c2`; UAT merge
+`64359a9`; rebuilt and HTTP 200 verified in both environments.
+
 **The `assigned` id is used once, to mint the token — and never again.**
 Everything downstream (`/students/mix-match/summary`, questions, save, submit,
 proctoring) takes the assignment from `req.user.assessmentAssignedId` inside the
