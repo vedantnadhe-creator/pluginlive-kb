@@ -119,6 +119,33 @@ Measured on a 10-candidate campus import: `resume` → all 10 correctly flagged
 unjudgeable, `form` → all 10 scored with no errors, `both` → scored via the
 answers fallback.
 
+## Exporting a round's applicants
+
+`GET /v2/roles/:id/applicants/export.xlsx?stageId=&stageLabel=&fit=&search=`
+(BFF: `/v2/api/roles/:id/applicants/export`), surfaced as **Export to Excel** on
+the Applicants heading inside the per-round applicants drawer — the surface
+behind the fit chips. It works on **every round**, not just screening: omit
+`stageId` for screening, pass it for a later round.
+
+The download mirrors the drawer exactly — the open fit tier, the typed search,
+the same order. Rows are recomputed server-side from `getApplicants()` rather
+than taken from the caller, so the file is authoritative and the query string
+only says which slice to build.
+
+Columns are the fixed set (name, contact, fit, score, the round's per-component
+breakdown, stage/outcome, why, applied on) **plus one column per question the
+candidate answered**, resolved through the same `labelAnswers` the screening
+prompt uses — a form field appears under its question text, a spreadsheet import
+under its own column header.
+
+- A question column is dropped only when it says nothing new for **any**
+  candidate. Nearly every form asks for name/email/phone, which the sheet
+  already has, so it was shipping "Full name" beside "Name" with the same
+  string; a column that merely coincides for one person still carries
+  information for the rest.
+- A candidate the agent could not judge has no rationale but does have an error
+  — the Why column shows it rather than leaving an unexplainable blank.
+
 ## Gotchas
 
 - **Only sheets the admin mapped are ingested.** Our own template ships an
