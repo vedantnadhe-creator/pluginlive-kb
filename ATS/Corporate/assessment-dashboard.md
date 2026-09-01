@@ -203,7 +203,19 @@ Two gotchas found building this:
 
 DEV and UAT: live. PROD: not deployed, and the index is not applied there.
 
-**2026-09-01 (latest)** — "Mix N Match" is now a real option in the Filters
+**2026-09-01 (latest)** — the candidate drawer's download button now lets the
+recruiter **pick which report**. The PDF is rendered per ASSIGNMENT, so a Mix N
+Match float has one per submitted part, and the endpoint falls back to
+`targets[0]` from a query ordered by `at.type_name` when no `?type=` is given.
+On a Communication + Aptitude float that is always Aptitude, and the
+Communication PDF was unreachable from the UI. One part still downloads on a
+single click; several open a menu of the parts plus "Download all reports",
+fetched SEQUENTIALLY because each PDF is rendered on demand (~10s) and firing
+them together turns one click into several concurrent render jobs. `?type=`
+matches the RAW column value, so the display name's spaces go back to
+underscores ("AI Interview" -> "AI_Interview").
+
+**2026-09-01** — "Mix N Match" is now a real option in the Filters
 panel's **Assessment type** list, not just a legend entry. The legend had been
 counting multi-type floats with their own colour swatch while the filter offered
 only the four real types, so there was no way to narrow to them. It is a
