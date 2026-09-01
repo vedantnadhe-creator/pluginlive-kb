@@ -104,6 +104,16 @@ institute-origin signal; v2 OTP invites store only their scoped token in
 sessionStorage and therefore remain on the completion screen. Development
 `0315804`; UAT merge `5b00951`; rebuilt in both environments.
 
+**Corporate redirect regression corrected 2026-09-01.** The student-login
+fallback above was too broad: a browser can retain a v1 login while opening a
+corporate OTP invite, causing that corporate completion to redirect to the v1
+student dashboard. Completion now redirects **only** when the explicit trusted
+institute handoff marker exists. OTP invite verification also calls
+`forgetReturnTo()` before persisting its scoped session, so a corporate invite
+cannot inherit a stale institute marker from a reused tab. Institute handoffs
+still refresh the marker on every `?assigned=...&back=...` entry. Development
+`ac65609`; UAT merge `baef390`; rebuilt in both environments.
+
 **The `assigned` id is used once, to mint the token — and never again.**
 Everything downstream (`/students/mix-match/summary`, questions, save, submit,
 proctoring) takes the assignment from `req.user.assessmentAssignedId` inside the
