@@ -230,6 +230,10 @@ For **Aptitude** the type-specific block opens with **Time Taken** (`mm:ss`) bef
 
 > The equivalent column in the admin results export renders a **blank** cell rather than `-` for a non-attempt — each export follows its own sheet's convention. See `Assessment/admin.md`.
 
+**Scores in the workbooks are whole numbers, matching the PDF.** The dashboard APIs return scores at 2dp because the on-screen tables render them that way (`Math.round(score * 100) / 100` in `CandidateList`, `toFixed(2)` for NPS in `TpoStudentListTable`), but the PDF reports print integers (`Math.round` on every percentage in `Assessment.js`, `formatNumber … 0` in `aptitudeReport.html`) — so one attempt read 50.83 in Excel and 51 in the PDF (2026-09-01). `TpoDashBoard._roundScore()` now rounds every score cell in all four exports: `exportExcelOfStudentListForAssessment` (Total Score + Critical/Quantitative/Logical + Reading/Listening/Speaking/Writing), `exportExcelOfDiagnosisDataForASchedule` (Avg Score and section averages, still `%`-suffixed), `exportExcelOfTpoStudentList` (Comm./Aptitude NPS) and the `exportScheduleToExcel` Overview sheet (NPS). Non-numeric and missing values keep rendering `-`; a genuine `0` still prints `0`.
+
+> Two columns are deliberately **not** rounded: AI Interview parameter columns are on a **0–5** scale, where rounding destroys the resolution, and the NPS improvement delta (`+3.4 pts`) is a difference, which would collapse small gains to `+0 pts`. The on-screen tables still show 2dp — the workbooks match the PDF, not the grid.
+
 ### `getStudentListForCorporateAssessment()` (Corporate method, lines ~2237-2658)
 
 Same as TPO method but for corporate assessments. Already had all score types from the beginning.

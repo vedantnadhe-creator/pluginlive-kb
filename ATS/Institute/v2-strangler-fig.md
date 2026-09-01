@@ -897,6 +897,17 @@ closely wherever both exist. It stays NULL when neither source has anything, so
 a dash still means *unknown*, not *instant*. The underlying player bug is not
 fixed — read models compensate.
 
+The API carries that time as **seconds** (`avgTimeSec`) all the way to the
+client; only the presentation layer converts. The Performance tab table renders
+it with `fmtDuration()` ("24 min" / "1 h 5 min"), but the student-wise CSV wrote
+the raw seconds under a header of `Avg time (s)`, so the same attempt read 1420
+in the export and 24 min on screen (2026-09-01). The export now uses
+`durationMins()` — added beside `fmtDuration()` in
+`assessments/[id]/_constants.ts`, rounding identically — under the header
+**`Avg time (m)`**. It stays a bare number rather than the table's `"1 h 5 min"`
+string: an export is data, not UI, so Excel must be able to sort and average the
+column. Blank (not `0`) when there is no time, which is the on-screen dash.
+
 ### Communication reports speak in four skills, not eight exercises
 
 `communication_scores` holds one row per exercise (Audio Question, Dictation,
