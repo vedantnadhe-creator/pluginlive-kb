@@ -104,6 +104,23 @@ to v1 for Roles, and both ends must agree or the two sidebars point at each
 other. The Assessments entry is gated on a per-corporate subscription and its
 own env flag; see [assessment-dashboard.md](./assessment-dashboard.md).
 
+**As of 2026-09-01 the v2 sidebar is trimmed to Dashboard · Assessments ·
+"Back to ATS"** (DEV + UAT), matching the institute TPO shell. The individual
+v1 bridge entries (Roles, Hiring Mandates, Interviewer Dashboard, Reports,
+Users, Settings) are commented out in `src/config/nav.tsx` rather than deleted —
+uncomment an entry with its icon import to bring a section back to the rail.
+
+The back link targets **`v1("/dashboard")`, not `v1("/")`** as institute's does.
+corporate-react's `routes/Components/AuthRouter.js` redirects `/` to `/signin`
+unconditionally, regardless of auth state, so bridging to the root bounces a
+signed-in recruiter to the login page. Its registered route is `/Dashboard`
+(capital D) and the lowercase link resolves only because react-router 6 matches
+case-insensitively — v1's own nav item uses the lowercase form too.
+
+`v1()` prefixes `NEXT_PUBLIC_V1_BASE`, which is **empty in every real env**
+(v2 is mounted at `<host>/v2`, v1 at `<host>/`), so a bare absolute path is
+already an ATS link and the session is shared.
+
 ## Gotcha — the nav flip must not reach an env without the v2 app
 
 **The flip and the v2 deployment are in different repos, so they promote

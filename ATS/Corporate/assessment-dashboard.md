@@ -80,6 +80,43 @@ to v1 too. Flip one without the other and the two sidebars point at each other.
 - **No schedules, departments, passing years or campuses.** Every float is
   `one_time`; the week rail and schedule key on the **open window**, not the
   start date, or an assessment open all week appears on no day.
+- **"Taken" means `submitted OR attempted`** — the same rule admin v1 uses
+  (student-node `TpoDashBoard.getAssessmentStatesForCorporate`, which admin's
+  corporate drill-down calls, counts `attempted`). v2 counted submitted-only
+  until 2026-09-01 and therefore read LOWER than the admin screen for the same
+  corporate: meesho/UAT showed 40 against admin's 48, the gap being exactly its
+  DROPOUT rows (opened the paper, walked away). One shared `TAKEN_PREDICATE` in
+  `helpers/corporateAssessmentSql.js` governs every v2 count.
+- **KPI counts are per (float, PART, candidate).** Folding to the float first
+  and fanning its types back out credits every candidate with every type on the
+  float the moment they submit any one part — that read AI Interview 26 taken
+  on DEV where 12 interviews existed, under a headline that disagreed with its
+  own tooltip.
+- **Duplicate `student_personal_profile` rows fan every profile join out.** The
+  same email can hold 2-4 profiles (a duplicate-creation race; four meesho
+  candidates do). A plain `LEFT JOIN spp … LEFT JOIN students` therefore
+  over-counts: the candidate list reported **75 candidates on a roster of 67**
+  and printed those four twice, and the detail roster inflated
+  `parts_held`/`parts_submitted` the same way. Join through
+  `STUDENT_PROFILE_LATERAL` (helpers/corporateAssessmentSql.js) — newest
+  profile, `LIMIT 1`, `LEFT JOIN LATERAL … ON TRUE` so an email with no profile
+  is still listed.
+- **Score breakdowns are NOT all in the `sections` table.** Communication and
+  Role Based write one row per section there; **Custom Assessment** keeps its
+  sections in `custom_assessment_scores.section_wise_stats` (jsonb OBJECT keyed
+  by section name) and **Aptitude** keeps its categories in
+  `aptitude_scores.statistics.categories`. Both were missed by the section
+  union, so the report drawer showed "Breakdown unlocks once the attempt is
+  scored" on fully scored attempts until 2026-09-01. Three traps when reading
+  them: `statistics` is `json` on UAT but `jsonb` on DEV (cast `::jsonb`);
+  `jsonb_each`/`jsonb_array_elements` error on the wrong type and a `WHERE`
+  guard runs AFTER the lateral, so the type check must sit inside the call; and
+  Aptitude uses negative marking, so clamp with a `CASE` — a bare
+  `GREATEST(0, LEAST(100, …))` ignores NULL and scores a zero-mark category 100.
+- **Custom Assessment and Aptitude carry real per-section weights**
+  (`total_marks` per section/category), so their breakdown bars are weighted by
+  marks. Every other type gets an equal split, because its scorer's weighting is
+  not stored and an invented one would be a guess dressed as fact.
 - **AI Interview scores are one row per SESSION** (up to 2 per assignment) —
   pre-aggregate or every count inflates. Its competency breakdown lives in
   `parameter_scores` (jsonb, 0-4 ratings, rescaled ×25) on ~2/3 of rows; the
@@ -89,7 +126,13 @@ to v1 too. Flip one without the other and the two sidebars point at each other.
   read the set actually served via `aas.assessment_set_id`.
 - `role_name` / `seniority` come from `assessment_sets` at creation and exist
   only for Role Based and AI Interview. They are **not** the ATS `mapped_to`
-  link, which is populated on ~2% of production floats.
+  link, which is populated on ~2% of production floats. Aptitude and
+  Communication carry a **level** instead of a role — Aptitude's `difficulty`
+  tier, Communication's `cefr_level` — surfaced as `typeDifficulty`. The detail
+  page's "Assigned level" and the Total Candidates card's "Assigned for …" read
+  `assignedLevel` first and fall back to that map, so those two types show a
+  level rather than a blank; the Role row is dropped entirely when there is no
+  role.
 
 ## Candidate PDF report
 
@@ -154,6 +197,16 @@ Two gotchas found building this:
 ## Status
 
 DEV and UAT: live. PROD: not deployed, and the index is not applied there.
+
+**2026-09-01** — counts aligned to admin v1 and both missing score breakdowns
+shipped (DEV + UAT). Verified against meesho on UAT, which now matches the
+admin screen exactly: **11 active / 160 sent / 48 taken / 67 candidates**.
+Same release adds the Aptitude + Communication "Assigned level", and promotes
+the trimmed sidebar (Dashboard · Assessments · **Back to ATS**) that brings
+corporate v2 to parity with the institute TPO shell. Corporate's back link
+targets `v1("/dashboard")`, not `v1("/")` like institute: corporate-react's
+`AuthRouter.js` redirects `/` to `/signin` unconditionally, so bridging to the
+root bounces a signed-in recruiter to the login screen.
 
 UAT now carries open assessments (288 floats, 9 active as of 2026-08-31), so
 the schedule's week view populates. The earlier "Nothing open" state was the
