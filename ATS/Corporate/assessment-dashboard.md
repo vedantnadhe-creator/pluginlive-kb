@@ -215,6 +215,16 @@ them together turns one click into several concurrent render jobs. `?type=`
 matches the RAW column value, so the display name's spaces go back to
 underscores ("AI Interview" -> "AI_Interview").
 
+**Stacking trap:** the menu is portaled to `<body>` and must out-stack the
+drawer it opens from. `.acct-menu` (the container it reuses) sits at
+`--z-overlay` (50) because the sidebar's account menu has nothing above it, but
+`.drawer-sheet` uses a **raw** `z-index: 69` and its panel is opaque, so the
+menu first shipped rendering at the correct coordinates *underneath* the drawer
+and clicking Download looked like nothing happened. `--z-tooltip` (70) is the
+only token above that raw 69. Anything else portaled out of a drawer has the
+same trap — `.batch-pop` (ValuePopover) is still at 50 and would be invisible
+if it were ever used inside one.
+
 **2026-09-01** — "Mix N Match" is now a real option in the Filters
 panel's **Assessment type** list, not just a legend entry. The legend had been
 counting multi-type floats with their own colour swatch while the filter offered
