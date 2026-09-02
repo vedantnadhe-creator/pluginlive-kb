@@ -158,6 +158,19 @@ a candidate meeting *more* criteria can still score lower, because unmet
 REQUIRED criteria pull the score down hard while `(preferred)` ones are not
 gates at all.
 
+**The screening pass bar is editable in the builder** (since 2026-09-02). It was
+hidden there on the reasoning that a pass bar is an assessment-score gate — but
+screening has its own bar in the same `config.passBar` key, `fitTier()` grades
+against it, and the read-only stage summary always printed it. So the one number
+deciding who advances was visible and unchangeable: a live role sat at 75 while
+its best applicant scored 68, and nothing in the builder said why nobody moved.
+It shows on the screening stage as **Match score ≥ N%**, distinct from an
+assessment round's **Assessment score ≥ N%**.
+
+The stage summary also used to count the builder's empty criterion rows, so
+seven criteria plus one unfilled "Add More" line read *"8 criteria"* — one more
+than the agent actually judged against, since it drops blanks.
+
 **Criterion names used to drift.** The model paraphrased the names it reported
 on — one UAT role showed **62 distinct names for 7 configured criteria across
 115 candidates** — so the same criterion appeared under a different label on
