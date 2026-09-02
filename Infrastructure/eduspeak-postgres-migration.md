@@ -993,3 +993,16 @@ breaks video fetching in the other, and the surfaced message ("could not be fetc
 that quota is the cause — the same silent-429 trap documented for Banking.
 
 Quota resets at midnight Pacific.
+
+**Resolved 2026-09-02 — the two apps now have dedicated keys:**
+
+| App | Key | Project | Stored in |
+|---|---|---|---|
+| **PilVidya** | `AIzaSyAYeE6qO1…` | `167734609581` | `app_secrets` (`name='YOUTUBE_API_KEY'`, `school_name IS NULL`) |
+| **Banking** | `AIzaSyBKcVhGAp…` | `438222755561` | `llm_provider_configs` (`provider_key='youtube'`) |
+
+They were previously the other way round *and* sharing, so a Banking backfill drained PilVidya.
+Each app now has its own 10,000-unit/day bucket and cannot starve the other. Verified there is no
+per-school `app_secrets` override and no `YOUTUBE_API_KEY` in the container env, so the global row is
+the only source — the edge function reads it per request, so **no redeploy or restart is needed** to
+change it.
