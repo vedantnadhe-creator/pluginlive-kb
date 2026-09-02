@@ -49,10 +49,39 @@ from `svc.mixMatchInviteChannel(entityType)`:
     Start Combined Assessment                ->  Start Assessment
 
 The subject's Mix & Match branch was deleted rather than left identical to the
-plain one, so the two cannot silently drift. The **body** still names the parts
-(`You have been invited to <title>, containing Communication Assessment, AI
-Interview`) — the candidate should know what is coming, they just should not
-meet a new noun for it.
+plain one, so the two cannot silently drift. The **body** still names the parts —
+the candidate should know what is coming, they just should not meet a new noun
+for it.
+
+#### The parts moved onto their own line (2026-09-02, DEV + UAT; PROD pending)
+
+The parts used to sit inside the body sentence, which repeated the word
+"Assessment" once per entry and buried the list mid-paragraph:
+
+    You have been invited to <title>, containing Communication Assessment,
+    Aptitude Assessment, AI Interview. Use the button below to begin and
+    complete all parts in one go. We'll email a 6-digit code to verify it's you.
+
+They now render on their own line under an `Assessment:` label, which is how the
+WhatsApp template had always presented them:
+
+    You have been invited to <title>. Use the button below to begin. We'll email
+    a 6-digit code to verify it's you.
+
+    Assessment: Communication, Aptitude, AI Interview
+
+    Complete it by 04 Sep 2026 11:59 PM.
+
+The line reuses `buildMixMatchPartList` — the **same builder the WhatsApp
+template calls** — so both channels emit one identical list and cannot drift.
+That retired `MIX_MATCH_PART_LABELS` (the long-form map, whose only consumer was
+the old sentence); the bare-name map it duplicated took over the name now that it
+serves both channels. The phrase "complete all parts in one go" went with the
+sentence that carried it.
+
+The line is gated on **2+ parts**, matching `resolveTemplateName`: under a
+one-part float, `Assessment: Aptitude` tells the candidate nothing the sentence
+above it did not.
 
 **Reminder channel** (`svc.assessmentReminderCopy`, commit `1a128d1`): this path
 is easy to miss because it does not use the invite template at all, and it
