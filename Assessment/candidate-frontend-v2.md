@@ -344,7 +344,7 @@ When the var **is** set, it inlines and the ternary folds away entirely:
 | Env file | Built chunk | Result |
 |---|---|---|
 | var absent (DEV) | runtime lookup, `"false" !== undefined` | protected |
-| `=true` (UAT) | `className:"card qpanel is-copy-protected"`, handlers unconditional | protected |
+| `=true` (UAT) | `className:"exam-wrap is-copy-protected"`, handlers unconditional | protected |
 | `=false` | whole block dead-code-eliminated, handlers `void 0` | **not** protected |
 
 Set `NEXT_PUBLIC_COPY_PROTECTION=false` in the target box's env file and rebuild
