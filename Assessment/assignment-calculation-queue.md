@@ -89,6 +89,48 @@ Both are **flag-gated** so the old paths stay reachable for instant rollback.
   `REDIS_URL`. Concurrency: `CALCULATION_CONCURRENCY` (4), `PROGRESSION_CONCURRENCY`
   (2), `AI_CALC_CONCURRENCY` (2).
 
+### Abandoned attempts are scored too (2026-09-02, DEV + UAT; PROD pending)
+
+Scoring used to be gated on `submitted = true` in **both** paths that feed the
+worker — enqueue-on-submit (`submitAssessment`) and the sweeper's `where`. A
+drop-off never submits, so a candidate who answered 23 of 30 Communication
+questions and then closed the tab left those answers in `student_answers` with
+**no score and no error**: `calculation_attempts` stayed `0` because nothing ever
+looked at the row. AI Interview already had a way out (`finalizeAbandonedSession`
++ `runScoringForAssignment` in the dropout cron, so an abandoned interview still
+produces a recruiter report); **every other type had nothing**.
+
+`script/updateDropoutStatusCron.js` now also hands abandoned attempts to the
+calculation queue. Nothing about the scorer changed, and nothing had to: neither
+the calc worker's claim nor `calculateAssessmentScore` reads `submitted` — only
+the two SELECTs that feed them did.
+
+Four limits, all in `app/helpers/dropoutScoring.js` (`isScorableDropout`, unit
+tests in `test/dropoutScoring.spec.js`):
+
+| limit | why |
+|---|---|
+| `status = DROPOUT`, re-read from the DB | the flip's `updateMany` re-checks `status`/`submitted` in its WHERE, so a row that completed concurrently is not ours and must not be scored as an abandonment |
+| at least one `student_answers` row | a row with nothing stored would get a 0 report for a paper the candidate never sat, indistinguishable from a genuine 0 |
+| not `AI_Interview` | that type finalizes and scores itself; enqueuing it here too would race its own path |
+| `dropped_at` within a **24h lookback** | stops the deploy that ships this from retroactively scoring the estate's whole drop-off history (the same call `retryAiInterviewDropoutScoring` makes), and bounds the sweep |
+
+Runs at the **top** of each 2-min cron tick, before the DROPOUT flips, and selects
+by committed state rather than by "flipped this tick". That is deliberate: it makes
+the sweep **self-recovering** (an enqueue lost to a Redis blip, or a row the worker
+released after a transient FastAPI 504, is retried on the next tick until it leaves
+the window) and costs a row flipped this tick only one tick's wait. The ordinary
+score sweeper cannot do this job — it selects `submitted: true`, which a drop-off
+never is. Bounded at 200 rows/tick; no-ops when `CALCULATION_ASYNC` is off.
+
+The row's `status` stays `DROPOUT` and `submitted` stays `false` — a partial attempt
+is scored honestly, against the **full** paper, so unanswered questions count as
+unattempted. A 14/30 aptitude drop-off scored 3/60 on PROD, not a pro-rated mark.
+
+**Reading a dropout that still has no score:** `scores_calculated=false` with
+`calculation_attempts=0` and `calculation_error=false` means it was never eligible
+— almost always zero stored answers, or a `dropped_at` older than the lookback.
+
 ### Retry model (Model A — sweeper-driven) + the stable-jobId gotcha
 
 On a scoring failure the worker does **NOT** throw — it catches, increments

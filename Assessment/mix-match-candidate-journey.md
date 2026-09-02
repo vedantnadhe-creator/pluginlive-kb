@@ -1069,6 +1069,17 @@ single open part is unchanged by construction (allowance = that part's own
 timeout), which is what the first UAT sweep after deploy exercised: one
 abandoned Aptitude part, started 60 minutes earlier, correctly dropped.
 
+**A dropped part is now scored (2026-09-02, DEV + UAT; PROD pending).** The
+answers a candidate gave before walking away used to be orphaned: scoring was
+gated on `submitted = true` in both the enqueue-on-submit path and the sweeper,
+and a drop-off never submits, so the row sat at `scores_calculated=false` with
+`calculation_attempts=0` forever. The same cron now hands abandoned parts to the
+calculation queue if they hold at least one stored answer — see
+`Assessment/assignment-calculation-queue.md` for the rule and its four limits.
+The PROD sitting that prompted it (knack rcm, 2026-09-02) had a candidate answer
+23 Communication questions and 14 Aptitude questions across a Comm + Aptitude
+float, close the tab, and receive nothing.
+
 The decision is a pure function — `app/helpers/mixMatchDropout.js`
 (`splitMixMatchParts`), tested in `test/mixMatchDropout.spec.js`. The cron
 selects **every** part of any sitting that has an open one (submitted parts
