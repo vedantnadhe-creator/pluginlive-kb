@@ -1006,3 +1006,46 @@ Each app now has its own 10,000-unit/day bucket and cannot starve the other. Ver
 per-school `app_secrets` override and no `YOUTUBE_API_KEY` in the container env, so the global row is
 the only source — the edge function reads it per request, so **no redeploy or restart is needed** to
 change it.
+
+## 2026-09-02 — 403 on `student_curriculum_progress` upsert: 19 students had no auth user
+
+`POST /sb/rest/v1/student_curriculum_progress?on_conflict=…` returned **403** for some students. Not
+a policy bug and not a grants bug — both were verified correct first:
+
+- Grants: `authenticated` already holds `SELECT/INSERT/UPDATE/DELETE` on the table.
+- Policies: `scp_student_write_own` allows `student_profile_id = current_student_profile_id()`.
+
+The helper is the weak link:
+
+```sql
+CREATE FUNCTION public.current_student_profile_id() RETURNS uuid AS $$
+  SELECT id FROM public.student_profiles WHERE user_id = auth.uid() LIMIT 1
+$$;
+```
+
+**19 of 38 `student_profiles` rows had `user_id IS NULL`** (all seeded/created before the binding
+code existed — March to 2026-08-05). For those students the helper returns NULL, so
+`student_profile_id = NULL` is never true and *every* write 403s while reads still work.
+
+Login already fixes this going forward — `mintStudentSession()` in
+`supabase/functions/student-authenticate-profile/index.ts` creates the auth user
+(`student.<mobile>@eduspeak.local`) and writes `student_profiles.user_id`. The legacy rows simply
+predate it. Backfilled all 19 the same way (find-or-create by that deterministic email, then bind);
+**19 linked, 19 auth users created, 0 failures.**
+
+**Also found and fixed: two different students shared one `user_id`** — `Rahul Sharma`
+(`9876543211`) and `Pratam` (`9702999791`) were both bound to `72c6dba3…`, an orphan auth user with
+**no email and no metadata**. Because the helper is `LIMIT 1` with no `ORDER BY`, one of the two
+would always 403 and the resolution could flip between them — a data-isolation hazard, not just an
+availability one. Each now has its own auth user.
+
+Final state: **38 profiles, 38 distinct `user_id`, 0 unlinked, 0 shared.** Verified end-to-end by
+minting a real magic-link session for a previously-broken student (`9000000002`) and replaying the
+exact upsert — **HTTP 201**. Test rows were deleted afterwards.
+
+**Worth adding: a unique index on `student_profiles.user_id`.** Nothing currently stops two profiles
+pointing at the same auth user, which is how the orphan-binding above went unnoticed. That is a
+schema change and so needs the `db-script-push` flow; not applied here.
+
+Diagnostic recipe for this class of 403: check grants, then policies, then **the SECURITY DEFINER
+helper the policy calls** — the helper returning NULL looks identical to "policy denies you".
