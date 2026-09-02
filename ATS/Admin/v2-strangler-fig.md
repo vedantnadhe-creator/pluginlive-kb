@@ -231,8 +231,13 @@ and scored against bare names. v1 forwarded `ai.parameters` verbatim and never
 had this. Each row now carries its description under the name and weight.
 
 **Field changes worth knowing:** Listening audio accent is now a two-option
-RadioCardGroup (`US`, `Indian`, default `US`) rather than a five-option
-dropdown; Role Based's Industry/domain carries the standard optional tag (it was
+RadioCardGroup (`US`, `Indian`) rather than a five-option dropdown; `US` is
+listed first but the seeded `defaultConfig` is **`Indian`**. The cards send
+their **label** as the value, so every label must exist in `ACCENT_CODES`
+(`src/lib/assessments/communicationAccent.ts`) — narrowing the catalogue without
+updating that map is what made `US` floats ship Indian audio until 2026-09-02
+(see `Assessment/communication.md`); unknown labels now throw rather than
+defaulting. Role Based's Industry/domain carries the standard optional tag (it was
 always optional in practice — `buildJobDescription` treats blank as absent — it
 just did not say so); AI Interview's Difficulty curve select is gone from the
 config panel but the field remains in `AiInterviewConfig`, `defaultConfig` and
