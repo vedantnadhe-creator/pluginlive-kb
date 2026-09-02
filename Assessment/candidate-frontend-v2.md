@@ -225,7 +225,21 @@ still land there. Full write-up in
 ## Deploying
 
 **DEV** — there is **no CI on this repo** (no `.github/workflows`, verified
-2026-09-02); the DEV deploy is manual on the DEV box, same Docker shape as UAT:
+2026-09-02), but the DEV box does carry this app in `auto_deploy.sh` as **menu
+id 26**, and that is the path to use:
+
+```bash
+cd ~ && ./auto_deploy.sh candidate-assessment-journey-v2 Development
+```
+
+It copies `.env.dev` (or `.env.local`, which is what actually exists) to
+`.env.prod` for the build, and — unlike a hand-rolled rebuild — **retains the
+outgoing build's `/_next/static` chunks** and merges them into the new container,
+so candidates whose tab loaded before the deploy do not hit a `ChunkLoadError`
+mid-assessment. Note it begins with `git stash`: **uncommitted work in that
+shared checkout is stashed, not built.** Commit before deploying.
+
+The equivalent by hand, same Docker shape as UAT:
 
 ```bash
 cd ~/frontend/assessment-react-v2
@@ -259,6 +273,93 @@ for `dev.pluginlive.com` and **fails the deploy** rather than serving it.
 `NEXT_PUBLIC_DEMO_MODE` must stay absent outside DEV — it is what opens the
 invite-less demo journey with the fixed OTP `123456`. See
 [mix-match-candidate-journey.md](mix-match-candidate-journey.md).
+
+`NEXT_PUBLIC_COPY_PROTECTION` is the copy/paste kill-switch and is **default-on**
+— see *Copy protection* below. UAT sets it to `true` explicitly; leaving it
+absent is also protected.
+
+## Copy protection — one flag, default on (DEV + UAT 2026-09-02, PROD pending)
+
+Copy, cut, paste, text selection and the right-click menu are suppressed on the
+question panel for **every assessment type**. Until 2026-09-02 this was
+**Aptitude only** (`assessment.type === "Aptitude"` in `QuestionPanel.tsx`);
+Communication, Role Based and Custom candidates could select and copy the stem.
+
+Three files carry it:
+- `src/lib/copyProtection.ts` — the flag.
+- `src/app/_components/exam/QuestionPanel.tsx` — `onCopy` / `onCut` / `onPaste` /
+  `onContextMenu` on the `<section className="card qpanel">`.
+- `src/app/_components/exam.css` — `.qpanel.is-copy-protected` sets
+  `user-select:none` + `-webkit-touch-callout:none` (the latter is what kills
+  the mobile long-press "Search Google" menu).
+
+### The polarity is the safety property — do not invert it
+
+```js
+export const COPY_PROTECTION_ENABLED = process.env.NEXT_PUBLIC_COPY_PROTECTION !== "false";
+```
+
+**Only the literal string `false` turns it off.** An env file that never
+mentions the var ships a *protected* bundle, so a new environment cannot go live
+unprotected by omission.
+
+This matters more than it looks. `NEXT_PUBLIC_*` is inlined by `next build`
+**only when the var is set at build time**. When it is absent — as on DEV — Next
+cannot inline it and leaves a **runtime lookup** in the chunk:
+
+```js
+ew = "false" !== e.i(47167).default.env.NEXT_PUBLIC_COPY_PROTECTION   // DEV, var absent
+```
+
+That expression evaluates against `undefined` at runtime, and `"false" !== undefined`
+is `true` — so protection stays **on**. Written the other way round
+(`=== "true"`), the same un-inlined lookup would evaluate to `false` and every
+environment that forgot the var would silently serve an **unprotected** exam.
+This is the same `process.env` non-inlining trap that has produced blank screens
+and DEV-URL leaks in these webpack/Next bundles; the polarity is what defuses it.
+
+When the var **is** set, it inlines and the ternary folds away entirely:
+
+| Env file | Built chunk | Result |
+|---|---|---|
+| var absent (DEV) | runtime lookup, `"false" !== undefined` | protected |
+| `=true` (UAT) | `className:"card qpanel is-copy-protected"`, handlers unconditional | protected |
+| `=false` | whole block dead-code-eliminated, handlers `void 0` | **not** protected |
+
+Set `NEXT_PUBLIC_COPY_PROTECTION=false` in the target box's env file and rebuild
+**there** to allow free copy/paste for a test run. It is build-time, not a
+runtime switch — changing the container's env and restarting does nothing.
+
+### What is deliberately still copyable
+
+- **The code editor.** CodeMirror owns its own copy/cut/paste — external paste is
+  already blocked by `src/lib/pasteGuard.ts`, which admits only text the
+  candidate themselves copied. The panel handler therefore steps aside for it:
+  `if (event.target.closest?.(".cm-editor")) return;`. Without that, a coding
+  question becomes unanswerable-by-editing.
+- **Answer surfaces.** `textarea`, `input` and `.cm-editor` re-declare
+  `user-select:text` under the panel-wide `user-select:none`, or the candidate
+  cannot caret-drag or select their own typing.
+
+### Not covered
+
+**AI Interview** renders through `AIInterviewPanel.tsx`, not `QuestionPanel.tsx`,
+so it is untouched by this flag.
+
+### Verifying it, not assuming it
+
+Grep the **running container**, and beware the DEV box's retained chunks — the
+DEV deploy deliberately merges the *previous* build's `/_next/static` files
+forward so tabs opened mid-assessment do not hit a `ChunkLoadError`. Old and new
+chunks coexist, so the first match you grep may be the pre-deploy code:
+
+```bash
+docker exec candidate-assessment-journey-v2 sh -c \
+  "grep -rhoE '\(\"section\",\{className:\"card qpanel.{0,120}' /app/.next/static/chunks/*.js"
+```
+
+Protected UAT/PROD output has `card qpanel is-copy-protected` with
+`onCopy:eh,onCut:eh,onPaste:eh,onContextMenu:eh`.
 
 ## Analytics — PostHog in v2 (DEV + UAT 2026-08-31, PROD pending)
 
