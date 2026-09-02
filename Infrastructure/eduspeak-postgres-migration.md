@@ -967,3 +967,29 @@ lesson in a *single* message, so its one button legitimately reads all of it.
 
 The Gemini and OpenAI providers build a similar prompt string, but a natural-language style prefix is
 their documented TTS interface rather than a defect — left alone.
+
+## 2026-09-02 — "YouTube key is wrong" on /student/curriculum: the key is valid, the quota is gone
+
+The curriculum page showed *"YouTube videos could not be fetched; search links are shown as
+fallback."* The key is **not** wrong. Proven by splitting the two failure modes:
+
+| Call | Quota bucket | Result |
+|---|---|---|
+| `search.list` | Search Queries per day | **429 quota exceeded** |
+| `videos.list` | general | **200, returns the video** — so the key authenticates fine |
+
+An invalid key fails *both* with 400/403. Only `search.list` is blocked, which means daily search
+quota, not a bad credential. **Always test `videos.list` before concluding a YouTube key is wrong.**
+
+**PilVidya and Banking share the same key and therefore the same 10,000-unit/day project quota.**
+PilVidya reads it from `public.app_secrets` (`name='YOUTUBE_API_KEY'`, `school_name IS NULL`, with a
+per-school override and `Deno.env.get("YOUTUBE_API_KEY")` as last resort); Banking reads the same
+value from `llm_provider_configs`. The Banking module-video backfill run earlier the same day
+consumed the entire daily search allowance, so PilVidya's curriculum videos started failing as a
+side effect — the two apps starve each other.
+
+**Give the two apps separate Google Cloud projects/keys.** Otherwise any bulk job in one silently
+breaks video fetching in the other, and the surfaced message ("could not be fetched") gives no hint
+that quota is the cause — the same silent-429 trap documented for Banking.
+
+Quota resets at midnight Pacific.
