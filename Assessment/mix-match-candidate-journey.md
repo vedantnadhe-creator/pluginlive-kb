@@ -805,6 +805,29 @@ Video Response, recording saved but Finish stuck) and a second candidate stuck
 on Aptitude's last question reading "Module completed" mid-review. Commit
 `18987eb` on Development, merged to UAT as `6484f0a`.
 
+### Non-linear modules can return from the finish prompt to change answers (fixed 2026-09-02, DEV + UAT)
+
+The module hand-over was made universally non-dismissible in `5a461da`, even
+though Aptitude, Behaviour and Custom are deliberately free-navigation
+modules. Reaching the last question therefore put the candidate behind a modal
+whose only action closed the module and advanced; Escape, the scrim and a Back
+action were all unavailable. Confirming then set `completedParts`, after which
+both the reducer and the option controls correctly refused further edits.
+
+`ModuleFinishDialog` now offers **Back to questions** when the assessment has
+`freeNavigation`, completion was candidate-triggered, and the type is not AI
+Interview. The same callback handles the button, Escape and scrim click, and it
+only closes the prompt: `COMPLETE_PART` is not dispatched, the module clock
+continues, and answers remain editable. Communication and Role Based remain
+one-way because they are sequential; AI Interview remains one-way when its
+conversation completes; every timer-expiry hand-over remains one-way regardless
+of type. The final whole-assessment review keeps its existing dismissible
+behaviour.
+
+All 278 frontend tests passed, including new policy/wiring regressions. Commit
+`c4f4f10` on Development, merged to UAT as `9021c44`; both containers rebuilt
+successfully and the public DEV/UAT entry points returned HTTP 200.
+
 ### A timed-out last Communication question stranded the candidate before Aptitude (fixed 2026-08-31, DEV + UAT — PROD pending)
 
 The most-reported Mix & Match failure — *"Aptitude questions don't load after
