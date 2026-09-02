@@ -919,3 +919,51 @@ fields dropped by the older npm on the UAT host), not a real change. Leave it un
 Post-pull check is now: **`git status` shows only `frontend/package-lock.json`.** Anything else
 modified means a patch regressed. Earlier sections of this doc that describe these three as
 permanent uncommitted patches are superseded by this entry.
+
+## 2026-09-02 — Virtual Tutor voice: 14s wait and "reads the whole page" were one bug (`37ad29a2`)
+
+Two reports against `/tutor` — "Preparing voice" took far too long, and pressing **Tutor voice** on a
+card seemed to read the whole page instead of that card. Both had the same cause.
+
+`requestElevenLabsSpeech` in `supabase/functions/ai-coach-tts/index.ts` injected the persona and
+pronunciation paragraph **into `text`** for `eleven_v3`. **v3 only honours short bracketed audio tags
+like `[warm]`; a full instruction paragraph is treated as content and spoken aloud.** Transcribing
+the generated MP3 back through Gemini proved it — every clip opened with:
+
+> "Read this aloud entirely in English with a warm Indian female school teacher voice. Use the en-IN
+> speech locale for pronunciation, rhythm, numbers and local language phonemes. … Speak in Indian
+> English."
+
+…before a word of the lesson. A 120-character sentence produced **36.4 seconds of audio instead of
+~7**, so most of the wait was the model narrating its own configuration, and to a listener it sounded
+like the tutor was reading the page rather than the card.
+
+Accent/persona already come from the configured voice ID and `voice_settings`. The injection is
+removed.
+
+Two further cuts:
+
+- **Model order is now per language.** `eleven_turbo_v2_5` answers in ~0.5s vs `eleven_v3` at ~4s,
+  but the fast models only cover ElevenLabs' 32-language set — of the languages this app ships **only
+  English, Hindi and Tamil are in it.** Telugu, Kannada, Malayalam, Gujarati, Marathi, Bengali, Odia,
+  Assamese, Urdu, Nepali and Punjabi exist **solely in eleven_v3**, so those keep v3 first rather
+  than silently getting a model that cannot speak them. Do not "simplify" this back to one list.
+- **Output format `mp3_44100_128` → `mp3_22050_32`** — indistinguishable for speech, ~¼ the bytes.
+
+Measured on UAT, same sentence:
+
+| | time | size | audio |
+|---|---|---|---|
+| before | 14.0s | 583 KB | 36.4s, opens with the instruction paragraph |
+| after | **0.9s** | **29 KB** | 7.2s, opens with the actual sentence |
+
+Verified by transcribing the output back: English 0.9s, Hindi 0.5s, **Telugu still routes through
+v3 (5.3s) and returns correct Telugu with no preamble.**
+
+**Per-card playback was never miswired** — `VirtualTutor.tsx` already calls
+`speakMessage(msg.content, idx)` per bubble. The one genuine "whole page" case left is **lesson
+mode**, where `setLessonMessages([{ role: "assistant", content: lessonText }])` puts the entire
+lesson in a *single* message, so its one button legitimately reads all of it.
+
+The Gemini and OpenAI providers build a similar prompt string, but a natural-language style prefix is
+their documented TTS interface rather than a defect — left alone.
