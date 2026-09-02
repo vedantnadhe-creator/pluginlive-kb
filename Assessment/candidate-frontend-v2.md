@@ -211,9 +211,39 @@ per assessment type (Aptitude, Communication, Hinglish, Custom, Role-Based), so
 a v1 fix is a five-file edit. v2 runs every type through one `take/page.tsx`, so
 it is one.
 
+A second worked example, and one where **v1 is still unfixed**: AI-interview
+narration playing out of the phone's **earpiece** instead of the loudspeaker,
+with the volume keys moving call volume rather than media volume. WebKit puts
+the page into a play-and-record audio session as soon as the mic opens, and the
+AI Interview holds the mic open for the whole session. Fixed in v2 only
+(2026-09-02) by `preferLoudspeakerRoute()` in `src/lib/ttsPlayback.ts`, asserted
+at the Begin gesture, the `getUserMedia` grant and every `startSttStream()`.
+v1's `AIInterview/ttsAudio.js` has the same defect and single-assessment invites
+still land there. Full write-up in
+[ios-device-support.md](ios-device-support.md).
+
 ## Deploying
 
-**DEV** — push to `Development`; CI builds and swaps the container.
+**DEV** — there is **no CI on this repo** (no `.github/workflows`, verified
+2026-09-02); the DEV deploy is manual on the DEV box, same Docker shape as UAT:
+
+```bash
+cd ~/frontend/assessment-react-v2
+git pull origin Development
+docker build --no-cache -t candidate-assessment-journey-v2:frontend .
+docker stop candidate-assessment-journey-v2 && docker rm candidate-assessment-journey-v2
+docker run -d --name candidate-assessment-journey-v2 --restart unless-stopped \
+  -p 127.0.0.1:3015:3000 --env-file .env.prod candidate-assessment-journey-v2:frontend
+```
+
+Recreate rather than `restart`: the image is rebuilt, so the running container
+must be replaced to pick it up. Keep `--restart unless-stopped` and
+`--env-file .env.prod` — the server-only vars (`STD_API_URL`, `AUTH_API_URL`,
+`FASTAPI_URL`) are read at **runtime** from the container, so a container
+started without them comes up and then 500s on the API routes.
+
+The DEV host is **`assessment.dev.pluginlive.com`**, not `dev.pluginlive.com` —
+the latter 404s on this path and looks exactly like a failed deploy.
 
 **UAT**
 ```bash

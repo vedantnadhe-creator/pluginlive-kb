@@ -53,6 +53,25 @@ The listening (`AudioPlayer`) and dictation (`WaveformPlayer`) components now ha
 - **TTS voice:** iOS blocks `audio.play()` outside a user gesture, and the interviewer audio is fetched async (`await tts()`). `AIInterview/ttsAudio.js` keeps a **persistent `<audio>` element unlocked during the Start gesture** (`primeTtsAudio`), reused in `speak()`, so the voice plays on iPhone.
 - Fullscreen is best-effort and never blocks the interview on iPhone (LITE).
 
+### Narration comes out of the earpiece, not the loudspeaker (fixed 2026-09-02, v2 only)
+
+Reported from the field: on mobile the AI-interview voice plays from the **earpiece** — the receiver you hold to your face on a call — so the candidate has to press the phone to their ear to hear the interviewer, and **pressing volume-up does nothing useful** because the hardware keys are moving the *call-volume* stream, not media volume. Both symptoms are the same root cause, and it is WebKit behaviour, not a bug in our audio graph.
+
+**Why.** The moment `getUserMedia({audio:true})` goes live, WebKit switches the page into a **play-and-record** audio session, whose default output route is the receiver and whose volume is tied to the call stream. The AI Interview holds the microphone open for the *entire* session (live Deepgram STT), so unlike every other assessment type it sits in that session from the first question to the last — which is why only AI Interview was reported. It is iPhone/iPad-only: Android Chrome has no such session model and already plays through the loudspeaker.
+
+**Fix.** `preferLoudspeakerRoute()` in `assessment-react-v2/src/lib/ttsPlayback.ts` sets `navigator.audioSession.type = "play-and-record"`, which is the documented WebKit lever that routes play-and-record output back to the **built-in loudspeaker** and returns the volume keys to media volume. It is **feature-detected and wrapped in try/catch** — `navigator.audioSession` exists only on WebKit, so this is a no-op on Android and desktop rather than a branch on user-agent.
+
+**It is asserted at three points, because the route can flip at any of them** — setting it once is not enough, since WebKit re-evaluates the session whenever capture starts:
+1. `primeTtsAudio()` — the "Begin" gesture that unlocks the shared `AudioContext`.
+2. `AIInterviewPanel.tsx` — immediately after the camera+microphone `getUserMedia` resolves.
+3. `startSttStream()` (`src/lib/sttStream.ts`) — right before `createMediaStreamSource`, i.e. every turn that opens speech capture.
+
+**Scope: v2 (`assessment-react-v2`) only.** The two apps share no code, so **v1 `Assessment-React` still has this defect** — its `AIInterview/ttsAudio.js` `<audio>`-element path is subject to exactly the same routing. Worth porting if a single-assessment invite (which still lands on v1 — see [candidate-frontend-v2.md](candidate-frontend-v2.md)) is reported the same way.
+
+**Gotcha for whoever tests this:** it **cannot be reproduced or verified in headless Chromium** — `'audioSession' in navigator` is `false` there, so the helper is inert and the code path is skipped entirely. Verification requires a real iPhone: start an AI interview, and the interviewer's voice should come from the loudspeaker at the bottom of the phone with the volume rocker showing the **media** volume HUD (not "Ringer" / call volume). Unit coverage (`src/lib/ttsPlayback.test.ts`) pins both halves of the contract — that a WebKit-shaped `navigator.audioSession` gets set to `play-and-record`, and that a browser without the API does not throw.
+
+**DEV + UAT live 2026-09-02; PROD pending.**
+
 ---
 
 ## Identity verification (BiometricCheck)
