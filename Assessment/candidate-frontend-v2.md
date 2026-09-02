@@ -280,18 +280,39 @@ absent is also protected.
 
 ## Copy protection — one flag, default on (DEV + UAT 2026-09-02, PROD pending)
 
-Copy, cut, paste, text selection and the right-click menu are suppressed on the
-question panel for **every assessment type**. Until 2026-09-02 this was
-**Aptitude only** (`assessment.type === "Aptitude"` in `QuestionPanel.tsx`);
-Communication, Role Based and Custom candidates could select and copy the stem.
+Copy, cut, paste, text selection and the right-click menu are suppressed across
+the **whole exam screen**, for every assessment type.
 
-Three files carry it:
-- `src/lib/copyProtection.ts` — the flag.
-- `src/app/_components/exam/QuestionPanel.tsx` — `onCopy` / `onCut` / `onPaste` /
-  `onContextMenu` on the `<section className="card qpanel">`.
-- `src/app/_components/exam.css` — `.qpanel.is-copy-protected` sets
-  `user-select:none` + `-webkit-touch-callout:none` (the latter is what kills
-  the mobile long-press "Search Google" menu).
+This took two passes, and the first one was wrong in an instructive way. It
+originally applied to `assessment.type === "Aptitude"` only. Widening it to all
+types still left the guard bound to the **question panel**, which missed the two
+places the text was actually reachable:
+
+- **AI Interview** renders the prompt and a live transcript from
+  `AIInterviewPanel.tsx`, a sibling of `QuestionPanel.tsx` — no guard at all.
+- **The Communication read-aloud passage** (`.reading-passage.is-visible`, in
+  `RecordingAnswer.tsx`) sets `user-select:text` **on the element itself**. An
+  element rule beats a value inherited from an ancestor regardless of source
+  order, so the wrapper's `user-select:none` never reached it and the one block
+  of prose worth copying stayed selectable. This was reported from UAT.
+
+The guard is therefore bound **once on the exam wrapper**, not per panel:
+
+- `src/lib/copyProtection.ts` — the flag, the shared handler, and the
+  `COPY_PROTECTION_CLASS` / `copyProtectionHandlers` exports.
+- `src/app/assessment/take/page.tsx` — the only binding site:
+  ``<div className={`exam-wrap${COPY_PROTECTION_CLASS}`} {...copyProtectionHandlers}>``.
+  The question panel, the AI Interview, the section rail and the assessment
+  track all render inside it.
+- `src/app/_components/exam.css` — `.is-copy-protected` sets `user-select:none`
+  + `-webkit-touch-callout:none` (the latter is what kills the mobile
+  long-press "Search Google" menu), and
+  `.is-copy-protected .reading-passage.is-visible` (0,3,0) outranks the
+  passage's own rule (0,2,0).
+
+**Do not re-add a panel-local guard.** A second, narrower copy is what let the
+AI Interview drift out of step; the test suite asserts `QuestionPanel.tsx`
+contains no `onCopy` / `is-copy-protected` of its own.
 
 ### The polarity is the safety property — do not invert it
 
@@ -338,13 +359,17 @@ runtime switch — changing the container's env and restarting does nothing.
   `if (event.target.closest?.(".cm-editor")) return;`. Without that, a coding
   question becomes unanswerable-by-editing.
 - **Answer surfaces.** `textarea`, `input` and `.cm-editor` re-declare
-  `user-select:text` under the panel-wide `user-select:none`, or the candidate
-  cannot caret-drag or select their own typing.
+  `user-select:text` under the exam-wide `user-select:none`, or the candidate
+  cannot caret-drag or select their own typing. Note the handler still blocks
+  copy/cut/**paste** inside them — selection is for editing, not for pasting a
+  prepared answer in.
 
-### Not covered
+### Covered
 
-**AI Interview** renders through `AIInterviewPanel.tsx`, not `QuestionPanel.tsx`,
-so it is untouched by this flag.
+Everything inside `.exam-wrap`: the question panel, the **AI Interview** prompt
+and transcript, the section rail and the assessment track. The only portalled
+nodes are `ExamMenu`'s support and end dialogs (`createPortal` to
+`document.body`), which carry no question text.
 
 ### Verifying it, not assuming it
 
@@ -358,8 +383,21 @@ docker exec candidate-assessment-journey-v2 sh -c \
   "grep -rhoE '\(\"section\",\{className:\"card qpanel.{0,120}' /app/.next/static/chunks/*.js"
 ```
 
-Protected UAT/PROD output has `card qpanel is-copy-protected` with
-`onCopy:eh,onCut:eh,onPaste:eh,onContextMenu:eh`.
+Protected UAT/PROD output has `exam-wrap is-copy-protected` followed by the
+spread handler object, e.g. `e1={onCopy:e0,onCut:e0,onPaste:e0,onContextMenu:e0}`.
+
+Selection is a **computed-style** question, not a grep one — a specificity fight
+does not show up in the source. Pull the built CSS out of the container and
+check it in a real engine:
+
+```js
+// chromium via playwright-core, against a stub of the exam DOM
+getComputedStyle(document.getElementById('passage')).userSelect   // must be "none"
+getComputedStyle(document.getElementById('answerbox')).userSelect // must be "text"
+```
+
+Run the same page without `is-copy-protected` as a control — the passage should
+come back as `text`, or the harness is not proving anything.
 
 ## Analytics — PostHog in v2 (DEV + UAT 2026-08-31, PROD pending)
 
