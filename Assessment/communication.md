@@ -713,6 +713,24 @@ Total   = Reading*0.20 + Listening*0.10 + Speaking*0.40 + Writing*0.30
 - UAT merge commits: student-node `e64f6409`, institute-node `d99d04b`.
 - Deployed and container-verified in DEV and UAT on 2026-09-01.
 
+### Institute v2 weighted-score planner regression (fixed 2026-09-03)
+
+The first SQL implementation selected retake rows with a correlated `EXISTS`
+against `communication_scores`. On PROD PostgreSQL badly overestimated that
+subquery (roughly 3M estimated cost) and changed the surrounding dashboard join
+tree: it stopped using the selective institute path and nested-looped the roster
+across all assignment rows. The shared `/institutes/dashboard/v2/*` and
+`/institutes/assessments/v2/*` raw queries then exceeded Prisma's 30-second
+timeout and surfaced as `502` from `institute.pluginlive.com/v2/*`.
+
+Do not fix this by restoring `AVG(score)`; the weighted formula above remains the
+correct contract. `institute-node` `63e18f2` replaces the correlated lookup with
+one `BOOL_OR(is_retake) OVER (PARTITION BY assessment_assigned_id)` pass, then
+keeps rows where `is_retake = has_retake`. That preserves both cases exactly:
+original rows when no retake exists, retake rows as replacements when one does.
+Promoted to UAT in merge `4ee6d3a`; deployed and container-verified on DEV and
+UAT on 2026-09-03. PROD remains unchanged pending its normal release promotion.
+
 ---
 
 ## Database Tables (Key)
