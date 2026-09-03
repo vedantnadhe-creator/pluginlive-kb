@@ -1378,3 +1378,61 @@ every pull.
 
 `package-lock.json` had to be discarded (`git checkout --`) before the pull would proceed; it only
 ever holds npm `libc`-field noise from the older npm on this box.
+
+## 2026-09-03 — console errors on the module page: two real bugs, one benign
+
+Three distinct errors were visible on `/journey/student/tech?tab=modules`. They are unrelated.
+
+### 1. `student_module_progress` 400 ×2 — prerequisite lookup queried columns that do not exist
+
+`PrereqCard` in `src/components/module/ModulePrerequisites.tsx` selected **`is_completed`** and
+filtered on **`user_id`**. The table has neither — the columns are `completed` and `student_id` —
+so PostgREST answered 400 (`column student_module_progress.is_completed does not exist`, with a hint
+naming the right column). One request per prerequisite card, hence two in the console.
+
+**The failure was invisible in the UI**: the result only toggles a tick, so a prerequisite the
+candidate had already completed simply rendered as incomplete. Nobody would report it as a bug.
+
+Fixed in `b554217`. `student_id` is read from **sessionStorage `"studentId"`** rather than derived
+from `user.id`, because that is what the writer uses (`ModuleVideosPanel`, set by
+`TechStudentJourney`). That value is the students-row id when a students row exists and **falls back
+to the auth user id when it does not** — which is why the column holds a mix: of 263 rows, 140 match
+`auth.users.id` and 123 match `students.id`. Filtering by `user.id` would have missed whichever rows
+the writer stored under the other identifier.
+
+**Follow-up bug the first fix introduced, then fixed in `727cbea`:** `(student_id, module_id)` has
+**no unique constraint** and real duplicates exist — **9 pairs across 144 rows, one pair with 14
+rows** — so the `maybeSingle()` answered **406 PGRST116** instead. The query now orders
+completed-first and takes one row. Pinned by `src/test/modulePrerequisitesProgress.test.ts`.
+
+### 2. `update-sms-gateway` 401 — deployed function was 10 lines behind and used a spoofable gate
+
+The **deployed** copy gated on a client-supplied header:
+
+```ts
+const ADMIN_EMAILS = new Set(["prakash.chinnadurai@gmail.com"]);
+const adminEmail = (req.headers.get("x-admin-email") || "").toLowerCase().trim();
+if (!adminEmail || !ADMIN_EMAILS.has(adminEmail)) return json(401, …);
+```
+
+Any admin whose email was not that one literal got 401 — including `demo.admin@bankready.app` with a
+perfectly valid JWT. **The same token worked on `admin-user-actions`, which is how the drift was
+spotted:** if one admin function accepts a token and another rejects it, suspect a stale deployment
+before suspecting the token.
+
+The repo already had the fix (JWT + `user_roles` admin check). Synced it. Verified: admin **200**,
+non-admin candidate **403 "Admin role required"**, spoofed `x-admin-email` with no JWT **401**. The
+old gate was trivially bypassable by setting one request header, so this closes that too.
+
+### 3. YouTube `postMessage` origin warnings — benign, not ours
+
+`Failed to execute 'postMessage' on 'DOMWindow': target origin (https://www.youtube.com) does not
+match recipient window's origin` comes from YouTube's own `www-widgetapi.js` handshake on embedded
+players. It is noise from the third-party iframe API, appears on every page with an embed, and has
+no effect on playback. Nothing to fix.
+
+**Also still open (not touched):** `InstituteAnalytics.tsx`, `InstituteDashboard.tsx` and
+`InstituteStudentManager.tsx` all filter `student_module_progress` on **`institute_id`**, which does
+not exist on that table either — a guaranteed 400 on institute dashboards, same class of bug,
+different screen. Left alone because the right fix (join through `students`, or add the column) is a
+design decision rather than a rename.
