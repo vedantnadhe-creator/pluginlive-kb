@@ -1338,3 +1338,43 @@ the last start marker, otherwise progress looks stalled when it is not.
 
 Modules now fully covered: `Banking - AML in Practice` 12/12, `Banking - AML Attributes` 12/12,
 `AI Agents & Workflow Automation` 10/10, `Advanced Banking` 9/9, plus 8 smaller AI modules.
+
+## 2026-09-03 — redeployed to `d579c84` (17 commits, 5 migrations)
+
+17 commits forward from `4d88c18`. Trainer curriculum delivery, a `super_admin` role, privileged
+admin menu access, student platform-usage reporting, and a legacy topic video library.
+
+| Check | Result |
+|---|---|
+| Migrations | 5 applied, `--single-transaction`, no errors |
+| Destructive statement | one dedup `DELETE` on `curriculum_assignments` — table was **empty (0 rows)**, so nothing removed |
+| Schema verified | `curriculum_assignments.student_user_id`/`student_profile_id`, `super_admin` enum value, `student_usage_daily`, `uq_curriculum_assignments_student_user` all present |
+| Edge functions | 3 changed synced; **2 were missing from the deployment entirely** (`candidate-otp-login`, `generate-curriculum-video`) and were deployed — 84 → 86 dirs |
+| Frontend | rebuilt, served `index-D7UQOY7I.js` matches fresh `dist`; 19 self-hosted `/sb` refs, no data-plane leak |
+| Containers | 7/7 up, db healthy; PostgREST restarted for the new columns |
+| Logins | candidate/trainer/admin all 200; `9820065335` driven through the real UI to the student console |
+| Prior fixes | OTP-reset guard still refuses correctly; interview transcription still 200 |
+| Tests | **402 passed / 403** |
+| Rollback | `~/banking-predeploy-20260903T083834Z/` (public-schema dump + env) and `dist.bak-predeploy-20260903T083834Z` |
+
+**`pg_dump` of the whole DB fails as `banking_owner`** — `permission denied for schema _realtime`
+while taking the LOCK. Use `-n public`, which is what these migrations touch anyway.
+
+**Two upstream test-suite changes worth noting:**
+
+- The long-standing stale `LLM_PROVIDER_TIMEOUT_MS = 15000` failure in `llmFallbackCoverage.test.ts`
+  is **fixed upstream** — that file now passes 10/10. It should no longer be waved off.
+- A **new** failure took its place: `src/test/videoAutoLink.test.ts > persistTopicVideo > writes
+  video_url on legacy topics and reports failures` (`expected "spy" to be called with { table:
+  'topics', … }`). It is upstream's, from this release's own `ae872f8` / `b196f75` "curriculum
+  YouTube playback" work — no local source was modified during this deploy. Not a deploy regression,
+  but it is a real red test on `main`.
+
+**The `mcp/index.ts` local patch came back.** Upstream regenerated that bundled file to
+`@lovable.dev/mcp-js@0.26.2`, undoing the `0.26.3` pin that was committed earlier. The working tree
+kept `0.26.3` and the deployed copy was resynced from it, because `0.26.2` is what fails to boot.
+Expect this to reappear on any release that regenerates the Lovable MCP bundle — check it after
+every pull.
+
+`package-lock.json` had to be discarded (`git checkout --`) before the pull would proceed; it only
+ever holds npm `libc`-field noise from the older npm on this box.
