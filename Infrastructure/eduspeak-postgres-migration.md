@@ -1049,3 +1049,43 @@ schema change and so needs the `db-script-push` flow; not applied here.
 
 Diagnostic recipe for this class of 403: check grants, then policies, then **the SECURITY DEFINER
 helper the policy calls** — the helper returning NULL looks identical to "policy denies you".
+
+## 2026-09-03 — `/teacher#assessments` crashed: `ReferenceError: Switch is not defined` (`e8a1ae40`)
+
+The Teacher Assessments tab hit the error boundary ("This screen needs to restart"). Console:
+
+```
+ReferenceError: Switch is not defined
+  at TeacherPortal-Di3e0YVI.js
+[react-render-failure] ReferenceError: Switch is not defined
+```
+
+`TeacherPortal.tsx` renders `<Switch>` for the **AI Proctoring** toggle but **never imported it** —
+the file contained exactly one occurrence of the word `Switch`, the JSX tag itself. Three other
+pages (`CompetitiveExam`, `Compliance`, `ParentDashboard`) import it correctly; this one was missed.
+Undefined identifier → render throws → the whole tab unmounts.
+
+A repo-wide scan comparing JSX tags against the ui-kit's exports found **one more of the same
+defect**: `src/components/teacher/StudentsListView.tsx` uses `<Label>` in the bulk-reject dialog
+without importing it, which would blow up that dialog identically. Both fixed; the scan now reports
+zero.
+
+**Why nothing caught it before runtime — worth fixing at the tooling level:**
+
+- Vite/esbuild strips types and never type-checks, so the bundle builds and ships happily.
+- **`npx tsc --noEmit` at the repo root checks *nothing*.** The root `tsconfig.json` is
+  `{"files": [], "references": [...]}` — it delegates to `tsconfig.app.json`. A bare `tsc --noEmit`
+  exits 0 having examined zero files, which reads exactly like "no type errors". Use
+  **`npx tsc --noEmit -p tsconfig.app.json`** (that run surfaces 3 real syntax errors in
+  `src/test/staffAuth.principal.test.tsx`).
+
+**Build gotcha:** `npm run build` runs `eslint src/pages/Observability.tsx --max-warnings 0` before
+`vite build`, and the checkout was missing `eslint-plugin-react`, so the build died with
+`ERR_MODULE_NOT_FOUND` before compiling anything. `npm install` first. The build also ends with
+`scripts/check-route-manifest.mjs`, which confirmed all 5 required routes including
+`/teacher → TeacherPortal`.
+
+**Not deployed.** The fix is committed and pushed, and the bundle builds clean, but the running
+`eduspeakreact` container is still `eduspeakreact:8e58cf54` — **57 commits behind** the checkout.
+Rebuilding the image to ship this two-line fix necessarily ships those 57 previously-undeployed
+commits too, which is a far larger release than the bug warrants and needs an explicit decision.
