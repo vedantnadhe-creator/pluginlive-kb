@@ -13,11 +13,20 @@ Repo: `PluginLive-Technologies/Mail-Server`.
 One instance per environment. Before this date there was exactly **one**
 instance, on the DEV box, and DEV, UAT and PROD all sent through it.
 
-| Env | Endpoint | Runs as | Sender | Allowlist |
+| Env | Public URL | What callers on the box use | Runs as | Allowlist |
 |---|---|---|---|---|
-| DEV | `http://172.17.0.1:5010/send-email` | `mail.service` (systemd, gunicorn) on the DEV box | `mandate@pluginlive.com` | none |
-| UAT | `http://172.17.0.1:5010/send-email` | container `mail-server-uat` on the UAT box | `mandate@pluginlive.com`, subject tagged `[UAT]` | `pluginlive.com,icanio.com` |
-| PROD | `http://mail-server.api.svc.cluster.local/send-email` | Deployment `mail-server` in k8s ns `api`, 2 replicas | `mandate@pluginlive.com` | none (must reach real candidates) |
+| DEV | `https://mail.dev.pluginlive.com` | `http://172.17.0.1:5010/send-email` | `mail.service` (systemd, gunicorn) | none |
+| UAT | `https://mail.uat.pluginlive.com` | `http://172.17.0.1:5010/send-email` | container `mail-server-uat` | `pluginlive.com,icanio.com` |
+| PROD | *(none — in-cluster only)* | `http://mail-server.api.svc.cluster.local/send-email` | Deployment `mail-server`, ns `api`, 2 replicas | none (must reach real candidates) |
+
+All send as `mandate@pluginlive.com`; UAT tags subjects `[UAT]`.
+
+**Same-box callers deliberately use the internal address, not the public URL.**
+Routing a container out to the public IP and back in through nginx adds DNS, TLS
+and nginx as failure modes for traffic that never needs to leave the host. The
+public hostnames exist for off-box callers and so the relays are addressable by a
+stable name. PROD has no public URL at all — it is reachable only inside the
+cluster.
 
 **The DEV and UAT relays bind to the docker bridge IP (`172.17.0.1`), not
 `0.0.0.0`.** Neither box filters INPUT, so binding publicly would expose an
@@ -40,7 +49,19 @@ oci dns record domain get --zone-name-or-id prod.pluginlive.com \
 
 So any `*.dev|uat|prod.pluginlive.com` hostname can be created without AWS access.
 Only apex-level records — `pluginlive.com` itself, `MX`, `SPF`, `DMARC` — need
-Route 53.
+Route 53. (The NS *delegation* for each child zone lives in the Route 53 parent;
+the zone *contents* live in OCI. Both statements are true at once, which is what
+makes this confusing.)
+
+`mail.uat.pluginlive.com` and `mail.dev.pluginlive.com` were created this way on
+2026-09-03, with Let's Encrypt certificates via `certbot --nginx` (renewal timers
+active on both boxes):
+
+```bash
+oci dns record rrset update --zone-name-or-id uat.pluginlive.com \
+  --compartment-id <PluginLiveUAT ocid> --domain mail.uat.pluginlive.com --rtype A \
+  --items '[{"domain":"mail.uat.pluginlive.com","rtype":"A","rdata":"<ip>","ttl":300}]' --force
+```
 
 ### The `mail.prod.pluginlive.com` trap (historical)
 
@@ -55,6 +76,11 @@ running two gunicorn workers; UAT sends against it were returning intermittent
 
 The hostname still resolves to the DEV box and still serves the side projects on
 it (ucat, pilvidya, banking, medverse). It is no longer in any platform path.
+
+**Retiring it is now unblocked**: since `mail.dev.pluginlive.com` exists, those
+side projects can be repointed at it, after which the DEV box can stop answering
+for `mail.prod.pluginlive.com` entirely. Each app bakes the endpoint in at build
+time (ucat via `PLUGINLIVE_MAIL_ENDPOINT`), so this needs a rebuild per app.
 
 ## Configuration
 
