@@ -582,6 +582,15 @@ Recalculates all aptitude progression history for every student:
 
 Use this after fixing scoring/level bugs to recalculate all historical data.
 
+> **Chain scope (2026-09-03):** every aptitude progression query — this backfill,
+> its per-student half, and the live `runAptitudeProgression` — is scoped to
+> `status = COMPLETED` as well as `scores_calculated`. Abandoned attempts **are**
+> scored now (see `Assessment/assignment-calculation-queue.md`), but a partial
+> paper must never move the ladder or it would demote a student for quitting. The
+> rule lives in `student-node/app/helpers/dropoutScoring.js`
+> (`PROGRESSION_CHAIN_STATUS` / `isProgressionEligibleAttempt`); Communication has
+> enforced the same thing all along via `_fetchCommunicationChain`.
+
 ---
 
 ### 9. Dashboard Data Sources (TpoDashBoard.js)

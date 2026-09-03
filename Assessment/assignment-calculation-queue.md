@@ -161,6 +161,55 @@ type)` in `src/modules/Assessment/Partials/aptitudeSections.js`, covered by
 `aptitudeSections.test.js` (`node src/modules/Assessment/Partials/aptitudeSections.test.js`).
 Scored rows are unaffected: the scores still answer the question first.
 
+### …but a drop-off never moves the ladder (2026-09-03, DEV + UAT; PROD pending)
+
+Scoring a drop-off made it visible to **progression** — the CEFR / aptitude level
+chains that decide a student's next set difficulty and drive the institute
+dashboards. That must not happen: a partial paper's score measures how far the
+candidate got before walking away, not ability, so a 2/60 abandonment would
+**demote a student for quitting**, and could overwrite a level earned on a
+finished paper.
+
+Communication was already safe by accident of an older rule —
+`_fetchCommunicationChain` selects `status: "COMPLETED"`, so a `DROPOUT` row was
+never in the chain (the zero-section rule
+`isCommunicationProgressionEligible` is a second, independent filter). **Aptitude
+was not:** every aptitude progression query selected on `scores_calculated` alone.
+UAT already held the proof — one `progression_history` row with
+`assessment_aptitude_level = 'Competent'` against a `DROPOUT` assignment.
+
+The rule is now named once, in `app/helpers/dropoutScoring.js`
+(`PROGRESSION_CHAIN_STATUS = "COMPLETED"` / `isProgressionEligibleAttempt`), and
+applied at **every** point that writes or reads a progression chain in
+`app/models/Assessment.js`:
+
+| site | what it stops |
+|---|---|
+| `calculateAptitudeScore` → `aptitudeProgressionApplies` | the inline write **and** the deferred `progressionPending` enqueue |
+| `runAptitudeProgression` early guard | a job queued before this shipped, or a manual re-run |
+| `runAptitudeProgression` → `eligibleAptWhere` | a drop-off counting as the "newer scored" row or as a chain predecessor, which would wrongly force a full backfill |
+| `backfillAptitudeProgression` student selection + `_backfillSingleStudentAptitude` | the backfill re-introducing what the live path refuses (it already excluded them via `submitted: true`; the rule is now textual, so live and backfill cannot drift — a repeated bug class here) |
+| the Communication enqueue site | only redundant work — the chain already excluded the row, so the replay would have redone an unchanged chain |
+
+`status` is a non-null enum (`PENDING` / `INPROGRESS` / `COMPLETED` / `DROPOUT`),
+so `= COMPLETED` is exact; among scored UAT aptitude rows only `COMPLETED` and
+`DROPOUT` occur.
+
+**Institute reporting needed no change.** It `LEFT JOIN`s
+`assessment.progression_history` on the assignment
+(`institute-node/app/helpers/assessmentScoreSql.js`), so an attempt with no
+progression row simply has **no level and no NPS** — which is exactly the wanted
+behaviour. The score itself still shows on the attempt; only the ladder ignores it.
+
+Verified on UAT after deploy by calling `runAptitudeProgression` on two scored
+aptitude drop-offs: both returned `{ message: 'skipped', reason: 'dropout' }` and
+wrote nothing.
+
+**Known leftover:** the one pre-existing UAT row above is still there — the guard
+stops new ones, it does not retro-clean. Deleting it is safe (nothing reads it as
+a chain predecessor any more, and `backfillAptitudeProgression` for that student
+rebuilds the correct chain), but it has not been done. PROD has not been surveyed.
+
 ### Retry model (Model A — sweeper-driven) + the stable-jobId gotcha
 
 On a scoring failure the worker does **NOT** throw — it catches, increments
