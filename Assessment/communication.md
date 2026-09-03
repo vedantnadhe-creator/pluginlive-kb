@@ -729,7 +729,25 @@ one `BOOL_OR(is_retake) OVER (PARTITION BY assessment_assigned_id)` pass, then
 keeps rows where `is_retake = has_retake`. That preserves both cases exactly:
 original rows when no retake exists, retake rows as replacements when one does.
 Promoted to UAT in merge `4ee6d3a`; deployed and container-verified on DEV and
-UAT on 2026-09-03. PROD remains unchanged pending its normal release promotion.
+UAT on 2026-09-03.
+
+A second set-based pass (`d3b0ef1`, UAT merge `b996d39`) removes the window too:
+it aggregates once per `(assessment_assigned_id, is_retake)` and uses
+`DISTINCT ON (assessment_assigned_id) ... ORDER BY is_retake DESC` to choose the
+retake group when present. It is equivalent to the two earlier forms on every
+replica result row. Median exact-query timings on UAT were:
+
+| Replica | Correlated | Window | Grouped | Grouped vs window |
+|---|---:|---:|---:|---:|
+| Swadha | 698 ms | 350 ms | 300 ms | 14% faster |
+| Christ Lavasa | 608 ms | 262 ms | 177 ms | 32% faster |
+| Naralkar | 792 ms | 440 ms | 392 ms | 11% faster |
+
+A per-assignment `LATERAL` implementation was measured and rejected: it improved
+small Christ to 83 ms but regressed Swadha to 515 ms and Naralkar to 622 ms due
+to thousands of index probes. Do not reintroduce that shape without a different
+scope strategy. The grouped version is deployed and container-verified on DEV
+and UAT. PROD remains unchanged pending its normal release promotion.
 
 ---
 
