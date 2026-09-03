@@ -108,12 +108,46 @@ so **every environment must set `EMAIL_ENDPOINT`** — DEV/UAT in the box-local
   `oracleregistry`; config in ConfigMap `mail-server-config` and Secret
   `mail-server-secret`.
 
+## Rotating the SMTP credential
+
+Rotated 2026-09-03. **This cannot be done without a gap** — plan for one:
+
+- OCI caps SMTP credentials at **2 per user**, and the mail user's two slots are
+  taken by the relay's credential and an unrelated `scheduler-vm` one. So a new
+  credential cannot be minted before the old is deleted; delete-then-create is
+  the only route and mail is down in between.
+- **A new credential takes ~4 minutes to become usable.** It reports
+  `lifecycle-state: ACTIVE` immediately but SMTP login returns
+  `535 Authentication credentials invalid` until it propagates. Budget for this;
+  the 2026-09-03 rotation had a ~7 minute mail outage almost entirely from it.
+- **Rotation changes the username, not just the password.** Each credential has
+  its own `username` (the suffix differs: `.qj.com` → `.es.com`). `MAIL_SMTP_USER`
+  must be updated everywhere alongside `MAIL_SMTP_PASSWORD`, or auth fails.
+- Identify which credential a relay is using by matching that username suffix, or
+  by SMTP-logging-in with each candidate username and the known password.
+
+Applying the new value per environment:
+
+| Env | How | Gotcha |
+|---|---|---|
+| DEV | write `~/Mail-Server/ociemail.config`, set `Environment=MAIL_SMTP_USER=` in the unit, `daemon-reload && restart` | — |
+| UAT | edit `~/mail-server/.env.uat`, then **`./auto_deploy.sh mail-server`** | **`docker restart` does NOT re-read `--env-file`.** The container keeps its original environment and keeps failing auth while the file on disk looks correct. It must be recreated. |
+| PROD | `kubectl -n api patch secret mail-server-secret`, then `rollout restart deployment/mail-server` | New pods fail their `/ready` startup probe until the credential propagates; the rollout stalls and old pods stay up. This is correct behaviour, not a failure. |
+
+Verify with `/ready` (a real SMTP login) on each, then a real send.
+
 ## Known gaps
 
-- **The OCI SMTP credential is shared by all three environments** and sits in
-  plaintext (`~/Mail-Server/ociemail.config` on DEV, k8s Secret on PROD). It has
-  been exposed in a chat transcript and should be rotated; per-environment
-  credentials would let one be revoked without affecting the others.
+- **The OCI SMTP credential is still shared by all three environments** and sits
+  in plaintext (`~/Mail-Server/ociemail.config` on DEV, k8s Secret on PROD).
+  Per-environment credentials need **separate IAM users** — the 2-per-user quota
+  makes it impossible on one user. Creating a service user is also non-trivial:
+  the IDCS domain requires a primary email, so it fires an activation mail at a
+  real address, and a new policy is needed because the current credential only
+  works by virtue of belonging to a member of `Administrators`.
+- **The credential belongs to `neston.alex@pluginlive.com`, a named human in the
+  `Administrators` group.** All platform email authenticates as that person; if
+  the account is deactivated, every environment stops sending.
 - Only `mandate@pluginlive.com` is an approved sender (compartment
   PluginLivePROD), so all environments share a From address and are distinguished
   only by the `[UAT]` subject tag.
