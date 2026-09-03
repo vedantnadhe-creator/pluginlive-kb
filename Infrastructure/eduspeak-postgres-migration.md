@@ -1089,3 +1089,51 @@ zero.
 `eduspeakreact` container is still `eduspeakreact:8e58cf54` — **57 commits behind** the checkout.
 Rebuilding the image to ship this two-line fix necessarily ships those 57 previously-undeployed
 commits too, which is a far larger release than the bug warrants and needs an explicit decision.
+
+## 2026-09-03 — "Publish failed: there is no unique or exclusion constraint matching the ON CONFLICT specification"
+
+Teacher Portal → Create Test → **Publish to students** failed every time with Postgres **42P10**.
+
+`TeacherPortal.tsx` upserts the generated questions with
+
+```ts
+.from("question_bank")
+.upsert(insertRows, { onConflict: "question,subject,class_level,board,language,mode" })
+```
+
+but `question_bank` carried **only a primary key on `id`**. The nearest index,
+`idx_question_bank_unique`, covers **five** of those columns and **omits `board`**, so it does not
+satisfy the ON CONFLICT target — Postgres rejects the whole statement, no questions are written, and
+publish fails. The other upsert in the same flow (`assessment_assignments` on
+`assessment_id,student_profile_id`) was always fine; its unique constraint exists.
+
+Fixed by adding the matching index:
+
+```sql
+CREATE UNIQUE INDEX IF NOT EXISTS question_bank_natural_key_idx
+  ON public.question_bank (question, subject, class_level, board, language, mode);
+```
+
+**Safe to add with no cleanup** — checked first: 2388 rows, **no NULLs** in any of the six key
+columns, **zero duplicate groups** over them, and max combined key size 738 bytes (btree limit is
+~2704, so the `text` question column indexes fine at current lengths).
+
+Verified through PostgREST with a real teacher session: the same upsert returns **201 then 200** on a
+repeat, i.e. the conflict target resolves and the operation is idempotent. Probe row deleted after.
+
+**This one needed no frontend deploy.** The failure was server-side, and the running
+`eduspeakreact:8e58cf54` bundle already sends exactly
+`question,subject,class_level,board,language,mode` (confirmed by grepping the container's built
+assets), so the index fixes the deployed app immediately.
+
+Pushed to `DB-Scripts` as
+`EduSpeak Postgres Migration/20260903T095110Z__pilvidya_question_bank_natural_key_unique_index.sql`
+(`a681fad`) and into the app repo's `supabase/migrations/` (`e82c3028`) so a fresh environment gets
+it too. PROD marked pending — no PilVidya PROD exists.
+
+**Left deliberately in place: `idx_question_bank_unique`.** It is *stricter* than the new index
+because it ignores `board`, so the same question text cannot exist for two different boards. Whether
+that is intended is a data-model decision, not a bug fix. While it stands, a legitimately cross-board
+insert raises a duplicate-key error that the calling code swallows (`if (uploadError &&
+!/duplicate key|unique constraint/i.test(...)) throw`), so the row is **silently skipped rather than
+reported**. Worth a decision.
