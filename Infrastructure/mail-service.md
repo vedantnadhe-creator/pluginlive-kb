@@ -125,9 +125,20 @@ of inserting a duplicate. Recipients dropped by the allowlist come back in
 ## Auth
 
 `/send-email` had **no authentication at all** while being internet-reachable.
-Enforced on **UAT and PROD since 2026-09-03**; **off on DEV**, because the side
-projects on that box (ucat, pilvidya, banking) also relay through it and have not
-been verified to send the header.
+Enforced on **UAT and PROD since 2026-09-03**; **off on DEV**.
+
+The DEV blocker is specific: **MedVerse** (a live product on a separate cluster)
+sends through this relay via `mail.prod.pluginlive.com`, and its manifest carries
+`PLUGINLIVE_MAIL_AUTH_KEY` set to the same shared key — but its send code
+(`reapply-pluginlive-mail.py`) is not on the DEV box, so it cannot be confirmed
+that the header is actually transmitted rather than merely configured. If it is
+not, enforcing DEV auth silently breaks MedVerse login OTPs.
+
+**To close it:** the DEV relay now runs gunicorn with `--access-logfile -`, so
+callers appear in `journalctl -u mail.service`. Watch for a real MedVerse send,
+confirm it carries `auth-key`, then set `MAIL_REQUIRE_AUTH=true` in the unit.
+Before that change there was no access logging at all, which is why the caller
+set was unknown.
 
 **The relay's `MAIL_AUTH_KEY` must equal the `AUTH_KEY` the callers already
 send** — do not generate a fresh secret for it. `admin-node` (all five call
