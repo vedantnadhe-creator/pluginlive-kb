@@ -26,6 +26,22 @@ endpoint that sends as `mandate@pluginlive.com` to the internet.
 **PROD traffic never leaves the cluster.** Callers use the Service DNS name, so
 there is no public hostname, no TLS certificate and no DNS record in the path.
 
+### DNS: the apex is Route 53, the environment subdomains are OCI
+
+Easy to get wrong. `dig NS pluginlive.com` returns AWS (`ns-*.awsdns-*`), but
+**`dev.pluginlive.com`, `uat.pluginlive.com` and `prod.pluginlive.com` are each
+delegated to OCI DNS** (`ns*.p201.dns.oraclecloud.net`) and exist as zones in the
+matching OCI compartment. They are writable with the OCI CLI on the DEV box:
+
+```bash
+oci dns record domain get --zone-name-or-id prod.pluginlive.com \
+  --domain mail.prod.pluginlive.com --compartment-id <PluginLivePROD ocid>
+```
+
+So any `*.dev|uat|prod.pluginlive.com` hostname can be created without AWS access.
+Only apex-level records — `pluginlive.com` itself, `MX`, `SPF`, `DMARC` — need
+Route 53.
+
 ### The `mail.prod.pluginlive.com` trap (historical)
 
 That hostname resolves to **129.154.231.72 — the DEV box's public IP**. The name
@@ -80,13 +96,22 @@ delivery/bounce event updates the existing `assessment.email_events` row instead
 of inserting a duplicate. Recipients dropped by the allowlist come back in
 `blockedRecipients`.
 
-## Auth (staged, not yet enforced)
+## Auth
 
 `/send-email` had **no authentication at all** while being internet-reachable.
-`MAIL_REQUIRE_AUTH` now exists but ships `false` in all three environments.
-Callers already send the `auth-key` header (`admin-node` at all five call sites,
-`user-management-node`, `form-data-normalization`), so flipping it to `true`
-is a per-environment config change — verify a send after each flip.
+Enforced on **UAT and PROD since 2026-09-03**; **off on DEV**, because the side
+projects on that box (ucat, pilvidya, banking) also relay through it and have not
+been verified to send the header.
+
+**The relay's `MAIL_AUTH_KEY` must equal the `AUTH_KEY` the callers already
+send** — do not generate a fresh secret for it. `admin-node` (all five call
+sites), `user-management-node` and `form-data-normalization` all send
+`auth-key: <their AUTH_KEY>`, and on PROD/UAT that is one shared value. Setting
+the relay to anything else 401s every send and takes mail down.
+
+`form-data-normalization` additionally **refuses to send at all** when its
+`EMAIL_AUTH_KEY` is unset (`services/mailer.py:225`) — it was unset on PROD, so
+export notification mail was silently disabled there until 2026-09-03.
 
 ## No fallback endpoint
 
@@ -154,3 +179,22 @@ Verify with `/ready` (a real SMTP login) on each, then a real send.
 - The DEV relay has **no allowlist**, because the side projects on that box send
   OTPs to real external users through it. Those should move to their own instance
   before DEV can be locked down.
+
+
+## Outbound deliverability: SPF does not cover OCI
+
+The apex SPF record is `v=spf1 include:_spf.google.com ~all` — it authorises
+**Google Workspace only**. Everything the platform sends goes out through **OCI
+Email Delivery**, whose senders are therefore **not SPF-authorised** for
+`pluginlive.com`. With `~all` (softfail) mail is still accepted by most receivers
+but is a spam-foldering risk, and it weakens any bounce/complaint story.
+
+There is also **no DMARC policy**. `_dmarc.pluginlive.com` appears to answer, but
+that is a **wildcard `*.pluginlive.com TXT "MS=ms24378662"`** catching every
+lookup — no record starts with `v=DMARC1`. The same wildcard makes DKIM selector
+probing meaningless: every `<anything>._domainkey.pluginlive.com` "resolves".
+
+Fixing this means adding OCI's SPF include to the apex TXT record, publishing the
+OCI DKIM selector, and adding a real DMARC record — **all apex records, so all in
+Route 53.** MX points at Google Workspace, so tread carefully: a mistake in these
+records affects the company's own mail, not just platform sending.
