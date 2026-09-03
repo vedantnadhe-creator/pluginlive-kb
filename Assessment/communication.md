@@ -244,6 +244,62 @@ Shipped to `assessment-react-v2` Development (`e6fd99a`) and UAT (`e0af495`).
 Both DEV and UAT were deployed and verified — no DEV URLs in the UAT bundle, no
 page errors on load.
 
+### v2 timer expiry stores the response instead of discarding it (2026-09-03)
+
+A timed Communication exercise in `assessment-react-v2` used to treat an
+*unfinished* response as *no* response. When the clock ran out,
+`EXPIRE_COMMUNICATION_TIMER` deleted the answer from the attempt and the take
+page overwrote it server-side with the `"not attempted"` marker via
+`saveCommunicationTimeout`. The candidate's work disappeared at the one moment
+they could no longer do anything about it.
+
+**Image-based responses (Question Based Response) were the worst hit**, because
+their completion rule is the strictest: `isAnswered()` requires
+`IMAGE_DESCRIPTION_MIN_WORDS` = **60 words**. A candidate who wrote 40 words in
+the 4-minute window had, by that rule, "not answered" — so the whole
+description was thrown away. The same gap applied to any surface whose
+completion rule sets a floor:
+
+| Exercise | Clock | Completion rule (`isAnswered`) | What was lost on expiry |
+|---|---|---|---|
+| Question Based Response (image) | 240s / section | ≥ 60 words | any description under 60 words |
+| Email Writing | 300s / section | subject **and** body non-empty | a body written with no subject (and vice versa) |
+| Sentence Build | 180s / question | every item placed | a partial arrangement |
+| Dictation, Sentence Completion | 25s / question | non-empty text | nothing — empty is genuinely not attempted |
+| Paragraph Reading, Audio Question | 90s / 150s per section | an option selected | nothing — MCQ has no partial state |
+
+Note that **v1 (`Assessment-React`) never had this bug**: its
+`isSectionAnswered` waives the word floor once the clock is up
+(`questionBasedResponse.trim().length >= 50 && (questionBasedTimeUp || wordCount >= 60)`)
+and its expiry effect saves `questionBasedResponse.trim() || "not attempted"`.
+So the two runners disagreed, and only v2 lost work.
+
+**Current behaviour.** `hasResponse(question, answer)` in
+`src/app/_mock/exam.ts` is the new predicate for *the candidate put something
+in here*, separate from `isAnswered` (*they finished it*). It differs only for
+`text` (any non-blank), `email` (subject **or** body) and `reorder` (any item
+placed); every other surface defers to `isAnswered` because it has no state
+between untouched and answered. On expiry:
+
+- a question with a response is **kept in the attempt and submitted**, and is
+  explicitly pushed to `save-response` with its real value;
+- only a genuinely empty question gets the `"not attempted"` marker.
+
+The explicit save matters on its own: per-keystroke saving is debounced by
+800ms and the debounce timer is cancelled when the question unmounts, so the
+final seconds of typing — the seconds a running-out clock guarantees exist —
+previously reached the server only at module submit, or not at all.
+
+Unchanged: the *pre-expiry* gate. While the clock is still running, Next/Finish
+stays disabled until `isAnswered` passes, so the 60-word minimum is still a
+real requirement — it is just no longer a reason to delete what was written.
+The whole-assessment clock (`EXPIRE_ASSESSMENT_TIMER`) never discarded answers
+and is untouched; no other assessment type has per-section timers.
+
+Shipped to `assessment-react-v2` Development (`74c7a29`) and UAT (`79cc5ef`).
+Both DEV and UAT deployed and verified — HTTP 200, no DEV URLs in the UAT
+bundle. PROD pending.
+
 ---
 
 ## File Reference
