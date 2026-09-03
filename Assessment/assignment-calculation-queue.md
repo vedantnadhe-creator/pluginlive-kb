@@ -131,6 +131,23 @@ unattempted. A 14/30 aptitude drop-off scored 3/60 on PROD, not a pro-rated mark
 `calculation_attempts=0` and `calculation_error=false` means it was never eligible
 — almost always zero stored answers, or a `dropped_at` older than the lookback.
 
+**The read side had the same gate, mirrored (admin-node, 2026-09-02, DEV + UAT;
+PROD pending).** Writing the score was only half of it: three admin read paths
+enriched a row with its scores only `if (is_submitted)`, so a scored drop-off came
+back **identity-only** — `scoresCalculated: true` but `score: null`. The Mix & Match
+float rendered a dash, the report drawer showed an unscored attempt, and Excel
+exported blank cells, all while the scores sat in `communication_scores` /
+`aptitude_scores`. Fixed by reading `scores_calculated` alongside `submitted` in
+`app/models/Assessment.js` — the college list (~L1045), the corporate list (~L1808),
+and `getStudentAssessmentScores` (~L19775, which serves **both** the float report and
+the per-student drawer). The comment already above the college gate had said it:
+*gating on flags cannot be made correct — the score row existing is the only signal
+that matches what the report shows.* Submitted rows are unaffected; a row that is
+neither submitted nor scored still returns early and still costs no lookup.
+
+**So a drop-off needs BOTH halves deployed to show a score:** student-node to write
+it, admin-node to render it. Either one alone looks like the feature does not work.
+
 ### Retry model (Model A — sweeper-driven) + the stable-jobId gotcha
 
 On a scoring failure the worker does **NOT** throw — it catches, increments
