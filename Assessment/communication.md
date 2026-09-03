@@ -777,3 +777,47 @@ real container, mirroring what the audio path already did.
 **Historical attempts do not self-heal.** Recordings uploaded between 6 July and
 20 August are in object storage but were never linked, and those attempts are
 already scored.
+
+---
+
+## A Sentence Completion blank renders where the underscores are (2026-09-03)
+
+Sentence Completion sentences are stored with the blank marked inline, e.g.
+`To learn a new language, you must _____ every single day.`, and every renderer
+splits the sentence on that marker to place the answer box. The marker length
+was never actually agreed on between the generator and the renderers, so a
+sentence whose blank was a **single underscore** drew its input box at the
+**end** of the sentence instead of in the gap.
+
+**The renderers only recognised runs of underscores.** v1 matched `/_{3,}/` in
+three places — `Communicationassmt/assessment.js`, `Hinglishassmt/assessment.js`
+and the report's `score-drawer.js`; the v2 candidate app matched `/_{2,}/` in
+`src/lib/sentenceCompletion.ts`. All four share the same fallback: when nothing
+matches, the whole sentence becomes the *before-blank* segment and the empty
+string becomes the *after* segment, so the box lands after the full stop. There
+was no error and no log line — the question simply read as if the blank were
+missing. All four now match `/_+/`, so any underscore run is a blank.
+
+**The single underscore came from a self-contradicting prompt.** In
+`fastapi-ai-engine`, `QuestionGeneration/Communication/question_generator.py`
+and `QuestionGeneration/Hinglish/question_generator.py` asked for *"a sentence
+with a single blank (_)"* on one line and *"5 sentences with blanks (_____)"*
+on the next. The model usually followed the second line, occasionally the
+first — which is why the fault was rare and non-deterministic rather than
+constant. Both lines now say `_____`. The contradiction was introduced by
+`79ce469` (2025-09-10), and the oldest affected question group on PROD dates
+from 2025-09-22, immediately after.
+
+**Scale on PROD when this was found:** 15 of 4,440 Sentence Completion
+sub-questions carried a single underscore (~0.3%), spread over exactly three
+question groups — 2025-09-22, 2026-09-02 and 2026-09-03 — reaching **127
+assigned candidates** across sets `72a8b726` (58) and `bcc8fb44` (68).
+
+**Scoring was never affected.** Grading compares the typed word against the
+answer, not the rendered sentence, so affected attempts were marked correctly;
+the damage was comprehension — the candidate had to infer where the gap was.
+Because the renderers now accept a single underscore, **existing questions
+render correctly without a data migration**; nothing needs backfilling.
+
+Fixed on DEV and UAT 2026-09-03 (`assessment-react`, `assessment-react-v2`,
+`fastapi-ai-engine`). **PROD pending** — PROD still serves the `/_{3,}/` bundle.
