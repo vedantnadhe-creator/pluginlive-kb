@@ -1,0 +1,122 @@
+# Mail Service (per-environment relay)
+
+## What it is
+
+An HTTP front for OCI Email Delivery. Everything that sends email on the
+platform — assessment invites, reminders, OTPs, assign-job summaries,
+normalisation export notifications — POSTs to it.
+
+Repo: `PluginLive-Technologies/Mail-Server`.
+
+## Topology (as of 2026-09-03)
+
+One instance per environment. Before this date there was exactly **one**
+instance, on the DEV box, and DEV, UAT and PROD all sent through it.
+
+| Env | Endpoint | Runs as | Sender | Allowlist |
+|---|---|---|---|---|
+| DEV | `http://172.17.0.1:5010/send-email` | `mail.service` (systemd, gunicorn) on the DEV box | `mandate@pluginlive.com` | none |
+| UAT | `http://172.17.0.1:5010/send-email` | container `mail-server-uat` on the UAT box | `mandate@pluginlive.com`, subject tagged `[UAT]` | `pluginlive.com,icanio.com` |
+| PROD | `http://mail-server.api.svc.cluster.local/send-email` | Deployment `mail-server` in k8s ns `api`, 2 replicas | `mandate@pluginlive.com` | none (must reach real candidates) |
+
+**The DEV and UAT relays bind to the docker bridge IP (`172.17.0.1`), not
+`0.0.0.0`.** Neither box filters INPUT, so binding publicly would expose an
+endpoint that sends as `mandate@pluginlive.com` to the internet.
+
+**PROD traffic never leaves the cluster.** Callers use the Service DNS name, so
+there is no public hostname, no TLS certificate and no DNS record in the path.
+
+### The `mail.prod.pluginlive.com` trap (historical)
+
+That hostname resolves to **129.154.231.72 — the DEV box's public IP**. The name
+was aspirational; the instance behind it was always the DEV one. Until
+2026-09-03 the PROD k8s ConfigMap `auth-api-config` pointed at it, PROD
+admin-node reached it through a hardcoded source fallback, and PROD
+form-data-normalization reached it through a settings.py default. Production
+invites, reminders and OTPs were therefore relayed by a developer machine
+running two gunicorn workers; UAT sends against it were returning intermittent
+504s (17 on the morning of the cutover).
+
+The hostname still resolves to the DEV box and still serves the side projects on
+it (ucat, pilvidya, banking, medverse). It is no longer in any platform path.
+
+## Configuration
+
+All settings are `MAIL_`-prefixed. The prefix is load-bearing: the DEV box
+exports `SMTP_HOST`/`SMTP_USER` machine-wide (pointing at a personal gmail
+account) and the old systemd unit exported a placeholder
+`SMTP_USER=...REPLACE_WITH_YOUR_OCI_SMTP_USERNAME`. Unprefixed names would have
+been silently hijacked by either.
+
+| Variable | Purpose |
+|---|---|
+| `MAIL_ENV` | Label in `/health` and every log line |
+| `MAIL_SMTP_HOST/PORT/USER` | Relay (default OCI Mumbai) |
+| `MAIL_SMTP_PASSWORD` / `MAIL_SMTP_PASSWORD_FILE` | Credential; inline or from a file |
+| `MAIL_SENDER`, `MAIL_SENDER_NAME` | From address (must be an OCI approved sender) |
+| `MAIL_SUBJECT_TAG` | Prefixed to subjects, e.g. `[UAT]`. Empty on prod |
+| `MAIL_ALLOWED_RECIPIENT_DOMAINS` | Comma list; empty = everyone |
+| `MAIL_AUTH_KEY`, `MAIL_REQUIRE_AUTH` | Shared secret on `/send-email` |
+
+Every default reproduces the original single-instance behaviour, so an instance
+started with no environment is unchanged. Safety features are opt-in per
+deployment because this service carries production OTP and invite mail.
+
+The service refuses to start if no SMTP password is available or if
+`MAIL_REQUIRE_AUTH` is on without a key. The container runs `gunicorn --preload`
+so a misconfiguration exits immediately rather than looping on worker restarts.
+
+## Endpoints
+
+| Method | Path | Purpose |
+|---|---|---|
+| POST | `/send-email` | Send. Body: `toAdresses[]`, `subject`, `text`/`html`, optional `ccAddresses`, `replyToAddresses` |
+| POST | `/test-email` | Fixed test message to `{"toEmail": "..."}` |
+| GET | `/health` | Liveness + effective configuration |
+| GET | `/ready` | Readiness: performs a real SMTP connect + login |
+
+Responses carry the `messageId` minted per send — callers persist it so an OCI
+delivery/bounce event updates the existing `assessment.email_events` row instead
+of inserting a duplicate. Recipients dropped by the allowlist come back in
+`blockedRecipients`.
+
+## Auth (staged, not yet enforced)
+
+`/send-email` had **no authentication at all** while being internet-reachable.
+`MAIL_REQUIRE_AUTH` now exists but ships `false` in all three environments.
+Callers already send the `auth-key` header (`admin-node` at all five call sites,
+`user-management-node`, `form-data-normalization`), so flipping it to `true`
+is a per-environment config change — verify a send after each flip.
+
+## No fallback endpoint
+
+`admin-node` and `form-data-normalization` used to default `EMAIL_ENDPOINT` to
+the prod hostname. Both now **throw at startup** when it is unset
+(`admin-node/app/helpers/mailRelay.js`, `form-data-normalization/config/settings.py`).
+A missing endpoint is a boot failure rather than a silent cross-environment send,
+so **every environment must set `EMAIL_ENDPOINT`** — DEV/UAT in the box-local
+`.env`/`.env.uat` (untracked, per box), PROD in the service's ConfigMap.
+
+## Deploying
+
+- **DEV**: `sudo systemctl restart mail.service` (unit at `/etc/systemd/system/mail.service`).
+- **UAT**: `./auto_deploy.sh mail-server` on the UAT box; checkout at
+  `~/mail-server`, config in `~/mail-server/.env.uat` (chmod 600).
+- **PROD**: build for **arm64**, push to `bom.ocir.io/bmv2bqg5gpcd/pl-mail-server`,
+  then `kubectl -n api set image deployment/mail-server mail-server=<tag>`.
+  Manifest kept at `~/mail-server-prod.yaml` on the PROD box; pull secret
+  `oracleregistry`; config in ConfigMap `mail-server-config` and Secret
+  `mail-server-secret`.
+
+## Known gaps
+
+- **The OCI SMTP credential is shared by all three environments** and sits in
+  plaintext (`~/Mail-Server/ociemail.config` on DEV, k8s Secret on PROD). It has
+  been exposed in a chat transcript and should be rotated; per-environment
+  credentials would let one be revoked without affecting the others.
+- Only `mandate@pluginlive.com` is an approved sender (compartment
+  PluginLivePROD), so all environments share a From address and are distinguished
+  only by the `[UAT]` subject tag.
+- The DEV relay has **no allowlist**, because the side projects on that box send
+  OTPs to real external users through it. Those should move to their own instance
+  before DEV can be locked down.

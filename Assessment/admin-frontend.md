@@ -408,7 +408,7 @@ The `getScore(newKey, oldKey)` helper checks `sectionScores` first, falling back
 ### Assessment Type Detection
 
 - **Communication**: Default when not aptitude, role-based, or custom
-- **Aptitude**: Detected if `student.aptitudeScores` exists OR `sectionScores` contains keys like `critical`, `quantitative`, `logical`
+- **Aptitude**: Detected if `student.aptitudeScores` exists OR `sectionScores` contains keys like `critical`, `quantitative`, `logical` OR the assessment's own type is Aptitude (`isAptitudeReport` in `Partials/aptitudeSections.js`, unit-tested in `aptitudeSections.test.js`). The type fallback was added 2026-09-03 (DEV + UAT; PROD pending): a part with no scores at all — an unscored drop-off, a candidate who never started — matched none of the data checks and fell through to the **Communication default**, so an Aptitude attempt was drawn as Total Score / Reading / Listening / Speaking and carried the face-detection *Proctoring Status* badge that aptitude does not use. Plainest in a Mix & Match float, where the Aptitude tab rendered a communication report.
 - **Role_Based**: Detected if `student.roleBasedScores` exists OR `student.assessmentType` contains `role_based`/`rolebased`
 - **Custom_Assessment**: Detected if `student.customAssessmentScores` exists OR `student.assessmentType` contains `custom`
 - **Behavior**: Detected if `student.behaviorScores` exists OR `student.assessmentType` contains `behavior`

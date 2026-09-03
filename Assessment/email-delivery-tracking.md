@@ -403,9 +403,11 @@ confirming fetch fails it logs the URL so it can be completed by hand.
 policy and secret. Nothing PROD depends on is shared with a lower environment.
 
 **But the source log stream cannot be separated per environment**, and this is
-the trap. Every environment sends through `mail.prod.pluginlive.com` as
-`mandate@pluginlive.com`, so *all* mail — DEV, UAT and PROD — lands in the
-PROD-compartment `pluginlive.com` logs. `Dev-Uat-Mail-Track` is effectively dead:
+the trap. Every environment still sends as `mandate@pluginlive.com` — the only
+approved sender — so *all* mail lands in the PROD-compartment `pluginlive.com`
+logs. (Until 2026-09-03 they also shared one relay; each environment now has its
+own, but the shared sender address means the log stream is still merged. UAT mail
+is at least identifiable by its `[UAT]` subject tag.) `Dev-Uat-Mail-Track` is effectively dead:
 over 7 days it carried **8 events against 5,902** in the PROD group on a single
 day. Removing the PROD log sources from `pl-email-logs-dev` therefore does not
 "unshare" anything — it silently kills DEV and UAT tracking, because that is
@@ -499,11 +501,14 @@ callbacks and ignores the ids it does not own.
   message, as an accept carrying `errorType: Recipient suppressed`, so no
   suppression-list snapshot is needed.
 - ~~**`messageId` is NULL on DEV and UAT.**~~ **Closed**: Mail-Server mints and
-  returns the id, and DEV/UAT rows carry it. But **DEV and UAT still send through
-  the production relay** — `EMAIL_ENDPOINT` is
-  `https://mail.prod.pluginlive.com/send-email` in every environment, and that
-  relay sends as `mandate@pluginlive.com`. That is why one log stream carries all
-  three environments.
+  returns the id, and DEV/UAT rows carry it.
+- ~~**DEV and UAT send through the production relay.**~~ **Closed 2026-09-03**:
+  each environment now runs its own relay (see
+  `Infrastructure/mail-service.md`). Note the relay named
+  `mail.prod.pluginlive.com` was never production — it resolves to the DEV box,
+  so PROD was the environment relaying through a developer machine. All three
+  still send as `mandate@pluginlive.com`, the only approved sender, which is why
+  one log stream continues to carry all three.
 - **PROD went live 2026-08-22** with a dedicated topic, connector and
   subscription, and `OCI_LOG_WEBHOOK_SECRET` added to the `admin-api-config`
   ConfigMap (the `.env` is mounted by subPath, so a `rollout restart

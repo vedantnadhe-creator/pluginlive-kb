@@ -148,6 +148,19 @@ neither submitted nor scored still returns early and still costs no lookup.
 **So a drop-off needs BOTH halves deployed to show a score:** student-node to write
 it, admin-node to render it. Either one alone looks like the feature does not work.
 
+**And a third half on the drawer itself (admin-react, 2026-09-03, DEV + UAT; PROD
+pending).** The report drawer worked out *which* report to draw purely from the data
+on the row — `aptitudeScores`, or aptitude keys on `sectionScores`. A part carrying
+neither (an unscored drop-off, a candidate who never started) fell through every
+branch to the language one, so an **Aptitude** attempt was drawn as Total Score /
+Reading / Listening / Speaking and carried the face-detection *Proctoring Status*
+badge that aptitude does not use. In a Mix & Match float it is unmistakable: the
+Aptitude tab rendered a communication report. The type is now the last word, the way
+it already was for behaviour, role-based and custom — `isAptitudeReport(student,
+type)` in `src/modules/Assessment/Partials/aptitudeSections.js`, covered by
+`aptitudeSections.test.js` (`node src/modules/Assessment/Partials/aptitudeSections.test.js`).
+Scored rows are unaffected: the scores still answer the question first.
+
 ### Retry model (Model A — sweeper-driven) + the stable-jobId gotcha
 
 On a scoring failure the worker does **NOT** throw — it catches, increments

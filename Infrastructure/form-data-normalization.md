@@ -272,9 +272,13 @@ environments share. Verified by submitting to both APIs at once: each worker
 logged only its own job and each email carried its own host.
 
 **Email delivery.** `notify_email` on the request opts in; the worker posts to
-`EMAIL_ENDPOINT` (`https://mail.prod.pluginlive.com/send-email`) with the
-`auth-key` header and `{fromAddress, subject, messageType, toAdresses, html}` —
+`EMAIL_ENDPOINT` — the environment's own mail relay, see
+`Infrastructure/mail-service.md` — with the `auth-key` header and `{fromAddress, subject, messageType, toAdresses, html}` —
 the same contract admin-node's `app/queues/assignmentNotify.js` uses.
+`EMAIL_ENDPOINT` has **no default** as of 2026-09-03: it previously fell back
+to `https://mail.prod.pluginlive.com/send-email`, a hostname that resolves to
+the DEV box, so an unset value silently relayed through a developer machine.
+Unset is now a startup validation error.
 **It carries a link, never the file**: that mail server has no attachment
 support and OCI Email Delivery caps a message at ~2 MB against a 90 MB export.
 Sends are best-effort and never fail the job; `notified_at` is stamped on
