@@ -222,6 +222,19 @@ v1's `AIInterview/ttsAudio.js` has the same defect and single-assessment invites
 still land there. Full write-up in
 [ios-device-support.md](ios-device-support.md).
 
+A third, running the other way — **v2 was the one missing a whole feature, and
+silently.** v1 records the entire AI interview and pushes it to storage every
+20s; v2 recorded the candidate per turn, used the blob for batch STT and
+delivery telemetry, and dropped it. Nothing reached storage, so the admin
+report's Audio button was empty for **every** interview v2 served: 0 of 16 PROD
+sessions between 2026-08-24 and 2026-09-04, against 13 of 17 for the v1 route
+over the same window. Nobody noticed for two weeks, because a v2 interview still
+transcribes, scores and reports perfectly — audio is completely decoupled from
+all of that. **The lesson for any port: a v2 screen looking and behaving right
+is not evidence that everything the v1 screen wrote is still being written.**
+Ported 2026-09-04 (`sessionRecorder.ts`, `sessionAudio.ts`, `uploadQueue.ts`);
+full write-up in [ai-interview.md](ai-interview.md).
+
 ## Deploying
 
 **DEV** — there is **no CI on this repo** (no `.github/workflows`, verified
