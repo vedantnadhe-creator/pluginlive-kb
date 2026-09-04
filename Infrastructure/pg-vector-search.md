@@ -162,8 +162,8 @@ New-role E2E on UAT: inserting `Senior Cloud Platform Engineer` fired the trigge
 DevOps & Cloud (357 → 358 postings), the devops cluster search contained the new
 role, and deleting the role took the count back to 357.
 
-**PROD state (2026-09-04, `release-v1.38-hotfix-1`):** 2,367 role rows, 762 unique
-titles, **129 clusters**, largest 237 postings, 74 singletons. The first PROD rebuild
+**PROD state (2026-09-04, `release-v1.38-hotfix-1` head `01bc924`):** 2,367 role rows,
+762 unique titles, **127 clusters**, largest 237 postings, 71 singletons. The first PROD rebuild
 generated all 2,367 vectors locally in **4 m 19 s** inside the pod (run through
 `kubectl exec` so the ingress timeout does not apply); later rebuilds reuse them.
 
@@ -179,12 +179,27 @@ Verified on PROD through `https://vector-search.prod.pluginlive.com` and
 
 | Query | PROD cluster | PROD candidates |
 | --- | --- | --- |
-| software developer / cloud engineer / devops / full stack | Software Engineering, DevOps & Cloud (214p) | 15,316 |
+| software developer / cloud engineer / devops / full stack / quality assurance tester | Software Engineering, DevOps & Cloud (236p) | 15,445 |
 | graduate engineering trainee | Engineering (General & Graduate Trainee) (237p) | 9,888 |
 | sales executive | Sales & Business Development (229p) | 5,249 |
 | accountant | Finance, Accounting & Banking (66p) | 1,878 |
 | nurse | Healthcare & Life Sciences (67p) | 125 |
 | graphic designer | Design, Content & Creative (84p) | 66 |
+
+**Software QA vs shop-floor quality (fixed 2026-09-04).** `quality assurance tester`
+returned Machine Operator and Operating Engineer Trainee: it matched
+`manufacturing_production`'s bare `\bquality assurance\b` pattern and nothing in
+software claimed it. `qa tester` and `quality analyst` matched no family at all and
+fell through to whatever graph cluster was nearest ("Technical Lead", "Analyst").
+`software_engineering` now claims `\bqa\b`, `\bquality (?:assurance |control )?(?:tester|analyst)\b`,
+`(?<!production )\btester\b`, `\bsoftware test` and the
+`automation|manual|functional|performance|regression|sanity|etl|api testing` forms.
+Two deliberate carve-outs: the negative lookbehind keeps `Production Tester` in
+manufacturing, and bare `\btesting\b` is left unmatched so test-data titles
+(`job role testing`, `tpo dashboard testing`) do not pollute the software family.
+The software family went 214 → 236 postings and now contains ETL Tester, Functional
+AI Tester, Performance Tester, QA Engineer, Sanity Testing, Tester, Testing Engineer,
+managing qa team and software testing.
 
 New-role lifecycle proven live in PROD: an `embedding_queue` UPDATE for an existing
 DevOps role was picked up by the in-pod worker and re-assigned via `taxonomy_family`
@@ -236,7 +251,7 @@ Implementation: `pg-vector-api-service` Development commits `bae86f9`, `c8457fb`
 `0480382`, `e0afeb4` on top of the original clustering commits `f200744`, `888c322`,
 `a862470`, `103f842`, `c84fdb8`, `386d664` (UAT merges `ae903d0`, `0ac8b52`,
 `c4b2ad3`, `508fa59`). PROD: `pg-vector-api-service` `release-v1.38-hotfix-1` head
-`2b8b094` (image `2026-09-04-05-25-04-release-v1.38-hotfix-1`) and
+`01bc924` (image `2026-09-04-08-48-52-release-v1.38-hotfix-1`) and
 `form-data-normalization` `release-v1.38-hotfix-1` head `98e974b` (image
 `2026-09-04-05-31-54-release-v1.38-hotfix-1`).
 
