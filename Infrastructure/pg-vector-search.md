@@ -134,9 +134,9 @@ never re-partitions, so periodic full rebuilds are still needed.
 | `POST /api/v1/admin/role-clusters/rebuild` | Full rebuild; accepts `neighbours`, `edge_threshold`, `resolution` |
 | `GET /api/v1/admin/role-clusters/{role_id}` | Family for a known role ID |
 
-**UAT state (2026-08-27, merge `c4b2ad3`):** 7,506 role rows, 1,586 unique
-titles, **303 clusters**, largest 587 postings (was 1,897), 201 singletons, all
-7,506 cached vectors reused — zero paid embedding calls, rebuild ~13 s. The largest
+**UAT state (2026-09-04, merge `508fa59`):** 7,508 role rows, 1,588 unique
+titles, **299 clusters**, largest 586 postings (was 1,897), 197 singletons, all
+cached vectors reused — zero paid embedding calls, rebuild ~13 s. The largest
 cluster is the UAT test-role tail (`Corporate role 1`, `scenario 4`, `Retest 011`),
 not a real profession.
 
@@ -162,6 +162,60 @@ New-role E2E on UAT: inserting `Senior Cloud Platform Engineer` fired the trigge
 DevOps & Cloud (357 → 358 postings), the devops cluster search contained the new
 role, and deleting the role took the count back to 357.
 
+**PROD state (2026-09-04, `release-v1.38-hotfix-1`):** 2,367 role rows, 762 unique
+titles, **129 clusters**, largest 237 postings, 74 singletons. The first PROD rebuild
+generated all 2,367 vectors locally in **4 m 19 s** inside the pod (run through
+`kubectl exec` so the ingress timeout does not apply); later rebuilds reuse them.
+
+PROD taxonomy coverage is far better than UAT's because PROD titles are real:
+**52% of titles / 64% of postings** match a family, versus 13% / 35% in UAT, whose
+`job_roles` is mostly test rows. The families were extended from PROD's own top
+titles — `graduate engineering trainee` (155 postings), `ml` (81), `java` (30),
+`ai researcher` (27), `computer operator` (10) — plus a deliberately last
+`engineering_general` catch-all for titles that name no discipline.
+
+Verified on PROD through `https://vector-search.prod.pluginlive.com` and
+`https://data-normalization.prod.pluginlive.com/api/student-metrics?role_search=`:
+
+| Query | PROD cluster | PROD candidates |
+| --- | --- | --- |
+| software developer / cloud engineer / devops / full stack | Software Engineering, DevOps & Cloud (214p) | 15,316 |
+| graduate engineering trainee | Engineering (General & Graduate Trainee) (237p) | 9,888 |
+| sales executive | Sales & Business Development (229p) | 5,249 |
+| accountant | Finance, Accounting & Banking (66p) | 1,878 |
+| nurse | Healthcare & Life Sciences (67p) | 125 |
+| graphic designer | Design, Content & Creative (84p) | 66 |
+
+New-role lifecycle proven live in PROD: an `embedding_queue` UPDATE for an existing
+DevOps role was picked up by the in-pod worker and re-assigned via `taxonomy_family`
+to the same cluster. The live PROD admin bundle already ships the Role Search field
+(`role_search` is present in `main.c488ac4f264dde2f94ea.js`), so no frontend release
+was needed.
+
+**PROD deployment mechanics** — neither service is in `autodeploy.sh`; both use
+hand-written scripts on the PROD box:
+- `~/pgvector_deploy_v138hf1.sh` — checkout branch, build with `ENVIRONMENT=prod`,
+  push to OCIR, `kubectl set image`.
+- `~/fdn_deploy_v138hf1.sh` — same, moving all **three** FDN deployments (api,
+  worker, cron) to one image. Its guards are inverted from `fdn_deploy_v138.sh`:
+  that script aborts if `ROLE_CLUSTER_SEARCH_URL` is present (written to keep the
+  revert in place); the hotfix script aborts if it is *missing*, and refuses to
+  build unless `SEMANTIC_ROLE_SEARCH_ENABLED=true` is in the prod env file. Note its
+  in-image pytest step is a no-op — the runtime image has no pytest and the failure
+  is swallowed by a pipe.
+- **Trap:** FDN's image bakes `/app/.env` from the PROD checkout, which is untracked,
+  hand-maintained, and drifted — its `POSTGRES_URL` still names the decommissioned
+  PG14 host `10.0.2.105`. It is harmless only because the k8s deployment sets
+  `POSTGRES_URL` inline at `10.0.6.104` and container env beats the env file. So set
+  FDN config with **`kubectl set env`**, not by editing
+  `repositories/envs/api/form-data-normalization.env` — that file becomes
+  `.env.prod`, which nothing reads.
+- Do **not** merge `Development` into a PROD branch for these repos: FDN's carries
+  unrelated corporate-bulk-upload work and pg-vector's carries LiteLLM gateway
+  tagging. Both PROD branches are minimal — pg-vector's `release-v1.38-hotfix-1` is
+  `release-v1.37` plus the ten clustering commits; FDN's is `release-v1.38` plus a
+  revert of the revert.
+
 Role clustering and cluster search make no paid embedding API calls. The model is
 baked into the service image and runs on CPU. This is separate from the existing
 Gemini-backed entity-normalizer fallback and its startup health check.
@@ -172,19 +226,19 @@ Backfill after deployment:
 curl -X POST 'https://vector-search.uat.pluginlive.com/api/v1/admin/role-clusters/rebuild?neighbours=12&edge_threshold=0.68&resolution=1.0'
 ```
 
-**Not in PROD.** `pg-vector-api-service` PROD runs `release-v1.37` and returns 404
-for `/api/v1/role-clusters/search`; `prod_pluginlive` has no `role_cluster*`
-tables. `form-data-normalization` `release-v1.38` carries commit `791b5f2`, an
-explicit revert of the cluster role search, and PROD FDN has no
-`SEMANTIC_ROLE_SEARCH_ENABLED`. PROD `corporate.job_roles` holds 2,361 rows
-(1,612 active) and already has the `trg_job_roles_embedding` trigger, so a PROD
-rollout needs: both services on a branch carrying the code, the three
-`role_cluster*` tables, one rebuild, and `SEMANTIC_ROLE_SEARCH_ENABLED=true`.
+**Live in PROD since 2026-09-04.** It was not before then: PROD ran
+`pg-vector-api-service` `release-v1.37` (404 on `/api/v1/role-clusters/search`),
+`prod_pluginlive` had no `role_cluster*` tables, and FDN `release-v1.38` carried
+`791b5f2`, an explicit revert of the cluster role search. All three are addressed by
+the `release-v1.38-hotfix-1` line in both repos.
 
-Implementation: `pg-vector-api-service` Development commits `bae86f9` and the
-delete-cleanup follow-up (UAT merges `ae903d0`, `0ac8b52`), on top of the original
-clustering commits `f200744`, `888c322`, `a862470`, `103f842`, `c84fdb8`,
-`386d664`.
+Implementation: `pg-vector-api-service` Development commits `bae86f9`, `c8457fb`,
+`0480382`, `e0afeb4` on top of the original clustering commits `f200744`, `888c322`,
+`a862470`, `103f842`, `c84fdb8`, `386d664` (UAT merges `ae903d0`, `0ac8b52`,
+`c4b2ad3`, `508fa59`). PROD: `pg-vector-api-service` `release-v1.38-hotfix-1` head
+`2b8b094` (image `2026-09-04-05-25-04-release-v1.38-hotfix-1`) and
+`form-data-normalization` `release-v1.38-hotfix-1` head `98e974b` (image
+`2026-09-04-05-31-54-release-v1.38-hotfix-1`).
 
 > **Known issue (partially fixed, 2026-08-11) — degree aliases must resolve to the canonical master.**
 > `/normalize/multi` with `entity_types=["degree","degree_level"]` for input `"B.E./B.Tech"` returns the
