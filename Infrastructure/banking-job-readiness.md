@@ -1436,3 +1436,71 @@ no effect on playback. Nothing to fix.
 not exist on that table either — a guaranteed 400 on institute dashboards, same class of bug,
 different screen. Left alone because the right fix (join through `students`, or add the column) is a
 design decision rather than a rename.
+
+## 2026-09-04 — redeployed to `473cd03` (5 commits pulled, then 3 fix commits) — two security regressions caught and reverted before shipping
+
+5 commits forward from `727cbea`: CORS on OTP login, an Assessment Reports student menu, a
+candidate-not-found fallback, and a "Fix SMS gateway auth" commit that was reviewed line-by-line
+before deployment because its own diff looked wrong.
+
+### Two real security regressions were caught and NOT deployed
+
+**1. `update-sms-gateway` — the spoofable admin bypass came back.** The incoming commit replaced
+the JWT + `user_roles` admin check (fixed 2026-09-03, see above) with a fallback: when no
+`Authorization` token is present, it trusts a client-supplied `x-admin-email` header outright. Any
+caller could set that header to any admin's address and reach SMS gateway settings with zero
+authentication — the exact hole the earlier fix closed. It also doesn't compile as written:
+`adminEmail` is declared `const` inside the `else` block and assigned without declaration in the
+`if` branch above it, which throws at runtime for the no-token path. **Reverted** — restored the
+JWT-only version.
+
+**2. `previewAuthStorage.ts` — session token broadcast to any origin.** Changed
+`window.parent.postMessage(msg, origin)` (looped over `editorOrigins`, a validated allowlist) to
+`window.parent.postMessage(msg, '*')` — directly under a comment reading *"targetOrigin per trusted
+editor origin, so a session token never reaches an arbitrary embedder."* The wildcard defeats
+exactly the protection that comment describes; any page that embeds the app as `window.parent` could
+read the brokered Lovable-preview session token. **Reverted** to the per-origin loop. This file is
+marked "automatically generated. Do not edit it directly" — the generator itself produced the
+regression.
+
+Both reverts pushed as `c81721d`, with the legitimate part of that commit
+(`student_module_progress.last_accessed` on save) kept.
+
+### One real syntax bug found and fixed
+
+`generate-candidate-path`'s new "candidate not found → beginner path" branch was missing its closing
+brace **and** a return statement. Execution fell through into the found-candidate code path — which
+queries `student_solved_challenges` keyed on `candidate.name` while `candidate` was still null in
+that branch. `src/test/edgeFunctionSecurity.test.ts` (parses every edge function entrypoint) caught
+it: `TS1005 'try' expected` / `TS1472 'catch' or 'finally' expected`. Fixed by closing the block and
+adding `return new Response(JSON.stringify({ success: true, path }), ...)`, matching every other
+branch's response shape. Verified live: an unknown `candidateId` now returns 200 with a real
+beginner path instead of throwing. Pushed as `af0fd4d`.
+
+### One RBAC gap found and fixed
+
+`src/test/menuRbacReconciliation.test.ts` failed: the new `assessment-reports` menu key (added to
+`AppSidebar.tsx` / `candidateAccess.ts` by the "Add Assessment Reports menu" commit) was never added
+to `20260717203000_commercial_plan_menu_rbac_mapping.sql`, so it had no per-plan access row — every
+other student menu item has one. Added, gated the same as `my-analytics` (excluded from free tier,
+included from beginner up). **Note the test reads one specific migration file by path, not a live DB
+query** — a standalone new migration file satisfies the DB but not the test; the fix has to land in
+that seed file's own `values` list. Applied directly to the live DB (idempotent `ON CONFLICT`
+upsert) and added to the seed migration for the next fresh environment. Pushed as `473cd03`.
+
+### Standard checks
+
+| Check | Result |
+|---|---|
+| Migration (`supabase/fix_student_usage.sql`, loose file not under `migrations/`) | fully idempotent against current state — `students`/`student_usage_daily`/`record_student_usage` already existed with matching shape from the 2026-09-02 release; effectively a no-op confirming consistency |
+| Edge functions synced | `candidate-otp-login`, `generate-candidate-path` (post-fix); `update-sms-gateway` deliberately **not** synced from origin |
+| Frontend | rebuilt (`index-ClWmF_mQ.js`); hash matches the 42P10-fix build since the RBAC change is DB-only |
+| Tests | 406 passed / 407 — the one failure is the standing upstream `videoAutoLink` issue |
+| Logins | candidate driven through the real UI to `/dashboard`; "Assessment Reports" now renders in the sidebar |
+| Auth regression re-verified post-fix | admin JWT → 200; spoofed `x-admin-email` with no token → 401 |
+| Rollback | `~/banking-predeploy-20260904T083302Z/` + `dist.bak-predeploy-20260904T083302Z` |
+
+**Process note:** this release is the reason to actually read a "fix" commit's diff before deploying
+it, not just its message — a commit titled "Fix SMS gateway auth" reintroduced the exact
+vulnerability an earlier fix had closed, and "Fix candidate not found 404" shipped a syntax error
+that would have taken the function down for every caller, not just the 404 case.
