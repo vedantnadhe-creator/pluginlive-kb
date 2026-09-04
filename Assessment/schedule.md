@@ -197,6 +197,7 @@ The assessment creation form supports "Scheduled" distribution mode:
 ## Key Concepts
 
 - **Date-Based Frequency** — unlike traditional cron patterns, schedules use an explicit array of dates. This allows irregular/custom scheduling (e.g., every Monday, specific exam dates, etc.)
+- **Schedule edits preserve triggered dates (fixed 2026-09-04; DEV + UAT)** — `updateAssessmentSchedule` reconciles an edited `frequencyValue` with the schedule's existing map start dates. Dates that already produced a run remain immutable history; the submitted list replaces the still-untriggered plan, so future dates can be added or removed. The merged list is de-duplicated and sorted. Previously replacing four historical dates with four future dates left four maps against a four-item plan, and `getScheduleInfo` calculated zero remaining Upcoming rows even though all four configured dates were future. Helper: `admin-node/app/helpers/scheduleFrequency.js`; commits `bb0188e` (Development), `9cec513` (UAT).
 - **Atomic Locking** — database-level `FOR UPDATE SKIP LOCKED` prevents double-processing even with multiple scheduler instances
 - **Self-Healing Locks** — stale locks (> 5 minutes) are automatically ignored, preventing stuck schedules
 - **Validity Window** — each assignment gets `startDate = today` to `endDate = today + validityDays`, giving students a fixed window
