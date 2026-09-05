@@ -5,6 +5,11 @@ list, a per-assessment detail page and a full schedule, all in
 `corporate-react-v2` under `/v2`, backed by ten new read endpoints on
 **`corporate-node`** (the v1 API), not `corporate-node-v2`.
 
+**Creating** an assessment is a separate story: the Create-Assessment wizard
+(`/v2/assessments/new`) does NOT go to corporate-node at all — it reuses
+**admin-node's existing `/assessment/*` endpoints**. See
+[Creating an assessment](#creating-an-assessment-the-float-wizard) below.
+
 | Screen | Route | Feeds from |
 |---|---|---|
 | Dashboard | `/v2/dashboard` | `dashboard/v2/summary`, `dashboard/v2/assessment`, `dashboard/v2/filters` |
@@ -289,3 +294,79 @@ root bounces a signed-in recruiter to the login screen.
 UAT now carries open assessments (288 floats, 9 active as of 2026-08-31), so
 the schedule's week view populates. The earlier "Nothing open" state was the
 data being stale, not a bug.
+
+
+## Creating an assessment — the float wizard
+
+*(LIVE on DEV + UAT since 2026-09-05.)*
+
+`/v2/assessments/new` is a 4-step wizard (Setup → Configuration → Send →
+Review and Float), a port of admin-react-v2's float flow. The **UI shipped
+before the backend did**: for a while every one of its BFF routes was a dummy
+stub returning fixed data. They are now wired to the real service.
+
+**No new backend was written.** The wizard reuses admin-node's `/assessment/*`
+endpoints verbatim — the same ones admin-react-v2's wizard calls — rather than
+duplicating several hundred lines of assign/provision/invite logic into
+corporate-node-v2:
+
+| BFF route (`corporate-react-v2`) | admin-node endpoint |
+|---|---|
+| `GET /api/entities/assessment-types` | `getSubscribedAssessmentByCorporate` + `getInstituteSubscriptionQuota` |
+| `GET /api/assessments/aptitude-topics` | `getAptitudeTopics` |
+| `POST /api/assessments/ai-interview/suggest-parameters` | `/ai-interview/suggest-parameters` |
+| `POST /api/candidates/parse-sheet` | `parseCandidateSheet` |
+| `GET/POST /api/entities/recipient-lists` | `getStudentLists` / `saveStudentList` |
+| `POST /api/assessments/mix-match` (the float) | `createSectionquestions` (Custom only), then `assignMixMatchAssessment` |
+
+### Why a corporate JWT is allowed to call admin-node
+
+`assignMixMatchAssessment` is `isPrivate: true` — it needs *a* valid PluginLive
+JWT, but has **no per-entity role check**; it reads `entityType`/`entityId`
+from the request BODY. A corporate recruiter's token is a valid token, and on
+both DEV and UAT **`corporate-node`'s `LOGIN_SECRET_KEY` and `admin-node`'s
+`JWT_SECRET_KEY` are the same secret**, so it verifies.
+
+Because admin-node trusts the body, **the BFF is the security boundary**: every
+route above derives the corporate from the forwarded JWT
+(`corporateIdFromRequest`) and pins `entityType: "corporate"`. The browser
+sends a stand-in `entityId` of `"me"`, which is ignored for scope — a recruiter
+cannot float for another corporate.
+
+**Auth asymmetry worth knowing:** corporate-node verifies `issuer`/`audience`
+(`pluginlive.com`); admin-node does not pass those options at all. A token
+minted without `iss`/`aud` works against admin-node but 401s on corporate-node
+with `jwt audience invalid`.
+
+### Corporate floats only
+
+`broadcast` and `recurring` schedules are college-only
+(`unschedulableSelectionReason` refuses any non-college segment), so the wizard
+never offers them here. `mix-match` implements only the one-time corporate path
+and rejects the other two explicitly, since the draft is client input. There is
+no degree/department cohort — a corporate candidate needs none.
+
+### Config gotcha — `ADMIN_API_URL`
+
+The wizard needs **`ADMIN_API_URL`** in `corporate-react-v2`'s environment
+(DEV `https://api-admin.dev.pluginlive.com/`, UAT
+`https://api-admin.uat.pluginlive.com/`). It lives in `.env.local`, which is
+**gitignored** — so it does NOT arrive with a branch merge and must be set on
+each box by hand. Without it every wizard route 502s and the log says
+`ADMIN_API_URL is not configured`. This is exactly what happened on the first
+UAT rollout.
+
+### Known parity quirk
+
+admin-node answers the float with **`mixMatchGroupId`**, but
+`StepReviewAndFloat` reads `result.groupId` for its redirect, so the `groupId`
+query param is never set. Harmless (the confirmation dialog keys off
+`floated`/`name`/`count`) and **admin-react-v2 behaves identically** — parity,
+not a regression.
+
+### Ports differ per environment
+
+`corporate-react-v2` listens on **:3012 on DEV** but **:3014 on UAT** (where
+:3012 is `institute-react-v2`). nginx `corp-react.conf`'s `location /v2`
+proxies to the right one; check the unit's `Environment=PORT` before curling a
+box directly.
