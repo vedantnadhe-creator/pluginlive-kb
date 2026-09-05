@@ -1504,3 +1504,19 @@ upsert) and added to the seed migration for the next fresh environment. Pushed a
 it, not just its message — a commit titled "Fix SMS gateway auth" reintroduced the exact
 vulnerability an earlier fix had closed, and "Fix candidate not found 404" shipped a syntax error
 that would have taken the function down for every caller, not just the 404 case.
+
+## 2026-09-05 — pulled `e0d0303`, test-only, no redeploy action needed
+
+1 commit forward from `473cd03`: "Add Assessment Reports navigation tests and student journey
+enhancements to E2E test suite" — adds `tests/e2e/student-journey.spec.ts` (a mocked-fixture
+Playwright spec) and a committed `test-results.txt` binary artifact. **No migration, no app source,
+no edge function.**
+
+Pulled clean, `.env` untouched. No frontend rebuild or function restart performed — nothing shipped
+to users changes when only a test file lands. Verified anyway: `npx vitest run` still 406/407 (same
+standing `videoAutoLink` failure, unaffected), all 7 containers up, site/REST/auth all 200, served
+bundle hash unchanged (`index-ClWmF_mQ.js`, expected since no source changed).
+
+Worth a nudge to the team: `test-results.txt` is a binary Playwright output artifact committed
+straight to `main` — that's normally `.gitignore`d, not tracked, since it's regenerated on every
+run and only bloats history. Not fixed here since it's a repo-hygiene call, not a deploy blocker.
