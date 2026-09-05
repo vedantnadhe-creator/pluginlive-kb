@@ -92,6 +92,16 @@ to v1 too. Flip one without the other and the two sidebars point at each other.
   float the moment they submit any one part — that read AI Interview 26 taken
   on DEV where 12 interviews existed, under a headline that disagreed with its
   own tooltip.
+- **`students.full_name` is empty on a large share of rows** — the real name is
+  in `first_name` / `last_name` (every candidate on UAT's machine_learning
+  fresher assessment is a "John Doe" or "Jane Smith" stored that way). Reading
+  full_name alone falls through to the email fallback and the roster prints the
+  address twice: bold as the name, muted as the email beneath it. Resolve names
+  through `CANDIDATE_NAME_SQL` (helpers/corporateAssessmentSql.js), which tries
+  full_name, then `CONCAT_WS(' ', first_name, last_name)`, then the email, and
+  takes an optional aggregate for callers that GROUP BY the email. **Search must
+  use the same expression** or typing a name the row is visibly displaying finds
+  nothing.
 - **Duplicate `student_personal_profile` rows fan every profile join out.** The
   same email can hold 2-4 profiles (a duplicate-creation race; four meesho
   candidates do). A plain `LEFT JOIN spp … LEFT JOIN students` therefore
