@@ -144,6 +144,30 @@ to v1 too. Flip one without the other and the two sidebars point at each other.
   level rather than a blank; the Role row is dropped entirely when there is no
   role.
 
+## Candidate reminders ("Nudge")
+
+The roster's bulk bar sends the SAME reminder the admin side sends:
+`POST /corporates/:id/assessments/v2/:id/candidates/reminders` proxies
+admin-node's `POST /assessment/sendReminders` with `entityType: "corporate"`.
+
+**Proxied, never called from the browser.** That admin route has `isPrivate`
+commented out, so it is unauthenticated and will mail any address in the
+`selectedStudents` array it is handed. Two guards run in corporate-node first:
+
+- `assertCorporateScope` proves the float is the caller's (another corporate's
+  id resolves to nothing and 404s).
+- `getPendingRecipients` intersects the requested emails with THIS float's
+  pending roster, so a corporate cannot use its assessment as a mail relay and
+  cannot chase someone who already finished. An empty intersection returns 200
+  with `sent: 0` rather than an error.
+
+Mix & Match needs nothing extra: given the GROUP id the upstream resolves the
+parts itself (`mixMatchPartMapIds`) and sends ONE email naming only the parts
+the candidate has not finished, instead of one mail per part.
+
+`resendInvites` is the sibling endpoint (same payload shape) and the roster's
+"Resend assessment" action is still a stub against it.
+
 ## Candidate PDF report
 
 The detail drawer's download serves the **same PDF the admin side does**:
