@@ -370,3 +370,103 @@ not a regression.
 :3012 is `institute-react-v2`). nginx `corp-react.conf`'s `location /v2`
 proxies to the right one; check the unit's `Environment=PORT` before curling a
 box directly.
+
+
+## Managing a floated assessment (LIVE on DEV + UAT, 2026-09-07)
+
+The detail page's write actions all go to admin-node's `PUT /assessment/details`
+(the one exception is Add candidates, which uses `addStudentsToAssessment`).
+Every one of them takes the **mix-match group id** — what this page calls the
+assessment id — and applies across every part of the float.
+
+| Action | Endpoint |
+|---|---|
+| Add candidates | `POST /assessment/addStudentsToAssessment` |
+| Manage — name, end date/time, proctoring | `PUT /assessment/details` |
+| Remove Candidate | `PUT /assessment/details` `{removeAssignedIds}` |
+| Cancel assessment | `PUT /assessment/details` `{endTime: now, closeNow: true}` |
+
+**The BFF is the tenant boundary.** admin-node reads the float id straight off
+the request body and does NOT check who owns it — it was built for admins, who
+legitimately act on every entity. So every corporate write first passes
+`assertOwnsAssessment()`, which re-reads the assessment through corporate-node's
+corporate-scoped overview. A foreign id 404s.
+
+### Cancel means the window closes
+
+There is no `cancelled` column anywhere on the assessment maps, so cancelling
+moves the float's end time to now. That is also exactly what stops candidates:
+student-node re-checks the window in `getAssessmentQuestions` and answers
+**410 `ASSESSMENT_WINDOW_CLOSED`**, so starting, resuming and stale open tabs
+are all refused, and the float drops out of the candidate's active list.
+
+Two backend fixes were needed to make it honest:
+
+- **admin-node `closeNow`** — the existing guard rejects `endTime <= startTime`,
+  so an assessment cancelled BEFORE it started could only get a one-second
+  window. `closeNow:true` opts out of that guard; ordinary edits keep it.
+- **corporate-node `statusOf` precedence** (`helpers/corporateAssessmentSql.js`)
+  — it asked "starts later?" before "already ended?", so a float cancelled
+  before its start still read `scheduled`. Ended is checked first now.
+
+**Known gap:** `submitAssessment` is NOT window-gated, so a candidate who
+already had the questions loaded can still submit that in-flight attempt. This
+is pre-existing — the same is true of any assessment whose window simply
+expires mid-attempt.
+
+### What is NOT editable
+
+**Per-assessment validity.** It lives on `assessment_schedules`, i.e. on
+recurring schedules, and a one-time corporate float has no schedule row to hold
+it. The field on the Manage drawer is vestigial for corporate.
+
+Proctoring IS editable: `allow_proctoring`/`allow_verification` are plain columns
+on the map row, so they ride the same `updateMany` as the end time and therefore
+work for a mix-match float — unlike admin-node's `configuration` patch, which
+only runs for a single-part assessment.
+
+## Public assessment link — Share (LIVE on DEV + UAT, 2026-09-07)
+
+Share hands out a **candidate** link, not the recruiter's dashboard URL:
+
+```
+https://assessment.<env>.pluginlive.com/candidate-assessment-journey/v2?publicToken=<jwt>
+```
+
+The candidate opens it, types their own email, gets a one-time code and lands on
+the assessment — no account. Everything after the email box is the existing
+emailed-invite flow, untouched.
+
+| Endpoint (admin-node) | Auth |
+|---|---|
+| `POST /assessment/public-link` | private — recruiter mints the link |
+| `POST /assessment/public/resolve` | **public** — names the assessment |
+| `POST /assessment/public/join` | **public** — email in, invite token out |
+
+- The link is a **signed token naming the float**, not a raw id, so it cannot be
+  forged from an assessment id, and it is minted with the time left on the
+  assessment window so it can never outlive the door it opens. No schema change.
+- **Join is find-or-create**: reopening the link or retyping the same address
+  does not assign the same person twice, which keeps the roster honest and stops
+  refreshes from burning quota. Joining also re-checks the window, so a
+  cancelled or finished assessment refuses new joiners.
+- Join happens on **submit, not on open** — a link that enrolled everyone who
+  merely opened it would fill the roster with people who never took the test.
+
+**Residual risk to accept:** anyone holding the link can enrol themselves and
+consume assessment quota. There is no join cap or domain restriction yet.
+
+### Config + deploy traps
+
+- **`ADMIN_API_URL` is gitignored** and does NOT ride a branch merge. It is
+  needed by BOTH `corporate-react-v2` (`.env.local`) and `assessment-react-v2`
+  (`.env.prod`, baked into the image) and must be set by hand on every box.
+  Without it the wizard routes 502 with `ADMIN_API_URL is not configured`.
+- **Ports differ per env:** `corporate-react-v2` is **:3012 on DEV** but
+  **:3014 on UAT** (where :3012 is institute-react-v2). Check the unit's
+  `Environment=PORT` before curling a box.
+- `assessment-react-v2` on both boxes is a **docker container**
+  (`candidate-assessment-journey-v2`, :3015), not systemd.
+- A Fastify request's `headers` is a prototype getter, so `{...req}` silently
+  drops it. Build synthetic requests field by field — this broke public join's
+  student provisioning with `headers.authorization` undefined.
