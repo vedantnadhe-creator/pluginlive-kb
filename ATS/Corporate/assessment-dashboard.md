@@ -242,6 +242,30 @@ Two gotchas found building this:
 
 DEV and UAT: live. PROD: not deployed, and the index is not applied there.
 
+**2026-09-07** — the corporate-v2 assessment work was promoted to UAT (27
+commits: the create-assessment wizard, the Manage/Cancel/Share detail actions,
+Add-candidates from the detail page, and a batch of validation fixes). Rules
+worth knowing from that batch:
+
+- **`cancelled` is now a REAL corporate status.** The detail page has a Cancel
+  action and the list has its own Cancelled tab, so it must appear in the status
+  filter. `draft` is still unreachable — a corporate assessment does not exist
+  until it is floated — and remains filtered out.
+- **`min`/`max` on a number or date input is advisory in this wizard.** It
+  advances on a button click, not a form submit, so the browser never runs
+  constraint validation: a negative question count, a 0-minute exam and a
+  back-dated start all had to be enforced in code. `isTypeConfigValid` is, per
+  its own docstring, the ONLY gate between the config panels and a floated
+  assessment — anything a panel exposes has to be range-checked there.
+- **Optimistic roster rows must reconcile on the lowered email.** The roster is
+  grouped by it upstream (`getCandidates`), so concatenating an optimistic row
+  onto the fetched list showed the same candidate twice, and Total Candidates
+  counted both, until a refresh corrected it.
+- **The report-v2 pages stay reverted.** `reportRouteFor` /
+  `REPORT_ROUTE_BY_TYPE` were dropped with them; `hashSeed` lived in that block
+  and is still needed by the dummy candidate fields, so it survives on its own.
+  Both promotions conflicted here — resolve by keeping the routing OUT.
+
 **2026-09-01 (latest)** — the candidate drawer's download button now lets the
 recruiter **pick which report**. The PDF is rendered per ASSIGNMENT, so a Mix N
 Match float has one per submitted part, and the endpoint falls back to
