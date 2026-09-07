@@ -1,6 +1,72 @@
-# UAT Docker builds — apt failures on the Node API images
+# Docker builds — apt failures on the Node API images
 
-Production-truth as of 2026-08-03.
+Production-truth as of 2026-09-07. Applies to **DEV, UAT and PROD** — the
+bullseye EOL failure below is not UAT-specific.
+
+## FIRST: is this the Debian 11 EOL failure? (2026-09-07 onward)
+
+There are now **two unrelated causes** of an apt build failure here. Check this
+one first, because it is permanent and retrying cannot fix it.
+
+**Debian 11 (bullseye) LTS ended 2026-08-31.** Two consequences, both of which
+break any image on a `*-bullseye` base:
+
+1. The `bullseye-security` **.deb pool is being purged off the Fastly CDN**. The
+   package index still advertises a version that the pool no longer serves, so
+   you get `404 Not Found` — not a timeout. It is *inconsistent across CDN edge
+   nodes*: measured 2026-09-07, five fetches of the same `libcurl4` URL returned
+   `200, 404, 404, 404, 404` from different `151.101.x` IPs. **This is why
+   `Acquire::Retries` cannot save the build** — it is not a flaky connection,
+   most edges genuinely no longer have the file.
+2. The final `bullseye-security` `Release` file has **`Valid-Until: 2026-09-07
+   21:13 UTC`** and will never be re-published. After that, apt rejects the index
+   as expired even where the pool survives.
+
+Ruled out on 2026-09-07: `security.debian.org` fixed most 404s but still lost
+`libcurl4`; `ftp.debian.org`, `ftp.us.debian.org`, `mirror.csclub.uwaterloo.ca`
+and `debian.mirror.constant.com` have none of it; and **`archive.debian.org` had
+not received bullseye-security yet** (404), so the usual "point at archive"
+advice did not work either.
+
+### The fix — pin to snapshot.debian.org
+
+`student-node/Dockerfile` (commit `52d78ae7`, on `release-v1.39-hotfix-3`):
+
+```dockerfile
+RUN printf 'Acquire::Retries "8";\nAcquire::http::Timeout "30";\nAcquire::https::Timeout "30";\nAcquire::Check-Valid-Until "false";\n' > /etc/apt/apt.conf.d/99-network-resilience \
+    && printf 'deb http://snapshot.debian.org/archive/debian/20260901T000000Z bullseye main\ndeb http://snapshot.debian.org/archive/debian-security/20260901T000000Z bullseye-security main\ndeb http://snapshot.debian.org/archive/debian/20260901T000000Z bullseye-updates main\n' > /etc/apt/sources.list \
+    && apt-get update && apt-get install -y \
+    ... \
+    && rm -rf /var/lib/apt/lists/*
+```
+
+`snapshot.debian.org` keeps every archive state forever, so this is permanent and
+reproducible. The `20260901T000000Z` timestamp sits just after the final LTS
+patch set and serves the **identical versions the live index advertises**
+(`libcurl4 7.74.0-1.3+deb11u16`, `systemd 247.3-7+deb11u8`,
+`libgbm1 20.3.5-1+deb11u1`) — so it is **not a security downgrade**.
+`Acquire::Check-Valid-Until "false"` is required: a snapshot's `Release` file is
+by definition past its expiry. Verified: rebuild fetched all ~688 packages with
+**zero 404s** in ~6 min.
+
+### Scope — this is not fixed everywhere
+
+As of 2026-09-07 the fix exists **only on `student-node`'s
+`release-v1.39-hotfix-3`**. `student-node`'s `Development` / `UAT` branches still
+point at `deb.debian.org`, so **DEV and UAT student-node builds are broken**, and
+the next release cut from `UAT` will reintroduce the break — the same
+permanent-divergence trap that hit `admin-node`'s Dockerfile (v1.37) and
+`institute-react-v2` (v1.38). Port `52d78ae7` to `Development`/`UAT`.
+
+Any other repo on a bullseye base will fail the same way the moment its apt layer
+is rebuilt.
+
+---
+
+## The older, separate cause: network stalls (2026-08-03)
+
+Production-truth as of 2026-08-03. This one *is* a flaky connection, presents as
+a **timeout rather than a 404**, and the retry config below does fix it.
 
 ## Symptom
 
