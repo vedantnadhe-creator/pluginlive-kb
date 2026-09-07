@@ -1573,3 +1573,37 @@ still under GoTrue's 5s lock-recovery window, so the test's *stated intent* hold
 no longer match. **Not touched**: it is an upstream WIP change, the code path is inert outside
 Lovable preview hosts (it returns `localStorage` unless on a preview zone *and* framed), and whether
 4.25s is acceptable or the literals should be updated is their call.
+
+## 2026-09-07 — "YouTube returned no playable video links" was an exhausted quota (`74db0f2`)
+
+"More YouTube videos" on a module showed **"YouTube returned no playable video links"**. The
+video catalogue was fine; the daily YouTube quota had been spent. **The banking key had already been
+swapped to a fresh one (`AIzaSyBw9UaMng…`) by the time this was investigated**, so the symptom had
+self-resolved — `ai-video-suggest` returns 5 valid `watch?v=` URLs again, and `getYouTubeId` parses
+all 5 correctly. Nothing was wrong with the parser or the videos.
+
+Two defects made an expired allowance look like a broken feature, both now fixed:
+
+**1. Only 403 was treated as quota.** `ai-video-suggest` checked `response.status === 403`, but
+YouTube reports a spent daily allowance as **429 `rateLimitExceeded` / `RESOURCE_EXHAUSTED`**
+(observed directly against the live API several times this session). A real exhaustion therefore hit
+`continue` and ended at the generic *"No YouTube videos found for generated queries"*. Now matches
+403, 429, **and** the quota markers in the response body, reporting *"YouTube daily quota exhausted -
+resets at midnight Pacific"*.
+
+**2. The UI threw away the explanation.** In `mode: "bulk"` the fallback is
+`{ best: fallback, alternatives: [fallback] }` — so `alternatives` is **non-empty** and passes the
+frontend's `!data?.alternatives?.length` guard, but every entry is a `results?search_query=` URL that
+`getYouTubeId` correctly refuses. That left 0 videos and the generic message, while the function had
+already put the real cause in `verification.reason`. `ModuleVideosPanel` now surfaces that reason.
+
+**This is the third occurrence of the same trap** in this codebase — a YouTube 429 surfacing as a
+misleading "no videos" message (the others: the module-video backfill script, and PilVidya's
+curriculum videos). Fixed in the shared paths rather than at the call site.
+
+**Not verified against a live 429** — forcing one would mean deliberately exhausting the quota and
+breaking the feature for real users. The old key's quota had already reset, so it could not be used
+to reproduce. The happy path was regression-tested: 5 alternatives, 5 parseable watch URLs.
+
+Also confirmed in the same screenshot: the 2026-09-07 quiz fix is working — the module showed
+**"8 questions ready"**.
