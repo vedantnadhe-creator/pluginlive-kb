@@ -1520,3 +1520,56 @@ bundle hash unchanged (`index-ClWmF_mQ.js`, expected since no source changed).
 Worth a nudge to the team: `test-results.txt` is a binary Playwright output artifact committed
 straight to `main` — that's normally `.gitignore`d, not tracked, since it's regenerated on every
 run and only bloats history. Not fixed here since it's a repo-hygiene call, not a deploy blocker.
+
+## 2026-09-07 — "Generate quiz" never worked: UUID module id into a bigint column (`9c4924b`)
+
+"Generate quiz" on a module video always failed with the generic
+**"Edge Function returned a non-2xx status code"**. Calling
+`generate-lesson-video-quiz` directly exposes the real error the UI swallows:
+
+```
+invalid input syntax for type bigint: "0eb1c470-098d-425d-a9d7-3868a4e03ce4"
+```
+
+`video_lessons.module_id` is **bigint** — it holds ids from the legacy *numeric* module catalog, and
+`generate-uploaded-video-mcqs` / `VideoMcqManager` both type it `number | null`. But
+`InModuleVideoQuiz` on the Student Journey passes the **UUID** of an `admin_modules` row.
+
+The function had `const moduleId: number | null = body?.moduleId ?? null` — **a compile-time claim
+only.** Deno does not validate the request body, so the UUID string went straight to Postgres. The
+insert is the *first* write in the flow, so every call died before any generation work:
+`video_lessons` was **empty (0 rows)** — this path had never once succeeded.
+
+Fixed by coercing rather than trusting the annotation: a genuinely numeric id still populates the
+bigint column, and a non-numeric one is preserved as `metadata.source_module_id` instead of being
+silently dropped, so the lesson stays traceable to its module. **The column and the other two
+writers were left alone** — the numeric contract is intentional for the legacy catalog, so changing
+the column type would have broken them.
+
+Verified with the exact failing payload: **HTTP 200**, lesson row created with `module_id` null and
+`source_module_id` = the UUID, `generation_status: success`, **8 MCQs** persisted. Probe row and its
+questions deleted afterwards (`video_lessons` back to 0).
+
+**Pattern worth noting:** this is the third Banking bug in a row where a TypeScript annotation on an
+edge-function request body was mistaken for validation. Deno edge functions receive untrusted JSON;
+`const x: number = body?.x` proves nothing at runtime.
+
+### Same deploy — 22 upstream commits, 2 migrations
+
+Rebased onto 22 commits that landed mid-work (none touched the quiz function). Applied
+`20260904143000_assessment_reports_menu_access` and
+`20260906090000_release_readiness_high_priority` — only idempotent `drop policy if exists`
+recreations, no data deletion. Synced 5 changed functions; frontend rebuilt (`index-7wATd1Lx.js`).
+
+**Both earlier fixes survived upstream this time:** `update-sms-gateway` still has the JWT +
+`user_roles` gate (`x-admin-email` now appears only in the CORS allow-list, not the auth path), and
+the `generate-candidate-path` syntax fix is intact. The `mcp@0.26.3` local patch also still holds.
+
+**Test suite moved to 435/436.** The long-standing `videoAutoLink` failure is now fixed upstream; a
+different one took its place: `authLockRegression.test.ts` asserts
+`TIMEOUT = 600` / `RETRY_DELAY = 100` in `previewAuthStorage.ts`, but upstream commit `e832518`
+("Work in progress") raised them to **2000 / 250**. Worst-case broker wait goes from 1.3s to 4.25s —
+still under GoTrue's 5s lock-recovery window, so the test's *stated intent* holds while its literals
+no longer match. **Not touched**: it is an upstream WIP change, the code path is inert outside
+Lovable preview hosts (it returns `localStorage` unless on a preview zone *and* framed), and whether
+4.25s is acceptable or the literals should be updated is their call.
