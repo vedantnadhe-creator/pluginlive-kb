@@ -41,28 +41,49 @@ table …`, `CREATE TABLE <appschema>.x` → `permission denied for schema …`;
 the **write-capable `plproduction`** behind a regex pre-flight + `BEGIN READ ONLY` wrapper. It is
 for **admin/ops** use and is no longer on the tester path — do not point testers at it.
 
-### Open gap on PROD (PG14 `public` schema)
+### PROD host replacement breaks the password (fixed 2026-09-07)
 
-PROD is **PostgreSQL 14**, where schema `public` still grants `CREATE` to `PUBLIC`. The migration
-runs there as `plproduction`, which is `CREATEROLE` but **not** superuser and does **not own**
-schema `public` (owner: `oci_superuser`), so it cannot revoke that grant — expect two harmless
-`no privileges were granted/could be revoked for "public"` warnings on every PROD run.
+PROD Postgres was cut over to a new PG16 instance (`10.0.6.104`) on 2026-08-03. `pl_tester_ro`
+came across in the restore, but **with a different password than the one in `ro-query.sh` /
+`tester-ro-query.sh`**, so every tester PROD query failed for a month with:
 
-Consequence: on PROD, `pl_tester_ro` **cannot modify any existing object in any schema**, but
-**can create its own scratch objects in `public`**. DEV (PG15+) and UAT (PG16) are unaffected —
-PG15 removed that default, and `CREATE TABLE public.x` is refused there.
-
-To close it, someone with the OCI master role (`pluginliveprd`, member of `oci_admin_role`; its
-credential is **not** on the jump host) runs:
-
-```sql
-GRANT CREATE ON SCHEMA public TO plproduction;  -- keep app migrations working
-REVOKE CREATE ON SCHEMA public FROM PUBLIC;     -- this is the PG15+ default
+```
+FATAL:  password authentication failed for user "pl_tester_ro"
 ```
 
-The `GRANT` first is not optional: `plproduction`'s own `CREATE` on `public` also comes from the
-`PUBLIC` grant (it owns the four tables there but not the schema), so revoking without it would
-break any future migration that creates a `public` table.
+A restored, forked or otherwise replaced instance keeps roles but not their passwords. **After any
+DB host change, re-run the migration against the new host** — it resets the password and re-grants
+SELECT in one pass:
+
+```bash
+ssh ubuntu@140.245.25.134
+PGPASSWORD=<plproduction pw> PGOPTIONS="-c pl.ro_password=<pw from ro-query.sh>" \
+  psql -h 10.0.6.104 -p 5432 -U plproduction -d prod_pluginlive -f pl_tester_ro.sql
+```
+
+Done on PROD 2026-09-07: 492 tables/views across 11 schemas (`admin`, `ai_usage`, `assessment`,
+`audit`, `candidate_ingestion_schema`, `corporate`, `institute`, `public`, `search_engine`,
+`student`, `user_management`) — **0 unreadable**.
+
+### `public` schema CREATE gap on PROD — closed 2026-09-07
+
+Until then, PROD's schema `public` still granted `CREATE` to `PUBLIC` (a PG14-era default carried
+forward through the restore), so `pl_tester_ro` could create its own scratch objects there — it
+could never touch an existing object in any schema. It was genuinely unfixable on the old PG14
+host, where `public` was owned by `oci_superuser`.
+
+On the PG16 host `public` is owned by `pg_database_owner` and `plproduction` owns the database, so
+`plproduction` **can** revoke it. Step 5 of the migration now does:
+
+```sql
+REVOKE CREATE ON SCHEMA public FROM PUBLIC;   -- the PG15+ default
+```
+
+Verified live afterwards: `CREATE TABLE public.x` as `pl_tester_ro` (with the read-only GUC forced
+off) → `permission denied for schema public`, while `plproduction` can still create and drop
+tables in `public`, so app migrations are unaffected. It keeps `CREATE` through its
+`pg_database_owner` membership — no separate `GRANT` is needed, and the OCI master role
+(`pluginliveprd`) is no longer required to close this.
 
 ## The role
 
@@ -74,15 +95,17 @@ Created by `PluginLive-Technologies/DB-Scripts` →
   (via `ALTER DEFAULT PRIVILEGES` per table owner)
 - `statement_timeout=120s`, `idle_in_transaction_session_timeout=60s` so an ad-hoc tester query
   can't pin a connection
-- Applied: **DEV, UAT and PROD — all 2026-08-03.**
+- Applied: **DEV, UAT and PROD — all 2026-08-03**; re-applied on PROD 2026-09-07 against
+  the PG16 host `10.0.6.104` (password reset + step 5).
 
 Each grant in the schema loop is wrapped in its own exception block. That is what makes the same
 file runnable on PROD, where the running role owns the tables but not every schema: an
 un-grantable statement is skipped with a `NOTICE` instead of aborting the run and discarding the
 grants that already succeeded.
 
-**Re-run the migration after adding a new schema** — the grant loop covers schemas that exist at
-run time, and default privileges only cover new tables in already-granted schemas. It is
+**Re-run the migration after adding a new schema, or after the DB host is replaced** — the grant
+loop covers schemas that exist at run time, default privileges only cover new tables in
+already-granted schemas, and a restored instance carries the role over without its password. It is
 idempotent (re-running also resets the password).
 
 The password lives in `scripts/ro-query.sh` on the DEV box; the SQL takes it via
