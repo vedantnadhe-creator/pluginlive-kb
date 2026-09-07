@@ -149,6 +149,45 @@ to v1 too. Flip one without the other and the two sidebars point at each other.
   level rather than a blank; the Role row is dropped entirely when there is no
   role.
 
+## Candidate drawer — General Details and Proctoring
+
+Both tabs render REAL columns only, via
+`GET /corporates/:id/assessments/v2/:id/candidates/profile`. Until 2026-09-07
+they rendered stand-ins: the mobile was a hash of the email formatted as a
+plausible `+91 9…`, and Current location / Highest qualification / Graduation
+year were one hardcoded `"Bengaluru, Karnataka / B.Tech, Computer Science /
+2025"` shown for EVERY candidate. The whole Proctoring tab was synthesized,
+down to a summary claiming *"the candidate switched tabs twice and lost webcam
+focus once"* — something a recruiter could reject a candidate over.
+
+Sources, all nullable so the UI shows a dash rather than an invention:
+
+| field | source |
+|---|---|
+| mobile | `student_personal_profile.contact_number` |
+| location | `corr_city` + `corr_state` |
+| qualification | `current_course.degree` + `department` |
+| graduationYear | `current_course.ended_on` |
+| proctoring | `assessment.proctoring_reports` (band, score, summary, timeline) |
+
+**Coverage is genuinely sparse and that is the honest picture** — UAT: mobile
+11%, city 5%, degree 9%, and 475 of 782 submitted corporate attempts (61%) have
+a proctoring report at all. The stand-ins were filling ~80% of it with fiction.
+
+Three data traps, all live in this data:
+
+- `ended_on` is epoch MILLIS of an **IST wall-clock** date and every Postgres
+  here runs `TimeZone=UTC`, so reading the year without
+  `AT TIME ZONE 'Asia/Kolkata'` buckets a 2027 batch as 2026 — it differs on
+  ~half of UAT's rows. See [[passing-year IST off-by-one]].
+- `ended_on = 0` means "not set" (1,819 rows) and renders as **1970**; junk
+  years exist too (UAT holds a **3989**), so the year is range-guarded.
+- **20%** of non-empty `contact_number` values are a bare `"+91"` with no
+  number, so a mobile needs ≥10 digits to count as one.
+
+A failed fetch is rendered as "could not be loaded", NOT as "no details on
+file" — a network error is not a claim about the candidate's record.
+
 ## Candidate reminders ("Nudge")
 
 The roster's bulk bar sends the SAME reminder the admin side sends:
