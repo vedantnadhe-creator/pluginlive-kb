@@ -416,6 +416,24 @@ legitimately act on every entity. So every corporate write first passes
 `assertOwnsAssessment()`, which re-reads the assessment through corporate-node's
 corporate-scoped overview. A foreign id 404s.
 
+### Cancelled is its own status (DEV + UAT, 2026-09-07)
+
+Cancelling closes the window — but so does a natural expiry, so the dates alone
+cannot tell the two apart and a cancelled float used to read as **Expired**.
+A nullable **`cancelled_at`** on both assessment map tables now records the
+intent alongside the effect (DB-Scripts
+`Corporate Assessment Cancellation/20260907T111359Z__assessment_map_cancelled_at.sql`;
+DEV+UAT applied, **PROD pending — apply it BEFORE deploying corporate-node there,
+or `statusOf` selects a column that does not exist**).
+
+admin-node stamps it when `closeNow` is used; corporate-node's `statusOf` checks
+it first and returns `"cancelled"`. Wired through all four readers (list, detail,
+dashboard) so the status cannot disagree between screens, and the list has a
+**Cancelled** tab that self-disables at zero.
+
+**No backfill.** Rows cancelled before the column read NULL and keep saying
+Expired.
+
 ### Cancel means the window closes
 
 There is no `cancelled` column anywhere on the assessment maps, so cancelling
@@ -494,3 +512,47 @@ consume assessment quota. There is no join cap or domain restriction yet.
 - A Fastify request's `headers` is a prototype getter, so `{...req}` silently
   drops it. Build synthetic requests field by field — this broke public join's
   student provisioning with `headers.authorization` undefined.
+
+
+## Candidate drawer — what is real and what is not
+
+Only the **email** and the score KPIs (overall performance, level, time taken)
+come from real data. Everything else in that drawer is synthesized:
+
+- The whole **Proctoring** tab (`dummyProctoring`) — the tick, "No concerns" and
+  every count is derived from a hash of the candidate id. Real proctoring signals
+  exist (`assessment.proctoring_events`, `proctoring_reports`) but this tab does
+  not read them. A recruiter is currently told an attempt was clean when nothing
+  checked it.
+- General Details' location, qualification and graduation year. Agreed sources
+  when it is wired: `student_personal_profile.corr_city`, and
+  **`student.current_course`** (`degree`/`department`, `ended_on` for the year).
+
+**Notice period and current/expected CTC were removed outright** — neither has any
+source for an assessment candidate. Notice period exists only on
+`drive_role_candidate_map` (an ATS drive context) and CTC has no column anywhere
+in the `student` schema, so the drawer was showing invented numbers.
+
+### UAT reverted this drawer — mind the merge
+
+UAT carries a deliberate revert of the candidate report drawer
+(`43cd239 Revert "feat(candidate report drawer): … Performance/Proctoring tabs,
+report-v2"`), and `src/app/reports/**` does not exist there. A Development→UAT
+merge that resolves `CandidateReportDrawer.tsx` to the branch puts the tabs back
+over that revert — and if `assessment-detail.css` or `src/lib/assessments/report.ts`
+resolve to the reverted side, the markup ships with no rules or missing helpers.
+That is exactly how the Proctoring tab shipped with an unconstrained tick filling
+the card.
+
+**A clean `tsc` does not catch this — CSS has no type checking.** When resolving a
+component to one side of a merge, take its stylesheet and its helpers from the
+same side, and check whether the target branch reverted the feature first.
+
+### Deploy trap: a locked `.next` fails the build silently
+
+`next build` on the UAT box compiled and typechecked, then died with
+`ENOENT … .next/required-server-files.json`, leaving `.next` without a `BUILD_ID`.
+`auto_deploy.sh` restarted the service onto that partial output and reported
+success, so every BFF route answered **500** while the unit read `active`.
+Fix: `systemctl stop corporate-react-v2 && rm -rf .next && npm run build && systemctl start`.
+Always check `.next/BUILD_ID` exists after deploying this app.
