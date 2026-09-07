@@ -1650,3 +1650,38 @@ video search — flagged for the team rather than silently "corrected".
 **Diagnostic note:** when an LLM-judged step reports a plausible-sounding rejection, run it 3+ times
 before believing it. Both this and the earlier quota trap presented as deterministic feature failures
 and were not.
+
+## 2026-09-07 (later still) — LLM checker + relevance gating disabled for ai-video-suggest (`ca1516b`)
+
+Requested: *"skip the video checker and stick with maker as of now."* **Two** layers were rejecting
+candidates, and skipping only the first was not enough:
+
+1. **The LLM checker agent** — non-deterministic on hybrid titles (rejected 2 of 3 identical runs).
+2. **The deterministic RELEVANCE gate** — this became the new failure once the LLM checker was off.
+   `overlapRatio` divides matched tokens by the number of **topic** tokens, so
+   `"Wave-Particle Duality: The Dual Nature of Financial Systems"` is diluted by words no real video
+   can match (*financial, systems, nature*), pushing genuine physics videos below the score-35 bar.
+   A 4-run check still failed twice with *"No public, embeddable, topic-relevant videos passed
+   verification"*.
+
+**Still enforced:** public, embeddable, not-live, sane-duration. An unplayable video can never be
+attached. The relevance score is still computed and still **ranks** results — it just no longer
+rejects.
+
+**One switch: `AI_VIDEO_LLM_CHECKER`.** Unset (current) = maker-only. `on` = previous behaviour (LLM
+checker + full relevance gating), no code change required.
+
+`relevanceGating` is **opt-out on the shared validator, defaulting to true**, so
+`generate-trainer-curriculum` and `src/test/youtubeVideoValidation.test.ts` keep strict behaviour —
+only `ai-video-suggest` opts out.
+
+**Result:** the reported topic returned **5 playable videos on 5 consecutive runs** (previously
+failing ~2 in 3), all confirmed public + embeddable against the YouTube API.
+
+**The trade-off, accepted deliberately — worth knowing before this is called "fixed":** without
+relevance gating, hybrid titles pull in videos matching the *finance* half rather than the concept.
+That same verified run returned **"The Dual Nature of Bitcoin"**, **"The Green Dot and the dual
+system"**, **"Efficient Market Hypothesis"** and **"The Keynesian Beauty Contest"** alongside one
+genuine photoelectric-effect lesson. Reliability was chosen over precision; **the durable fix is the
+topic titles**, not the search pipeline. If precision matters more later, set
+`AI_VIDEO_LLM_CHECKER=on` and fix the titles instead.
