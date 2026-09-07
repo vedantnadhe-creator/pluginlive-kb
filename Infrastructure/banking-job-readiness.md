@@ -1607,3 +1607,46 @@ to reproduce. The happy path was regression-tested: 5 alternatives, 5 parseable 
 
 Also confirmed in the same screenshot: the 2026-09-07 quiz fix is working — the module showed
 **"8 questions ready"**.
+
+## 2026-09-07 (later) — "Checker agent rejected candidates" is non-determinism, not a broken catalogue (`b5262ee`)
+
+After the quota-message fix above started surfacing the real reason, the message became:
+
+> Could not fetch more videos: Checker agent rejected candidates: None of the candidate videos cover
+> 'The Dual Nature of Financial Systems', which is a critical part of the requested topic...
+
+**That is the improved error reporting working** — but it exposed the actual cause.
+
+Topic titles in these AI-generated modules follow **"Concept: editorial framing"**. The Quantum
+Physics module (`0eb1c470…`, a physics module inside a *banking* app) has:
+
+- `Wave-Particle Duality: The Dual Nature of Financial Systems`
+- `Entanglement: Interconnectedness in Global Financial Systems`
+- `Heisenberg Uncertainty Principle: The Trade-off in Financial Information`
+- `Superposition: Navigating Probabilistic Outcomes in Banking Decisions`
+
+No real YouTube video covers the grafted-on finance framing, so the checker agent — **an LLM** —
+judges these borderline titles **inconsistently**. Measured directly on the reported topic:
+
+| Run | Hybrid title | Concept only |
+|---|---|---|
+| 1 | rejected | — |
+| 2 | rejected | — |
+| 3 | 2 playable | — |
+| — | — | **5 playable, reliably** |
+
+So it was a **coin flip (~2 in 3 failing)**, not a broken feature — which is exactly why it looked
+intermittent to the reporter and why it had "fixed itself" between screenshots.
+
+**Fix:** when the full title yields no approved candidates, `ModuleVideosPanel` retries **once** with
+the text before the colon and uses that result if it produces videos. The retry goes through the same
+verification pipeline, so it recovers from an over-strict pass **without weakening any check**, and it
+never fires for titles lacking that pattern.
+
+**Deliberately not addressed:** whether a Quantum Physics module with finance-flavoured topic titles
+belongs in a banking app at all. That is an editorial/content decision, not something to paper over in
+video search — flagged for the team rather than silently "corrected".
+
+**Diagnostic note:** when an LLM-judged step reports a plausible-sounding rejection, run it 3+ times
+before believing it. Both this and the earlier quota trap presented as deterministic feature failures
+and were not.
