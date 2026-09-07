@@ -170,8 +170,20 @@ Mix & Match needs nothing extra: given the GROUP id the upstream resolves the
 parts itself (`mixMatchPartMapIds`) and sends ONE email naming only the parts
 the candidate has not finished, instead of one mail per part.
 
-`resendInvites` is the sibling endpoint (same payload shape) and the roster's
-"Resend assessment" action is still a stub against it.
+`resendInvites` is the sibling endpoint (same payload shape). **Wired 2026-09-07**
+(was a stub toast). The BFF (`POST /api/assessments/:id/candidates/resend`)
+proxies it the same way Nudge is proxied, behind `assertOwnsAssessment`.
+
+**`selectedStudents` is a FILTER over admin-node's own `droppedOff` list, not
+the set of people to mail.** `resendInvitesToStudents` only ever resends to
+candidates it already classifies as dropped off (attempted, then abandoned —
+`Assessment.js` `droppedOff` builder). Selecting someone who has not started
+yet intersects to nothing and the call answers `successCount: 0` with "No
+dropped candidates found to resend invites to" — 200 OK, zero mail sent. The
+BFF passes admin-node's real `successCount` through rather than echoing the
+size of the selection, and the UI says so explicitly when it is 0, pointing at
+Nudge instead. **Resend and Nudge are not interchangeable**: Nudge reaches
+anyone still pending, Resend only reaches candidates who dropped mid-attempt.
 
 ## Candidate PDF report
 
@@ -497,6 +509,19 @@ emailed-invite flow, untouched.
 
 **Residual risk to accept:** anyone holding the link can enrol themselves and
 consume assessment quota. There is no join cap or domain restriction yet.
+
+**Fixed 2026-09-07 — 404'd for most single-part assessments.** All three
+endpoints resolve the float by querying `assessment_corporate_map` on
+`mix_match_group_id`. That column is only populated for a **multi-part float**;
+a single-part corporate assessment is identified by its bare
+`assessment_corporate_map_id` instead (`corporate-node`'s
+`corporateAssessmentSql.js` picks between the two on purpose — its own `:id`
+resolver already accepts either). Matching the group id alone made the window
+query return an all-NULL row for every single-part assessment, which the
+handler read as "not found" — **635 of 895 corporate assessments on UAT**, i.e.
+Share worked only for the multi-part floats it happened to be built and tested
+against. All three lookups (`publicLinkWindow`'s mint/resolve path and
+`joinPublicAssessment`'s `findAssigned`) now match on EITHER id. DEV + UAT.
 
 ### Config + deploy traps
 
