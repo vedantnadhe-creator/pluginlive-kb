@@ -556,3 +556,29 @@ same side, and check whether the target branch reverted the feature first.
 success, so every BFF route answered **500** while the unit read `active`.
 Fix: `systemctl stop corporate-react-v2 && rm -rf .next && npm run build && systemctl start`.
 Always check `.next/BUILD_ID` exists after deploying this app.
+
+
+## Schedule page — window and Mix & Match (DEV + UAT, 2026-09-07)
+
+`/v2/schedule` reads `dashboard/v2/schedule?from=&to=`.
+
+**Rows show both ends of the window.** They used to show only `closes <date>`,
+so the day an assessment OPENED could only be inferred from which day-group the
+row sat under — and not at all for a float spanning several days, which is most
+of them. Rows now read `<starts> → closes <ends>`.
+
+**A multi-part float is named Mix & Match.** It previously borrowed its first
+type's name and hid the rest behind `+N more`, so a Mix & Match read as an
+Aptitude test that happened to have extras, and the legend — built from
+`items.flatMap(i => i.types)` — had no way to surface one at all. A float of
+several assessments is ONE sitting for the candidate, so it is now labelled as
+one, carries a neutral dot (picking one constituent type's colour is what caused
+the confusion) and has its own legend entry and filter.
+
+`MIX_TYPE` (`schedule/_constants.tsx`) is a **shape, not a type name** — there is
+no "Mix & Match" row in `assessment_type`, so it cannot collide with a real one;
+its filter selects `types.length > 1`.
+
+Deliberate: the per-type legend rows still count a mix float under EACH
+assessment it contains, so "how many floats include Aptitude" stays true. Mix &
+Match adds a way to find them rather than moving them — no existing count shifts.
