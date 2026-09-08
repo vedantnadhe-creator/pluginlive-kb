@@ -149,6 +149,31 @@ to v1 too. Flip one without the other and the two sidebars point at each other.
   level rather than a blank; the Role row is dropped entirely when there is no
   role.
 
+## Export Sheet
+
+The roster's bulk-bar Export Sheet streams the SAME Excel the admin side
+produces: `GET /corporates/:id/assessments/v2/:id/candidates/export` proxies
+admin-node's `/assessment/exportStudentData` with `entityType=corporate`.
+Columns: Session Name, Name, Email, ID, Phone, Sent/Start/End dates, Status,
+Delivery Status, Delivery Issue, Overall Score, Verdict (plus a % column per
+type on a Mix & Match float). It replaced a CSV the browser built from whatever
+the table happened to be showing.
+
+**Proxied, never called from the browser** — that admin route's `isPrivate` is
+commented out, so it is unauthenticated and would export any assessment it was
+asked for. `resolveParts` proves the float belongs to the caller first; another
+corporate's id 404s (verified on UAT).
+
+**Pass `status=sent`, not the upstream default of `completed`.** The default
+silently drops everyone who has not finished — on a 3-candidate float on UAT it
+returned 2, omitting the candidate sitting at 0% that the roster plainly lists.
+`sent` is the bucket the v2 roster shows, so the sheet matches the table.
+
+**The export cannot be narrowed to selected rows.** The upstream takes a status
+bucket plus an optional `searchQuery`, not a list of people, so Export Sheet
+covers every candidate on the assessment however many rows are ticked. The
+toast says so.
+
 ## Candidate drawer — General Details and Proctoring
 
 Both tabs render REAL columns only, via
