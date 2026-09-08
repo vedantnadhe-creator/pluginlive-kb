@@ -737,6 +737,62 @@ contextual hint appears in the drawer only when editing an expired assessment
 ("Moving the end date past today reopens it…"). Purely a frontend gating
 change — no new endpoint, no schema change.
 
+### No mail leaves a closed window (DEV + UAT, 2026-09-08)
+
+`helpers/assessmentInviteEmail.js` refuses **every** candidate-facing send once
+the assessment's deadline has passed:
+
+```js
+if (deadlineResult?.expired) return false;   // sendAssessmentInviteEmail
+```
+
+`sendFloatInvites` treats that `false` as "skip this candidate", so a reminder
+or resend on an expired float walks the whole roster, mails nobody and returns
+`successCount: 0` — a plain zero with no reason attached.
+
+The detail page used to report that zero as **"No reminders sent — everyone
+selected has already attempted it"**, with a *Not started* candidate visible in
+the same table. Nobody had attempted anything; the window was shut. Two fixes:
+
+- **Both mail actions disable once the window shuts** (expired OR cancelled —
+  cancelling moves the end time to now), and their tooltips name the closed
+  window and point at the end date in Manage, which is what reopens the float.
+  A doomed send no longer leaves the browser.
+- **Where a zero can still arrive**, the toast reports what is known instead of
+  asserting a cause: "already attempted" is claimed only when the client can
+  see it is true (`nudgeCount === 0` / `resendTargets.length === 0`).
+
+**Resend was the worse half of the same bug.** `resendInvitesToStudents` runs
+with `deferEmail: true` and resets each part's attempt state BEFORE
+`sendFloatInvites` is called — so on an expired float it wiped a drop-off's
+attempt, then the mailer refused, then the toast said nothing had happened. The
+UI gate closes that path, but **the endpoint itself is still unguarded**: a
+direct call to `/assessment/resendInvites` on an expired assessment will still
+reset attempts and mail nobody. A backend guard is the remaining work.
+
+Guarded by `scripts/check-closed-window-mail-actions.mjs` (16 checks).
+
+### Status vocabulary: Upcoming and Finished (DEV + UAT, 2026-09-08)
+
+`scheduled` IS "Upcoming" — the state already existed under a scheduling name,
+so it is relabelled rather than joined by a second status. `displayStatus()`
+derives Live from it once the start instant passes, because nothing server-side
+flips the stored value at that moment; `now` is passed in as a parameter so the
+server's clock never renders into HTML the browser then disagrees with.
+
+**"Completed" is now "Finished"** in the chip, the status label and the list's
+tab strip. Chip hues moved with it: Live is info blue plus the red "right now"
+dot, Finished takes the green Live used to wear, Upcoming is brand/accent,
+Expired grey, Cancelled red. Every hue is a chip class, so it stays a token
+lookup.
+
+The **Overall Performance and time-taken columns are gone** from the candidates
+table, the CSV export, the list's band filter and the candidate drawer's KPI —
+header and cell commented out together, with the `score` / `time` sort keys left
+wired in `sortValue` so restoring a column is an uncomment rather than a
+re-derivation. Communication's breakdown now reads by competency area
+(Reading / Writing / Listening / Speaking) instead of by question type.
+
 ### What is NOT editable
 
 **Per-assessment validity.** It lives on `assessment_schedules`, i.e. on
