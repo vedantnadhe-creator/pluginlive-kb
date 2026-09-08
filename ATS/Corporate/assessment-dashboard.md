@@ -540,6 +540,98 @@ Verified on UAT against a live Aptitude + Role_Based + Custom float: Custom
 → 404, Aptitude → 240 KB PDF, Role_Based → 169 KB PDF (the part that used to be
 lost), Excel → 7 KB xlsx, untyped → the Aptitude PDF.
 
+## Bulk report bundle — every selected candidate's PDF, zipped
+
+The bulk-bar's "Download Performance Report" used to write a **CSV of the
+drawer's numbers**. A recruiter forwarding a candidate's performance sends the
+report, so they went back and fetched the PDFs one at a time afterwards. Since
+2026-09-08 (DEV + UAT; PROD pending) it queues the **real PDF reports** for the
+whole selection and returns one zip — a folder per candidate, one PDF per
+assessment type they attempted, so a Mix & Match float yields both their
+Communication and their Aptitude report.
+
+**It lives in `admin-node`, not `corporate-node`.** admin-node owns the
+`assessment` schema, the BullMQ workers, the archiver bundle pattern
+(`exportInstitutesBundle`), the OCI storage helper and the mail relay.
+corporate-node reading `assessment.*` for this would have been cross-service
+database access, and it had to re-derive "which parts does this float have" to
+do it.
+
+| Piece | Where |
+|---|---|
+| Start | `POST /assessment/reportBundle` `{corporateId, assessmentId, emails[]}` -> `{exportId, topic, reportCount, candidateCount, deliverTo, skipped[]}` (202) |
+| Status | `GET /assessment/reportBundle/:exportId?corporateId=` |
+| File | `GET /assessment/reportBundle/:exportId/file?corporateId=` -> a **signed 5-minute URL**, not the bytes |
+| Progress | the EXISTING `GET /events/subscribe?topic=report-bundle:<exportId>` |
+| Queue / worker | `report-bundle` (`app/queues/setup.js`), `app/queues/reportBundleWorker.js` |
+| Record | Redis hash `report-export:<exportId>`, 24h TTL |
+
+### One export is one BullMQ flow
+
+A `render` child per PDF under a single `bundle` parent. BullMQ will not run the
+parent until every child has finished and hands it their return values via
+`getChildrenValues()`, so **"are all the PDFs done" is not bookkeeping this code
+does** — a counter of our own would be the same idea with our own races.
+
+Children return object-storage **keys, never PDF bytes**: a job's return value
+lives in Redis, and a large export as base64 would be hundreds of MB of it. Each
+child uploads its part under `report-bundles/<exportId>/parts/`; the parent
+streams them into the archive (`zlib level 0` — the entries are already
+compressed PDFs) straight into a multipart upload, then deletes the parts.
+
+A child that exhausts its retries **returns** `{failed}` rather than throwing:
+a thrown final attempt fails the flow parent, which would discard every other
+candidate's report over one that would not render.
+
+### Delivery: mail unless downloaded
+
+There is no "watch or email?" choice for the caller. Fetching the file marks it
+collected; a **delayed job** (60s) emails a signed, 7-day link if nothing ever
+did. An earlier cut tracked live viewers to decide, and a pod dying with a
+stream open would have suppressed the mail **forever** — a failure that loses
+the user's work and logs nothing.
+
+The recipient is the **address on the JWT**, never the request body: otherwise a
+valid session is a way to have a bundle of candidate reports mailed anywhere.
+
+`ReportBundleDialog` (corporate-react-v2) counts the reports as they land and
+names which way the zip is coming — keep it open and the browser downloads it,
+press **"Email it to me instead"**, close the tab, or pass the 3-minute ceiling
+and the mail takes over. It flips to the mail wording the moment that becomes
+true, and names the address rather than implying one. The export keeps running
+server-side whatever the dialog does.
+
+### The selection is uncapped
+
+A whole roster is a legitimate ask; the queue is what makes it safe. Every
+render is a **Puppeteer page inside student-node** — the same process serving
+candidates who are mid-assessment — so `REPORT_BUNDLE_CONCURRENCY` (default 3)
+is a **safety limit, not a throughput dial**. A large export is slow, not
+dangerous, and arrives by email, which is the right shape for work that takes an
+hour. Set `RUN_REPORT_BUNDLE_WORKER`-style gating per pod if PROD ever needs to
+keep total render concurrency below what student-node can absorb.
+
+### Gotchas
+
+- **Progress events carry counts only.** `/events/subscribe` is topic-based and
+  **unauthenticated**, so no email, name or score is ever published on it. The
+  BFF builds the topic itself and never accepts one from the client — passing a
+  caller-supplied topic through would let a recruiter subscribe to an admin's
+  assignment-job stream.
+- **Ownership is enforced in the BFF**, via `assertOwnsAssessment` — the same
+  boundary the assessment-creation routes use, because admin-node's
+  `/assessment/*` endpoints are admin-scoped by design.
+- **Redis pub/sub has no replay.** A small export can reach READY before the
+  browser's stream is open, so the client also probes
+  `GET .../report/exports/:exportId` once on attach.
+- **Custom and never-attempted candidates** are named with a reason in
+  `skipped-candidates.csv` inside the zip, so a short bundle explains itself
+  rather than leaving a recruiter to count 7 PDFs against 10 ticked rows.
+- **admin-node UAT has its own Redis** (`172.17.0.1:6379`) while DEV points at
+  `129.154.231.72:6377`, so the unnamespaced `report-bundle` queue name cannot
+  collide across environments the way corporate-node's queues would (those use
+  `QUEUE_ENV` because DEV and UAT share one Redis).
+
 ## Tenant scoping
 
 `verifyToken` proves the JWT is signed; it does **not** check that
