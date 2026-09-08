@@ -49,14 +49,26 @@ patch set and serves the **identical versions the live index advertises**
 by definition past its expiry. Verified: rebuild fetched all ~688 packages with
 **zero 404s** in ~6 min.
 
-### Scope — this is not fixed everywhere
+### Scope — ported to Development and UAT 2026-09-08
 
-As of 2026-09-07 the fix exists **only on `student-node`'s
-`release-v1.39-hotfix-3`**. `student-node`'s `Development` / `UAT` branches still
-point at `deb.debian.org`, so **DEV and UAT student-node builds are broken**, and
-the next release cut from `UAT` will reintroduce the break — the same
-permanent-divergence trap that hit `admin-node`'s Dockerfile (v1.37) and
-`institute-react-v2` (v1.38). Port `52d78ae7` to `Development`/`UAT`.
+`52d78ae7` is now on `student-node`'s `Development` (`dec00c62`) and `UAT`
+(`96e6f2c5`), so the divergence this section used to warn about is closed and a
+release cut from `UAT` no longer reintroduces the break. Both environments were
+rebuilt from it and are running the pinned image.
+
+**Do not re-derive this fix — port the commit.** It was independently
+re-diagnosed on 2026-09-08 (the DEV CI deploy step failed in 15s and looked like
+the disk-full failure below, because the box was also at 99%). The re-derivation
+reached the same `snapshot.debian.org` answer but picked the wrong date:
+`20250520T000000Z`, the snapshot the base image names in its own commented-out
+sources. That builds and looks correct — but it predates the final LTS patch set
+by nine months, so it silently installs **older** packages than the live index
+advertises (`libcurl4 7.74.0-1.3+deb11u14` against `+deb11u16`, `libgbm1
+20.3.5-1` without its security update) and drops `bullseye-updates`. A build fix
+that quietly rolls security patches back is worse than the broken build, and
+nothing in the build output says so — the image builds clean and chromium,
+LibreOffice, ffmpeg and the Noto faces are all present. **The date is the whole
+fix; verify it with `dpkg -l libcurl4 libgbm1` against the versions above.**
 
 Any other repo on a bullseye base will fail the same way the moment its apt layer
 is rebuilt.

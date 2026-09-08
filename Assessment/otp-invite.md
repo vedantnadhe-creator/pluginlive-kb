@@ -230,6 +230,66 @@ return new Date(endsAt.getTime() - IST_OFFSET_MS);
 
 Anchoring to `end_time` also makes the deadline **idempotent** — it no longer re-opens a fresh 14 days on every send/copy. Extending an assessment's `end_time` propagates to the existing link on the next send/copy (the resolver reads the stored `expires_at`, not `end_time` live — so *shortening* a window leaves existing links on the old deadline until re-copied).
 
+### The window is checked at entry, not just at link-mint time (fixed 2026-09-08)
+
+Everything above concerns the **shortener's** `expires_at`. The emailed-invite
+JWT path does not go through it, and until 2026-09-08 nothing on the candidate
+side re-read the assessment window at all:
+
+- `student-node` `resolveInvite` returned **200 for any assessment whose invite
+  token was still inside its own TTL** (`ASSESSMENT_INVITE_TTL_DAYS`, 14 by
+  default). That token is minted for a fixed number of *days* and carries no
+  knowledge of the float it points at, so an already-emailed invite outlived the
+  assessment it invited someone to. It even *selected* `end_time` and returned it
+  as `endTime` — added 2026-08-17 so the instructions screen could print the
+  deadline — but nothing acted on it, and the v2 frontend never read it either.
+- **AI Interview had no start-boundary gate whatsoever.** The 410
+  `ASSESSMENT_WINDOW_CLOSED` check lives in `getAssessmentQuestions`, which every
+  other type is served by; AI Interview is served by `startSession`, which
+  checked only completion and quota.
+
+Reported as *"this assessment is cancelled and the candidate can still take it"*
+on a corporate AI Interview float. Cancelling is not a separate state — the
+corporate portal cancels by stamping `cancelled_at` and moving `end_time` to now
+via admin-node's `closeNow` — so the same hole let candidates into **any** closed
+assessment. On UAT at the time: 11 PENDING candidates across 4 cancelled
+assessments, and **5,593 PENDING candidates on ordinary expired corporate
+assessments**. Cancelling only made it visible.
+
+`assignmentWindowState(prisma, assessmentAssignedId)` in
+`student-node/app/helpers/assessmentWindow.js` is now the one gate all three
+entrances share — `resolveInvite`, `getAssessmentQuestions`, and AI Interview's
+`startSession`:
+
+- It reports `cancelled` **separately** from `open`, because closing the window is
+  also exactly what a natural expiry looks like. A recruiter ending an assessment
+  early and one that simply ran out of time are the same closed window but not the
+  same thing to say to a candidate — `ASSESSMENT_CANCELLED` gets *"This assessment
+  has been cancelled and is no longer available. Please contact the recruiter."*,
+  `ASSESSMENT_WINDOW_CLOSED` keeps *"This assessment is no longer available."*
+- **Practice rows and assignments with no map stay exempt** — they have no window.
+  This preserves the exemption `getAssessmentQuestions` already made.
+- `resolveInvite` **fails open** on a lookup error (a `sub` that is not a uuid, or a
+  momentarily unreachable DB) — it is the courtesy stop that gives the candidate a
+  reason on the sign-in screen. The start boundary does **not** fail open.
+- Comparison is via `isAssessmentWindowOpen`, i.e. IST wall-clock digits, not a raw
+  UTC instant — the same conversion documented above.
+
+**Frontend half, and the reason the backend gate alone was not enough.**
+`assessment-react-v2`'s `AIInterviewPanel` caught *every* failure from
+`startInterviewOnce` and dropped the candidate into **"interview preview mode"**
+with a local fallback question. That fallback exists for an unreachable service,
+but it also swallowed a deliberate refusal: a candidate already past sign-in when
+the assessment was cancelled would have been told *"Live interview service is not
+connected"* and carried on answering into a session that does not exist.
+`jsonRequest` in `src/lib/liveExam.ts` now attaches the response `status` to the
+error it throws, and the panel treats **4xx as final** — the server's own message,
+no fallback question, and the Record answer button stays disabled because
+`liveQuestion` is never set. 5xx and network failures keep preview mode.
+
+Rolled out DEV + UAT 2026-09-08 (`student-node` `72afaa4d`, `assessment-react-v2`
+`1059009`). **PROD pending.**
+
 ### The 24h click ticket
 
 The click-minted JWT is capped at **24h** (`ASSESSMENT_INVITE_CLICK_TTL_HOURS`) **and** by the time left on the link. This is what makes the above safe: the clamp used to be the link's whole remaining window, so a link running to a far-future `end_time` would mint a bearer JWT of the same length. **Not hypothetical** — institute assignments carry `end_time` in **2036**, so a click would have minted a ~10-year token (verified on UAT: the clamp returns 24.00h, not 87,648h).
