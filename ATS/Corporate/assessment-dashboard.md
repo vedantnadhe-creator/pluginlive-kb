@@ -594,6 +594,39 @@ so every row read an em dash.
 Coverage is genuinely sparse: 861 of 4,218 corporate roster emails on UAT (20%),
 33 of 3,514 on DEV.
 
+## Roster order — most recently taken first (DEV + UAT, 2026-09-08)
+
+The detail page's candidate table opened on `avg_score DESC` — "who did best",
+not the question a recruiter opens that screen with, which is **who has just come
+in**. `getCandidates` now orders on
+
+```sql
+MAX(GREATEST(aas.submitted_at, aas.assessment_started_at)) AS last_taken_at
+ORDER BY last_taken_at DESC NULLS LAST, name ASC
+```
+
+`GREATEST` ignores NULLs in Postgres, so a candidate who started and never
+finished still sorts by when they sat it, and only someone who has not opened it
+at all falls to the bottom (alphabetically). The value rides out on the row as
+`takenAt`.
+
+**The ORDER BY *is* the table's default order, beyond page 1.** The detail
+screen pages the whole roster in and appends each page, and the table renders
+the incoming array order until a column header is clicked (`sort` starts null),
+so a different key per page would visibly reshuffle rows as they arrive.
+
+**`takenAt` and `completedAt` are true instants, NOT `istIsoOf`.** That helper
+exists for the map's `start_time`/`end_time`, which store an IST WALL CLOCK in a
+UTC column. `submitted_at` and `assessment_started_at` are written by `now()`,
+so stamping +05:30 on them shifts them 5h30m and reports the wrong day either
+side of midnight — the same rule `buildRegistration()` already spells out.
+`completedAt` had it and was corrected here; nothing renders it yet, so no
+screen changed.
+
+Verified on UAT float `457f6e33…` (62 candidates, 35 takers): the rendered table
+now leads with the 4 Sept 11:10 attempt instead of the top scorer, all 62 rows
+in the DOM, timestamps strictly non-increasing, non-starters last.
+
 ## List order
 
 The assessments list is ordered **newest-created first**, on
