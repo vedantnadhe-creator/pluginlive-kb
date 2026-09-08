@@ -498,6 +498,37 @@ no NULL rows. The client re-sorts on the returned `createdAt`; it previously
 sorted by end date, which buried a newly created assessment with a distant
 window.
 
+## Promote corporate-node WITH corporate-react-v2 (UAT, 2026-09-08)
+
+The detail roster crashed to the bare full-page **"Something went wrong"** on
+UAT while DEV was fine, for one reason: `corporate-node` was one commit behind.
+That commit adds `proctoring` to each roster row; without it the key is absent
+entirely, and the table's guard read
+
+```tsx
+{c.proctoring === null ? <dash/> : <chip cls={PROCTORING_CHIP[c.proctoring].cls}/>}
+```
+
+`undefined` is not `null`, so the guard misses, `PROCTORING_CHIP[undefined]` is
+`undefined`, and `.cls` throws **during render**. Nothing in the assessments
+segment has an `error.tsx`, so a render throw goes all the way to
+`app/global-error.tsx` — which replaces `<html>` and paints the shell-less
+"Something went wrong / Try again" page. That blank-looking error is the
+signature of a render-phase throw, NOT of a failed fetch; a failed fetch shows
+an in-shell "We could not load…" state instead.
+
+Two rules follow:
+
+- **These two deploy together.** The v2 frontend is a BFF over corporate-node;
+  shipping the frontend to an env whose corporate-node is older ships a
+  contract mismatch. Check `git log origin/UAT..origin/Development` in
+  `corporate-node` before deploying `corporate-react-v2`.
+- **Index the chip maps, do not assert them.** Render only when the value is
+  present AND known to the map (`c.proctoring && PROCTORING_CHIP[c.proctoring]`),
+  falling back to the em dash. `ATTEMPT_STATUS_CHIP[c.attemptStatus]` in the
+  same row is still an unguarded lookup — one unknown enum value from the
+  backend takes the page down the same way.
+
 ## List state survives a detail-page round trip (DEV + UAT, 2026-09-08)
 
 Opening an assessment and coming back used to drop the recruiter on a
