@@ -679,6 +679,52 @@ draft).
 
 Before this, the wizard collected the field list and `partFor` returned `null` for it, so the config never left the browser and the candidate journey fell back to its `?pre=` scenario mock. That mock still drives the demo route, which has no invite to ask.
 
+#### That upload feature shipped a render loop that trapped candidates (fixed 2026-09-08, DEV + UAT)
+
+`98a6ed1` above also stalled the whole journey for a fortnight-sized class of
+floats. The candidate filled the registration form, passed the readiness check,
+clicked **Begin assessment** — and the button sat on **"Starting…"** forever.
+No error, no navigation, no way forward.
+
+The navigation was never the problem: Next had already fetched
+`/assessment/take`'s RSC payload AND its chunks. The transition simply never
+**committed**, because the form underneath was re-rendering roughly **20,000
+times a second** and a render loop starves React's navigation transition.
+
+The loop, in `RegistrationField.tsx`:
+
+```js
+useEffect(() => () => onBusyChange?.(false), [onBusyChange]);   // the bug
+```
+
+`onBusyChange` is an inline arrow, so its identity changes every render → the
+cleanup runs every render → the cleanup calls the parent's `setUploading`,
+whose `ids.filter(...)` **allocates a new array even when it removes nothing**
+→ a new array is a state change → render → new arrow → forever.
+
+Now an unmount-only effect (`[]`) reading the callback through a ref, and the
+parent returns the *same* array when there is nothing to remove, so an unstable
+callback can never re-arm it. Guarded by
+`scripts/check-registration-no-render-loop.mjs` (7 checks).
+
+**Why it looked intermittent — this is the part worth remembering.** Only floats
+whose form has **no resume step** break. Those hand the readiness check straight
+to the registration screen, so the looping form is *still mounted* when the
+navigation is issued. A float WITH a resume step has already unmounted the form
+by then, and navigates fine. Since the resume step exists only when the float
+carries an AI Interview, the rule is: **a registration form on a float without
+an AI Interview could not be started at all.**
+
+The same dependency was quietly breaking what the busy flag is *for* — any
+re-render mid-upload dropped the field's id, so Continue stopped waiting on an
+in-flight attachment, which is the exact guard the section above describes.
+
+Diagnosing this class of bug: a stuck transition looks like a dead button, so
+measure renders rather than reading code. A `MutationObserver` on `document.body`
+counting mutations for a few seconds separates "nothing happened" (a handler that
+never fired) from "everything is happening" (a loop): it read 121,824 mutations
+in six seconds before the fix and 8 after.
+
 ### The readiness check verifies a face and a voice, not just permission
 
 The device check used to mark Camera and Microphone "ok" the moment `getUserMedia` resolved — true of a lens pointed at a wall or a muted mic. It now asks the same engine v1's `BiometricCheck` uses, proxied through `/api/assessment/verify/[kind]` so the engine URL stays server-side:
