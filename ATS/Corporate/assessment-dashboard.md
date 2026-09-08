@@ -658,6 +658,18 @@ keep total render concurrency below what student-node can absorb.
   BFF builds the topic itself and never accepts one from the client — passing a
   caller-supplied topic through would let a recruiter subscribe to an admin's
   assignment-job stream.
+- **The login JWT carries no email — the delivery address comes from the BFF.**
+  `createLoginToken` (user-management-node) signs exactly
+  `{ role, _id, corporate_id | institute_id | student_id }`. The first cut read
+  `res.locals.user.userEmail` and so refused **every real session** with "this
+  session has no email address on it" (fixed 2026-09-08, DEV + UAT). The
+  corporate BFF now resolves it with `lib/api/creatorEmail` — token first, then
+  the auth service's profile for that `_id`, the same resolver behind
+  create-assessment and add-candidates — and passes `requestedBy`. It travels in
+  the body because admin-node has no other way to learn it, but it is
+  server-derived, so the browser still cannot choose where a bundle of candidate
+  reports is mailed. An address that cannot be resolved is refused up front:
+  the fallback delivery IS the email.
 - **Ownership is enforced in the BFF**, via `assertOwnsAssessment` — the same
   boundary the assessment-creation routes use, because admin-node's
   `/assessment/*` endpoints are admin-scoped by design.
