@@ -261,10 +261,12 @@ silently drops everyone who has not finished — on a 3-candidate float on UAT i
 returned 2, omitting the candidate sitting at 0% that the roster plainly lists.
 `sent` is the bucket the v2 roster shows, so the sheet matches the table.
 
-**The export cannot be narrowed to selected rows.** The upstream takes a status
-bucket plus an optional `searchQuery`, not a list of people, so Export Sheet
-covers every candidate on the assessment however many rows are ticked. The
-toast says so.
+**The export is narrowed to the selected rows.** The browser sends the checked
+candidate emails as `selectedEmails`; the BFF and corporate-node pass that JSON
+list to admin-node, which intersects it (case-insensitively) with the already
+tenant-guarded `sent` roster before it builds the workbook. The toast reports
+the exported selection count. Omitting `selectedEmails` preserves the existing
+full-roster export for other callers.
 
 ## Candidate drawer — General Details and Proctoring
 
