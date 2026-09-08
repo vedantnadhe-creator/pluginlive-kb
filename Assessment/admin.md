@@ -119,7 +119,9 @@ Returns a buffer for download.
 
 **Supports:** College and Corporate
 
-**Columns are per assessment type.** A fixed base block (Session Name, Name, Email, ID, Phone, Sent Date, Start Date, End Date, Status, Delivery Status, Delivery Issue) is followed by type-specific score columns, then Proctoring Status when proctoring is enabled.
+**Columns are per assessment type.** A fixed base block (Session Name, Name, Email, ID, **Roll Number** — college only, Phone, Sent Date, Start Date, End Date, Status, Delivery Status, Delivery Issue) is followed by type-specific score columns, then Proctoring Status when proctoring is enabled.
+
+**Roll Number** (added September 2026, requested by Swadha) sits immediately after `ID` and carries the student's university roll number from `student.students.uni_roll_no`. The college candidate query selects it as `roll_number` and `getAssessmentDetails` maps it onto each row as `rollNumber`, falling back to `"-"` when the student has none (it is an optional field, so a dash is common). **The column is emitted only when `entityType === "college"`** — corporate candidates have no university roll number, so their export is unchanged and does not carry an always-empty column.
 
 For **Aptitude**, the first type-specific column is **Time Taken** (`mm:ss`), ahead of Overall % / Critical Reasoning % / Quantitative % / Logical Reasoning %. It is read from `assessment.assessment_assigned_students.total_time_taken` — seconds, stamped by `submitAssessment` in student-node *before* score calculation — selected in both the college and corporate candidate queries and carried through each row as `totalTimeTakenSeconds`. Formatted by the shared `_fmtMmSs()` helper, which renders a **blank cell** (not `00:00`) for anyone who never submitted, so an empty cell means "no attempt" rather than "instant attempt". Same format as the `Time Taken` column in the institute schedules workbook (`_scheduleSheetColumns`).
 

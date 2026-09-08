@@ -705,7 +705,7 @@ This is a **separate stack** from the institute candidate list — it does NOT u
   - A finalized score row is treated as **calculated** even when `scores_calculated` is still false — the same rule the report-availability check in `common.js` uses, since that flag can lag behind the scoring pipeline and would otherwise hide the score.
   - `sectionScores` is deliberately **null** for AI Interview: `parameter_scores` holds 0–5 qualitative ratings (`{id, name, rating, rating_label, analysis}`), not percentages, so it does not belong in a table of 0–100 columns.
   - Still `-` for a candidate who answered **0 questions**: those sessions are flagged `interviewIncomplete` and never get an `ai_interview_scores` row. That's correct, not a bug.
-- **Export**: reuses admin-node `GET /assessment/exportStudentData?entityType=corporate` (the same Excel builder as institute, so it includes the role-based section columns incl. Coding). One selected status exports that bucket; otherwise exports all (`status=sent`).
+- **Export**: reuses admin-node `GET /assessment/exportStudentData?entityType=corporate` (the same Excel builder as institute, so it includes the role-based section columns incl. Coding). One selected status exports that bucket; otherwise exports all (`status=sent`). The **Roll Number** column is the one column that differs: it is gated on `entityType === "college"`, so it appears in the institute export only.
 
 ## AssessmentNavBar — visibility for expired schedules
 
