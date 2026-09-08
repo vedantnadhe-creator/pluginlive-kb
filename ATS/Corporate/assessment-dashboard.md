@@ -204,6 +204,43 @@ Order always follows `CORPORATE_ASSESSMENT_TYPES` so the row never reshuffles.
 Backend types the product has no UI for (`Cognitive`, `Tech_MCQ`,
 `Tech_Coding` — real subscriptions on UAT) are still dropped by that list.
 
+## Usage pack — live upstream, re-read on tab focus (DEV + UAT, 2026-09-08)
+
+`assessments/v2/usage` reads `assessment.subscribed_corporates` on every call
+and nothing on the path caches: `corporateNodeGet` and the widget's own fetch
+both send `cache: "no-store"`, and corporate-node holds no cache. Verified end
+to end on DEV — an admin `POST /assessment/assignSubscription` changing a
+type's limit was visible on the very next read of both corporate-node and the
+BFF.
+
+The staleness was in the browser. `useUsageQuota` fetched once on mount, so an
+admin editing the subscription in ANOTHER tab left the widget showing the cap
+it had read when the page loaded — indistinguishable, to the recruiter, from
+the platform ignoring the edit. It now also re-reads on `visibilitychange`,
+i.e. when the tab comes back to the front.
+
+Two ways an admin edit still legitimately shows nothing, both by design:
+
+- **Types outside the corporate six.** `app/api/assessments/usage/route.ts`
+  filters the backend catalogue through `isCorporateAssessmentType` and
+  recomputes `used`/`total` from what survives, so editing `Cognitive`,
+  `Tech_MCQ` or `Tech_Coding` counts can never move this card.
+- **Unlimited types.** `is_unlimited` rows report `total: null` and render
+  `∞`; their stored `token_limit` (1000 on every DEV row) is inert, so editing
+  the number changes nothing on screen.
+
+Two admin-side traps found while tracing this:
+
+- `POST /assessment/assignSubscription` has `isPrivate: true` **commented out**
+  in admin-node `app/routes/assessment.js` — it is unauthenticated, so anyone
+  who can reach the admin API can rewrite any corporate's or college's
+  subscription. Same for the neighbouring `featureAccess` and
+  `getCorporateCompaniesByCity` routes.
+- Editing a limit without also setting the contract window renews THAT row's
+  `start_date`/`end_date` to now + `durationDays` (365). Only the changed row
+  moves, so a corporate's types drift onto different expiry dates and the
+  card's "ending on" (the latest `end_date`) jumps with them.
+
 ## Export Sheet
 
 The roster's bulk-bar Export Sheet streams the SAME Excel the admin side
@@ -585,6 +622,26 @@ admin-node answers the float with **`mixMatchGroupId`**, but
 query param is never set. Harmless (the confirmation dialog keys off
 `floated`/`name`/`count`) and **admin-react-v2 behaves identically** — parity,
 not a regression.
+
+### The float confirmation is one-shot (DEV + UAT, 2026-09-08)
+
+After a float the wizard hard-navigates to
+`/v2/assessments?floated=1&name=&count=…` and the list opens the "<name>
+created" dialog off those params. They used to be stripped only when the
+recruiter dismissed the dialog, which left `floated=1` sitting in that history
+entry — so opening a row and pressing Back, refreshing, or reopening the tab
+all replayed a confirmation over a list already read. It hit new corporates
+hardest: floating is the first thing they do, so that URL is the entry they
+keep returning to, while anyone arriving from the sidebar gets a clean URL and
+never sees it.
+
+`AssessmentsView` now consumes the notice ONCE on arrival — reads the params
+into state and `history.replaceState`s them off the entry immediately — so the
+dialog renders from state and there is nothing left in the URL to replay.
+`history.replaceState`, not `router.replace`: the page arrives via a full
+document load and replacing to the same pathname never propagated to
+`useSearchParams`. admin-react-v2's `ManageAssessmentsView` still has the
+original URL-driven version and the same replay exposure.
 
 ### Ports differ per environment
 
