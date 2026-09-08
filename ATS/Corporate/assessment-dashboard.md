@@ -335,6 +335,18 @@ Consequence worth knowing: an attempt scored **0** now bands as A1 rather than
 The admin-side assessment-details table still applies the zero-section gate and
 will keep showing `-` for these candidates; only the export was changed.
 
+**The Status column speaks the roster's words (DEV + UAT, 2026-09-08).** The
+sheet labelled the not-yet-started bucket `Pending`, while every v2 dashboard
+chips that same candidate as `Not started` — the row read as two different
+states depending on where you looked at it. The export's four labels now match
+the chips exactly: `Completed` / `In progress` / `Dropped off` / `Not started`.
+Bucket membership is untouched (only the wording), and the export's
+completed-only test keys off the same constant so score cells do not shift with
+it. The legacy v1 institute and admin candidate lists still say "Pending";
+every current app says "Not started". Nothing parses these strings back — the
+ATS drive-stage labels in `corporate-node/helpers/evaluationAssessmentOverlay`
+are an unrelated vocabulary.
+
 **Deployment correction (2026-09-08):** this feature spans all three services.
 The first promotion moved only admin-node, which added the workbook column and
 server-side intersection but left the live browser unable to send
