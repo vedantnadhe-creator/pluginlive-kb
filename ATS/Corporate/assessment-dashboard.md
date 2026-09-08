@@ -220,6 +220,30 @@ Order always follows `CORPORATE_ASSESSMENT_TYPES` so the row never reshuffles.
 Backend types the product has no UI for (`Cognitive`, `Tech_MCQ`,
 `Tech_Coding` — real subscriptions on UAT) are still dropped by that list.
 
+### The dashboard's level tabs use the same rule (DEV + UAT, 2026-09-08)
+
+**Candidate Distribution by Levels** (`dashboard/_components/Competency.tsx`)
+had the same bug one screen over: it enumerated all four *laddered* types, so
+the UAT corporate "demo replica knack rcm" — subscribed to Aptitude (112/1000)
+and Communication (113/1000) and nothing else — was given Role-Based and AI
+Interview tabs that open onto a ladder which can never fill, directly beneath
+a usage widget listing the two types it actually has.
+
+Same helper, same two widenings. Two filters now stack:
+
+1. the type must HAVE a ladder (`COMPETENCY_TYPES` — Custom and Behavior have
+   no levels defined, so a tab could only ever be empty), and
+2. the corporate must be subscribed to it (or have candidates on it).
+
+**The active tab is derived, never stored.** The tab list only exists once the
+usage call answers, so the default selection (`COMPETENCY_TYPES[0]`, Aptitude)
+can name a type this corporate turns out not to have. It falls back at render
+time — `tabs.includes(picked) ? picked : tabs[0]` — rather than being corrected
+by an effect, which would render the wrong ladder for a frame first. When a
+corporate has none of the laddered types the tab bar is not rendered at all.
+
+Guarded by `scripts/check-competency-subscribed-tabs.mjs` (8 checks).
+
 ## Usage pack — live upstream, re-read on tab focus (DEV + UAT, 2026-09-08)
 
 `assessments/v2/usage` reads `assessment.subscribed_corporates` on every call
