@@ -540,6 +540,46 @@ Verified on UAT against a live Aptitude + Role_Based + Custom float: Custom
 → 404, Aptitude → 240 KB PDF, Role_Based → 169 KB PDF (the part that used to be
 lost), Excel → 7 KB xlsx, untyped → the Aptitude PDF.
 
+### A drop-off with nothing scored says so, and does not block the other parts
+
+The same shape of bug as Custom above, from the other direction. A candidate who
+walked out of a part before anything was scored still had that part offered in
+the menu; asking for it made student-node render a PDF it had no scores for, it
+threw, and corporate-node's catch answered **502 "Failed to fetch the report"** —
+an outage-shaped error for an ordinary state. And because "Download all" stopped
+at the first failure, the part that DID have a report never downloaded: on the
+UAT float `Reg details (Apt & Comm)`, candidate `jershini.y+ohufwrgg@…` (both
+parts DROPOUT — Aptitude unscored, Communication scored) got nothing at all.
+
+**Submission is not the test — being SCORED is.** A drop-off is scored (the
+dropout cron writes scores and leaves `submitted = false`), so a scored drop-off
+has a real report and always did.
+
+Fixed 2026-09-08 (DEV + UAT; PROD pending):
+
+- `corporate-node` `getReportTargets` carries a `renderable` flag per part,
+  mirroring student-node's own `checkReportAvailability`: not Custom, attempted
+  or submitted, and `scores_calculated` — with AI Interview's fallback of "a
+  finalized `ai_interview_scores` row exists", because that PDF renders straight
+  off the score row and the flag can lag. Mirrored as SQL rather than asked over
+  HTTP because that endpoint is JWT-private and corporate-node holds no student
+  token; SOURCE OF TRUTH is `student-node app/handlers/common.js`.
+- `downloadCandidateReport` 404s an unrenderable part with the REASON — "did not
+  finish X, and the attempt was never scored" or "X is still being scored" — and
+  the untyped path now picks the first part that HAS a report rather than the
+  first part.
+- The BFF (`/api/assessments/[id]/candidates/report/download`) passes a 4xx
+  message through instead of flattening every 404 to "No report available for
+  this candidate".
+- `ReportDownloadMenu`'s "Download all reports" treats a 404 as a skip, keeps
+  going, and reports what it skipped ("Downloaded 1 of 2. No report for
+  Aptitude."). A real failure still stops the run.
+
+Verified on UAT with that candidate: Aptitude → 404 + reason, Communication →
+353 KB PDF, untyped → the Communication PDF. Same on DEV against float
+`c7da1478…`. The "still being scored" wording has no data to exercise it on
+either env (no `submitted = true, scores_calculated = false` rows).
+
 ## Bulk report bundle — every selected candidate's PDF, zipped
 
 The bulk-bar's "Download Performance Report" used to write a **CSV of the
