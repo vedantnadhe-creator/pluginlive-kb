@@ -635,6 +635,48 @@ The admin builds a field list in the wizard; the candidate fills it in at `/asse
 
 - **Candidate** — both routes take the candidate from the scoped token and the float from that candidate's own assignment, so there is no id to tamper with: an invite can only ever read or write its own float's form. Answers already on file come back with the form and take precedence over the local draft, so returning to a half-finished registration shows what was actually submitted.
 
+#### `file` answers are stored in object storage (2026-09-08, DEV + UAT; PROD pending)
+
+Until this, a `file` field recorded only `{ name, size }`. The dropzone handed the
+real `File` to the parent and the registration form dropped it — so the upload
+never left the browser, a recruiter saw a filename with nothing behind it, and
+the attachment did not survive a refresh (a `File` cannot be serialised into the
+draft).
+
+- **Bucket** — the **PRIVATE** one (`OCI_BUCKET_NAME`), under
+  `pre-assessment/<assessmentAssignedId>/<uuid>.<ext>`. Deliberately *not*
+  `uploadAnyFileToOracle`, which writes to `PUBLIC_OCI_BUCKET_NAME`: these are
+  candidate CVs, and on that bucket anyone handed or guessing the URL can read
+  the object while an object ACL is a no-op. The uploader's filename never
+  reaches the key — it would put a caller-controlled string into an object path —
+  and lives in the answers JSON instead.
+- **The answer records the KEY, never a URL.** `{ name, size, key }`. Reads are
+  signed on demand for 15 minutes (`signPreAssessmentFile`), not the 7 days the
+  proctoring images use: that expiry exists so a report can embed a snapshot
+  later, whereas this is handed to a recruiter who is clicking Download now.
+- **Upload** — `POST /students/mix-match/pre-assessment/upload`, scoped by the
+  invite token like the get/save pair, drained with `req.parts()` for the
+  ordering reason written up on `uploadImage`. PDF/DOC/DOCX and 6 MB are
+  re-validated server-side; the candidate app enforcing them is not a reason to
+  trust the boundary.
+- **Signing** — `POST /students/assessments/preAssessmentFileUrl` is
+  unauthenticated like the other service-to-service routes here, so it runs its
+  own check: `PreAssessmentForm.ownsFile` confirms the key appears in that
+  email's own answers before anything is signed. **Without that it would be a
+  signing oracle for any object in the bucket.**
+- **Candidate app** — the file is uploaded on **attach**, not on submit, which is
+  what makes a file answer serialisable at all. The value is set only once the
+  upload succeeds, so a required field keeps blocking submit until the bytes are
+  stored; Continue also waits on an in-flight upload, which is what stops an
+  *optional* attachment being dropped silently by someone who moved on.
+- **Recruiter** — corporate v2's candidate drawer renders the answer as a button
+  that fetches a signed URL at click time (`GET .../candidates/registration-file`).
+  Two independent checks, neither trusting the other: corporate-node's tenant
+  guard plus a confirmation that the key is on this candidate's registration for
+  this float, then student-node's own `ownsFile` re-check.
+- **Older answers carry no `key`**, so their filenames still render as plain text
+  with nothing to click, rather than linking to a file that was never uploaded.
+
 Before this, the wizard collected the field list and `partFor` returned `null` for it, so the config never left the browser and the candidate journey fell back to its `?pre=` scenario mock. That mock still drives the demo route, which has no invite to ask.
 
 ### The readiness check verifies a face and a voice, not just permission
