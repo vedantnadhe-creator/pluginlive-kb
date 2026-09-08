@@ -292,6 +292,27 @@ already produced by `getAssessmentDetails`; re-checking a fixed Speaking +
 Reading + Listening trio incorrectly blanks the result for assessments where
 one of those sections is disabled.
 
+**A Mix & Match float carries the CEFR pair too (DEV + UAT, 2026-09-08).** A
+float has no single assessment type, so the export's per-type column chain is
+skipped entirely and its Communication part came out as a bare
+`Communication %` — the level the result is actually read as was missing. The
+workbook now appends `Assigned CEFR Level` / `CEFR Level` for every
+communication-type part of a float, after the per-part % columns. Detection
+mirrors the per-type chain's own fallback (anything that is not Behaviour /
+Aptitude / Role_Based / Custom / AI_Interview), so a Hinglish part keeps its
+CEFR as well; when a float somehow holds more than one such part the headers are
+prefixed with the part name.
+
+The assigned level is read from the candidate's `assessment_sets.cefr_level`,
+now joined into `getStudentAssessmentScores`'s per-assignment query and stamped
+on the report ABOVE its early return for unscored rows — so it exports for
+candidates who have not attempted the part yet, matching the standalone
+Communication export. That join also replaced a redundant per-candidate
+`findUnique` for the same column. The achieved level is the part report's own
+section-aware `cefrLevel`, so a float and the part's standalone export always
+agree (verified on real UAT floats: assigned `A2` → achieved `A1`, and pending
+rows showing the assigned level with `-`).
+
 **Deployment correction (2026-09-08):** this feature spans all three services.
 The first promotion moved only admin-node, which added the workbook column and
 server-side intersection but left the live browser unable to send
