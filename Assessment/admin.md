@@ -877,7 +877,8 @@ assessment**, so there is no single assignment to read these off.
 | Cell | Derivation |
 |---|---|
 | `sentDate` | earliest `invite_sent_at` of any part (then `created_at`, then the map `start_time`) via `resolveSentDate` — **one invitation covers the whole float**, and it is recorded against only the owner part, so the other parts carry no invite instant |
-| `startDate` / `startedDateTime` | earliest `assessment_started_at` — the candidate starts the float when they open the first part |
+| `startDate` | earliest `assessment_started_at`, **formatted for display** as `DD MMM YYYY, h:mm A` in IST |
+| `startedDateTime` | the same instant as **raw ISO**, for the UI to render in the viewer's zone |
 | `endDate` | **latest** part `end_time` — the window closes when the last part closes |
 | `droppedOffDateTime` | **latest** `dropped_at` — the last part they walked out of |
 
@@ -889,6 +890,25 @@ viewer's zone), and `"-"` rather than a missing key for start/end — the cell
 renders `{start} - {end}` and only emits the separator when **both** keys are
 truthy, so an absent key would glue the sent date to the end date. No frontend
 change was needed. Covered by `test/floatCandidateDates.spec.js`.
+
+⚠️ **`startDate` and `startedDateTime` are two different shapes of the same
+instant, and mixing them up leaks an ISO string into the spreadsheet.**
+`startDate` is the **display string the xlsx export writes**; `startedDateTime`
+is the **raw instant the UI reads**. Until 2026-09-08 the float path assigned
+the instant to both, so a Mix & Match export carried
+`2026-09-03T15:33:19.989Z` in its Start Date cell while the Sent Date and End
+Date cells either side of it were already formatted. The two non-float paths in
+`Assessment.js` (the college and corporate `formatCandidate` functions) had
+always formatted it as `DD MMM YYYY, h:mm A`; only the float path missed it, so
+the column read differently depending on the assessment type.
+
+Formatting uses `moment(...).utcOffset("+05:30")`, not `.format()`: **the
+admin-node container runs with `TZ` unset (UTC)**, so a bare `.format()` prints
+IST minus 5:30. It also deliberately avoids `.tz("Asia/Kolkata")` so the helper
+does not pull in `moment-timezone`. Locked by
+`test/floatCandidateStartDate.spec.js` (7 cases, including an assertion that the
+value never matches an ISO pattern and one that it byte-matches the non-float
+format). Fixed on DEV + UAT 2026-09-08; **PROD pending**.
 
 Note the START & END cell shows the **attempt** start (falling back to the sent
 date), not the window start — that is the per-assessment screen's long-standing
