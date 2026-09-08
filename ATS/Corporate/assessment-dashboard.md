@@ -284,6 +284,14 @@ tenant-guarded `sent` roster before it builds the workbook. The toast reports
 the exported selection count. Omitting `selectedEmails` preserves the existing
 full-roster export for other callers.
 
+**Communication exports include both the assigned target and the result.**
+`Assigned CEFR Level` is the level used to create the candidate's paper;
+`CEFR Level` is the achieved level calculated from the candidate's enabled
+communication sections. The Excel writer must trust the section-aware CEFR
+already produced by `getAssessmentDetails`; re-checking a fixed Speaking +
+Reading + Listening trio incorrectly blanks the result for assessments where
+one of those sections is disabled.
+
 ## Candidate drawer — General Details and Proctoring
 
 Both tabs render REAL columns only, via
