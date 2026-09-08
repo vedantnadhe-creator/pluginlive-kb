@@ -313,6 +313,28 @@ section-aware `cefrLevel`, so a float and the part's standalone export always
 agree (verified on real UAT floats: assigned `A2` → achieved `A1`, and pending
 rows showing the assigned level with `-`).
 
+**A zero section no longer erases a real level (DEV + UAT, 2026-09-08).**
+`getAssessmentDetails` and `getStudentAssessmentScores` blank the achieved CEFR
+whenever ANY enabled section scored 0. The candidate's own PDF report, the
+corporate dashboard and `corporate-node/helpers/communicationCefr` do not — they
+band the attempt's score against the CEFR of the SET it sat. So a UAT candidate
+who scored 83% Listening and 85% Writing but 0 on Reading and Speaking (33.76%
+overall on a B1 set) read as **A1** on every screen and exported as `-`.
+
+The Excel writer now bands a scored attempt itself, through admin-node's own
+`mapCEFRBasedOnQuestionSetAndScore` — the same table those surfaces use — for
+both a float's communication parts and a standalone Communication sheet, so the
+two can never disagree. It only falls back to that when the upstream level is
+blank, so an ungated level still wins. `-` now means exactly one of two things:
+the set has no `cefr_level`, or the attempt has no score. The level is never
+guessed.
+
+Consequence worth knowing: an attempt scored **0** now bands as A1 rather than
+`-`, because that is what the dashboard and the PDF already show for it.
+
+The admin-side assessment-details table still applies the zero-section gate and
+will keep showing `-` for these candidates; only the export was changed.
+
 **Deployment correction (2026-09-08):** this feature spans all three services.
 The first promotion moved only admin-node, which added the workbook column and
 server-side intersection but left the live browser unable to send
