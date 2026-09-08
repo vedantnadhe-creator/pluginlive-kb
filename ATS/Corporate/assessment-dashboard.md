@@ -494,6 +494,40 @@ Proxied, not called from the browser, because that endpoint is unauthenticated
 and the tenant guard must run first. It is rendered on demand (~10s), one PDF
 per submitted part.
 
+### Custom has no PDF — its report is the Excel sheet
+
+`generatePDFReport` branches per assessment type (behavior, communication /
+hinglish, aptitude, role-based, ai_interview) and **throws
+`Unsupported assessment type: custom_assessment`** for Custom. The platform has
+never rendered a Custom PDF; student-node's own `checkReportAvailability`
+returns `available: false` for `Custom_Assessment` outright, which is why the
+admin dashboard greys the button out for it.
+
+Corporate v2 did not apply that rule, so the drawer's menu listed Custom
+alongside the other parts and picking it surfaced as a **502 "Failed to fetch
+the report"** — an infrastructure-shaped error for something that simply does
+not exist. Because "Download all reports" stops at the first failure and the
+parts are ordered by `at.type_name` (**Aptitude → Custom_Assessment →
+Role_Based**), the parts queued behind Custom never downloaded either: a
+"3 PDFs" click delivered one.
+
+Fixed 2026-09-08 (DEV + UAT; PROD pending):
+
+- `corporate-node` `downloadCandidateReport` rejects `type=Custom_Assessment`
+  with a **404** naming the sheet, and drops Custom from the untyped path too,
+  so a Custom-only candidate 404s instead of being silently handed a different
+  part's PDF via `targets[0]`.
+- `corporate-react-v2` `ReportDownloadMenu` routes the Custom row to
+  **`GET /candidates/export?selectedEmails=["<email>"]`** — the existing
+  admin-node `exportStudentData` proxy, whose float export carries a
+  `Custom Assessment %` column — and saves it as `.xlsx`. Rows name their
+  format (`PDF` / `Excel`) only on a mixed float, and the footer reads
+  "N files" rather than "N PDFs" when the two are mixed.
+
+Verified on UAT against a live Aptitude + Role_Based + Custom float: Custom
+→ 404, Aptitude → 240 KB PDF, Role_Based → 169 KB PDF (the part that used to be
+lost), Excel → 7 KB xlsx, untyped → the Aptitude PDF.
+
 ## Tenant scoping
 
 `verifyToken` proves the JWT is signed; it does **not** check that
