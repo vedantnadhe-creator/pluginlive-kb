@@ -287,8 +287,43 @@ error it throws, and the panel treats **4xx as final** — the server's own mess
 no fallback question, and the Record answer button stays disabled because
 `liveQuestion` is never set. 5xx and network failures keep preview mode.
 
-Rolled out DEV + UAT 2026-09-08 (`student-node` `72afaa4d`, `assessment-react-v2`
-`1059009`). **PROD pending.**
+#### PROD has no `cancelled_at` column — and the first cut of this gate would have taken PROD down
+
+Checked read-only 2026-09-08: **`cancelled_at` exists on neither
+`assessment_corporate_map` nor `assessment_institute_map` on PROD** (the
+corporate Cancel feature has not shipped there). Everything else the gate needs
+— `is_practice`, both map FKs, `start_time`/`end_time` — is present, so that one
+column is the whole incompatibility.
+
+The first version of `assignmentWindowState` selected it as a plain column, which
+on PROD raises `42703 column acm.cancelled_at does not exist` **for the entire
+statement**. Both start-boundary callers would then have returned 500 — that is
+*every candidate on every assessment type unable to start an assessment*.
+`resolveInvite` would have survived, because its window check deliberately fails
+open. Verified directly against PROD: the plain-column form errors, so this was
+not hypothetical.
+
+Fixed by reading the column through `to_jsonb`:
+
+```sql
+COALESCE(to_jsonb(acm) ->> 'cancelled_at', to_jsonb(aim) ->> 'cancelled_at') AS "cancelledAt"
+```
+
+`to_jsonb(row) ->> 'key'` yields NULL for an absent key instead of raising, so the
+gate **degrades to plain expiry** where the column is missing and picks up the
+cancelled wording the moment it is added. There is no deploy ordering to get
+right, and no PROD migration is a prerequisite for shipping the code.
+
+Confirmed on all three databases: DEV and UAT still report the real `cancelled_at`
+(including the reported assessment), PROD returns NULL without error.
+
+**Scale on PROD if/when this ships:** 5,688 corporate and 198,960 institute
+`PENDING` assignments currently sit on already-closed windows. The institute
+figure is mostly historical scheduled assessments the portal already hides; the
+corporate figure is the one the invite path exposes.
+
+Rolled out DEV + UAT 2026-09-08 (`student-node` `72afaa4d` + `890577da`,
+`assessment-react-v2` `1059009`). **PROD pending.**
 
 ### The 24h click ticket
 
