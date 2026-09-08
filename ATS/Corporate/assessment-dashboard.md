@@ -485,6 +485,59 @@ Two traps, both found against real UAT rows:
 
 UAT corporate rows: PENDING 5398 / COMPLETED 594 / DROPOUT 219 / INPROGRESS 4.
 
+## The detail roster is loaded IN FULL, not one page (DEV + UAT, 2026-09-08)
+
+Everything that narrows the detail page's roster — the search box, the Filter
+panel, the levels doughnut's multi-select, the sortable columns and the row
+counts — is **client-side**, over the rows `useAssessmentDetail` holds. It held
+`page=1&limit=100`. corporate-node clamps `limit` to 100
+(`Math.min(100, ...)` in the handler, correctly), so on a **999-candidate float
+on UAT** (and a 1,000-candidate one on DEV) all of those controls were quietly
+answering about the top 100 by average score: searching for a candidate ranked
+650th returned "No candidates match this search", and a level wedge counted a
+tenth of the roster.
+
+The hook now walks the remaining pages behind the first and merges them:
+
+- The first page still paints immediately; the rest arrive behind it (10 pages
+  ≈ 20s on UAT for 999 candidates) — verified headlessly against
+  `corporate.uat.pluginlive.com`: 10 requests, all 200, 999 rows in the table,
+  no page errors, and a page-7 candidate now found by search.
+- **Sequential**, not parallel: each page is a grouped scan plus its per-type
+  and proctoring lookups upstream.
+- Capped at **50 pages (5,000 candidates)** so a future huge roster cannot turn
+  one page visit into a thousand requests.
+- Keyed on a run counter, so a fill still in flight cannot append its rows onto
+  a different assessment's roster after a navigation or a retry.
+- While it fills, an empty result reads "Still loading the roster…" rather than
+  "No candidates match this search" — the second is a claim about the roster
+  that cannot be made until all of it is held.
+
+The KPI cards and the doughnut's own totals were never affected: they come from
+`/overview`, which aggregates server-side over every candidate.
+
+## The roster carries the candidate's mobile (DEV + UAT, 2026-09-08)
+
+The Add-candidates drawer lists the standing roster beside the queue with the
+same three columns, but the feed had no mobile for the third — the roster query
+selected name and `student_id` off the student-profile lateral and nothing else,
+so every row read an em dash.
+
+`getCandidates` now returns one, through `CANDIDATE_MOBILE_SQL`:
+
+- **The number given on THIS invite wins** over the student profile's. It is
+  the more specific fact and often the only one there is — a candidate a
+  corporate invited by email may never have built a profile. Same precedence
+  admin-node's report query uses.
+- **A bare country code is not a phone number.** 20% of UAT's non-empty
+  `contact_number` values are junk like `"+91"`, so the same `>= 10 digits after
+  stripping non-digits` rule the candidate drawer applies decides what counts.
+- The candidate drawer's own Mobile now reads the invite's number too (scoped
+  to this float's parts), so the row and the drawer it opens cannot disagree.
+
+Coverage is genuinely sparse: 861 of 4,218 corporate roster emails on UAT (20%),
+33 of 3,514 on DEV.
+
 ## List order
 
 The assessments list is ordered **newest-created first**, on
