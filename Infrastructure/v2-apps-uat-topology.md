@@ -37,6 +37,21 @@ ssh ubuntu@uat.pluginlive.com
 ./auto_deploy.sh institute-react-v2 UAT
 ```
 
+> **The `ssh` line is not optional, and skipping it fails silently.** Each box
+> has its *own* `~/auto_deploy.sh`, and the DEV one is hardcoded `ENV_NAME="DEV"`
+> and drives the *local* `./deploy.sh`. Its second argument selects only the
+> **branch**, never the target. So running
+> `./auto_deploy.sh candidate-assessment-journey-v2 UAT` **from the DEV box**
+> checks out the UAT *branch* and rebuilds the **DEV** container with it —
+> UAT is untouched, and DEV silently regresses to whatever UAT was last at. The
+> menu ids differ too (`candidate-assessment-journey-v2` is **22** on UAT, **26**
+> on DEV), so the id is not portable between boxes either. After any UAT deploy,
+> verify on the UAT box that `git log -1` matches what you pushed and that the
+> **freshly built** `/app/.next/server` chunk contains your change — the deploy
+> retains the previous build's `static/chunks` so open tabs keep working, which
+> means grepping `/app/.next/static` can match a *stale* chunk and show a change
+> that is not actually live.
+
 Menu IDs 22–25 in `~/deploy.sh`. They do **not** use `TYPE=frontend` — that
 branch builds a Docker image from `.env` and would miss what these apps need.
 Two new types were added instead:

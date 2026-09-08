@@ -1052,6 +1052,82 @@ the fixed code and asserts `must open Communication, not stay on the closed
 interview` on the parent commit. 266 tests, lint and production build pass.
 Commits `bdbb6d5` + `874c95d` on Development, merged to UAT as `131cac3`.
 
+
+### A recording from an EARLIER sitting in the same browser stranded a finished module (fixed 2026-09-08, DEV + UAT — PROD pending)
+
+Reported as *"Mix n match — 1 section is Custom — not able to go to next
+assessment"*. **Custom is a red herring.** The bug stranded whichever module the
+candidate finished **first**, because that is simply the first place
+`drainUploads()` is awaited.
+
+The upload queue (`lib/uploadQueue.ts`) is IndexedDB-backed, **durable, and
+shared by every sitting the browser has ever run** — one `pl.v2.uploads` store
+per browser profile, not per candidate and not per attempt. Each record carries
+the scoped JWT frozen into it at enqueue time. A take left behind by an earlier
+candidate on the same machine — a QA laptop, a shared campus lab PC — can
+therefore never upload: its token expired when that sitting ended. But `401`
+was classed **retryable**, so the record burned all 8 attempts with backoff and
+`pending` never reached zero. All three call sites in
+`app/assessment/take/page.tsx` — `finish()`, the final-review dialog and
+`finishCurrentModule` — `await drainUploads()` *before* handing over, so the
+drain blocked for its full 180s, then **rejected**; the `catch` showed a toast
+and never called `setModuleConfirming`. No hand-over dialog ever opened. The
+button read **"Finishing…"**, disabled, indefinitely, and the candidate had no
+route into the next assessment.
+
+Three changes:
+
+1. **The drain is scoped.** `drainUploads(assignmentIds?, timeoutMs?)` waits
+   only for records whose `assignmentId` belongs to this sitting's parts
+   (`test.assessments.map(a => a.id)`). Waiters carry their scope and are
+   settled per pump pass, so a waiter whose own uploads have landed is released
+   immediately rather than held behind a queue it has no stake in. The
+   module-global `failed` counter became a **`Set` of `assignmentId`s** for the
+   same reason — another sitting's lost take must not fail this candidate's
+   drain, nor steal the warning that belongs to the candidate whose recording
+   it actually was.
+2. **A 401 is permanent, not a blip.** The token is frozen at enqueue time and
+   only ever gets older, so retrying it 8 times spends every backoff to be
+   refused again. It is now worth exactly **one** retry with whatever token
+   this tab holds live — so a recording from *this* sitting whose session was
+   renewed still goes up — and a second 401 drops the take. The upload base is
+   also resolved with the live token: a dead one cannot even learn the address,
+   which is how a record could spend its whole retry budget without ever being
+   refused at the endpoint.
+3. **A failed drain never vetoes the hand-over.** `drainSittingUploads()` wraps
+   all three call sites; a failure warns via toast and nothing more. This is the
+   honest trade: recordings are best-effort by design (the queue keeps uploading
+   from whatever page loads next) and **every answer is already saved
+   server-side question by question**, so a recording that is never going up
+   must not cost the candidate the module they finished, the hand-over when
+   their clock runs out, or the submit itself.
+
+**Evidence** — UAT group `298491be` ("All assesment in view", Custom → Aptitude
+→ …): `prabha+niwjwooo` and `prabha+tyuuwiiw` each answered all 6 Custom
+questions in ~20s and then stopped dead. student-node logs show the page alive
+for ~3 more minutes, proctoring snapshots still POSTing to the **Custom**
+assignment id (so `currentAssessmentId` never moved), interleaved with
+`POST .../7a7a62cf-.../upload-audio → 401 jwt expired` retries — and `7a7a62cf`
+is **`prabha+shyu8090`'s AI Interview from 2026-09-07**, an entirely different
+candidate.
+
+**Reproduced** in a headless browser against a DEV probe float: planting one
+record in IndexedDB `pl.v2.uploads` with a foreign `assignmentId` and a dead
+token reproduced "Finishing…" disabled for ≥60s with no dialog; with the fix the
+hand-over dialog opens in under 5s. Covered by `src/lib/uploadQueue.test.ts`
+(fakes IndexedDB and `fetch`), which asserts that a foreign take does not hold
+the drain, that this sitting's own take still *is* waited for, and that an
+expired token costs one retry rather than eight. 319 tests, lint and typecheck
+pass. Commit `9a0f7d8` on Development, merged to UAT as `a7d9a50`.
+
+> **Deploy note.** `~/auto_deploy.sh` on the **DEV** box is hardcoded
+> `ENV_NAME="DEV"` and drives the *local* `./deploy.sh`; its second argument
+> selects only the **branch**. Running `./auto_deploy.sh
+> candidate-assessment-journey-v2 UAT` from the DEV box therefore builds the UAT
+> *branch* onto the **DEV** container — it does not touch UAT. The UAT box has
+> its own `~/auto_deploy.sh` (`ENV_NAME="UAT"`, menu id **22** rather than DEV's
+> **26**); a UAT deploy must be run there over SSH.
+
 ### Promoted to UAT alongside the hand-over fix (2026-08-31)
 
 Three earlier `Development` commits rode into UAT with the promotion merge
