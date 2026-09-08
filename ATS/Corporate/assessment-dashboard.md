@@ -249,6 +249,48 @@ size of the selection, and the UI says so explicitly when it is 0, pointing at
 Nudge instead. **Resend and Nudge are not interchangeable**: Nudge reaches
 anyone still pending, Resend only reaches candidates who dropped mid-attempt.
 
+## Attempt status on the roster (DEV + UAT, 2026-09-07)
+
+The detail roster carries `attemptStatus` — `pending` | `inProgress` |
+`dropped` | `completed` — rendered as a **Status** column and used to gate both
+bulk actions. Send Reminder targets `pending` only, Resend Assessment `dropped`
+only; each disables at zero and carries its count in the label, so a recruiter
+sees what a click will reach instead of reading "sent to 0" afterwards.
+
+It is counted off `assessment_assigned_students.status`, **the same enum
+admin-node switches on** (`Assessment.js` categorises DROPOUT/INPROGRESS/
+COMPLETED/PENDING off that column, falling back to a 20-minute rule only when
+it is null). Deriving it in the UI instead is what the old code did — it keyed
+on `fit`, a PERFORMANCE band whose `notAttempted` value also covers a drop-off,
+so reminders were offered for candidates who had already started.
+
+Two traps, both found against real UAT rows:
+
+- **Do NOT derive it from `parts_submitted`.** That count uses
+  `TAKEN_PREDICATE` (`submitted OR attempted`) and a DROPOUT row carries
+  `attempted = true`, so `parts_submitted = parts_held` holds for a candidate
+  who dropped *every* part. Testing that first labels all 219 UAT dropouts
+  "Completed".
+- **`dropped` outranks everything**, and partial progress is `inProgress`, not
+  `pending`. One UAT candidate holds 5 parts as COMPLETED+DROPOUT, and 76 hold
+  COMPLETED+PENDING — calling the latter "not started" invites a reminder they
+  have already acted on.
+
+UAT corporate rows: PENDING 5398 / COMPLETED 594 / DROPOUT 219 / INPROGRESS 4.
+
+## List order
+
+The assessments list is ordered **newest-created first**, on
+`COALESCE(created_at, start_time) DESC`. `created_at` was added part-way
+through `assessment_corporate_map`'s life: 521 of 902 UAT rows are NULL and
+every one predates the earliest real value (latest such `start_time`
+2026-08-13, earliest real `created_at` 2026-08-14), so the fallback orders the
+backfill era among itself and keeps it below everything with a true creation
+date rather than collapsing most of the list into one NULLS-LAST blob. DEV has
+no NULL rows. The client re-sorts on the returned `createdAt`; it previously
+sorted by end date, which buried a newly created assessment with a distant
+window.
+
 ## Candidate PDF report
 
 The detail drawer's download serves the **same PDF the admin side does**:
