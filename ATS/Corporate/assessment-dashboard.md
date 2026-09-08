@@ -220,6 +220,34 @@ Order always follows `CORPORATE_ASSESSMENT_TYPES` so the row never reshuffles.
 Backend types the product has no UI for (`Cognitive`, `Tech_MCQ`,
 `Tech_Coding` — real subscriptions on UAT) are still dropped by that list.
 
+### A candidate's time is a SUM; the assessment's KPI is an AVG (DEV + UAT, 2026-09-08)
+
+Two different metrics that both used to be called an average, one of them
+wrongly:
+
+| Where | What it is | SQL |
+|---|---|---|
+| A candidate's own time (roster row, drawer's Performance band) | their **TOTAL** across the float's parts | `SUM(TIME_TAKEN_EXPR)` → `timeTakenMinutes` |
+| The assessment's "Avg Time Taken" KPI card | a genuine average **across candidates** | unchanged — it now averages each candidate's total |
+
+`getCandidates` (corporate-node `CorporateAssessmentDetailV2`) computed
+`AVG(TIME_TAKEN_EXPR)` per candidate, so a mix-n-match candidate's time
+*shrank the more types the float bundled* — five parts totalling 143 minutes
+were reported as 29. Identical to the old value on a single-type float, where
+there is only ever one part to sum, which is why it went unnoticed.
+
+The field was **renamed `avgTimeMinutes` → `timeTakenMinutes`** so the name
+cannot keep asserting something the value is not. Verified against real UAT
+rows: 5-part floats read 143/140/68/56 minutes as totals against 29/28/14/11
+as per-part averages.
+
+**The frontend and backend halves must ship together.** The candidate app reads
+`c.timeTakenMinutes`; a corporate-react-v2 build carrying that on top of a
+corporate-node that still emits `avgTimeMinutes` gets `undefined` — the roster
+time and the assessment's Avg Time Taken KPI both fall back to "—" with no
+error anywhere. That mismatch was live on UAT between the two deploys on
+2026-09-08.
+
 ### The dashboard's level tabs use the same rule (DEV + UAT, 2026-09-08)
 
 **Candidate Distribution by Levels** (`dashboard/_components/Competency.tsx`)
