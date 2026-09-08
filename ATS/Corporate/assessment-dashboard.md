@@ -1089,6 +1089,43 @@ dashboard) so the status cannot disagree between screens, and the list has a
 **No backfill.** Rows cancelled before the column read NULL and keep saying
 Expired.
 
+### Reopen has to CLEAR the cancellation (DEV + UAT, 2026-09-08; PROD pending)
+
+Reopening a cancelled assessment did nothing you could see. The call returned
+`{ok: true}`, the end date moved — and the assessment stayed **Cancelled** on
+the list, in the header and on the dashboard, while a candidate opening the
+invite was still told *"This assessment has been cancelled and is no longer
+available."*
+
+Two separate holes, both in `PUT /assessment/details`:
+
+1. **`cancelled_at` was never cleared.** `closeNow` stamps it (above) and
+   nothing unstamped it. `statusOf` answers `"cancelled"` off that column
+   **before it compares any dates**, and student-node's `assignmentWindowState`
+   reports `cancelled: cancelled_at != null` — so no amount of moving the window
+   could undo it. There is now a `reopen: true` flag, the mirror of `closeNow`,
+   which sets it back to NULL. Explicit rather than implied by a new window, so
+   an ordinary Manage save on a cancelled assessment cannot silently un-cancel
+   it (verified: a plain PATCH leaves it Cancelled).
+2. **`startTime` was accepted by every caller and applied by none.** The Reopen
+   dialog and the Manage drawer both send it; it was neither declared in
+   `updateAssessmentDetailsSchema` nor destructured in
+   `updateEditableAssessmentDetails`, so a reopened assessment kept the start it
+   was cancelled with. It is now applied on the same wall-clock convention as
+   `endTime` (a date with no time means the START of that day, mirroring its
+   end-of-day default), and the end-after-start check compares against the start
+   being set in the same call rather than the stored one.
+
+Verified on a real cancelled float on both environments: `cancelled` →
+`scheduled`, the start actually moves, `cancelled_at` is NULL on every part, and
+student-node then tells the candidate *"This assessment opens on 12 Sept 2026,
+9:00 am IST"* instead of the cancellation notice. The corporate BFF's
+`/reopen` route sends `reopen: true`; nothing else does.
+
+| Action | Endpoint |
+|---|---|
+| Reopen assessment | `PUT /assessment/details` `{startTime, endTime, reopen: true}` |
+
 ### Cancel means the window closes
 
 There is no `cancelled` column anywhere on the assessment maps, so cancelling
