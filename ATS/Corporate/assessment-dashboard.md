@@ -149,6 +149,32 @@ to v1 too. Flip one without the other and the two sidebars point at each other.
   level rather than a blank; the Role row is dropped entirely when there is no
   role.
 
+## The type legend is subscription-scoped
+
+The list's type legend and the Filters panel's **Assessment type** options show
+only the types the corporate is SUBSCRIBED to, not all six the platform
+supports. Before 2026-09-08 they enumerated the fixed six, so a corporate on
+Communication + Aptitude was shown Role-Based, AI Interview, Behavior and
+Custom sitting permanently at 0 and could filter by types it cannot float.
+
+Subscriptions live in `assessment.subscribed_corporates` and already reach the
+browser on the usage payload (`getUsageQuota` returns one `breakdown` entry per
+subscribed type), so `visibleAssessmentTypes` in `lib/assessmentTypes.ts`
+narrows the supported six to that set — no extra endpoint.
+
+Two deliberate widenings, so the UI never claims LESS than the truth:
+
+- An unanswered or failed usage call falls back to the full supported list. An
+  empty legend reads as broken, and hiding types on a fetch failure is a worse
+  lie than showing one too many.
+- The set is unioned with the types the corporate's own assessments actually
+  carry, so a lapsed subscription cannot hide a type whose rows are still
+  listed under the legend.
+
+Order always follows `CORPORATE_ASSESSMENT_TYPES` so the row never reshuffles.
+Backend types the product has no UI for (`Cognitive`, `Tech_MCQ`,
+`Tech_Coding` — real subscriptions on UAT) are still dropped by that list.
+
 ## Export Sheet
 
 The roster's bulk-bar Export Sheet streams the SAME Excel the admin side
