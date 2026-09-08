@@ -286,7 +286,7 @@ Two admin-side traps found while tracing this:
 The roster's bulk-bar Export Sheet streams the SAME Excel the admin side
 produces: `GET /corporates/:id/assessments/v2/:id/candidates/export` proxies
 admin-node's `/assessment/exportStudentData` with `entityType=corporate`.
-Columns: Session Name, Name, Email, ID, Phone, Sent/Start/End dates, Status,
+Columns: Name, Email, Phone, Sent/Start/End dates, Status,
 Delivery Status, Delivery Issue, Overall Score, Verdict (plus a % column per
 type on a Mix & Match float). It replaced a CSV the browser built from whatever
 the table happened to be showing.
