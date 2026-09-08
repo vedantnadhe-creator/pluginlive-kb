@@ -290,7 +290,9 @@ full-roster export for other callers.
 communication sections. The Excel writer must trust the section-aware CEFR
 already produced by `getAssessmentDetails`; re-checking a fixed Speaking +
 Reading + Listening trio incorrectly blanks the result for assessments where
-one of those sections is disabled.
+one of those sections is disabled. The selected-row filtering and Communication
+CEFR export are live on DEV and UAT as of 2026-09-08 (admin-node Development
+`fa4ddc8`; UAT merge `cdb98f4`).
 
 ## Candidate drawer — General Details and Proctoring
 
