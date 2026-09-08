@@ -157,6 +157,22 @@ to v1 too. Flip one without the other and the two sidebars point at each other.
   guard runs AFTER the lateral, so the type check must sit inside the call; and
   Aptitude uses negative marking, so clamp with a `CASE` — a bare
   `GREATEST(0, LEAST(100, …))` ignores NULL and scores a zero-mark category 100.
+- **Communication totals use the report formula, never a flat section average.**
+  `helpers/assessmentScoreSql.js` weights Speaking 0.4, Reading 0.2,
+  Listening 0.1 and Writing 0.3; Writing is the mean of its four applicable
+  subsections (Email Writing or Dictation according to `is_email_writing`). A
+  restricted `enabled_sections` set renormalises the enabled group weights.
+  Retakes replace the original attempt and duplicate section rows collapse with
+  `MAX`. This is the same calculation used by the candidate PDF; the previous
+  `AVG(communication_scores.score)` made one UAT attempt read 53% in the portal
+  but 33.76/100 in the PDF.
+- **A Communication CEFR rung is relative to the question set, not a percentage
+  band.** The candidate endpoint returns `byType[].level`, preferring a stored
+  `progression_history.assessment_cefr` and otherwise mapping the unrounded
+  weighted score against `assessment_sets.cefr_level` with the report's ladder
+  and cap. The detail doughnut, its level filter, and the candidate drawer use
+  that server value. Other assessment types, and Communication sets without a
+  CEFR value, continue to use their client-side score bands.
 - **Custom Assessment and Aptitude carry real per-section weights**
   (`total_marks` per section/category), so their breakdown bars are weighted by
   marks. Every other type gets an equal split, because its scorer's weighting is
