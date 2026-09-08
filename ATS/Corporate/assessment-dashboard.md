@@ -485,6 +485,38 @@ Two traps, both found against real UAT rows:
 
 UAT corporate rows: PENDING 5398 / COMPLETED 594 / DROPOUT 219 / INPROGRESS 4.
 
+## The closing countdown counts in the unit that is left (DEV + UAT, 2026-09-08)
+
+The amber caution line under **Valid till** — on the assessments list and on the
+dashboard's Active Assessments schedule — was
+`Math.ceil(ms / 86_400_000)` days. Every window still open therefore rounded up
+to at least a day: an assessment closing in **five minutes** said `1 days left`,
+the same words as one closing tomorrow evening, and a recruiter deciding whether
+to chase anybody read a day of slack that did not exist.
+
+`timeLeftLabel(iso, now)` in `lib/assessments/format.ts` now renders it: days
+while there are whole days, hours inside the last day, minutes inside the last
+hour, `"Less than a minute left"` below that, and **null once the window has
+closed** (which also removed the `0 days left` a just-lapsed row used to show,
+since `Math.ceil` of a small negative is `-0`). Rounded DOWN at every step —
+understating what is left is the safe direction for a deadline. `1 day left` is
+also no longer written `1 days left`.
+
+**`daysUntil` is unchanged and still decides WHETHER to warn** (`<= CAUTION_DAYS`,
+5). Rounding up is right for that bucket and wrong only for the words a
+recruiter reads — the two questions are now answered by two functions.
+
+Both rows re-read the clock **once a minute**; they used to read it once on
+mount, which a minutes-granularity label makes visibly wrong on a tab left open.
+The clock is still read only after mount (never during SSR) or the prerender
+would bake in the build's date and mismatch on hydration.
+
+Verified against the deployed UAT bundle with the browser's clock frozen, on a
+real float closing at 21:36 IST: 5 min before → `5 minutes left`, 59 min →
+`59 minutes left`, 30 s → `Less than a minute left`, 1 min after the end → no
+countdown at all. On the real clock, DEV showed `4 hours left` and UAT
+`2 hours left` for floats that both used to say `1 days left`.
+
 ## The detail roster is loaded IN FULL, not one page (DEV + UAT, 2026-09-08)
 
 Everything that narrows the detail page's roster — the search box, the Filter
