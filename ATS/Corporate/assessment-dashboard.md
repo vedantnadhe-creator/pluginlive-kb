@@ -249,6 +249,27 @@ size of the selection, and the UI says so explicitly when it is 0, pointing at
 Nudge instead. **Resend and Nudge are not interchangeable**: Nudge reaches
 anyone still pending, Resend only reaches candidates who dropped mid-attempt.
 
+## Year-on-year panel: an empty series blanked the whole dashboard
+
+**Fixed DEV + UAT 2026-09-07.** Landing on `/v2/dashboard` as a corporate with
+no scored attempts threw `TypeError: Cannot read properties of undefined
+(reading 'value')` and the error boundary replaced the ENTIRE dashboard with
+"Something went wrong".
+
+`yoy` is always a one-element array, but its `series` is built by skipping every
+year without a scored attempt — so a corporate that has never had one gets a
+series carrying **zero points**. `YearOnYear`'s `if (!series.length) return null`
+guard only covers the OUTER array, so that payload reached the map, where
+`pts[pts.length - 1]` is undefined.
+
+**It was not an edge case: 15 of 25 UAT corporates** — every one yet to have a
+submitted attempt, which includes every brand-new customer on their first login.
+
+Guarded on BOTH sides on purpose: corporate-node no longer emits a series with
+no points, and the component filters them before rendering, so a stale bundle
+cannot reproduce the blank page. A chart with no data must degrade to a hidden
+panel, never a dead screen.
+
 ## Attempt status on the roster (DEV + UAT, 2026-09-07)
 
 The detail roster carries `attemptStatus` — `pending` | `inProgress` |
