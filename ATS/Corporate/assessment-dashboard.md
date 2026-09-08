@@ -290,9 +290,16 @@ full-roster export for other callers.
 communication sections. The Excel writer must trust the section-aware CEFR
 already produced by `getAssessmentDetails`; re-checking a fixed Speaking +
 Reading + Listening trio incorrectly blanks the result for assessments where
-one of those sections is disabled. The selected-row filtering and Communication
-CEFR export are live on DEV and UAT as of 2026-09-08 (admin-node Development
-`fa4ddc8`; UAT merge `cdb98f4`).
+one of those sections is disabled.
+
+**Deployment correction (2026-09-08):** this feature spans all three services.
+The first promotion moved only admin-node, which added the workbook column and
+server-side intersection but left the live browser unable to send
+`selectedEmails`. The complete DEV/UAT deployment includes corporate-react-v2
+(selection query), corporate-node (forwarding), and admin-node (filtering +
+workbook). After deploying all three, a real DEV Communication export from a
+three-candidate roster with one selected produced one data row and included
+both CEFR headers.
 
 ## Candidate drawer — General Details and Proctoring
 
