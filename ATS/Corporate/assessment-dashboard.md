@@ -694,8 +694,9 @@ separate audit.
 
 ## Loading states
 
-All three screens (dashboard, assessment-wise, candidate-wise) show **skeleton
-loaders**, not text. Two rules make them worth the code:
+Every screen (dashboard, assessment-wise, candidate-wise, and the per-assessment
+L2 detail page) shows **skeleton loaders**, not text. Two rules make them worth
+the code:
 
 - The skeleton reuses the **real structural classes** — `.kpi-grid`/`.kpi`,
   `.panel`, `.aa-split`, `.rail` on the dashboard; the real `<table class="ma-tbl
@@ -720,6 +721,20 @@ Two gotchas found building this:
 - The DS `.skeleton-overlay` is `position: absolute` and collapses to a strip
   with no real layout behind it. These skeletons are deliberately **in-flow**
   instead.
+
+The L2 detail page (`assessments/[id]/_components/DetailSkeleton.tsx`, wired in
+`AssessmentDetailView` where a one-line "Loading assessment…" panel used to be)
+follows the same rule: it renders the real `PageHeading` band, the four-card
+`.kpis` row and the `.panel.ad-merge` card with its `.aa-split` donut/roster
+halves, with only the content atoms as `.skeleton` spans. Its sizes live in
+`assessment-detail.css` under `.ad-sk-*`.
+
+One difference from the list screens' `TableSkeleton`: the roster's **column
+headers are skeleton blocks, not real labels**. The detail table's columns
+depend on the assessment's own types (one "Overall Performance" column for a
+single-type assessment, one per type for a mix-n-match float), and the types are
+exactly what is still being fetched — naming them would be a guess that reflows
+half the time.
 
 ## Deploy
 
