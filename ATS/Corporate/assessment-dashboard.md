@@ -498,6 +498,39 @@ no NULL rows. The client re-sorts on the returned `createdAt`; it previously
 sorted by end date, which buried a newly created assessment with a distant
 window.
 
+## List state survives a detail-page round trip (DEV + UAT, 2026-09-08)
+
+Opening an assessment and coming back used to drop the recruiter on a
+freshly-mounted list: tab back to **All**, filters and search cleared, the
+infinite-scroll reveal snapped to the first batch, scrolled to the top. On a
+filtered, scrolled list that reads as the work being thrown away.
+
+`assessments/_hooks/assessmentsListPersistence.tsx` holds a snapshot of
+view (assessment-wise / candidate-wise), status tab, search, filter state, the
+infinite-scroll reveal count **per view**, and the scroll position. Three
+things about it are load-bearing:
+
+- **It is not React state.** The snapshot is a plain mutable object behind a
+  stable ref; `useAssessmentFilters` and `AssessmentsView` read it once via lazy
+  `useState` initializers and write back in effects. A scroll-position write
+  must not re-render the list it is scrolling.
+- **It is scoped to `assessments/layout.tsx`, not the app shell.** That scope
+  IS the reset behaviour: navigating to Dashboard or Roles unmounts the
+  assessments segment and the snapshot goes with it, so coming back later
+  starts clean. `/v2/assessments` ⇄ `/v2/assessments/[id]` stays inside the
+  layout and keeps it. There is no reset code.
+- **`useInfiniteScroll` skips its reset-to-page-size effect on the mount run.**
+  That effect fires on mount like every effect; without the guard it stamps the
+  restored reveal count straight back down to `PAGE_SIZE` before the browser
+  paints. The hook takes an optional `persist` handle
+  (`{ initialLimit, onLimitChange }`) — absent everywhere else it is used.
+
+Earlier shapes of this hook crashed the list into the error boundary's
+**"Something went wrong"**. The provider hands consumers a *stable* value whose
+`snapshot` getter only reads `.current` later, from an effect or a lazy
+initializer — never during a render. Touching the ref during render, or handing
+down a fresh object each render, is what breaks it.
+
 ## Candidate PDF report
 
 The detail drawer's download serves the **same PDF the admin side does**:
