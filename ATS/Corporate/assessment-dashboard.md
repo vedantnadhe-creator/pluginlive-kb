@@ -220,6 +220,30 @@ Order always follows `CORPORATE_ASSESSMENT_TYPES` so the row never reshuffles.
 Backend types the product has no UI for (`Cognitive`, `Tech_MCQ`,
 `Tech_Coding` — real subscriptions on UAT) are still dropped by that list.
 
+### Sorting the roster is a three-state cycle (DEV + UAT, 2026-09-08)
+
+A score column cycles **ascending → descending → the order the rows arrived
+in**. It used to toggle between the two directions only, so the first click on
+any column discarded the default order for the rest of the visit — there was no
+third click to get back to it and a reload was the only way out.
+
+The first click sorts **ascending**, where it previously jumped straight to
+descending. Descending-first guesses at intent, and the chevron drawn on the
+header points up, so the control now does what its own glyph says.
+
+The third state is announced rather than hidden: the button's accessible name
+describes the NEXT click ("Sort by Aptitude, descending" → "Stop sorting by
+Aptitude") and the `<th>` carries `aria-sort`. A cleared-sort state nobody can
+see is a state nobody uses, and without the label it is unreachable for a
+screen reader.
+
+`SortHeader` is used **only** by the assessment detail page's candidates table
+(`_components/SortHeader.tsx`); other tables have their own sort and were not
+touched. Guarded by `scripts/check-sort-cycle.mjs`, which lifts the real
+handler out of `CandidatesTable.tsx` and runs it against fake setState calls —
+it asserts the cycle BEHAVES, so a rewrite that keeps the words and breaks the
+transitions still fails.
+
 ### A candidate's time is a SUM; the assessment's KPI is an AVG (DEV + UAT, 2026-09-08)
 
 Two different metrics that both used to be called an average, one of them
