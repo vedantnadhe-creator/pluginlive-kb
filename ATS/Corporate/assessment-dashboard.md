@@ -654,6 +654,32 @@ already had the questions loaded can still submit that in-flight attempt. This
 is pre-existing — the same is true of any assessment whose window simply
 expires mid-attempt.
 
+### Expired keeps Manage (DEV + UAT, 2026-09-08)
+
+The detail page used to hide Share AND Manage together once a float was
+"closed" — where closed meant completed, cancelled, OR expired. That's wrong
+for expired: admin-node's `updateEditableAssessmentDetails` deliberately
+allows moving `endTime` to a future date on an expired float (past end dates
+are intentionally editable; the only guard is `newEnd > startTime`, `closeNow`
+bypasses that), so expired is the one closed state that is still recoverable —
+and the Manage drawer's End date field is the only UI that can reach it. A
+recruiter with an expired float and unfinished candidates had no path back in.
+
+Frontend now splits what was one `closed` boolean into two:
+
+- **`finished`** — completed, cancelled, or cancel-in-flight. Genuinely done;
+  no verb reopens it. Neither Share nor Manage renders.
+- **`closed`** — `finished` OR expired. Share, Add candidates and Cancel all
+  still gate on this (a link into a shut window, or adding candidates to one,
+  is still wrong).
+
+Only Manage gates on `finished` instead of `closed`, so it alone survives into
+the expired state, and `ManageDrawer`'s `editable` prop follows it (`!finished`,
+was `!closed`) so the End date field is actually writable when it renders. A
+contextual hint appears in the drawer only when editing an expired assessment
+("Moving the end date past today reopens it…"). Purely a frontend gating
+change — no new endpoint, no schema change.
+
 ### What is NOT editable
 
 **Per-assessment validity.** It lives on `assessment_schedules`, i.e. on
@@ -773,10 +799,16 @@ Always check `.next/BUILD_ID` exists after deploying this app.
 
 `/v2/schedule` reads `dashboard/v2/schedule?from=&to=`.
 
-**Rows show both ends of the window.** They used to show only `closes <date>`,
-so the day an assessment OPENED could only be inferred from which day-group the
-row sat under — and not at all for a float spanning several days, which is most
-of them. Rows now read `<starts> → closes <ends>`.
+**Rows show the open date only (2026-09-08).** Briefly showed both ends
+(`<starts> → closes <ends>`, 2026-09-07) so the open date wasn't only inferable
+from the day-group a row sat under — but the close date is already carried
+twice over, by the row's own status chip (Live/Completed/Expired) and by the
+day groups the float spans, so spelling out both ends made the one date a
+recruiter scans for compete with one they can already infer. Rows now read
+`Starts <date>` — labelled, not bare, because a multi-day float repeats under
+every day heading it covers (`coversDay`, `lib/schedule/dates.ts`), so an
+unlabelled date next to a day heading it doesn't start on would be ambiguous
+about which end of the window it is.
 
 **A multi-part float is named Mix & Match.** It previously borrowed its first
 type's name and hid the rest behind `+N more`, so a Mix & Match read as an
