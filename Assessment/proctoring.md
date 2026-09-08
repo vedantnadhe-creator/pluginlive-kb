@@ -68,6 +68,64 @@ The WPM/gaze heuristic alone false-positives on fast, articulate speakers who gl
 - **Reading detected** (both PDF banner and admin panel metric) = `summary.readingFlaggedQuestionIds.length` — i.e. only LLM-confirmed `reading_pace_suspected` / `delayed_fluent_answer` hits (see LLM verification layer above). It previously summed in raw `externalReferenceSuspectedCount` too, which could show e.g. "reading detected on 5 answer(s)" in the PDF headline while zero answers were actually badged in the transcript (the gaze-only fusion signal fires with zero reading-pace evidence) — fixed so the headline number, the admin metric, and the per-answer badges always agree.
 - **Status consistency**: the admin badge reads the same `integrityBand` the PDF headline uses, so a "high concern" PDF can't show as "Good" in the UI. Download is gated on report availability (`checkReportAvailability` / `getProctoringDetails`), with an AI-Interview fallback to "a finalized score exists" because `scores_calculated` lags for interviews.
 
+## The verdict is the band — and four different rules used to disagree (fixed 2026-09-08, corporate side)
+
+Reported as *"proctoring is shown as bad in the dashboard but Good in admin"*. Both
+surfaces were reading the **same report** for the same candidate and reaching
+opposite conclusions.
+
+`corporate-node reportDimensions.proctoringGoodBad` and corporate-react-v2's
+`CandidateReportDrawer.proctoringVerdict` both required **a clean band AND an empty
+timeline**. But the band is already the scorer's conclusion *after* weighing that
+timeline, so reading the events again on top of it double-counts the same evidence
+and overrules the scorer with its own inputs. The reported attempt scored
+`integrity_band = clean`, `integrity_score = 100` and was still labelled **Bad**,
+because three of twenty-nine snapshots caught the candidate glancing away — the
+same three the admin drawer reports as a 90% face-detection rate and calls Good.
+
+The corporate drawer was also **contradicting itself**: the tab chip said Bad
+directly above the "Attempt integrity" panel it opens, which reads `band === "clean"`
+and said *No concerns*. Everything in that drawer except `proctoringVerdict` was
+already band-only, which is what identified the outlier.
+
+Same rule had a second bug: a **`no_data` band fell through to Bad**. A report that
+says it had nothing to judge is absence, exactly like having no report row, and
+absence is not a finding against a candidate. It now returns null and renders as a
+dash — which is what the surrounding comments in both files always claimed.
+
+Both now read the band alone: `clean → good`, `review`/`high_concern` → `bad`,
+anything else (including `no_data` and an unknown band) → `null`. On UAT this
+relabelled **946 of 1,993 reports (47%)**: 760 Bad→Good, 186 Bad→absent; 692
+review/high_concern stayed Bad and 355 clean stayed Good.
+
+DEV + UAT 2026-09-08 (corporate-node `e8a058b9`, corporate-react-v2 `d5644b3`).
+**PROD pending.**
+
+### Still unreconciled — there are FOUR proctoring verdicts on this platform
+
+Do not assume any two surfaces agree. Measured on UAT 2026-09-08:
+
+| # | Rule | Where | Feeds |
+|---|---|---|---|
+| 1 | `validSnapshots / total < 80%` on any log | admin-node `Assessment.js` `getAssessmentDetails` (two copies, ~L1341 and ~L2031) | admin student list, `flagged`, and the Excel `Poor`/`Good` column |
+| 2 | `invalidFaces <= face_limit (5)` AND no phone | student-node `detectFaces` / snapshot cron | writes `proctoring_logs.is_valid` |
+| 3 | `band === 'review'` **OR** rule 1 | admin-react `StudentReport/index.js` badge | the admin drawer in the screenshot |
+| 4 | the integrity band | corporate-node + corporate-react-v2 | corporate roster column + drawer chip |
+
+**Rules 1 and 4 disagree on 72% of clean-band reports** (793 of 1,100 clean reports
+are flagged by the 80% face rule). So after this fix admin and corporate still differ on
+two populations: **793 rows** where the band is clean but face detection is <80%
+(corporate Good, admin Bad), and **56 rows** with a `high_concern` band and ≥80% face
+detection (corporate Bad, admin Good — admin's badge only treats `review` as
+flagged, so `high_concern` slips through, which looks like a real gap on the admin
+side).
+
+Choosing between "the band" and "the 80% face rule" is a **product decision** — it
+changes hiring-relevant labels on ~850 UAT attempts — and was deliberately left to
+the user rather than settled in code. The recommendation on record is to consolidate
+every surface on the band in one shared helper and retire the 80% rule.
+
+
 ## Gotchas
 - **"Only one proctoring image" on an OTP-invite attempt = the snapshot interval never started (fixed 2026-08-11, DEV+UAT).** `RoleBasedassmt/assessment.js` and `customassmt/assessment.js` bailed out of the proctoring-setup effect with `if (!assessmentAssignedId || !studentId) { … return }` **before** `setupProctoringInterval()`. Email/OTP-invite candidates have no redux `studentData`, and `assessment_invite_student_id` is only written when `resolveInvite` finds a `student_personal_profile` row — so the guard tripped and the 20s capture loop never ran. The **single** image such attempts do show comes from the camera-guard: with no proctor stream, `useCameraGuard` confirms "camera lost" after 2×1.5s polls, `reacquireCameraSilently()` acquires the camera and uploads **one** frame (its `uploadProctorImage` has the `otpAssignedId || assessmentAssignedId` fallback, so it succeeds), the guard then sees the camera live and stops — nothing ever schedules the interval. Signature: exactly 1 `proctoring_snapshots` row, `captured_at ≈ assessment_started_at + 11s`, and a `proctoring_reports` summary with a **full-length `sessionDurationMs`** and `calibrationQuality: "ok"` (the MediaPipe collector ran fine on the same video — so this is *not* a camera/permission failure), and exactly **one** `POST …/proctoring/uploadImage` in the whole session in `docker logs student`, with `studentId === assessmentAssignedId`. On UAT every recent corporate/invite Role_Based attempt had 1 snapshot while institute (logged-in) attempts on the same build had 9–47. Fix: gate on `assessmentAssignedId` only (mirrors the aptitude module, which was fixed earlier) and give Custom's `uploadProctorImage` the same OTP fallback the other modules have. Aptitude and Communication were already correct.
 - **An attempt can hold more than one `proctoring_logs` row.** Sessions are created lazily by the first snapshot (`student-node Assessment.js storeProctoringSnapshot`) and closed by `endProctoringSession` on submit. The webcam capture taken as the candidate submits is still in flight when submit lands, so it used to arrive after `session_end` was stamped, match no open session, and open a **new session holding that single snapshot**. On PROD this hit **89 of 828 attempts in the last 30 days** and, combined with the old `sessions[0]` read, made the proctoring section show one image instead of the real 60–250. Session lookup now goes through `app/helpers/proctoringSession.js` `buildOpenSessionWhere` — still-open **or** closed within a **30s grace window**, newest first. The window is deliberately well under the ~90s a genuine re-attempt takes, so a real second session still gets its own row. Historic attempts keep their stray sessions; the frontend reading across all sessions is what makes them render correctly (no data backfill).
