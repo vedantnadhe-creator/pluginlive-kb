@@ -85,13 +85,42 @@ to v1 too. Flip one without the other and the two sidebars point at each other.
 - **No schedules, departments, passing years or campuses.** Every float is
   `one_time`; the week rail and schedule key on the **open window**, not the
   start date, or an assessment open all week appears on no day.
-- **"Taken" means `submitted OR attempted`** — the same rule admin v1 uses
-  (student-node `TpoDashBoard.getAssessmentStatesForCorporate`, which admin's
-  corporate drill-down calls, counts `attempted`). v2 counted submitted-only
-  until 2026-09-01 and therefore read LOWER than the admin screen for the same
-  corporate: meesho/UAT showed 40 against admin's 48, the gap being exactly its
-  DROPOUT rows (opened the paper, walked away). One shared `TAKEN_PREDICATE` in
-  `helpers/corporateAssessmentSql.js` governs every v2 count.
+- **"Taken" means COMPLETED — `submitted = true`. A dropout is not a take.**
+  Two predicates in `helpers/corporateAssessmentSql.js` govern every v2 number,
+  and which one you reach for is the single easiest thing to get wrong here:
+
+  | predicate | SQL | use it for |
+  |---|---|---|
+  | `ATTEMPTED_PREDICATE` | `submitted OR attempted` | scores, times, reports |
+  | `COMPLETED_PREDICATE` | `submitted` | **every completion count** |
+
+  A DROPOUT row carries `attempted = true, submitted = false`, so anything
+  counted off the attempt predicate credits people who opened the paper and
+  walked away. These were **one** predicate (`TAKEN_PREDICATE = submitted OR
+  attempted`) from 2026-09-01 to 2026-09-08, deliberately aligned to admin v1
+  so the two screens would stop disagreeing — meesho/UAT read 40 against
+  admin's 48, the gap being exactly its DROPOUT rows. That alignment made v2
+  **wrong**: the dashboard's "Assessments taken" card read 72/165 (44%) for
+  Sailesh Testing Sprint 25, whose candidates had actually finished 47 (28%),
+  and every per-type ratio beneath it was inflated the same way (Aptitude 22 vs
+  14, Communication 19 vs 13, AI Interview 19 vs 12, Role Based 12 vs 8). The
+  same conflation inflated the assessments list's **Completed** column and the
+  detail page's **completion funnel**. Split on 2026-09-08.
+
+  **This now diverges from admin v1 on purpose.** Admin's corporate drill-down
+  (student-node `TpoDashBoard.getAssessmentStatesForCorporate`) still counts
+  `attempted = true` and therefore still over-reports; **admin v1 needs the
+  same fix**. Until it gets one, v2 reads lower than admin for any corporate
+  with dropouts — v2 is the correct number.
+
+  Two things deliberately stay attempt-based, and neither is a bug:
+  - **Scores and times.** A dropout is scored on what they did answer, so
+    excluding them from an average discards real marks.
+  - **The attempt-rate bands** ("80% or more attempted", "Yet to attempt") and
+    the detail page's `started` count — opening a part *is* an attempt.
+  - **Reminder recipients** (`getPendingRecipients`). Switching that to the
+    completion predicate would start mailing every dropout on the roster; who
+    gets contacted is a product decision, not a counting fix.
 - **KPI counts are per (float, PART, candidate).** Folding to the float first
   and fanning its types back out credits every candidate with every type on the
   float the moment they submit any one part — that read AI Interview 26 taken
@@ -313,11 +342,15 @@ so reminders were offered for candidates who had already started.
 
 Two traps, both found against real UAT rows:
 
-- **Do NOT derive it from `parts_submitted`.** That count uses
-  `TAKEN_PREDICATE` (`submitted OR attempted`) and a DROPOUT row carries
-  `attempted = true`, so `parts_submitted = parts_held` holds for a candidate
-  who dropped *every* part. Testing that first labels all 219 UAT dropouts
-  "Completed".
+- **Derive it from the status enum, not from attempt flags.** The roster query
+  counts `dropped_parts` / `inprogress_parts` / `completed_parts` off
+  `aas.status` for exactly this reason. Historically this was derived from a
+  `parts_submitted` column built on `submitted OR attempted`; since a DROPOUT
+  row carries `attempted = true`, `parts_submitted = parts_held` held for a
+  candidate who dropped *every* part, which labelled all 219 UAT dropouts
+  "Completed". The overview query now exposes `parts_attempted` and
+  `parts_completed` separately — `completed` uses the latter, `started` the
+  former.
 - **`dropped` outranks everything**, and partial progress is `inProgress`, not
   `pending`. One UAT candidate holds 5 parts as COMPLETED+DROPOUT, and 76 hold
   COMPLETED+PENDING — calling the latter "not started" invites a reminder they
