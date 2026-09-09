@@ -1685,3 +1685,31 @@ system"**, **"Efficient Market Hypothesis"** and **"The Keynesian Beauty Contest
 genuine photoelectric-effect lesson. Reliability was chosen over precision; **the durable fix is the
 topic titles**, not the search pipeline. If precision matters more later, set
 `AI_VIDEO_LLM_CHECKER=on` and fix the titles instead.
+
+## 2026-09-09 — redeployed to `1d1d81b` (student journey and challenge workflow)
+
+Banking UAT moved 15 commits from `ca1516b` to `1d1d81b`. The release adds resumable module
+navigation, completion certificates, challenge integration and an explicit **Save Challenges**
+action; it also repairs the candidate-home route, candidate mobile normalization, OTP/password-reset
+handling, lesson-video quiz generation, assessment difficulty handling, and text fallback when an AI
+model cannot accept image input.
+
+Migration `20260811113000_add_difficulty_to_assessment_questions.sql` applied transactionally. It
+adds the non-null `assessment_questions.difficulty` column constrained to `Easy`, `Medium`, or
+`Hard`, defaulting existing rows to `Medium`. Verified after application: 919 existing questions,
+all 919 `Medium`; no rows were removed or rewritten beyond the defaulted new column.
+
+Changed edge functions (`candidate-otp-login` shared helper, YouTube validator,
+`generate-lesson-video-quiz`, and `request-password-reset`) were synchronized. The UAT-only MCP
+patch remains in place: `@lovable.dev/mcp-js@0.26.3` and project ref `banking-uat-selfhosted`.
+
+Verification: build succeeded; 7/7 self-hosted backend containers are up and the database is
+healthy; site, candidate login, REST, and Auth health return 200. A real fresh-browser candidate OTP
+login (`9820065335` / `1234`) reached `/candidate/home`, and admin login reached `/admin`, with zero
+page errors, zero `/sb` API errors, and zero hosted-Supabase requests. Unit/security suite retains
+the same single stale `authLockRegression` assertion (435/436 baseline); its generated preview-only
+timeout literal changed upstream, while the runtime path remains below GoTrue's lock recovery
+window.
+
+Rollback snapshot: `~/banking-predeploy-20260909T140819Z/` (database dump, function archive,
+previous `dist`, env, source SHA, and local patch diff).
