@@ -585,6 +585,21 @@ assessment and the candidate disagreed about when it closed. That approach was
 reverted in full — code and columns — see
 `DB-Scripts/Corporate Per Candidate Validity/*__revert_corporate_per_candidate_validity.sql`.
 
+**Current corporate v2 behavior (DEV + UAT, 2026-09-09).** Candidate validity
+has returned with a different data model: one positive
+`assessment_validity_days` value is stored on `assessment.mix_match_groups`,
+not as a private deadline on each assignment. For each candidate the effective
+deadline is calculated as
+`min(overall assessment end, max(assessment start, candidate added time) + validity days)`.
+Candidates added after creation therefore receive their full configured window
+from the date they are added, unless the assessment's overall end date arrives
+first. Historical groups with a NULL value retain the overall-window behavior.
+The create wizard requires the value, Manage Assessment reads and updates it,
+invite/short-link expiry uses it, and student-node enforces it at both standard
+assessment and AI Interview start boundaries. Migration:
+`DB-Scripts/Mix Match Assessment/20260909T085036Z__candidate_validity_days.sql`
+(DEV + UAT applied; PROD pending).
+
 **Where it shows.** `POST /assessment/addStudentsToAssessment` has **four**
 callers in admin-react and the gate is wired into three of them — every one that
 opens the drawer with `mode="addCandidate"`:

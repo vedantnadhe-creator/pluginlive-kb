@@ -76,6 +76,15 @@ to v1 too. Flip one without the other and the two sidebars point at each other.
 - **Corporate windows are IST wall-clock stored as UTC.** Compare against
   `NOW() + INTERVAL '5 hours 30 minutes'`, and emit dates re-tagged `+05:30`
   (`istIsoOf`). `.toISOString()` shifts every date by 5h30m in the UI.
+- **Candidate validity is group-level configuration with a candidate-level
+  result.** `mix_match_groups.assessment_validity_days` stores the positive
+  number entered in Create/Manage. A candidate closes at
+  `min(group end, max(group start, assignment created_at) + validity days)`;
+  adding someone later starts their validity from that later assignment time,
+  while the overall assessment end remains a hard cap. NULL on an older group
+  preserves the legacy overall window. Invite links and both standard and AI
+  Interview launch gates use the same deadline. DEV + UAT applied 2026-09-09;
+  PROD pending.
 - **A float is one row per type**, tied by `mix_match_group_id`. Identity is
   `COALESCE(mix_match_group_id, assessment_corporate_map_id)`; a one-part group
   keeps its own map id and type. `:id` resolves either form.
