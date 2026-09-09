@@ -1289,31 +1289,20 @@ already had the questions loaded can still submit that in-flight attempt. This
 is pre-existing — the same is true of any assessment whose window simply
 expires mid-attempt.
 
-### Expired keeps Manage (DEV + UAT, 2026-09-08)
+### Closed assessments use the dedicated Reopen action (DEV + UAT, 2026-09-09)
 
-The detail page used to hide Share AND Manage together once a float was
-"closed" — where closed meant completed, cancelled, OR expired. That's wrong
-for expired: admin-node's `updateEditableAssessmentDetails` deliberately
-allows moving `endTime` to a future date on an expired float (past end dates
-are intentionally editable; the only guard is `newEnd > startTime`, `closeNow`
-bypasses that), so expired is the one closed state that is still recoverable —
-and the Manage drawer's End date field is the only UI that can reach it. A
-recruiter with an expired float and unfinished candidates had no path back in.
+Completed, cancelled and expired assessments hide Manage, Share, Add candidates
+and Cancel. Their only header action is **Reopen**, which opens the shared
+start/end window editor and calls the dedicated corporate BFF `/reopen` route.
+This supersedes the short-lived 2026-09-08 implementation where Manage survived
+only for expired assessments.
 
-Frontend now splits what was one `closed` boolean into two:
-
-- **`finished`** — completed, cancelled, or cancel-in-flight. Genuinely done;
-  no verb reopens it. Neither Share nor Manage renders.
-- **`closed`** — `finished` OR expired. Share, Add candidates and Cancel all
-  still gate on this (a link into a shut window, or adding candidates to one,
-  is still wrong).
-
-Only Manage gates on `finished` instead of `closed`, so it alone survives into
-the expired state, and `ManageDrawer`'s `editable` prop follows it (`!finished`,
-was `!closed`) so the End date field is actually writable when it renders. A
-contextual hint appears in the drawer only when editing an expired assessment
-("Moving the end date past today reopens it…"). Purely a frontend gating
-change — no new endpoint, no schema change.
+The Reopen confirmation is disabled for the seeded, already-closed window. It
+becomes available only after the recruiter changes the window, the end is not
+before the start, and the **end date and time are in the future**. A changed but
+still-expired end shows “Choose an end date and time in the future.” The BFF
+enforces the future-end rule again against the current IST wall clock before it
+calls admin-node, so a crafted request cannot reopen onto an expired window.
 
 ### No mail leaves a closed window (DEV + UAT, 2026-09-08)
 
