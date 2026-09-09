@@ -1382,7 +1382,7 @@ on the map row, so they ride the same `updateMany` as the end time and therefore
 work for a mix-match float — unlike admin-node's `configuration` patch, which
 only runs for a single-part assessment.
 
-## Public assessment link — Share (LIVE on DEV + UAT, 2026-09-07)
+## Public assessment link — Share (LIVE on DEV + UAT + PROD, 2026-09-09)
 
 Share hands out a **candidate** link, not the recruiter's dashboard URL:
 
@@ -1430,21 +1430,22 @@ against. All three lookups (`publicLinkWindow`'s mint/resolve path and
 
 - **`ADMIN_API_URL` is gitignored** and does NOT ride a branch merge. It is
   needed by BOTH `corporate-react-v2` (`.env.local`) and `assessment-react-v2`
-  (`.env.prod`, baked into the image) and must be set by hand on every box.
+  (runtime environment) and must be set explicitly in every environment.
   Without it the wizard routes 502 with `ADMIN_API_URL is not configured`.
-- **PROD incident, 2026-09-09 — public Share links returned 502.** The short
+- **Fixed in PROD, 2026-09-09 — public Share links returned 502.** The short
   link `GAS817A5SCuBp-lcVLjxgw.j8NFSULgTg` redirected to a valid signed public
   token and `POST https://api-admin.pluginlive.com/assessment/public/resolve`
   resolved that token with HTTP 200; the identical request through
   `assessment.pluginlive.com/candidate-assessment-journey/v2/api/invite/public-resolve`
-  returned HTTP 502. This proves the public-link data and `admin-node` were
-  healthy and isolates the fault to PROD `candidate-assessment-journey-v2` not
-  being able to use `ADMIN_API_URL` (missing, malformed, or unreachable from
-  the container). Set `ADMIN_API_URL=https://api-admin.pluginlive.com/` in that
-  app's production env file, recreate the Docker container/image so it receives
-  the value, then verify `public-resolve` using a fresh public token. Do not
-  treat an invalid/expired token's 401 as an outage: it is the expected
-  application-level response from `admin-node`.
+  returned HTTP 502. The PROD Kubernetes Deployment
+  `frontend/assessment-react-v2` had `STD_API_URL`, `AUTH_API_URL`, and
+  `FASTAPI_URL`, but no `ADMIN_API_URL`. Added
+  `ADMIN_API_URL=https://api-admin.pluginlive.com/` to the Deployment and let
+  its RollingUpdate recreate both replicas. Verified 2/2 ready, the supplied
+  candidate page HTTP 200, and five consecutive `public-resolve` HTTP 200
+  responses with the assessment payload. Do not treat an invalid/expired
+  token's 401 as an outage: it is the expected application-level response from
+  `admin-node`.
 - **Ports differ per env:** `corporate-react-v2` is **:3012 on DEV** but
   **:3014 on UAT** (where :3012 is institute-react-v2). Check the unit's
   `Environment=PORT` before curling a box.
