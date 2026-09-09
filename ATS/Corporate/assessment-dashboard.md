@@ -1353,6 +1353,12 @@ dot, Finished takes the green Live used to wear, Upcoming is brand/accent,
 Expired grey, Cancelled red. Every hue is a chip class, so it stays a token
 lookup.
 
+Expired assessments are folded into **Finished** everywhere on the list: the
+Finished tab, the Status filter predicate, and the Status filter's option count
+all use the same canonical status mapping. A count must therefore match the
+rows the filter will show, rather than reporting only rows stored as
+`completed`.
+
 The **Overall Performance and time-taken columns are gone** from the candidates
 table, the CSV export, the list's band filter and the candidate drawer's KPI —
 header and cell commented out together, with the `score` / `time` sort keys left
