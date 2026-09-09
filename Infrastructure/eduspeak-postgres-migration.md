@@ -1137,3 +1137,43 @@ that is intended is a data-model decision, not a bug fix. While it stands, a leg
 insert raises a duplicate-key error that the calling code swallows (`if (uploadError &&
 !/duplicate key|unique constraint/i.test(...)) throw`), so the row is **silently skipped rather than
 reported**. Worth a decision.
+
+## 2026-09-09 — redeployed to `f85e3340` (123 commits, curriculum/video schema rollout)
+
+PilVidya UAT was rebuilt on the UAT host from `PluginLive-Technologies/eduspeak-india` `main` and is
+serving image `eduspeakreact:f85e3340`. The self-hosted function tree was synchronized from the same
+revision (140 repo functions plus the edge runtime's `main` entrypoint), then the functions and
+PostgREST containers were restarted.
+
+The release adds the student lesson/portal journey, expanded foreign-language delivery, competitive
+exam modes and persisted attempts, AI curriculum artifacts, governed video assembly/provider health,
+topic-media search/cache, and hardened student/teacher login failure handling.
+
+**Migration reconciliation was required.** The checkout had accumulated both real incremental
+migrations and Lovable baseline/cleanup files. Cleanup/consolidated scripts were deliberately not
+run. Each relevant incremental file was run in its own transaction so an incompatible file could not
+partially apply. The foundational 2026-08-28 through 2026-08-31 migrations were applied before their
+September dependants. New release tables now present include `ai_content_jobs`,
+`curriculum_artifacts`, `video_provider_attempts`, `ai_generation_cost`,
+`competitive_exam_attempts`, `foreign_language_skill_attempts`, `video_assembly_jobs`,
+`provider_health_checks`, and `video_verification_audit`.
+
+The latest `20260909013823` migration assumed a fresh hosted-Supabase schema: `topic_media` already
+existed with fewer columns, and helper functions `is_staff(uuid)` / `set_updated_at()` did not exist.
+`CREATE TABLE IF NOT EXISTS` does not add missing columns, so replaying it verbatim rolled back at the
+trigger. UAT was reconciled by adding the eight intended topic-media governance columns, installing
+enum-compatible helper functions, then replaying the migration transactionally. `topic_media` now has
+25 columns and the verification audit table, RLS policies, grants, index, and update trigger are live.
+
+After the batch, the self-hosted grant baseline (`03_grants.sql`) and sensitive-column restrictions
+(`05_sensitive_columns.sql`) were reapplied. A predeploy public-schema dump, function archive, env
+copy, source SHA, and rollback image are under
+`~/pilvidya-predeploy-20260909T070827Z/`; rollback image tag is
+`eduspeakreact:predeploy-20260909T070827Z`.
+
+Verification: production bundle built successfully and its route-manifest check passed all five
+required routes. The test suite retains one known Wan2GP compatibility assertion failure; all other
+tests pass. Public root, student entry, teacher auth, teacher, student, status, REST and Auth endpoints
+return 200; frontend and all five Supabase-compatible containers are healthy. Empty-payload probes of
+`student-authenticate-profile`, `curriculum-videos`, and `topic-media-curate` return their expected
+400/400/401 validation/auth responses, confirming the deployed handlers load.
