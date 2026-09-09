@@ -101,6 +101,23 @@ review/high_concern stayed Bad and 355 clean stayed Good.
 DEV + UAT 2026-09-08 (corporate-node `e8a058b9`, corporate-react-v2 `d5644b3`).
 **PROD pending.**
 
+### Mixed-assessment integrity score (DEV + UAT 2026-09-09)
+
+The corporate v2 candidate drawer has one Proctoring tab even when a float has
+multiple parts. Because `proctoring_reports` is keyed per assessment assignment,
+the old candidate-profile query selected only the most recently generated part
+and displayed that part's score as the whole float's "Integrity score". For
+example, Aptitude 100 plus Communication 86 incorrectly displayed 86.
+
+`corporate-node` now selects the latest report for **each assignment/part** and
+returns the rounded arithmetic mean of every available `integrity_score` through
+the existing `proctoring.score` response field (100 + 86 → 93). Missing scores
+are excluded; if no part has a score, the field remains null. The newest part
+still supplies the single tab's band, summary and timeline. The frontend API
+contract and rendering are unchanged.
+
+DEV + UAT 2026-09-09 (corporate-node `d3dfab5e`). **PROD pending.**
+
 ### Still unreconciled — there are FOUR proctoring verdicts on this platform
 
 Do not assume any two surfaces agree. Measured on UAT 2026-09-08:
