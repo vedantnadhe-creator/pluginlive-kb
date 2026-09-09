@@ -677,6 +677,15 @@ draft).
 - **Older answers carry no `key`**, so their filenames still render as plain text
   with nothing to click, rather than linking to a file that was never uploaded.
 
+**Chrome blank-tab trap (fixed 2026-09-09, DEV + UAT).** The recruiter link
+originally called `window.open("", "_blank", "noopener,noreferrer")` before
+fetching the signed URL. Chrome creates the *and displays* that tab but returns
+`null` to the caller when `noopener` is supplied as a window feature, leaving no
+handle to redirect after the async request. The drawer now opens a normal blank
+tab inside the click gesture, immediately sets `tab.opener = null`, then assigns
+the signed URL to that retained handle. Opener isolation is preserved and the
+PDF opens in the tab the recruiter just requested.
+
 Before this, the wizard collected the field list and `partFor` returned `null` for it, so the config never left the browser and the candidate journey fell back to its `?pre=` scenario mock. That mock still drives the demo route, which has no invite to ask.
 
 #### That upload feature shipped a render loop that trapped candidates (fixed 2026-09-08, DEV + UAT)
