@@ -60,6 +60,10 @@ rather than an assessment-assignment UUID. These rows are excluded from the
 UUID-only integrity-report lookup, so the workbook remains exportable while its
 normal pending-status behavior is preserved.
 
+For a Mix & Match assessment, a candidate represents multiple underlying
+assignments. The export evaluates all of their finalized integrity bands; a
+single `review` band makes that candidate's workbook status **Poor**.
+
 ### Communication
 
 | Action | API | Method | Purpose |
