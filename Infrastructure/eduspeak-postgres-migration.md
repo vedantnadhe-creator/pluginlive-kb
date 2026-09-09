@@ -1177,3 +1177,18 @@ tests pass. Public root, student entry, teacher auth, teacher, student, status, 
 return 200; frontend and all five Supabase-compatible containers are healthy. Empty-payload probes of
 `student-authenticate-profile`, `curriculum-videos`, and `topic-media-curate` return their expected
 400/400/401 validation/auth responses, confirming the deployed handlers load.
+
+### Post-deploy fix: student login succeeded, then device-session claim failed
+
+The first live student login after this rollout displayed the misleading message *"Student password
+is not synced with login yet"*. The password was accepted: the authenticate function returned 200,
+the magic-link exchange returned 200, and GoTrue created the session. The following
+`student_claim_device_session` RPC returned 400 because migration
+`20260907021742_2cc71722-babe-4bf2-89e3-645e6678518f.sql` had replaced the function with a version
+that writes `student_profiles.updated_at`; that column does not exist in the migrated UAT schema.
+
+The RPC now updates only `active_session_token` and `session_updated_at`, retains the `auth.uid()`
+ownership check and non-empty-token validation, and is executable only by `authenticated` and
+`service_role`. Verified with the affected profile (`9820065335`) using a freshly minted real user
+JWT: the exact RPC now returns **HTTP 200 / `true`**. The durable follow-up migration is
+`20260909T090007Z_fix_student_claim_device_session.sql`.
