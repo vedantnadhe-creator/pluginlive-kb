@@ -181,7 +181,7 @@ but it was not the original motivation.
 The live interview is driven by `student-node` (`app/handlers/aiInterviewHandler.js`), not by per-response branching in FastAPI. Key rules as of 2026-06-16:
 
 - **Parameter-driven progression.** The admin's evaluation parameters are probed round-robin (`nextParameter` picks the least-covered one). The interview ends on: all parameters covered, time up, the question cap, or trailing refusals (disengagement).
-- **Communication is a locked, weighted parameter (2026-09-09).** Every AI Interview config contains the canonical Communication parameter at 20% by default. Admin can edit its weight from 0–100, but cannot rename it, change its description, or delete it; AI-generated parameter suggestions preserve it and allocate the remaining weight among role parameters. Communication is excluded from question rotation because it is measured across all spoken answers. Its score is the mean of the available pronunciation-confidence and fluency scores, its `/5` star rating is `round(score / 20)`, and its detailed sub-parameters retain pronunciation confidence, average word confidence, fluency, words per minute, pause rate, filler rate, and filler count. The final score combines the role-parameter score and Communication according to the configured Communication weight. At 0%, all Communication metrics remain calculated and reported while the role score supplies the full overall score. No schema migration was required because config and score detail are JSONB. DEV + UAT live; PROD pending.
+- **Communication is a locked, weighted parameter (2026-09-09).** Every AI Interview config contains the canonical Communication parameter at 20% by default. Admin can edit its weight from 0–100, but cannot rename it, change its description, or delete it; AI-generated parameter suggestions preserve it and allocate the remaining weight among role parameters. Communication is excluded from question rotation because it is measured across all spoken answers. Its score is the mean of the available Pronunciation & Intelligibility, Fluency & Pace, Language Proficiency, and Clarity & Conciseness scores; missing measurements are omitted rather than scored as zero. Its `/5` star rating is `round(score / 20)`. The final score applies the configured Communication weight exactly once. At 0%, all Communication metrics remain calculated and reported while the role score supplies the full overall score. No schema migration was required because config and score detail are JSONB. DEV + UAT live; PROD pending.
 - **One recruiter instruction field, routed to both stages (2026-09-09).** Admin v2 exposes one **Instructions** textarea for AI Interview instead of asking recruiters to split one intent across question and scoring guidance. The float payload writes the same text to both `question_guidance` and `scoring_guidance`; student-node sends the former to `generate-question` and the latter to `score-final`. FastAPI then applies an explicit stage filter: question generation uses topics, sample questions, order, tone, and wording but ignores rating/weight/verdict/report directives; final scoring uses evaluation, weighting, pass/fail, verdict, and report directives but ignores question topics/order/tone/wording. Thus a mixed instruction such as “ask about SQL joins; weight database depth twice” affects both stages appropriately without either half leaking into the other. Core scoring integrity/anti-cheating rules remain non-overridable. Admin v2 also stores the primary and optional second language in the existing `stage_config` JSON; no migration was required. DEV + UAT live; PROD pending.
 - **Hinglish is primary-only and stays continuously mixed (2026-09-09).** In Admin v2, Hinglish is available only as the primary language; choosing it clears and disables the secondary-language control, and the payload adapter independently forces `secondaryLanguage=null` so stale drafts cannot bypass the UI. In question generation, the old clause-alternation rule explicitly required a complete English clause and caused split turns such as “Aap …, and what do you …?”. The prompt now requires one continuous Hinglish register from beginning to end: natural Hindi sentence structure with familiar English work words woven throughout, never a Hinglish first half followed by a fully English second half. The same rule is repeated in the trailing final check and the warm-up examples were aligned so they no longer teach the conflicting split. Roman-only script, simple wording, formal `aap`, and English work terminology remain required. DEV + UAT live; PROD pending.
 - **Two-language STT cannot leak a third Indic script (2026-09-09).** Pairs outside Deepgram's multilingual set (for example English + Tamil) use Sarvam `language-code=unknown`, whose auto-detector considers every supported Indic language and occasionally emitted words in an unconfigured script. FastAPI now filters both Sarvam live segments and batch-recovery transcripts before they reach the browser or database: Latin is retained for English/technical terms, while Indic characters survive only when their Unicode script belongs to the configured primary or secondary language. For English + Tamil, Tamil survives and Telugu/Kannada/etc. are removed; the same boundary is generic across Hindi/Marathi (Devanagari), Bengali, Punjabi, Gujarati, Odia, Tamil, Telugu, Kannada, and Malayalam. This prevents third-script contamination but cannot distinguish romanized third-language speech from English because both use Latin characters. DEV + UAT live; PROD pending.
@@ -743,27 +743,34 @@ parameters, including its star rating, analysis, numeric score, and sub-paramete
 20% by default to `overall_score`; an admin may set its weight to zero without disabling collection
 or reporting.
 
-**Where the numbers come from.** Nothing new is captured at interview time — both blocks are derived
-server-side from the per-turn Deepgram delivery telemetry already stored on
+**Where the numbers come from.** Speech measurements are derived server-side from the per-turn delivery telemetry already stored on
 `ai_interview_interactions.ai_evaluation.delivery` (`wpm`, `wordCount`, `pauseRatePer100`,
 `fillerCount`, `avgWordConfidence`, `pacingCv`). FastAPI's `_low_confidence_profile`
 (`routers/ai_interview.py`) adds `lowConfidenceCount` / `lowConfidenceRatio` / `lowConfidenceWords`
 (worst 10, confidence < 0.75) on both the live Deepgram stream and the batch
 `POST /ai-interview/delivery-telemetry` pass, so both STT paths emit an identical payload.
 
-**Banding is ported from the Communication assessment** so a candidate's speech reads the same
-across products — see `CommunicationScoreCalculation/video_calculation.py`:
+The four recruiter-facing sub-competencies are:
 
-| Block | Ported from | Formula |
+| Sub-competency | Source / formula |
 |---|---|---|
-| Speech Clarity | `calculate_pronunciation_score` | `avgWordConfidence`, penalised by `min(lowConfRatio × 0.8, 0.4)` once the low-confidence ratio exceeds 5% |
-| Fluency | `calculate_fluency_score` | pause-rate / speech-rate / filler-rate tiers, weighted **0.40 / 0.35 / 0.25** |
+| Pronunciation & Intelligibility | The exact word-count-weighted session `avgWordConfidence × 100`; it is not the separately penalised speech-clarity diagnostic |
+| Fluency & Pace | Communication-assessment pause-rate / speech-rate / filler-rate tiers, weighted **0.40 / 0.35 / 0.25** |
+| Language Proficiency | Final-transcript LLM assessment of grammar, vocabulary, and control of the configured interview language |
+| Clarity & Conciseness | Final-transcript LLM assessment of structure, directness, and ease of understanding |
 
-**Two deliberate deviations from Communication**, both intentional:
-1. Communication blends its Deepgram confidence 50/50 with an LLM accuracy score judged against a
-   known reference text. An interview answer is open-ended and has no reference, so only the
-   Deepgram half is used.
-2. Communication gives 15% of fluency to answer **length** (≥100 words = full marks). Its prompt is
+The overall Communication score is the arithmetic mean of whichever of these four values are
+available. A missing source remains `null` and is excluded from the denominator. The final scorer
+receives Communication as a synthetic **zero-weight** parameter so it can produce the two
+transcript-based sub-scores and narrative without adding Communication to its role-only weighted
+score. `student-node` then applies the admin's real Communication weight exactly once; this avoids
+double weighting.
+
+**Two deliberate deviations from the standalone Communication assessment**, both intentional:
+1. The standalone assessment blends Deepgram confidence 50/50 with an LLM accuracy score judged
+   against a known reference text. An interview answer is open-ended and has no reference, so the
+   exact average confidence is used for Pronunciation & Intelligibility.
+2. The standalone assessment gives 15% of fluency to answer **length** (≥100 words = full marks). Its prompt is
    fixed so length is comparable; interview questions vary wildly in expected answer length, so the
    length component is dropped and the remaining three weights are renormalised.
 
@@ -773,8 +780,10 @@ across products — see `CommunicationScoreCalculation/video_calculation.py`:
 `ai_interview_scores.section_scores`, while the canonical Communication result is persisted in
 `parameter_scores`; both columns are JSONB, so **no migration was needed**. Surfaced per-turn
 (`transcript[].speechQuality`) and per-session (`speechProfile`) on
-`GET /ai-interview/report/:sessionId`. The PDF renders Communication through the ordinary
-per-parameter stars/details UI rather than duplicating it in a separate speech section.
+`GET /ai-interview/report/:sessionId`. Admin analytics and the PDF render Communication through the
+ordinary parameter UI rather than duplicating it in a standalone speech section. Both show its
+numeric `/100` score, star rating, a humanised verdict, all four available sub-scores, and a concise
+plain-English narrative.
 
 **Honesty rules baked in** (these matter when reading a report):
 - A metric that was never measured reports as **`null`, not `0`** — "0 unclear words" reads as
