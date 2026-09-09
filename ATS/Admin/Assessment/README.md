@@ -55,6 +55,11 @@ otherwise it writes **Good**. Attempts whose legacy evaluation is still pending
 remain **Evaluating**. This prevents the report UI and the downloaded workbook
 from disagreeing when a newer integrity signal requires review.
 
+The `sent` export can also include rows whose UI identifier is an email address
+rather than an assessment-assignment UUID. These rows are excluded from the
+UUID-only integrity-report lookup, so the workbook remains exportable while its
+normal pending-status behavior is preserved.
+
 ### Communication
 
 | Action | API | Method | Purpose |
