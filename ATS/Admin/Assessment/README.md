@@ -46,6 +46,15 @@ The Assessment module is the admin's comprehensive assessment management system.
 | `fetchAllStudentStatusCounts` | `/assessment/getAssessmentDetails` | GET (Admin) | All student status counts for an assessment |
 | `exportStudentData` | `/assessment/exportStudentData` | GET (Admin) | Export student data as Excel (.xlsx) blob download |
 
+#### Proctoring status in exports
+
+For completed, proctored attempts, the workbook uses the same final verdict as
+the assessment report: it writes **Poor** when either the legacy face-detection
+check flags the attempt or its finalized integrity report has the `review` band;
+otherwise it writes **Good**. Attempts whose legacy evaluation is still pending
+remain **Evaluating**. This prevents the report UI and the downloaded workbook
+from disagreeing when a newer integrity signal requires review.
+
 ### Communication
 
 | Action | API | Method | Purpose |
