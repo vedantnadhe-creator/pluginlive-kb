@@ -75,6 +75,11 @@ nothing more:
 score = Σ(wᵢ · (rᵢ/5) · 100) / Σwᵢ  =  20 · r̄        (r̄ = weight-weighted mean rating)
 ```
 
+As of 2026-09-09, **Communication** is a canonical evaluation parameter. Its
+0–100 delivery score is combined with the role-parameter score using its configured
+weight (20% by default). A zero weight keeps Communication calculated and visible,
+but removes it from `overall_score` and the verdict.
+
 So every band boundary is really a **mean-rating** threshold, readable in the
 rating scale's own vocabulary (`Excellent 5 / Strong 4 / Adequate 3 / Concern 2 /
 Weak 1 / No Response 0`):
@@ -176,6 +181,7 @@ but it was not the original motivation.
 The live interview is driven by `student-node` (`app/handlers/aiInterviewHandler.js`), not by per-response branching in FastAPI. Key rules as of 2026-06-16:
 
 - **Parameter-driven progression.** The admin's evaluation parameters are probed round-robin (`nextParameter` picks the least-covered one). The interview ends on: all parameters covered, time up, the question cap, or trailing refusals (disengagement).
+- **Communication is a locked, weighted parameter (2026-09-09).** Every AI Interview config contains the canonical Communication parameter at 20% by default. Admin can edit its weight from 0–100, but cannot rename it, change its description, or delete it; AI-generated parameter suggestions preserve it and allocate the remaining weight among role parameters. Communication is excluded from question rotation because it is measured across all spoken answers. Its score is the mean of the available pronunciation-confidence and fluency scores, its `/5` star rating is `round(score / 20)`, and its detailed sub-parameters retain pronunciation confidence, average word confidence, fluency, words per minute, pause rate, filler rate, and filler count. The final score combines the role-parameter score and Communication according to the configured Communication weight. At 0%, all Communication metrics remain calculated and reported while the role score supplies the full overall score. No schema migration was required because config and score detail are JSONB. DEV + UAT live; PROD pending.
 - **One recruiter instruction field, routed to both stages (2026-09-09).** Admin v2 exposes one **Instructions** textarea for AI Interview instead of asking recruiters to split one intent across question and scoring guidance. The float payload writes the same text to both `question_guidance` and `scoring_guidance`; student-node sends the former to `generate-question` and the latter to `score-final`. FastAPI then applies an explicit stage filter: question generation uses topics, sample questions, order, tone, and wording but ignores rating/weight/verdict/report directives; final scoring uses evaluation, weighting, pass/fail, verdict, and report directives but ignores question topics/order/tone/wording. Thus a mixed instruction such as “ask about SQL joins; weight database depth twice” affects both stages appropriately without either half leaking into the other. Core scoring integrity/anti-cheating rules remain non-overridable. Admin v2 also stores the primary and optional second language in the existing `stage_config` JSON; no migration was required. DEV + UAT live; PROD pending.
 - **Hinglish is primary-only and stays continuously mixed (2026-09-09).** In Admin v2, Hinglish is available only as the primary language; choosing it clears and disables the secondary-language control, and the payload adapter independently forces `secondaryLanguage=null` so stale drafts cannot bypass the UI. In question generation, the old clause-alternation rule explicitly required a complete English clause and caused split turns such as “Aap …, and what do you …?”. The prompt now requires one continuous Hinglish register from beginning to end: natural Hindi sentence structure with familiar English work words woven throughout, never a Hinglish first half followed by a fully English second half. The same rule is repeated in the trailing final check and the warm-up examples were aligned so they no longer teach the conflicting split. Roman-only script, simple wording, formal `aap`, and English work terminology remain required. DEV + UAT live; PROD pending.
 - **Two-language STT cannot leak a third Indic script (2026-09-09).** Pairs outside Deepgram's multilingual set (for example English + Tamil) use Sarvam `language-code=unknown`, whose auto-detector considers every supported Indic language and occasionally emitted words in an unconfigured script. FastAPI now filters both Sarvam live segments and batch-recovery transcripts before they reach the browser or database: Latin is retained for English/technical terms, while Indic characters survive only when their Unicode script belongs to the configured primary or secondary language. For English + Tamil, Tamil survives and Telugu/Kannada/etc. are removed; the same boundary is generic across Hindi/Marathi (Devanagari), Bengali, Punjabi, Gujarati, Odia, Tamil, Telugu, Kannada, and Malayalam. This prevents third-script contamination but cannot distinguish romanized third-language speech from English because both use Latin characters. DEV + UAT live; PROD pending.
@@ -729,14 +735,13 @@ pin both constants, assert 1-of-8 scores on a drop-off but not on an early exit,
   the recommendation block. Always populated for new interviews; pre-existing scored rows
   retain their old text until re-scored.
 
-#### Speech Delivery — pronunciation + fluency on the report (2026-08-25, DEV + UAT)
+#### Communication — weighted delivery parameter (updated 2026-09-09, DEV + UAT)
 
-The report now carries a **Speech Delivery** block: a **Speech Clarity** score and a **Fluency**
-score, both 0–100 with a band label. They are **report-only** — deliberately excluded from
-`overall_score`, `parameter_scores` and `ai_recommendation`. An interview is scored on what the
-candidate said, not on how clearly the recognizer heard it. The session payload carries
-`isExcludedFromOverallScore: true` and the report prints a "how to read this" note saying so, so a
-reviewer never double-counts it against the parameter ratings.
+The former standalone **Speech Delivery** report block has been removed. The same speech-quality
+signals now produce the locked **Communication** parameter alongside all other evaluation
+parameters, including its star rating, analysis, numeric score, and sub-parameters. It contributes
+20% by default to `overall_score`; an admin may set its weight to zero without disabling collection
+or reporting.
 
 **Where the numbers come from.** Nothing new is captured at interview time — both blocks are derived
 server-side from the per-turn Deepgram delivery telemetry already stored on
@@ -762,15 +767,14 @@ across products — see `CommunicationScoreCalculation/video_calculation.py`:
    fixed so length is comparable; interview questions vary wildly in expected answer length, so the
    length component is dropped and the remaining three weights are renormalised.
 
-**Implementation** — `student-node/app/helpers/speechQuality.js` (pure, unit-tested:
-`test/aiInterviewSpeechQuality.spec.js`, 25 cases). Session roll-up is **word-count weighted**, so a
+**Implementation** — `student-node/app/helpers/speechQuality.js` and
+`app/helpers/aiInterviewCommunication.js` (pure, unit-tested). Session roll-up is **word-count weighted**, so a
 12-word turn does not move the average as much as a 150-word one. Persisted to
-`ai_interview_scores.section_scores` — a column that was previously unused for AI Interview, so
-**no migration was needed**. `getReport` prefers the stored copy and recomputes live when a score row
-predates the feature, so old interviews render it retroactively. Surfaced per-turn
+`ai_interview_scores.section_scores`, while the canonical Communication result is persisted in
+`parameter_scores`; both columns are JSONB, so **no migration was needed**. Surfaced per-turn
 (`transcript[].speechQuality`) and per-session (`speechProfile`) on
-`GET /ai-interview/report/:sessionId`, rendered in the PDF (`public/aiInterviewReport.html`) and in
-`admin-react` `AIInterviewReport.js`.
+`GET /ai-interview/report/:sessionId`. The PDF renders Communication through the ordinary
+per-parameter stars/details UI rather than duplicating it in a separate speech section.
 
 **Honesty rules baked in** (these matter when reading a report):
 - A metric that was never measured reports as **`null`, not `0`** — "0 unclear words" reads as
@@ -1201,7 +1205,7 @@ AssessmentAssignedStudent
 **AIInterviewScore (`ai_interview_scores`):**
 - `overall_score`: 0–100 weighted final score, recomputed in code from `parameter_scores` ratings + config weights (see verdict section above) — not trusted as-returned from the LLM
 - `ai_recommendation`: `Strong Fit` | `Fit` | `Borderline` | `Not Fit` (not `strong_hire`/`hire`/`maybe`/`no_hire`)
-- `parameter_scores`: JSONB array, one entry per evaluation parameter — `{ id, name, rating (0-5), rating_label, analysis, supporting_quote, not_assessed }`. `rating_label` ∈ `Excellent`(5) / `Strong`(4) / `Adequate`(3) / `Concern`(2) / `Weak`(1) / `No Response`(0) / `Not Assessed` (uncovered parameter — rating backfilled to the rounded average of covered parameters, never a hard 1/5)
+- `parameter_scores`: JSONB array, one entry per evaluation parameter — `{ id, name, rating (0-5), rating_label, analysis, supporting_quote, not_assessed }`. The canonical Communication entry additionally contains `score` (0–100) and `sub_parameters` for pronunciation confidence, average word confidence, fluency, words per minute, pauses, and fillers. `rating_label` ∈ `Excellent`(5) / `Strong`(4) / `Adequate`(3) / `Concern`(2) / `Weak`(1) / `No Response`(0) / `Not Assessed` (uncovered parameter — rating backfilled to the rounded average of covered parameters, never a hard 1/5)
 - `strengths`, `weaknesses`: JSONB arrays of `{ claim, quote }`
 - `executive_summary`, `recommendation_text`: prose fields from score-final
 - `detailed_feedback`: "why this score" one-liner (`score_rationale`), e.g. *"Scored 57/100 — Not Fit: answers were scripted and lacked real depth."* — repurposed column, previously an unused duplicate of `executive_summary`
