@@ -1432,6 +1432,19 @@ against. All three lookups (`publicLinkWindow`'s mint/resolve path and
   needed by BOTH `corporate-react-v2` (`.env.local`) and `assessment-react-v2`
   (`.env.prod`, baked into the image) and must be set by hand on every box.
   Without it the wizard routes 502 with `ADMIN_API_URL is not configured`.
+- **PROD incident, 2026-09-09 — public Share links returned 502.** The short
+  link `GAS817A5SCuBp-lcVLjxgw.j8NFSULgTg` redirected to a valid signed public
+  token and `POST https://api-admin.pluginlive.com/assessment/public/resolve`
+  resolved that token with HTTP 200; the identical request through
+  `assessment.pluginlive.com/candidate-assessment-journey/v2/api/invite/public-resolve`
+  returned HTTP 502. This proves the public-link data and `admin-node` were
+  healthy and isolates the fault to PROD `candidate-assessment-journey-v2` not
+  being able to use `ADMIN_API_URL` (missing, malformed, or unreachable from
+  the container). Set `ADMIN_API_URL=https://api-admin.pluginlive.com/` in that
+  app's production env file, recreate the Docker container/image so it receives
+  the value, then verify `public-resolve` using a fresh public token. Do not
+  treat an invalid/expired token's 401 as an outage: it is the expected
+  application-level response from `admin-node`.
 - **Ports differ per env:** `corporate-react-v2` is **:3012 on DEV** but
   **:3014 on UAT** (where :3012 is institute-react-v2). Check the unit's
   `Environment=PORT` before curling a box.
