@@ -741,7 +741,7 @@ pin both constants, assert 1-of-8 scores on a drop-off but not on an early exit,
 
 The former standalone **Speech Delivery** report block has been removed. The same speech-quality
 signals now produce the locked **Communication** parameter alongside all other evaluation
-parameters, including its star rating, analysis, numeric score, and sub-parameters. It contributes
+parameters, including its star rating, analysis, internal numeric score, and sub-parameters. It contributes
 20% by default to `overall_score`; an admin may set its weight to zero without disabling collection
 or reporting.
 
@@ -783,9 +783,23 @@ double weighting.
 `parameter_scores`; both columns are JSONB, so **no migration was needed**. Surfaced per-turn
 (`transcript[].speechQuality`) and per-session (`speechProfile`) on
 `GET /ai-interview/report/:sessionId`. Admin analytics and the PDF render Communication through the
-ordinary parameter UI rather than duplicating it in a standalone speech section. Both show its
-numeric `/100` score, star rating, a humanised verdict, all four available sub-scores, and a concise
-plain-English narrative.
+ordinary parameter UI rather than duplicating it in a standalone speech section. The recruiter-facing
+PDF calls it **Communication & Language** and shows one concise, humanised description followed by
+the overall star rating. Its four sub-parameters appear directly underneath in the same star format.
+The PDF deliberately omits adjective badges such as "Weak" and the redundant numeric `/100` printed
+under parameter names; the numeric values remain in the analytics payload for calculation and other
+analytics consumers.
+
+**Bilingual confidence backfill (2026-09-09).** A primary + secondary interview asks each question
+entirely in one configured language (Hinglish is the only code-mixed mode). When live STT does not
+provide `avgWordConfidence`, the candidate app now requests Deepgram delivery telemetry using the
+language of the current question, inferred from the dominant Unicode script among the configured
+pair, instead of always using the primary language. Thus an English question uses `en` and a Marathi
+question uses `mr`; distinct-script pairs follow the same rule. Hinglish remains `hi`. This fixes the
+previous failure where a secondary-language answer was sent through the primary acoustic model.
+Pairs whose languages share a script still fall back to the primary until question generation emits
+an explicit language tag, and a language unsupported by Deepgram still reports pronunciation as
+unavailable rather than fabricating a score.
 
 **Honesty rules baked in** (these matter when reading a report):
 - A metric that was never measured reports as **`null`, not `0`** — "0 unclear words" reads as
