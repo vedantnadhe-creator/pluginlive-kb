@@ -89,6 +89,22 @@ Both are **flag-gated** so the old paths stay reachable for instant rollback.
   `REDIS_URL`. Concurrency: `CALCULATION_CONCURRENCY` (4), `PROGRESSION_CONCURRENCY`
   (2), `AI_CALC_CONCURRENCY` (2).
 
+### AI Interview completion queues (2026-09-09, DEV + UAT; PROD pending)
+
+AI Interview completion now uses two additional BullMQ queues alongside the ordinary
+calculation queue: `ai-interview-reading-${QUEUE_ENV}` and
+`ai-interview-finalize-${QUEUE_ENV}`. `completeSession` first commits the session and
+all answers, then enqueues scoring and the finalizer. Uploading the completed mixed
+recording enqueues reading analysis and re-enqueues the finalizer as a recovery signal.
+Scoring and reading analysis are independent and therefore run in parallel.
+
+The finalizer is the join point. It retries until scoring has either completed or
+reached a terminal calculation error, reading is `complete` or terminally `failed`,
+and no snapshot remains with `face_detected = -1`; only then does it build/upsert the
+proctoring report. Jobs use stable assignment-based IDs, and successful scoring also
+re-enqueues finalization, so a missed completion-side enqueue does not permanently
+leave the PDF without a report.
+
 ### Abandoned attempts are scored too (2026-09-02, DEV + UAT; PROD pending)
 
 Scoring used to be gated on `submitted = true` in **both** paths that feed the

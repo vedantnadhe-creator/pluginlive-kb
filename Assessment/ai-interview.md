@@ -721,6 +721,8 @@ pin both constants, assert 1-of-8 scores on a drop-off but not on an early exit,
   ```
   (UAT calc queue env: `CALCULATION_ASYNC=true`, `REDIS_URL=redis://172.17.0.1:6379`; `QUEUE_ENV` is unset → defaults to `dev` → queue name `assessment-calculation-dev`. Inspect with `docker exec redis redis-cli ZCARD bull:assessment-calculation-dev:completed`.)
 
+- **Queued completion barrier for scoring + reading + proctoring (2026-09-09, DEV + UAT; PROD pending).** `completeSession` commits the session/answers and then creates the ordinary scoring job plus an AI finalization job. The final mixed-audio upload creates a separate reading-analysis job, so scoring and reading run in parallel. The finalization worker retries until scoring is complete (or terminally failed), reading is complete (or exhausted to terminal `failed`), and every captured snapshot has finished CV (`face_detected != -1`); it then derives the final integrity score/report from the completed events, reading verdicts and snapshots. Successful scoring and audio completion also re-enqueue finalization for recovery. Reading now sends every non-empty answer—including answers under 25 words—with its transcript, telemetry and stored candidate-only raw clip; the mixed recording remains the legacy fallback. This fixes the race where immediate fire-and-forget finalization saw pending evidence, removed the partial row, and never ran again, causing proctoring to disappear from both the recruiter view and PDF.
+
 - **"Why this score" rationale line under the report (2026-06-30).** Every report now includes
   a one-or-two-line plain-English statement below the per-parameter reasons that explains
   the numeric score and the verdict in human terms — e.g. *"Scored 57/100 — Not Fit: answers
