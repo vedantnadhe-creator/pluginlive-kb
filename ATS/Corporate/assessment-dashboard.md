@@ -471,6 +471,36 @@ Three data traps, all live in this data:
 A failed fetch is rendered as "could not be loaded", NOT as "no details on
 file" — a network error is not a claim about the candidate's record.
 
+## Bulk performance reports (DEV + UAT, 2026-09-09)
+
+The assessment-detail bulk action is backed by the asynchronous admin-node
+report-bundle pipeline; it is not a browser-side PDF loop. The v2 BFF starts an
+export with `POST /api/assessments/:id/candidates/report/bulk`, follows progress
+over the export's SSE endpoint, and downloads the finished ZIP through the
+authenticated file endpoint. Admin-node renders each available candidate/type
+report through BullMQ, archives the successful PDFs, writes the bundle to the
+private OCI bucket, and returns a short-lived signed download URL. Missing
+reports are recorded in the bundle manifest instead of failing the whole job.
+
+The UI keeps progress in a responsive bottom container so closing the setup
+dialog does not hide a running export. Export Sheet, Performance Reports, Send
+Reminder, Resend Assessment, and Remove Candidate disable themselves and show a
+busy state while their request is active. Graph and filter multi-select values
+appear as individually removable chips, with a shared Clear all action; the
+filter menu also accepts the server-provided proctoring status.
+
+Deployment requirement: admin-node needs `OCI_NAMESPACE`, `OCI_REGION`,
+`OCI_BUCKET_NAME`, `OCI_ACCESS_KEY_ID`, and `OCI_SECRET_KEY` in the environment
+used by the report worker. DEV originally omitted the region/access credentials,
+so jobs reached `PROGRESS` and then failed with `Missing credentials in config`.
+The DEV worker configuration was corrected and verified with an OCI
+put/read/delete round trip. Never commit those values.
+
+The drawer displays the candidate's canonical assessment status beneath their
+name. Finished and expired assessments keep Manage Assessment available in
+read-only mode and present Reopen as the primary action; active and cancelled
+assessment actions retain their existing behavior.
+
 ## Candidate reminders ("Nudge")
 
 The roster's bulk bar sends the SAME reminder the admin side sends:
