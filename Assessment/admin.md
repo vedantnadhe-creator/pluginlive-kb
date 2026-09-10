@@ -547,6 +547,16 @@ measured in hours, and nothing in the drawer said so. The Add Candidate drawer
 now opens with a band stating when the assessment closes, plus an **Extend end
 date** control:
 
+**Validity display (fixed on DEV + UAT 2026-09-10).** For a future one-time
+assessment, candidate validity is the inclusive calendar window from the
+assessment start date through its end date, not the countdown from today to
+the end date. Each Add Candidate caller passes both dates into the shared
+drawer. Thus a Saturday-through-Monday assessment displays **3 days of
+validity**, even when Monday is four calendar days away at the time the drawer
+is opened. If the assessment has already started, the count begins today; the
+end date remains inclusive. The closing-date warning tone still uses the true
+countdown so an imminent deadline is not understated.
+
 | Days left | Tone | Copy |
 |---|---|---|
 | already closed | error | "This assessment closed on 20 Aug 2026." |
