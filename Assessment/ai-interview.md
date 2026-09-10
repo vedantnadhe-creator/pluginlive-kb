@@ -186,7 +186,8 @@ The live interview is driven by `student-node` (`app/handlers/aiInterviewHandler
 - **Hinglish is primary-only, with language-isolated turns (supersedes the earlier continuously-mixed behavior; 2026-09-09).** In Admin v2, choosing Hinglish clears and disables the secondary-language control, and the payload adapter forces `secondaryLanguage=null`. Each generated question must now be wholly English or wholly conversational Hindi rather than mixing both languages inside one question. The recruiter specifies the desired English/Hindi distribution in the open-ended Instructions field; when no distribution is supplied, generation defaults to a balanced mix across turns. Hindi is displayed as easy-to-read Roman Hindi for the candidate, while a separate hidden Devanagari `speech_text` for the same question is sent to TTS to avoid Roman-Hindi pronunciation ambiguity. English turns use identical display and speech text. Proper nouns, role titles, brand names, and necessary technical terms may remain English inside a Hindi turn. This display/TTS split applies only to Hinglish; all other configured languages retain their existing behavior. DEV + UAT live; PROD pending.
 - **Two-language STT cannot leak a third Indic script (2026-09-09).** Pairs outside Deepgram's multilingual set (for example English + Tamil) use Sarvam `language-code=unknown`, whose auto-detector considers every supported Indic language and occasionally emitted words in an unconfigured script. FastAPI now filters both Sarvam live segments and batch-recovery transcripts before they reach the browser or database: Latin is retained for English/technical terms, while Indic characters survive only when their Unicode script belongs to the configured primary or secondary language. For English + Tamil, Tamil survives and Telugu/Kannada/etc. are removed; the same boundary is generic across Hindi/Marathi (Devanagari), Bengali, Punjabi, Gujarati, Odia, Tamil, Telugu, Kannada, and Malayalam. This prevents third-script contamination but cannot distinguish romanized third-language speech from English because both use Latin characters. DEV + UAT live; PROD pending.
 - **Per-question language state hardens dynamic generation (updated 2026-09-10).** Each generated interaction stores `questionMetadata.questionLanguage`. Student-node sends the ordered language history and current per-language counts on every subsequent generation call, including priority/must-ask questions, so the model can follow unified instructions such as alternating languages or placing one language later without relying on a stateless prompt. An explicit two-language percentage instruction is converted into whole-question targets against the complete configured question budget, including the introduction (for example, 80/20 over eight questions becomes six/two), with simple `last` ordering respected. FastAPI returns an explicit `question_language`, validates the generated display/speech text against the required or selected configured language, and regenerates a mismatch once. Every actual language change—whether scheduled by the configured distribution or triggered after the candidate's second consecutive hesitation—must begin with a short, natural transition sentence in the destination language; FastAPI validates the exact bridge marker/text and regenerates once when it is missing or unnecessary. The first hesitation records a language-adherence mismatch and re-asks a simplified version in the same language. The second consecutive hesitation records another mismatch, permanently switches remaining questions to the other configured language, and uses the same validated bridge, so the interview can continue without stopping the penalty. No switch can leave the configured primary/secondary boundary. Hinglish retains isolated English turns and conversational Roman-Hindi display turns with Devanagari TTS. DEV + UAT live; PROD pending.
-- **Answers must follow the question language (2026-09-10).** The per-turn scorer receives the stored `questionLanguage`, classifies the answer's predominant language, and ignores necessary technical terms, names, brands, and brief borrowed words. An uncertain/very short answer is not treated as a mismatch. A confirmed mismatch is not accepted as the completed turn: student-node records the attempted answer under `questionMetadata.languageMismatchAttempts`, increments `sessionMetadata.languageMismatchCount`, and reuses the same interaction to say “Please re-answer in [language]” before repeating the question. Language adherence uses one multiplier schedule: 0 mismatches = 100%, 1 = 90%, 2 = 80%, and 3+ = 70%. The multiplier adjusts the transcript-derived Language Proficiency sub-score (and therefore its stars and the combined Communication & Language score) and also applies to the final overall score as the deliberate heavy compliance penalty; there is no separate fixed 15-point deduction. The report shows a one-line grouped summary such as `English expected → Hindi detected (2×)`. Other role-parameter evidence remains unaffected. Once the supported two-hesitation language switch is accepted, the switched question language becomes the expected response language. DEV + UAT live; PROD pending.
+- **Answers must follow the question language (updated 2026-09-10).** The per-turn scorer receives the stored `questionLanguage`, classifies the answer's predominant language, and ignores necessary technical terms, names, brands, and brief borrowed words. An uncertain/very short answer is not treated as a mismatch. A confirmed mismatch is not accepted as the completed turn: student-node records the attempted answer under `questionMetadata.languageMismatchAttempts`, increments `sessionMetadata.languageMismatchCount`, and reuses the same interaction to say “Please re-answer in [language]” before repeating the question. Explicit difficulty phrases such as “I don't know Hindi” or “switch to English” are detected before this ordinary mismatch handler and follow the same two-step hesitation flow: simplify/re-ask on the first consecutive occurrence, then switch within the configured primary/secondary boundary on the second. Both occurrences remain penalised. Language adherence uses one multiplier schedule: 0 mismatches = 100%, 1 = 90%, 2 = 80%, and 3+ = 70%. The multiplier adjusts the transcript-derived Language Proficiency sub-score (and therefore its stars and the combined Communication & Language score) and also applies to the final overall score as the deliberate heavy compliance penalty; there is no separate fixed 15-point deduction. The report shows a one-line grouped summary such as `English expected → Hindi detected (2×)`. Other role-parameter evidence remains unaffected. Once the supported two-hesitation language switch is accepted, the switched question language becomes the expected response language. DEV + UAT live; PROD pending.
+- **Initial loading copy (2026-09-10).** Candidate journey v2 displays “Your interviewer is preparing your interview.” while the first question is being generated; the existing “preparing the next question” wording remains reserved for transitions after an answered turn. DEV + UAT live; PROD pending.
 - **Admin-configurable question count (2026-07-17).** `ai_interview_config.max_questions` (integer, default 8, DB migration `Assessment OTP Invite/20260717T142616Z__ai_interview_max_questions.sql`) — admin sets the total question budget (incl. intro) on the create form, range **8–15**, default 8. Fixes: previously the total was hardcoded at `MAX_TOTAL_QUESTIONS = 8` AND further gated by `paramCount * QUESTIONS_PER_PARAM(2) + 1`, so e.g. a 3-param config capped at 7 regardless, and admins who listed several questions in "Question guidance" saw only ~5 actually asked (intro + follow-ups ate the rest of the 8-slot budget). `resolveQuestionBudget(config, paramList)` in `student-node`/`student-node-calcq`'s `aiInterviewHandler.js` now: clamps `maxQuestions` to `[8,15]`; scales `questionsPerParam = max(2, ceil((maxQuestions-1)/paramCount))` so the round-robin has enough slots to actually reach the cap before `isInterviewComplete` fires early; sets `totalExpected = maxQuestions`. Threaded through `nextParameter`/`isInterviewComplete`/`sectionProgress` (now take `questionsPerParam`/`totalExpected` params) and every call site: `startSession`, the reframe path, `submitTurn`, `completeSession`, the scoring cron (`runScoringForAssignment`). `admin-node` persists `maxQuestions` (clamped) on all 3 config-insert paths (sync/async assign, `saveDefinition`) + `getDefinition`. `admin-react`'s `CreateAIInterview.js` has a new "Number of questions" field (8–15, default 8) beside Max duration, plus a hint on the Question-guidance box ("up to 12 questions — extras may not all be asked", since intro+follow-ups also consume the budget). `Assessment-React`'s "Question X of Y" top-bar pill now reads `progress.totalExpected` (falls back to the section sum, then 8) instead of a hardcoded `min(8, …)`. **Old configs** (no `max_questions` row, or NULL) default to 8 — identical behavior to before this change. **`student-node-calcq`** is a **git worktree of the `student-node` repo** on the divergent `feat/calculation-queue` branch (same remote, same UAT branch) — not a separate deployed service; mirrored the fix there for whenever that branch lands, but nothing to redeploy for it today.
 
 **Follow-up (2026-07-17): follow-ups were still crowding out admin questions.** Real UAT case — `max_questions=12`, 10 explicit questions in `question_guidance`, only 8 got asked. Cause: `resolveQuestionBudget` sized the total correctly, but the depth-follow-up decision (`wantFollowup` in `submitTurn`) had no awareness of how many admin questions needed a slot — 3 of the 12 turns went to follow-up drill-ins (+1 intro), leaving only 8 for the 10 questions. Fix: `countGuidanceQuestions(question_guidance)` (lines ending in "?") + a follow-up budget — `followupBudget = max(0, totalExpected - 1 - adminQuestionCount)`; `wantFollowup` now also requires `followupsSoFar < followupBudget`. With 10 questions in a 12 budget that's 1 follow-up max, so all 10 fit. Also strengthened the FastAPI `question_guidance_block`: when any admin question is still unasked, the model should ask the next unasked one instead of inventing a new question (only invent once all are covered). Applied to `student-node` + the `student-node-calcq` worktree + `fastapi-ai-engine`. **Still probabilistic** (LLM picks *which* unasked question, not code) but the slot math now guarantees the room exists. DEV+UAT live.
@@ -758,13 +759,14 @@ The four recruiter-facing sub-competencies are:
 
 | Sub-competency | Source / formula |
 |---|---|---|
-| Pronunciation & Intelligibility | The exact word-count-weighted session `avgWordConfidence × 100`; it is not the separately penalised speech-clarity diagnostic |
+| Pronunciation & Intelligibility | Word-count-weighted provider score: where Azure supports the question language, **70% Azure pronunciation accuracy + 30% calibrated Deepgram intelligibility**; otherwise the calibrated Deepgram intelligibility proxy |
 | Fluency & Pace | Communication-assessment pause-rate / speech-rate / filler-rate tiers, weighted **0.40 / 0.35 / 0.25** |
 | Language Proficiency | Final-transcript LLM assessment of grammar, vocabulary, and control of the configured interview language |
 | Clarity & Conciseness | Final-transcript LLM assessment of structure, directness, and ease of understanding |
 
-The overall Communication score is the arithmetic mean of whichever of these four values are
-available. A missing source remains `null` and is excluded from the denominator. The final scorer
+The overall Communication score is the arithmetic mean of these four values. If neither provider
+returns usable speech evidence, Pronunciation & Intelligibility receives a conservative **20/100
+(one-star) floor** rather than disappearing from the report. The final scorer
 receives Communication as a synthetic **zero-weight** parameter so it can produce the two
 transcript-based sub-scores and narrative without adding Communication to its role-only weighted
 score. `student-node` then applies the admin's real Communication weight exactly once; this avoids
@@ -792,38 +794,38 @@ The PDF deliberately omits adjective badges such as "Weak" and the redundant num
 under parameter names; the numeric values remain in the analytics payload for calculation and other
 analytics consumers.
 
-**Bilingual confidence backfill (2026-09-09).** A primary + secondary interview asks each question
+**Provider pronunciation assessment (updated 2026-09-10).** A primary + secondary interview asks each question
 entirely in one configured language (Hinglish is the only code-mixed mode). When live STT does not
-provide `avgWordConfidence`, the candidate app now requests Deepgram delivery telemetry using the
-language of the current question, inferred from the dominant Unicode script among the configured
-pair, instead of always using the primary language. Thus an English question uses `en` and a Marathi
-question uses `mr`; distinct-script pairs follow the same rule. Hinglish remains `hi`. This fixes the
-previous failure where a secondary-language answer was sent through the primary acoustic model.
-Pairs whose languages share a script still fall back to the primary until question generation emits
-an explicit language tag, and a language unsupported by Deepgram still reports pronunciation as
-unavailable rather than fabricating a score.
+provide complete delivery data, both candidate frontends submit every recorded answer to the
+`/delivery-telemetry` pass using the stored language of that question. For English, Hindi/Hinglish,
+and Tamil, FastAPI requests Azure's unscripted pronunciation assessment and combines its phoneme-level
+`AccuracyScore` at 70% with the calibrated Deepgram transcription-confidence proxy at 30%. If
+Deepgram is unavailable but Azure succeeds, the fallback is 85% Azure accuracy + 15% Azure fluency.
+Languages not supported by the Azure pronunciation route use the calibrated Deepgram proxy alone.
+Provider source and component scores are retained internally; the recruiter report displays only
+the resulting star rating.
 
 **Honesty rules baked in** (these matter when reading a report):
-- A metric that was never measured reports as **`null`, not `0`** — "0 unclear words" reads as
-  flawless delivery, which is a very different claim from "we did not measure it". Each PDF line is
-  gated on its own metric.
+- Missing raw telemetry remains **`null`, not `0`**. Pronunciation & Intelligibility is the deliberate
+  exception: when both provider routes lack usable speech evidence it receives the documented
+  20/100 floor, so the report never presents missing evidence as a strong score.
 - `coverage` is `full` / `partial` / `unavailable` and the report states when it measured only some
   turns. Turns under 15 words are not scored for fluency (a 6-word answer with one "um" is a 16%
   filler rate, which means nothing).
 - `isCalibratedLanguage` is **true only for English**. Deepgram confidence is calibrated per acoustic
   model — Hindi and Tamil run structurally lower — so a non-English clarity number is indicative and
   is printed with a caveat rather than hidden.
-- The UI label is **"Speech Clarity"**, not "pronunciation". Confidence is *transcription*
-  confidence: microphone quality, background noise and uncommon technical words depress it too. It
-  is an intelligibility signal, **not a judgement of accent**.
+- Deepgram confidence remains an intelligibility proxy: microphone quality, background noise and
+  uncommon technical words affect it. Azure supplies the pronunciation-specific phoneme accuracy
+  component where supported; neither component is intended to penalise accent by itself.
 - Delivery telemetry is posted by the candidate's own browser, so every value is clamped and
   truncated server-side before it reaches a score or the PDF (a crafted `avgWordConfidence: 50` would
   otherwise print 5000/100).
 
-**Language coverage gotcha — Malayalam has none.** Verified against Deepgram's live model catalogue:
-`nova-3` supports `ta, te, kn, bn, gu, mr, pa, hi, ur` but **not `ml`**. A Malayalam interview's
-`/delivery-telemetry` call fails, so no clarity score exists for it — `coverage: "unavailable"` makes
-that visible instead of rendering zeros.
+**Language coverage.** Azure pronunciation accuracy is currently enabled for English, Hindi/Hinglish,
+and Tamil. Other configured languages use Deepgram's calibrated intelligibility proxy when supported.
+If neither route yields usable evidence, the one-star floor applies and the report does not show an
+"unavailable" label.
 
 #### Delivery telemetry was gated behind the camera collector (fixed 2026-08-25, DEV + UAT)
 
