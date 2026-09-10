@@ -1416,6 +1416,20 @@ on the map row, so they ride the same `updateMany` as the end time and therefore
 work for a mix-match float — unlike admin-node's `configuration` patch, which
 only runs for a single-part assessment.
 
+## Proctoring status contract (DEV + UAT, 2026-09-10)
+
+The candidate roster and its Excel export use the finalized integrity band as
+the single verdict: `clean` is **Good**; `review` and `high_concern` are **Bad**;
+`no_data`, a missing report, and a report still being calculated have no verdict
+and remain blank (`—` in the UI). When proctoring is off, both surfaces say
+**Disabled**. Legacy snapshot flags are evidence already weighed by the report
+and do not independently override a finalized `clean` band.
+
+For Mix & Match assessments, both surfaces use the most recently generated
+proctoring report across the candidate's parts. The Excel implementation lives
+in `admin-node` `exportStudentData`; the roster implementation lives in
+`corporate-node` `CorporateAssessmentDetailV2`.
+
 ## Public assessment link — Share (LIVE on DEV + UAT + PROD, 2026-09-09)
 
 Share hands out a **candidate** link, not the recruiter's dashboard URL:
