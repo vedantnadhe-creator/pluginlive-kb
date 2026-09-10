@@ -1713,3 +1713,18 @@ window.
 
 Rollback snapshot: `~/banking-predeploy-20260909T140819Z/` (database dump, function archive,
 previous `dist`, env, source SHA, and local patch diff).
+
+## 2026-09-10 — lesson-video quiz generation compile failure fixed (`556b2ea`)
+
+`generate-lesson-video-quiz` returned HTTP 500 for every video because its AI-response parsing
+block had been duplicated, redeclaring `aiJson` and `args` in the same scope. The edge worker could
+not compile (`SyntaxError: Identifier 'aiJson' has already been declared`). Commit `556b2ea`
+removes the duplicate six-line block; there is no schema migration or frontend change.
+
+The corrected function was synchronized to Banking UAT and verified through the public gateway:
+an end-to-end request returned HTTP 200 with a lesson id and two generated questions. The probe
+lesson and its questions were deleted afterward. All seven `banking-sb-*` containers remained up,
+the database remained healthy, and site/Auth health returned 200.
+
+Rollback snapshot: `~/banking-predeploy-20260910T091638Z/` (previous function archive, UAT env,
+source SHA, and local patch diff).
