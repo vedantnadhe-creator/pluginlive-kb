@@ -594,10 +594,11 @@ deadline is calculated as
 Candidates added after creation therefore receive their full configured window
 from the date they are added, unless the assessment's overall end date arrives
 first. Historical groups with a NULL value retain the overall-window behavior.
-The create wizard normally initializes the value to 3 days, and its BFF also
-defaults a missing or blank corporate value to 3 in the outgoing payload so a
-stale UI cannot fail the float with `assessmentValidityDays must be a positive
-integer`; explicitly supplied invalid values are still rejected. Manage Assessment reads and updates it,
+Corporate v2 requires its visible validity input and sends exactly what the
+recruiter entered; it has no hidden payload fallback. The duplicated stale
+Admin v2 creation view still defaults a missing value to 3 days so it cannot
+fail the float with `assessmentValidityDays must be a positive integer`.
+Explicitly supplied invalid values are rejected. Manage Assessment reads and updates it,
 invite/short-link expiry uses it, and student-node enforces it at both standard
 assessment and AI Interview start boundaries. Migration:
 `DB-Scripts/Mix Match Assessment/20260909T085036Z__candidate_validity_days.sql`
