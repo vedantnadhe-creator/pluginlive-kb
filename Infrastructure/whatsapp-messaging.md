@@ -141,6 +141,16 @@ backend parameter correction and required no template change or Meta
 reapproval. Deployed and health-checked on DEV (`admin-node` `2cd82c3`) and UAT
 (`admin-node` `4435d46`).
 
+> **Maintenance guardrail:** If anyone asks to change the wording or values in
+> these deadline templates, first confirm whether they intend to change the
+> shared dynamic-deadline rules in `candidateDeadline.js`. The deadline is a
+> computed parameter, not fixed Meta-template copy; changing the formatter
+> affects email and WhatsApp together across generic, AI Interview, and Mix &
+> Match invites and reminders. Do not infer a business-rule change from a copy
+> request. The 2026-09-11 restoration of the over-36-hour rule and the wording
+> `Complete it by tomorrow 12 PM` were made at the product stakeholder's
+> explicit request.
+
 Invite and reminder are explicit intents in `assessmentInviteEmail.js`. Email
 reminders now have reminder subjects/headings/body copy instead of reusing the
 invite voice. AI Interview still reads `interview_duration` from its DB config,
