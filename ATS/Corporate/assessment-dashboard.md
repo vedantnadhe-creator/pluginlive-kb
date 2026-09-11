@@ -188,8 +188,9 @@ to v1 too. Flip one without the other and the two sidebars point at each other.
   not stored and an invented one would be a guess dressed as fact.
 - **AI Interview scores are one row per SESSION** (up to 2 per assignment) —
   pre-aggregate or every count inflates. Its competency breakdown lives in
-  `parameter_scores` (jsonb, 0-4 ratings, rescaled ×25) on ~2/3 of rows; the
-  four `*_score` columns cover only the rest.
+  `parameter_scores` (jsonb, 1-5 ratings, rescaled ×20) on ~2/3 of rows; the
+  four `*_score` columns cover only the rest. This is the same five-point scale
+  shown in the PDF: 2/5 → 40%, 3/5 → 60%, 4/5 → 80%, 5/5 → 100%.
 - **Behaviour has no score**, only levels — never in an average.
 - **Never resolve a set with `MIN(created_at)`.** Stray assignments spawn sets;
   read the set actually served via `aas.assessment_set_id`.
