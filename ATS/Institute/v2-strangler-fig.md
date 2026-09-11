@@ -58,6 +58,24 @@ app under systemd, so it has never needed one.
 
 Everything else is still v1.
 
+## Assessment performance and lifecycle refinements (2026-09-11)
+
+The schedule and assessment-detail APIs now return usable student scores even
+when no progression-history row exists. Communication and Aptitude fall back to
+their real stored percentage; Role-based scores are included in the
+Student-wise schedule table rather than rendering an empty column.
+
+For a **one-time** assessment, Student-wise performance shows one **Attempt
+status** column instead of Attempt rate and Consistency. Its four labels are
+Pending, In progress, Dropped-off and Completed; the same labels drive the
+filter and CSV export. Recurring assessments retain Attempt rate and
+Consistency.
+
+An open assessment is now **About to expire** only during its final 24 hours.
+With two or more days remaining it stays **Ongoing**, while the separate
+days-left warning may still be shown. The shared status helper is used by both
+the assessment list and detail payloads so those screens cannot disagree.
+
 ## A recurring schedule is invisible until it runs — unless you union it in
 
 The scheduler writes `assessment_institute_map` rows only **when it fires**
