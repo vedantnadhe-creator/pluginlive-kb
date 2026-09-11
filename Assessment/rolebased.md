@@ -541,8 +541,8 @@ local-time `combineDateTime`**, which can be ~5.5h out — unfixed as of 2026-08
    - Subjective: AI-scored via FastAPI (`calculate_role_based_subjective_score`)
    - Video: transcribed via Deepgram, then AI-scored via FastAPI (`calculate_role_based_video_score`)
 8. Per-skill scores combined across the sections that assessed each skill — equal weight per section, redistributed over the ones actually present (`combineSkillScores`)
-9. Results stored in `roleBasedScores` table
-10. PDF report generated via Handlebars + Puppeteer
+9. Results and one comprehensive AI feedback object are stored in `roleBasedScores` metadata
+10. PDF report reads the stored feedback and is generated via Handlebars + Puppeteer; downloading does not call the AI service again
 
 ---
 
@@ -810,4 +810,4 @@ Gotchas:
 - **Video Upload Retry** — scoring waits up to 3 minutes for video uploads to complete before skipping.
 - **Skipped Sections Score 0, Never Vanish** — `reconstructRoleBasedAssessmentResponse` (`RoleBasedCalculations.js`) cross-references `assessment_question_map` against `student_answers`; any assigned question with no answer row is synthesized as `{ skipped: true }` so its section still gets scored (0%) instead of disappearing from `role_based_scores`/the report. This also covers the **whole-assessment-unanswered** case (candidate submits with zero answers anywhere, e.g. a coding-only assessment where they click Submit immediately) — earlier code short-circuited on `studentAnswers.length === 0` and returned `isEmpty: true`, which skipped the synthesis entirely and left **every** section (including Coding) with no DB row at all, i.e. a blank report despite `scoresCalculated: true`. Fixed 2026-07-17 (student-node `c0b13dbf`, promoted to UAT `ff31c5b2`) by removing that early return so the zero-answer case falls through to the same synthesis path as a partial skip.
 - **Retake Support** — the system detects retakes and stores both original and retake scores separately.
-- **Comprehensive Feedback** — AI provides strengths, areas for improvement, job alignment, skill gap analysis, and specific recommendations per response.
+- **Comprehensive Feedback Is Generated Once** — after section scoring completes, student-node calls the comprehensive-feedback service once and persists the result as `comprehensive_feedback` in each applicable `role_based_scores.metadata` row. The PDF path reads that stored object and never calls AI, removing the former ~15-second regeneration delay and making repeat downloads deterministic. Reports for legacy attempts that predate this field still download normally, without a comprehensive-feedback section; they are not regenerated on download. Shipped to DEV (`eb6d7841`) and UAT (`e64975c9`) on 2026-09-11; PROD pending.
