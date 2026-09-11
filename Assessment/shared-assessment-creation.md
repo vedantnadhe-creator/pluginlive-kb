@@ -4,7 +4,7 @@
 
 `PluginLive-Technologies/design-system` owns the reusable React UI and four-step assessment wizard. `admin-react-v2` and `corporate-react-v2` consume it at build time. There is no separate design-system server or microfrontend runtime.
 
-Both apps pin `@pluginlive-technologies/assessment-creation` 0.1.1 and `@pluginlive-technologies/ui` 0.1.0. Packages are generated using `npm pack`, committed as `vendor/*.tgz`, and integrity-pinned in package-lock.json. This rollout does not publish to an npm registry. Both apps transpile the packages through Next.js and load their scoped styles. Docker dependency stages copy vendor before npm ci.
+Both apps pin `@pluginlive-technologies/assessment-creation` 0.1.2 and `@pluginlive-technologies/ui` 0.1.0. Packages are generated using `npm pack`, committed as `vendor/*.tgz`, and integrity-pinned in package-lock.json. This rollout does not publish to an npm registry. Both apps transpile the packages through Next.js and load their scoped styles. Docker dependency stages copy vendor before npm ci.
 
 ## Entry points and responsibilities
 
@@ -27,3 +27,14 @@ Package changes require a versioned artifact, lockfile update, app build and dep
 ## Verification boundary
 
 Shared package tests, Admin tests, Corporate BFF tests, production builds and deployed browser checks cover both Admin segments and Corporate creation, error/retry, navigation and mobile layout. Browser workflow checks mock API calls, so they do not create records or send invitations and do not establish real delivery or quota behavior.
+
+## Validation fixes — DEV and UAT, 2026-09-11
+
+Shared package 0.1.2 fixes two creation-flow issues:
+
+- College recipient selection now identifies missing Degree, Department and Year of passing beside Continue. Candidate Details no longer shows complete while those fields are missing. The existing cohort requirement still applies to saved/suggested lists; choosing a list does not fill the separate cohort fields automatically.
+- College Communication configuration fixes Speaking evaluation language to English and explains the restriction. Draft configuration updates enforce English as well, matching admin-node's institute assignment contract and preventing the regional-language rejection at Float. Corporate keeps its language choices.
+
+Release: design-system `6a3efe8`; admin-react-v2 DEV `da970cd`, UAT `4af9505`; corporate-react-v2 DEV `955b0a1`, UAT `73e44a8`. Both apps were rebuilt through auto_deploy.sh on their target servers. No backend or database changes.
+
+Validation: all 24 shared-package tests and TypeScript checks passed. Deployment checks verified pages and referenced assets. Public DEV/UAT browser checks exercise Admin college, Admin corporate and Corporate configuration, recipients, review, submission error/retry, navigation and mobile layout with mocked APIs; they do not create assessments or send invitations.
