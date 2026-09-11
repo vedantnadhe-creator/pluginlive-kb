@@ -17,49 +17,19 @@ vedantnadhe-creator) nor the MCP GitHub identity can `POST /orgs/.../repos` — 
 
 ## Status
 
-**The nav is still all-v1; one action has moved.** `ADMIN_V2_MODULES` is empty on
-both DEV and UAT, so no sidebar entry redirects anywhere. What *has* migrated is
-the **Create Assessments** action on `/assessment` — see below. The assessment
-list itself stays on v1.
+**The sidebar remains on v1.** `ADMIN_V2_MODULES` is empty on DEV and UAT. The legacy `/assessment` page now embeds the shared assessment-creation package directly; its Create Assessments button no longer switches the browser into v2.
 
-| Env | app running | nginx `location /v2` | `ADMIN_V2_MODULES` | `ADMIN_V2_CREATE_ASSESSMENT` |
-|---|---|---|---|---|
-| DEV | systemd :3013 | yes | `''` | `'1'` |
-| UAT | systemd :3013 | yes (added 2026-08-19) | `''` | `'1'` (2026-08-19) |
-| PROD | no | no | unset | unset |
+| Env | v2 app running | nginx `location /v2` | `ADMIN_V2_MODULES` |
+|---|---|---|---|
+| DEV | systemd :3013 | yes | `''` |
+| UAT | systemd :3013 | yes | `''` |
+| PROD | no | no | unset |
 
-## Create Assessments hands off to v2 (action-level strangler-fig)
+## Create Assessments stays in legacy Admin
 
-Second flag, independent of `ADMIN_V2_MODULES`, in `admin-react`'s gitignored
-`.env`/`.env.uat`:
+On DEV and UAT, legacy `admin-react` lazy-loads the shared React 18-compatible wizard on `/assessment`. The entity picker and wizard use local host state, cancellation closes the overlay, and successful creation reloads the same URL. The former `ADMIN_V2_CREATE_ASSESSMENT` redirect flag no longer controls this action.
 
-```bash
-export ADMIN_V2_CREATE_ASSESSMENT='1'   # '1' enables; anything else = legacy wizard
-```
-
-`modules/Assessment/index.js` reads it and, when on, makes the button a real
-browser navigation (react-router cannot client-route into another app):
-
-```js
-window.location.href = `/v2/assessment?create=1&type=${entityType}`
-```
-
-v2's `ManageAssessmentsView` derives the hand-off from the URL — `create=1` opens
-the entity picker, `type=college|corporate` pre-selects the tab the user left.
-Derived from the URL rather than copied into state, so a refresh reopens the
-picker.
-
-`config/webpack.base.js` declares it in the **object** form of `EnvironmentPlugin`
-(default `''`), so it inlines cleanly. Verify a build took by grepping the
-shipped JS — when the flag is on, terser drops the condition *and* the legacy
-branch entirely:
-
-```bash
-docker exec adminreact sh -c "grep -c '/v2/assessment?create=1' /app/build/main.*.js"
-```
-
-If the string is absent, the flag was off at build time — the dead branch was
-eliminated. The env var name itself should appear only in the `.js.map`.
+The wizard still uses admin-react-v2's same-origin `/v2/api/*` BFF routes for authenticated requests. Keep that service and nginx route running even though users stay in legacy Admin. Direct v2 creation routes remain available. See [shared assessment architecture and release](../../Assessment/shared-assessment-creation.md) for package versions and rollout details.
 
 ## The handoff is env-gated, not branch-gated
 
@@ -142,7 +112,7 @@ the nginx block reproduces the Corporate failure exactly.
 
 ## Assessment wizard — current state (2026-08-19)
 
-Reached from v1's Create Assessments button (above) at `/v2/assessment/new`.
+Available directly at `/v2/assessment/new`; legacy Admin now embeds the shared wizard at `/assessment` instead of navigating here.
 
 **"Generate with AI" and the JD file attach are both simulations.** Attaching a
 file makes the Job description box read-only, shows a spinner and
@@ -345,4 +315,4 @@ Full UAT topology:
 
 ## Shared creation package
 
-The creation wizard now comes from `design-system` as `@pluginlive-technologies/assessment-creation` 0.1.1, shared by Admin and Corporate v2. See [shared assessment architecture and release](../../Assessment/shared-assessment-creation.md). Institute is excluded.
+The creation wizard now comes from `design-system` as `@pluginlive-technologies/assessment-creation` 0.1.2 in Admin and Corporate v2; legacy Admin consumes the React 18-compatible 0.2.0 release. See [shared assessment architecture and release](../../Assessment/shared-assessment-creation.md). Institute is excluded.
