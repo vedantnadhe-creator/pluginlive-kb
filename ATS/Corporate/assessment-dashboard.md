@@ -1591,3 +1591,7 @@ its filter selects `types.length > 1`.
 Deliberate: the per-type legend rows still count a mix float under EACH
 assessment it contains, so "how many floats include Aptitude" stays true. Mix &
 Match adds a way to find them rather than moving them — no existing count shifts.
+
+## Shared creation package
+
+The creation wizard now comes from `design-system` as `@pluginlive-technologies/assessment-creation` 0.1.1, shared by Admin and Corporate v2. See [shared assessment architecture and release](../../Assessment/shared-assessment-creation.md). Institute is excluded.

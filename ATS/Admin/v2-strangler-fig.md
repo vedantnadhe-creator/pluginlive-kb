@@ -342,3 +342,7 @@ UAT numbers them differently — 3011 is `pil-ai-learning` there, so institute i
 :3012, admin :3013 and corporate :3014. Never copy a port from a DEV unit file.
 Full UAT topology:
 [Infrastructure/v2-apps-uat-topology.md](../../Infrastructure/v2-apps-uat-topology.md).
+
+## Shared creation package
+
+The creation wizard now comes from `design-system` as `@pluginlive-technologies/assessment-creation` 0.1.1, shared by Admin and Corporate v2. See [shared assessment architecture and release](../../Assessment/shared-assessment-creation.md). Institute is excluded.
