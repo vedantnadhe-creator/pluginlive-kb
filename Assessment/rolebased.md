@@ -66,6 +66,24 @@ Each service owns its copy — there is no shared module across the microservice
 | Institute v2 screens | `institute-node` `app/helpers/assessmentScoreSql.js` (`AVG(score)`) |
 | Corporate assessment student list | `institute-node` `StudentListInfo.getCorporateAssessmentStudents` |
 
+### Current section score selection (fixed 2026-09-11, DEV + UAT)
+
+A recalculation can leave more than one `role_based_scores` row for the same
+assignment and section. Institute v2 previously averaged every historical row,
+so its dashboard and detail views could disagree with admin and the PDF, which
+show one current mark per section.
+
+`institute-node` now selects the newest row for each assignment + section
+(`updated_at DESC`, then `created_at DESC`, then `id DESC`) before applying the
+same equal-weight `AVG(score)` used for the overall. This applies to dashboard
+summaries, assessment overview/performance screens, student drawers, and score
+breakdowns. The PDF query in `student-node` is also deterministically ordered
+oldest-to-newest by the same fields, so its existing reducer retains the newest
+row for each section.
+
+Commits: `institute-node` `9932f44` on Development and UAT;
+`student-node` `354c81e0` on Development and `6e5f29eb` on UAT. **PROD pending.**
+
 ### The weight printed on the PDF (fixed 2026-08-10)
 
 Each section card on the report prints `Weight: n%`. That number used to be `Math.round(100 / sections)` with the **remainder handed to the last section**, so a 3-section report printed **33% / 33% / 34%** while the overall averaged at **33.33% each** — the report contradicted itself and Video looked heavier than MCQ for no reason. Reported by QA (Jershini): *"if MCQ weightage is 33% the overall should be 3.3%, now it is considering 33.33%"*.
