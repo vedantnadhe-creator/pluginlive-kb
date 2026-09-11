@@ -17,19 +17,21 @@ vedantnadhe-creator) nor the MCP GitHub identity can `POST /orgs/.../repos` — 
 
 ## Status
 
-**The sidebar remains on v1.** `ADMIN_V2_MODULES` is empty on DEV and UAT. The legacy `/assessment` page now embeds the shared assessment-creation package directly; its Create Assessments button no longer switches the browser into v2.
+**The sidebar remains on v1.** `ADMIN_V2_MODULES` is empty on DEV and UAT. The legacy `/assessment` page redirects its Create Assessments action into v2; exiting creation returns to the original dashboard.
 
 | Env | v2 app running | nginx `location /v2` | `ADMIN_V2_MODULES` |
 |---|---|---|---|
 | DEV | systemd :3013 | yes | `''` |
 | UAT | systemd :3013 | yes | `''` |
-| PROD | no | no | unset |
+| PROD | Outside this rollout | Verify separately | Verify separately |
 
-## Create Assessments stays in legacy Admin
+## Create Assessments handoff and return routing
 
-On DEV and UAT, legacy `admin-react` lazy-loads the shared React 18-compatible wizard on `/assessment`. The entity picker and wizard use local host state, cancellation closes the overlay, and successful creation reloads the same URL. The former `ADMIN_V2_CREATE_ASSESSMENT` redirect flag no longer controls this action.
+`ADMIN_V2_CREATE_ASSESSMENT=1` in legacy Admin enables browser navigation to `/v2/assessment?create=1&type=college|corporate`. Selection proceeds to `/v2/assessment/new`. The temporary inline integration was reverted.
 
-The wizard still uses admin-react-v2's same-origin `/v2/api/*` BFF routes for authenticated requests. Keep that service and nginx route running even though users stay in legacy Admin. Direct v2 creation routes remain available. See [shared assessment architecture and release](../../Assessment/shared-assessment-creation.md) for package versions and rollout details.
+Cancel from the handoff picker and exit actions from the shared wizard navigate directly to legacy `/assessment`. These exits must not use Next's router, Link, or apiUrl, which would add `/v2` and open the listing. The missing-organisation Back link uses native navigation too. Internal step Back and Keep editing remain inside the wizard; creation success retains its existing confirmation flow.
+
+See [shared assessment architecture and release](../../Assessment/shared-assessment-creation.md) for revisions and verification.
 
 ## The handoff is env-gated, not branch-gated
 
@@ -112,7 +114,7 @@ the nginx block reproduces the Corporate failure exactly.
 
 ## Assessment wizard — current state (2026-08-19)
 
-Available directly at `/v2/assessment/new`; legacy Admin now embeds the shared wizard at `/assessment` instead of navigating here.
+Reached from the legacy Create Assessments handoff at `/v2/assessment/new`. Exit actions return to legacy `/assessment`.
 
 **"Generate with AI" and the JD file attach are both simulations.** Attaching a
 file makes the Job description box read-only, shows a spinner and
@@ -315,4 +317,4 @@ Full UAT topology:
 
 ## Shared creation package
 
-The creation wizard now comes from `design-system` as `@pluginlive-technologies/assessment-creation` 0.1.2 in Admin and Corporate v2; legacy Admin consumes the React 18-compatible 0.2.0 release. See [shared assessment architecture and release](../../Assessment/shared-assessment-creation.md). Institute is excluded.
+The creation wizard now comes from `design-system` as `@pluginlive-technologies/assessment-creation` 0.1.2 in Admin and Corporate v2. Legacy Admin redirects into v2 and does not install the package. See [shared assessment architecture and release](../../Assessment/shared-assessment-creation.md). Institute is excluded.

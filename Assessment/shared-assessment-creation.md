@@ -2,20 +2,20 @@
 
 ## Architecture
 
-`PluginLive-Technologies/design-system` owns the reusable React UI and four-step assessment wizard. `admin-react` (legacy React 18), `admin-react-v2` and `corporate-react-v2` consume it at build time. There is no separate design-system server or microfrontend runtime.
+`PluginLive-Technologies/design-system` owns the reusable React UI and four-step assessment wizard. `admin-react-v2` and `corporate-react-v2` consume it at build time. Legacy Admin redirects creation into the v2 app. There is no separate design-system server or microfrontend runtime.
 
 The two Next.js apps pin `@pluginlive-technologies/assessment-creation` 0.1.2 and `@pluginlive-technologies/ui` 0.1.0. Packages are generated using `npm pack`, committed as `vendor/*.tgz`, and integrity-pinned in package-lock.json. This rollout does not publish to an npm registry. Both apps transpile the packages through Next.js and load their scoped styles. Docker dependency stages copy vendor before npm ci.
 
 ## Entry points and responsibilities
 
-- Legacy Admin: Create Assessments at `/assessment` opens the entity picker and shared wizard in place. The browser remains at `/assessment` throughout creation and cancellation; success reloads that same page. The picker supports college/corporate and checks contract availability before continuing. Entity ID, segment, name and optional campus ID are held in host state. Requests still use the existing same-origin `/v2/api/*` BFF, so admin-react-v2 must remain running.
-- Admin v2: its direct `/v2/assessment?create=1&type=college|corporate` and `/v2/assessment/new` entry points remain available, but the legacy button no longer navigates there.
+- Admin: Create Assessments on legacy `/assessment` redirects to `/v2/assessment?create=1&type=college|corporate`. The entity picker opens immediately. Cancel (including Escape) returns to legacy `/assessment`. Selection opens the shared wizard at `/v2/assessment/new` with the selected entity context.
+- Wizard exits: Close, the Assessments breadcrumb, and confirmed Discard and leave navigate to legacy `/assessment`, using a native browser navigation that does not add the `/v2` prefix. The missing-organisation Back link also returns there. Keep editing stays in the wizard; step-level Back still moves to the previous step. Creation success retains the existing v2 confirmation flow.
 - Corporate: `/v2/assessments/new`, using the corporate organisation derived by its BFF from the authenticated session.
 - Institute: excluded from this rollout. Its temporary creation implementation was removed on its feature branch; no Institute merge or deployment is needed for the shared wizard.
 
 The package owns setup, type configuration, recipient tools, scheduling, validation and review. Hosts own authentication headers, basePath-aware transport, navigation, organisational scope and existing BFF routes. Admin's selected IDs and display name are not authorization evidence; its authenticated upstream authorizes access. Corporate ignores client entity IDs and derives its scope from the session. No backend or database changes are part of this rollout.
 
-College contexts expose course/cohort selectors, recurring schedules and supported broadcast workflows. Corporate retains its multi-type flow. Host changes remount the Admin wizard, clearing the previous entity's draft. Both hosts return to their own assessment list after creation or cancellation.
+College contexts expose course/cohort selectors, recurring schedules and supported broadcast workflows. Corporate retains its multi-type flow. Host changes remount the Admin wizard, clearing the previous entity's draft. Corporate returns to its own assessment list. Admin exits return to the legacy dashboard; successful creation retains the v2 confirmation flow.
 
 ## Release and deployment
 
@@ -40,16 +40,14 @@ Release: design-system `6a3efe8`; admin-react-v2 DEV `da970cd`, UAT `4af9505`; c
 
 Validation: all 24 shared-package tests and TypeScript checks passed. Deployment checks verified pages and referenced assets. Public DEV/UAT browser checks exercise Admin college, Admin corporate and Corporate configuration, recipients, review, submission error/retry, navigation and mobile layout with mocked APIs; they do not create assessments or send invitations.
 
-## Legacy Admin inline integration — 2026-09-11
+## Return-navigation correction — 2026-09-11
 
-Legacy Admin pins assessment-creation 0.2.0 and ui 0.1.1 as committed `vendor/*.tgz` artifacts, with checksums in `vendor/manifest.json`. These versions accept React 18 or React 19 peers and retain the college validation fixes above. Webpack transpiles the shared TS/TSX package source and loads scoped package CSS. The Docker dependency stage copies vendor before installation. This remains an npm-pack delivery, with no registry publication.
+The temporary inline React 18 integration has been reverted. Legacy Admin no longer installs shared UI tarballs or renders the wizard itself; `ADMIN_V2_CREATE_ASSESSMENT=1` restores the v2 creation redirect. No design-system or Corporate release is needed for this correction.
 
-The host lazy-loads the wizard, forwards the legacy login token to the BFF, keeps selection in component state, and mounts the wizard in a fullscreen dialog above the existing page. Background interaction is disabled while the wizard is open. The former `ADMIN_V2_CREATE_ASSESSMENT` redirect flag no longer controls this button.
+The actual routing defect was the Admin wizard host calling `apiUrl("/assessment")` on cancel, which added `/v2` and exposed the v2 listing. It now navigates directly to `/assessment`. The missing-organisation fallback uses a native link for the same cross-app boundary. The existing handoff entity-picker Cancel already returned to legacy Admin.
 
-Source revisions: design-system Development/UAT `04e92cf`; admin-react Development `8b2719ea`, UAT `5556df71`. Corporate and Institute are unchanged by this correction.
+Revisions: admin-react revert Development `873af363`, UAT `99be976b`; admin-react-v2 routing fix Development `10701f9`, UAT `20d958a`. DEV/UAT deployment uses auto_deploy.sh with separate environment builds. Legacy Admin uses the isolated-release helper (DEV systemd, UAT Docker); v2 uses the Next.js release helper and systemd. PROD is outside this rollout.
 
-Deployment uses `~/auto_deploy.sh admin-react Development|UAT`, delegating to `~/scripts/deploy-inline-admin.sh`. It builds clean checkouts under `~/releases/admin-react/` without overwriting the existing working tree. DEV runs the release through a systemd override. UAT builds its Docker image on UAT using `.env.uat`, scans executable bundles for DEV URLs before switching `adminreact`, and retains the previous container for rollback. Pages and referenced assets are checked after switching.
+Regression tests exercise actual host exit callbacks for both entity segments and the fallback link. Public browser checks use mocked APIs and do not create records or send invitations.
 
-Validation: React 18 integration browser tests cover both entity segments, picker cancellation, contract-lock handling, wizard steps, submission failure/retry, success reload, mobile width and an unchanged page URL using mocked APIs. Shared-package tests (24) and type checks passed. These tests do not create records or send invitations.
-
-Deployment verified on DEV and UAT: legacy `/assessment` and all referenced assets respond successfully; DEV systemd and UAT `adminreact` are running the revisions above. Public-site browser checks clicked Create Assessments, selected an entity and opened the shared wizard with no page errors and no URL change. API responses were mocked. UAT executable bundles were independently scanned and contain no DEV hostnames; the deployment helper now uses a Node-based scan compatible with Alpine images.
+DEV/UAT deployment verification passed: pages and assets load, services are active, and UAT executable bundles contain no DEV URLs. Public browser checks cover the restored legacy-to-v2 redirect, popup Cancel, wizard Close/discard in both segments, Keep editing, internal step Back, and the missing-organisation Back link. All exit paths land on the real legacy dashboard with no page errors; API calls are mocked.
