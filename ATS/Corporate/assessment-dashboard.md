@@ -1158,6 +1158,18 @@ corporate-node-v2:
 | `GET/POST /api/entities/recipient-lists` | `getStudentLists` / `saveStudentList` |
 | `POST /api/assessments/mix-match` (the float) | `createSectionquestions` (Custom only), then `assignMixMatchAssessment` |
 
+### Corporate microphone/audio verification default (2026-09-11)
+
+In DEV and UAT, admin-node's `assignMixMatchAssessment` enables
+`allowVerification: true` on every new corporate part after merging the group
+and part payloads. The corporate wizard removed its biometric toggle but still
+sends `biometric: false`, which its BFF forwards as `allowVerification: false`.
+The backend now overrides that stale hidden value, so newly floated corporate
+assessments include the camera/audio verification step across assessment types.
+College floats retain their explicit verification setting and default to On
+when it is missing. Existing assignment maps are not backfilled, and proctoring
+remains a separate setting. No database migration is required.
+
 ### Why a corporate JWT is allowed to call admin-node
 
 `assignMixMatchAssessment` is `isPrivate: true` — it needs *a* valid PluginLive
