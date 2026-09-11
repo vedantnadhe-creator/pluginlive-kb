@@ -230,10 +230,39 @@ Order always follows `CORPORATE_ASSESSMENT_TYPES` so the row never reshuffles.
 Backend types the product has no UI for (`Cognitive`, `Tech_MCQ`,
 `Tech_Coding` — real subscriptions on UAT) are still dropped by that list.
 
+### Attempt rate and assignment ordering (DEV + UAT, 2026-09-11)
+
+The assessments list displays **Attempt Rate** using `started / assigned`.
+`GET /corporates/:corporateId/assessments/v2/list` returns `started` alongside
+`assigned` and `completed` in the existing list response. Counts are per
+normalized candidate email within each float: `started` requires at least one
+part with `submitted OR attempted`, while `completed` requires every assigned
+part to be submitted. The tooltip retains the UI's three-way breakdown:
+completed, started-but-not-completed (labelled Dropped off), and not started.
+The middle category therefore includes partial/in-progress attempts; it is not
+an exact count of the `DROPOUT` status enum.
+
+The frontend consumes the current list response directly. It no longer makes
+one overview request per assessment or keeps a module-level attempt-count
+cache that can outlive a refresh.
+
+`GET /corporates/:corporateId/assessments/v2/:id/candidates` now returns
+`addedAt`: the earliest assignment `created_at` across that candidate's float
+parts, serialized as a genuine UTC ISO instant. Legacy candidates with no
+assignment timestamp receive `null`. The database orders **addedAt descending,
+nulls last, then name and email ascending**, so newest-first order holds across
+pagination. The detail hook uses these dates directly from each roster page;
+it no longer calls the admin-backed `candidates/added-at` report endpoint.
+Existing corporate ownership checks and pagination remain in place. No schema
+migration is required.
+
+The corporate UI commit also makes filter values individually removable and
+renames the schedule surface to Assessment Calendar and the dashboard panel
+to Active Assessments. These labels reuse the existing APIs.
+
 ### Sorting the roster is a three-state cycle (DEV + UAT, 2026-09-08)
 
-A score column cycles **ascending → descending → the order the rows arrived
-in**. It used to toggle between the two directions only, so the first click on
+A score column cycles **ascending → descending → newest assignment first**. It used to toggle between the two directions only, so the first click on
 any column discarded the default order for the rest of the visit — there was no
 third click to get back to it and a reload was the only way out.
 
