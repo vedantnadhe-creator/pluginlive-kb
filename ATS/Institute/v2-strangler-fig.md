@@ -765,9 +765,9 @@ A segmented control above the table swaps **two separate table components**
   first attempt, sub-section breakdown on hover), consistency trend, and overall
   progress/level. `consistencyHistory` is the chronological cumulative
   taken/sent percentage after each available assessment. Institute-node treats
-`INPROGRESS`, `DROPOUT`, and `COMPLETED` as taken even when the legacy
-`attempted` flag is stale; the frontend plots those real points and falls back
-to the current aggregate percentage for older API responses.
+  `INPROGRESS`, `DROPOUT`, and `COMPLETED` as taken even when the legacy
+  `attempted` flag is stale; the frontend plots those real points and falls back
+  to the current aggregate percentage for older API responses.
 
 The Student-wise bulk **Export selection** action downloads the existing TPO
 Excel workbook rather than constructing a CSV in the browser. The BFF proxies
