@@ -765,9 +765,19 @@ A segmented control above the table swaps **two separate table components**
   first attempt, sub-section breakdown on hover), consistency trend, and overall
   progress/level. `consistencyHistory` is the chronological cumulative
   taken/sent percentage after each available assessment. Institute-node treats
-  `INPROGRESS`, `DROPOUT`, and `COMPLETED` as taken even when the legacy
-  `attempted` flag is stale; the frontend plots those real points and falls back
-  to the current aggregate percentage for older API responses.
+`INPROGRESS`, `DROPOUT`, and `COMPLETED` as taken even when the legacy
+`attempted` flag is stale; the frontend plots those real points and falls back
+to the current aggregate percentage for older API responses.
+
+The Student-wise bulk **Export selection** action downloads the existing TPO
+Excel workbook rather than constructing a CSV in the browser. The BFF proxies
+`POST /assessment/exportTpoStudentList/:instituteId` to student-node with the
+selected email addresses; student-node restricts the workbook rows to that
+institute-scoped selection. Consequently the export uses the established TPO
+columns (Communication/Aptitude) and does not add the Student-wise table's
+Role-based or consistency columns. "Select all" first resolves every student
+matching the active server-side filters and sends those emails through the same
+path.
 
 **Student-wise is paged and searched in SQL, unlike the rest of v2.** A single
 institute already carries 10k students on DEV, so the "fetch everything, filter
