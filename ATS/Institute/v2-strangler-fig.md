@@ -744,7 +744,12 @@ A segmented control above the table swaps **two separate table components**
 - **Student-wise** — one row per *student of the institute*, across every
   assessment they were sent: current active assessments, taken/sent with a
   by-type doughnut, Communication and Aptitude (latest score, delta vs their
-  first attempt, sub-section breakdown on hover) and overall progress/level.
+  first attempt, sub-section breakdown on hover), consistency trend, and overall
+  progress/level. `consistencyHistory` is the chronological cumulative
+  taken/sent percentage after each available assessment. Institute-node treats
+  `INPROGRESS`, `DROPOUT`, and `COMPLETED` as taken even when the legacy
+  `attempted` flag is stale; the frontend plots those real points and falls back
+  to the current aggregate percentage for older API responses.
 
 **Student-wise is paged and searched in SQL, unlike the rest of v2.** A single
 institute already carries 10k students on DEV, so the "fetch everything, filter
