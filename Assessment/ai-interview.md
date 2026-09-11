@@ -1456,3 +1456,15 @@ Applying the filter (e.g. `Assessment >= 50`) flows through `POST /corporates/dr
 3. Intersect the matched-email sets across every assessment-mapped score entry.
 4. Translate the surviving emails to `corporate.job_role_student_map.student_id` via `student.student_personal_profile`.
 5. Strip those entries from `body.scores` and pass `assessmentScoreStudentIds` to `DriveRoleCandidateMap.getCandForHR`, which adds `AND jrsm.student_id IN (...)` to both the count and data queries (`AND FALSE` when the intersection is empty so count + data agree).
+
+## Admin/Corporate report fixes — DEV and UAT, 2026-09-11
+
+This section describes admin-node `Assessment.exportStudentData`, not the separate student-node TPO Excel exporter above.
+
+- Excel headers use evaluation parameters from configurations linked through distinct assignment set IDs to the requested assessment map. Candidate selection and attempt status do not determine the configured columns. Configured names/weights are authoritative, ordered highest weight first; multiple legitimate configurations are merged by parameter ID. Unconfigured historical score parameters cannot add columns. Legacy maps with no configuration retain a score-based fallback.
+- This corrects the reported 23-versus-47-column case when the assessment configuration contains the five intended BDM parameters. The attached bulk export had 12 additional QA/Gen AI parameter pairs in score records. Historical scores/assignments are not rewritten by this fix; the specific PROD map/configuration was not inspected.
+- Admin report parameters and Corporate report breakdowns order parameters by configured weight. Unknown weights follow known weights.
+- AI Interview Excel includes Proctoring Status for corporate and college exports, including partial/dropped-off attempts. It uses finalized integrity verdicts; disabled checks show Disabled and missing finalized reports show Not available.
+- Corporate duration metadata falls back to the served AI configuration's `interview_duration` in seconds, rounded up to minutes, when general configuration duration is absent. A blank start time still uses the existing midnight default; changing that behavior remains open.
+
+Backend revisions: admin-node DEV `a78b31c`, UAT `1582f3a`; corporate-node DEV `f99bf193`, UAT `16e90c5d`. Deployed through auto_deploy.sh to both environments. XLSX regressions cover single/147 candidates, missing scores, empty selection, college, configured ordering and proctoring. Read-only checks against real DEV and UAT assignments generated matching single/bulk 23-column exports with Proctoring Status. No database migration or production deployment.

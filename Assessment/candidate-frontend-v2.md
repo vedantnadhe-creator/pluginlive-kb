@@ -518,3 +518,9 @@ Nothing in this doc moves the **backend**. Both apps talk to the same
 existing responses, it did not fork the API. Scoring, progression, reports and
 proctoring processing are unchanged and live where they always did — see
 [README.md](README.md).
+
+## Microphone readiness — DEV and UAT, 2026-09-11
+
+DeviceCheckDialog now rejects a microphone track that is browser-reported muted, disabled or ended. It observes mute/disconnection and rechecks readiness when the candidate presses Begin. Permission alone is not treated as a ready microphone. This does not detect a physical mute switch that produces silent samples without notifying the browser. College biometric verification policy is unchanged.
+
+Deployed candidate revisions: DEV `ea0b477`, UAT `bd46a5f` (microphone fixes `40757a8` / `e479f26`, followed by a test-only nullable assertion correction required for the build). Both builds ran on their own environment through auto_deploy.sh. Microphone regression and all 11 answer-delivery tests passed; the UAT bundle check found no DEV URLs. No production rollout.

@@ -4,7 +4,7 @@
 
 `PluginLive-Technologies/design-system` owns the reusable React UI and four-step assessment wizard. `admin-react-v2` and `corporate-react-v2` consume it at build time. Legacy Admin redirects creation into the v2 app. There is no separate design-system server or microfrontend runtime.
 
-The two Next.js apps pin `@pluginlive-technologies/assessment-creation` 0.1.2 and `@pluginlive-technologies/ui` 0.1.0. Packages are generated using `npm pack`, committed as `vendor/*.tgz`, and integrity-pinned in package-lock.json. This rollout does not publish to an npm registry. Both apps transpile the packages through Next.js and load their scoped styles. Docker dependency stages copy vendor before npm ci.
+The two Next.js apps pin `@pluginlive-technologies/assessment-creation` 0.1.2-bugfix.1 and `@pluginlive-technologies/ui` 0.1.0. Packages are generated using `npm pack`, committed as `vendor/*.tgz`, and integrity-pinned in package-lock.json. This rollout does not publish to an npm registry. Both apps transpile the packages through Next.js and load their scoped styles. Docker dependency stages copy vendor before npm ci.
 
 ## Entry points and responsibilities
 
@@ -51,3 +51,14 @@ Revisions: admin-react revert Development `873af363`, UAT `99be976b`; admin-reac
 Regression tests exercise actual host exit callbacks for both entity segments and the fallback link. Public browser checks use mocked APIs and do not create records or send invitations.
 
 DEV/UAT deployment verification passed: pages and assets load, services are active, and UAT executable bundles contain no DEV URLs. Public browser checks cover the restored legacy-to-v2 redirect, popup Cancel, wizard Close/discard in both segments, Keep editing, internal step Back, and the missing-organisation Back link. All exit paths land on the real legacy dashboard with no page errors; API calls are mocked.
+
+## Candidate import and validation fixes — DEV and UAT, 2026-09-11
+
+Admin and Corporate now consume the vendored `assessment-creation` 0.1.2-bugfix.1 artifact. Source is based on 0.1.2 (`6a3efe8`) with fix commit `cbef4e0`; unrelated 0.1.3 changes are not included. The source branch push was unavailable in this deployment session; the consumed package artifacts and integrity lockfiles are committed in both app repositories.
+
+- Candidate-sheet parsing in admin-node returns `candidates`, `skipped`, and `skippedCandidates` (name, email, mobile, row number and reason). The host BFFs forward skipped identities. The shared upload UI lists them even when every candidate was skipped.
+- Corporate Add Candidates lists candidates already on the roster, and bulk-report progress retains skipped names/emails and reasons.
+- Manual name/email fields trim surrounding whitespace; server draft validation accepts surrounding email whitespace while rejecting internal whitespace and malformed addresses.
+- Hinglish remains a language option and is excluded from the unsupported-assessment warning. This does not delete stored legacy assessment types or alter quotas.
+
+Released app revisions: Admin DEV `623d999`, UAT `826891c`; Corporate DEV `da355a8`, UAT `9270886`. The target environment's auto_deploy.sh rebuilt and switched each app. Shared package tests (27), Corporate integration tests (4), TypeScript and deployment page/asset checks passed. No production rollout is included.
