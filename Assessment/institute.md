@@ -170,6 +170,13 @@ GROUP BY aas.primary_email
 
 **File:** `student-node/app/models/TpoDashBoard.js` — `getStudentListForTpoDashboard()`
 
+The Admin assessment candidate-list export for Communication and Aptitude uses
+`POST /assessment/exportTpoStudentList/:instituteId` (the same endpoint as the
+TPO Total Candidates export), so both entry points download the same XLSX
+schema. The frontend forwards the active search, passing-year,
+degree/department/specialization, and sort filters. Role-based, custom, and
+other assessment types continue to use their assessment-specific export.
+
 The per-student communication/aptitude taken/sent counts shown in the "Total Candidates" list are correctly isolated. All four queries (commSent, commTaken, aptSent, aptTaken) filter by:
 ```javascript
 assessmentInstituteMap: { instituteId: instituteId, isOneTime: false }
