@@ -1595,3 +1595,16 @@ Match adds a way to find them rather than moving them — no existing count shif
 ## Shared creation package
 
 The creation wizard now comes from `design-system` as `@pluginlive-technologies/assessment-creation` 0.1.1, shared by Admin and Corporate v2. See [shared assessment architecture and release](../../Assessment/shared-assessment-creation.md). Institute is excluded.
+
+
+## Dashboard Communication distribution uses achieved CEFR (DEV + UAT, 2026-09-11)
+
+`CorporateDashboardV2.getAssessmentBlocks` previously banded each candidate's average Communication percentage against fixed cutoffs (0/30/45/58/72/86). This could label 72% as C1 even when the candidate's assessment did not establish C1 proficiency. The assessment-detail/report CEFR calculation already used the paper's CEFR level.
+
+The dashboard now counts each candidate once using their latest scored Communication attempt within the selected financial year (or all years). It prefers the stored `progression_history.assessment_cefr`; otherwise `cefrForScore` maps the score against the question set's CEFR level and applies the report's cap. Missing CEFR metadata is not replaced with a percentage-derived guess. Other assessment-type distributions and stored candidate scores are unchanged.
+
+The part/candidate query carries the latest scored attempt's timestamp, assignment ID, score, set CEFR and stored CEFR. A lateral progression-history aggregate preserves the existing row grain; timestamp ties are broken deterministically by assignment ID. `communicationLevelCounts` deduplicates candidates across assessments.
+
+Validation: `node scripts/check-dashboard-communication-levels.js` covers false C1 classifications, the paper-level cap, stored CEFR, latest attempts, duplicate candidates, missing metadata and dashboard headcounts. The running DEV and UAT containers pass this check and their health endpoints return success. UAT's `demo replica knack rcm` returns A1=57, A2=38, B1=5, C1=0 (100 assessed). DEV has no Knack-named corporate.
+
+Release: corporate-node Development `3cf77140`, UAT `b5534e75`, deployed using auto_deploy.sh. **PROD remains pending by user instruction.** A prior read-only check against PROD reproduced Knack RCM's old counts exactly (117 assessed, including C1=17); the corrected query produced A1=59, A2=52, B1=6, C1=0 without modifying any production data.
