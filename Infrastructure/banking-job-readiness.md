@@ -1728,3 +1728,20 @@ the database remained healthy, and site/Auth health returned 200.
 
 Rollback snapshot: `~/banking-predeploy-20260910T091638Z/` (previous function archive, UAT env,
 source SHA, and local patch diff).
+
+## 2026-09-12 — redeployed to `63a49d2` (student credits and coding persistence)
+
+Banking UAT advanced eight commits from `556b2ea` to `63a49d2`. The frontend adds the student
+credits dashboard/link and awards ten credits from the module-completion path. The
+`student_credits` table and `award_module_completion_credits(uuid, integer)` RPC were applied, and
+the coding-challenge persistence migration was reconciled against the already richer UAT tables.
+
+Three incoming scripts were deliberately not executed verbatim: the duplicate assessment baseline
+would recreate already-established objects/policies; `20260911131000` targets nonexistent
+`public.storage_buckets` instead of self-hosted `storage.buckets`; and the two RLS/function
+hardening scripts contain incompatible `has_role(uuid,text)` calls plus invalid PostgreSQL policy
+syntax on a function. Their transactions were preflighted and rolled back without partial changes.
+
+The frontend was rebuilt on UAT and serves `index-B3-bR9Wx.js`. Site/Auth health return 200, all
+seven backend containers are up, and the database is healthy. Rollback snapshot:
+`~/banking-predeploy-20260912T090241Z/`.

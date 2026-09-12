@@ -1192,3 +1192,26 @@ ownership check and non-empty-token validation, and is executable only by `authe
 `service_role`. Verified with the affected profile (`9820065335`) using a freshly minted real user
 JWT: the exact RPC now returns **HTTP 200 / `true`**. The durable follow-up migration is
 `20260909T090007Z_fix_student_claim_device_session.sql`.
+
+## 2026-09-12 — redeployed to `0c8d30fc` (school tenancy and journey repairs)
+
+PilVidya UAT advanced 26 commits from `f85e3340` to `0c8d30fc`. The release adds school branch/board
+management, teacher content reach reporting, lesson completion and assessment-journey repairs,
+parent-login navigation, competitive-exam persistence repairs, and updated student/staff RLS.
+
+Nine new migration files were preflighted transactionally. Six applied directly. The school
+foundation required a UAT-compatible function replacement preserving the existing
+`can_access_school(_school_id uuid)` parameter name and using `parent_student_links.verified_at`.
+The storage policy migration applied without its drifted student-profile column grant; sensitive
+column grants remain governed by the self-hosted baseline. The final question-set policy was not
+applied because this schema has no `question_sets.teacher_profile_id`, so applying it would have
+failed and provided no valid ownership predicate.
+
+The frontend was rebuilt from `frontend/.env.uat` and is serving image
+`eduspeakreact:0c8d30fc-uat`; using the repository-root `.env` is unsafe because it still contains
+the hosted development project. The final image contains the PilVidya UAT `/sb` origin and no DEV
+or hosted-project URL. Functions were synchronized and restarted. Root, student entry, teacher
+auth, status, REST/Auth, and representative function probes are healthy.
+
+Rollback assets: `~/pilvidya-predeploy-20260912T090241Z/` on the app host, plus
+`~/pilvidya-public-predeploy-20260912T090241Z.dump` on the UAT database host.
