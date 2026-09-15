@@ -48,8 +48,11 @@ has at least one non-practice row for their email in
 left-joined only to supply the name, degree, department, and passing year; a
 campus-linked profile without an assessment assignment does not create a row.
 
-Implemented by institute-node Development commit `61188a1` and UAT commit
-`d5e2eed`.
+Implemented by institute-node Development commits `61188a1` / `49bf581` and
+UAT commits `d5e2eed` / `afd225a`. The follow-up preserves the `email` alias on
+the assignment-only scope CTE; without it, the query fails when `profile`
+references `sc.email`, and the frontend's empty fallback misleadingly shows
+zero students.
 
 ### V2 Sent/Taken counting contract (2026-09-15)
 
