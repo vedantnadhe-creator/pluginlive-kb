@@ -38,6 +38,29 @@ the following presentation rules for schedule and one-time student lists:
 
 UAT frontend commit: `8666336` (promoted from Development commit `cd92733`).
 
+### V2 Sent/Taken counting contract (2026-09-15)
+
+Every v2 institute assessment surface uses the same eligibility and counting
+grain:
+
+- **Sent** counts non-practice `assessment_assigned_students` rows only after
+  their `assessment_institute_map.start_time` has arrived. A NULL start time is
+  treated as already open. Upcoming assignments are excluded.
+- **Taken** is the subset of those Sent rows whose `attempted` flag is true or
+  whose status is `INPROGRESS`, `DROPOUT`, or `COMPLETED`.
+- Rates are always `Taken / Sent`; numerator and denominator therefore use the
+  same opened-assignment scope and assignment-row grain. Resend rows remain
+  visible as separate assignments.
+- A diagnosis initializes a candidate's progression and may be shown as
+  baseline context inside every relevant schedule. Institute-wide dashboard
+  totals count its `assessment_assigned_id` only once, rather than once per
+  schedule that reuses it.
+
+This contract covers the dashboard KPIs and active rows, Manage Assessments,
+assessment Overview/Schedule data, the assessment-detail student table, and the
+top-level Student-wise table. Implemented by institute-node Development commit
+`76746e3` and UAT commit `0628346`.
+
 ---
 
 ## Institute-Node: `StudentListInfo.js`
