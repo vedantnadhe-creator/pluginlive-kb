@@ -1215,3 +1215,53 @@ auth, status, REST/Auth, and representative function probes are healthy.
 
 Rollback assets: `~/pilvidya-predeploy-20260912T090241Z/` on the app host, plus
 `~/pilvidya-public-predeploy-20260912T090241Z.dump` on the UAT database host.
+
+## 2026-09-15 — outage recovery + redeployed to `e32c835b` (12 commits from `0c8d30fc`)
+
+**Outage:** all `eduspeak-sb-*` containers (gateway, rest, auth, functions, storage) and the
+`eduspeakreact`/`eduspeaknode` app containers had been fully removed from the UAT box — not
+stopped, gone from `docker ps -a` entirely — most likely due to the box sitting at 93% disk
+(9.0G free on `/`). The external OCI Postgres (`eduspeak_uat`) was untouched throughout, so no
+data was lost; this was purely a container-layer outage.
+
+**Recovery:** `docker compose up -d` in `~/eduspeak-sb` recreated gateway/rest/auth/functions/
+storage from the existing compose file (this stack has no local `db` service — data lives on
+`140.238.245.202:5441`). `eduspeaknode` had no image at all; rebuilt from the (stale, `73990337`)
+`~/api/eduspeak-india-node/backend` checkout with `--build-arg ENVIRONMENT=uat` — deliberately
+**not** pulled forward, since this legacy Node adjunct has been "pre-existing, unchanged" through
+every redeploy cycle in this doc; jumping it 935 commits to match the frontend repo's head was out
+of scope for an outage-recovery restore.
+
+**Redeploy:** frontend advanced from `0c8d30fc` to `e32c835b` (12 commits: role-scoped navigation,
+final demo flow, Class 12 demo portal, lesson coach + school oversight, preview-recovery/language
+video hardening, regression coverage). No local patches remain to reapply (retired 2026-08-28).
+
+One new migration, `20260913115748_38b9246f...sql`, seeds a demo Class 12 student + three
+curriculum_content rows for a hosted-dev schema shape. **Not applied** — the demo student's
+`school_id` FK targets a school that doesn't exist in UAT (`schools` is still empty, same drift as
+2026-08-27), and the curriculum_content columns it writes (`title`, `resources`, `is_global`,
+`content_standard`, `origin`, `state_code`) don't exist on UAT's actual `curriculum_content` table
+(which instead has `curriculum_topic_id NOT NULL`, `videos`, `qbank_quiz_refs`, etc. — a materially
+different shape, not a simple missing-column patch). Skipped per the standing precedent of not
+force-applying migrations written against a schema UAT has diverged from; this is pure demo seed
+content, not required functionality. Applied as `pluatadmin` via the ops box's `rw-query.sh`
+pattern (`-d eduspeak_uat` override), same as the 2026-08-27 lesson requires.
+
+Edge functions synced (141 function dirs, `rsync -a --delete --exclude='main/'`, dispatcher
+untouched) and the functions container restarted. Frontend rebuilt from `frontend/.env.uat`,
+image `eduspeakreact:e32c835b-uat`, verified clean of hosted/DEV Supabase URLs (only a
+`project.supabase.co` placeholder string in an admin settings form input, not a live endpoint).
+
+Verification: root, `/student-entry`, `/auth`, `/admin/login`, REST, Auth-health all 200;
+`eduspeaknode` healthy at `:8086/health` directly (note: nginx only proxies `/api/`, not a bare
+`/health`, so probing through the vhost 404s — pre-existing routing shape, not a regression);
+`student-authenticate-profile` with an empty payload returns HTTP 200 with `{"ok":false,"error":
+"mobile and passwordHash are required"}` (this function reports validation failures in the body
+rather than via HTTP status — confirms the handler loads).
+
+Backups: `~/eduspeak-sb/functions.bak-20260915T053205Z/` (pre-sync function tree).
+
+**Open item:** the UAT box is at 93% disk (9.0G free), which most plausibly explains why the
+container layer was wiped out from under both PilVidya and Banking on 2026-09-14/15. Worth a
+disk-cleanup pass (`docker builder prune`, old `*-predeploy-*`/`*-dist-backup-*` directories) —
+not done as part of this recovery since it wasn't asked for.
