@@ -171,6 +171,13 @@ The Assessment module provides the TPO-facing dashboard for managing and trackin
   bucket: it makes an apparently unfiltered dashboard silently report only the
   current calendar year. Since 2026-08-31 the frontend no longer prints the
   former hard-coded `(Current Year: …)` suffix or a duplicate `All time` value.
+- **Completion counts use assignment rows consistently:** the v2 Assessment
+  Details → Overview roll-up counts each
+  `assessment.assessment_assigned_students` row as one sent assignment; it does
+  not collapse resends by email. A row is taken/completed when `attempted` or
+  `submitted` is true, and the displayed completion rate is `taken / sent`.
+  This keeps the overview card aligned with the dashboard and Assessment Sent
+  views, including repeated assignments for the same student.
 - **Proctoring integration:** Media keys/URLs for proctoring review
 - **Chart-based filters:** Interactive chart filtering with `setChartFilters`/`clearChartFilters`
 - **Mock data support:** `useMockData` flag or `localStorage.ASSESSMENT_MOCK` for frontend development
