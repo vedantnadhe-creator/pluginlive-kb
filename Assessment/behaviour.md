@@ -105,9 +105,64 @@ code does not reference either column.
 Strong candidates do populate the full-potential section; weaker ones fall
 entirely into partial, ranked.
 
+## Candidate paper (assessment-react-v2)
+
+The API (`getBehaviorAssessmentQuestions`) returns questions **grouped by the
+behaviour they probe** (`behaviors[].behavior_name`). v2 must not render that
+grouping: it told the candidate what each question measured via the
+breadcrumb, the left rail and the mobile track.
+
+- `src/lib/examShapes.ts` `behaviourPaper()` flattens every group into one
+  anonymous "Behaviour" section and shuffles it with a **seeded** PRNG
+  (mulberry32) keyed on the attempt id, so a reload does not re-deal the
+  paper and questions from one behaviour do not sit together.
+  `liveExam.ts` applies it only for `type === "Behaviour"`.
+- **Every question is mandatory.** `requiresEveryAnswer(type)` in
+  `_mock/exam.ts` (Communication + Behaviour) drives the reducer `NEXT` guard
+  and the disabled Next in `QuestionPanel`. Behaviour has free navigation, so
+  the rail can step past that gate; `finishCurrentModule` in `take/page.tsx`
+  therefore refuses to close the module while `firstUnanswered()` finds a
+  gap, jumps to it and toasts.
+- **Deliberately client-side only.** The submit endpoint also carries the
+  clock's and the violation cap's forced submissions, which must land
+  incomplete, and it has no field to tell those from a voluntary finish.
+  Scoring already excludes a missing answer rather than corrupting the
+  attempt. Timer expiry and `expireCurrentAssessment` bypass the gate.
+- Legacy `Assessment-React` already shuffled, hid names and gated answers.
+
+## Admin wizard question count
+
+The shared `@pluginlive-technologies/assessment-creation` package (design-system
+repo, vendored into admin-react-v2 as a tarball) used to say **15 questions**
+for Behaviour -- a hardcoded guess. The real bank is one active set per
+domain: **Engineering 115, Management 129** (DEV and UAT, 2026-09-15).
+
+- admin-node `GET /assessment/getBehaviorQuestionCounts` -> per domain
+  `{ min, max }` across active Behavior sets. A range, because the set is
+  drawn `ORDER BY RANDOM()` at create time; today `min === max`.
+- admin-react-v2 BFF `/api/entities/assessment-types` rides the call the
+  wizard already makes on mount and adds `behaviourQuestionCounts`
+  (best-effort, like the quota lookup).
+- Package **0.1.6**: `useEntityAssessmentTypes` exposes the counts;
+  `assessmentMetrics("behaviour", cfg, counts)` reads `cfg.stream`. Shows 0
+  until loaded rather than an invented number. Threaded to the card digest,
+  the totals header and the review row.
+- To change the package: edit design-system, bump the version, `npm pack`,
+  copy the tarball into `admin-react-v2/vendor/`, update `vendor/manifest.json`
+  sha and `package.json`, `npm install`. Never edit a tarball.
+
+## Sample report
+
+`samples/behaviour-report-all-roles-John-S-2026-09-15.pdf` in the
+`pl-uat-public-docs` bucket: UAT attempt `3726bdad`, 21 full-match roles
+including 3 Engineering roles reached cross-domain.
+
 ## Status
 
-Live on **DEV + UAT** as of 2026-09-01. **PROD pending.**
+Suitable-role matching: live on **DEV + UAT** as of 2026-09-01.
+Candidate paper (hidden behaviours, shuffle, mandatory answers) and admin
+question count: live on **DEV + UAT** as of 2026-09-15. **PROD pending** for
+all of it.
 
 ## Related
 
