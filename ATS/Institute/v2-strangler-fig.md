@@ -2164,6 +2164,21 @@ In Assessment Details → Student-wise performance → per-student drawer, a sch
 
 The import-free `src/lib/occurrenceReport.ts` owns the rule and has focused Node tests for completed, missed-with-assignment-id, and no-attempt cases. Both target builds passed and both services returned HTTP 200 after restart; deployed DEV and UAT bundles contain the disabled-action copy.
 
+### Upcoming schedule rows cannot download reports (2026-09-15)
+
+`institute-react-v2` Development `4e70992`, UAT `c464095`. **DEV + UAT deployed; PROD pending.**
+
+In Assessment Details → Schedule → occurrence drawer, per-student report-download
+buttons are disabled while the occurrence phase is `upcoming`, even if the API
+has already created and returned an `attemptId`. The tooltip says the report is
+available after the assessment starts. The click handler uses the same shared
+eligibility check, preventing a programmatic or stale-UI click from generating a
+future report containing premature scores.
+
+Current and completed occurrences remain downloadable when the student has a
+valid attempt and student id. Focused coverage includes the regression case of
+an upcoming occurrence that already has an attempt id.
+
 ## Usage widget — real pack usage in the top bar (2026-08-25)
 
 `285211c` → `1dc5397` + `7c1d86d` institute-react-v2. **DEV + UAT. PROD pending.**
