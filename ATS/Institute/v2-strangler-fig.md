@@ -594,6 +594,13 @@ The report drawer had the same bug plus its own: it read `cefr` off `profile`,
 which is picked for the student's NAME and lands on an arbitrary occurrence,
 so `student.cefr` came back null even for students who hold a grade.
 
+The Assessment Schedules **Student-wise** table renders an em dash beneath a
+Communication score when no achieved CEFR exists yet. This is the expected
+state after the first diagnosis sitting: the score is available immediately,
+but the diagnosis pair awards its CEFR only after the second sitting is scored.
+Previously that secondary line was omitted entirely, leaving an unexplained
+blank beneath the score. DEV + UAT live (2026-09-15); PROD pending.
+
 ### Proctoring is usually absent, and that is the data (2026-08-12)
 
 Measured before changing anything, and worth re-measuring before anyone
