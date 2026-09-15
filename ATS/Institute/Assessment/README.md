@@ -152,7 +152,9 @@ The Assessment module provides the TPO-facing dashboard for managing and trackin
   Aptitude). `assessment_assigned_students.resulting_cefr` is a legacy copy and
   must not drive reporting because it can drift from progression history.
 - **Diagnosis grouping:** Diagnosis attempts are folded into their owning
-  schedules and do not appear as standalone rows in Assessment Sent. The rule
+  schedules and do not appear as standalone rows in Schedule-wise. Future
+  schedules resolve membership from their stored student list until the first
+  occurrence is created; afterward they use actual assignment rows. The rule
   that hides an orphan diagnosis (`IS_DIAGNOSIS_MAP`, helpers/assessmentGrouping)
   tests the ATTEMPT rows, so a diagnosis map with **no** assignments is invisible
   to it and used to head its own TPO-dashboard row ("Assessment #1, ONE-TIME,

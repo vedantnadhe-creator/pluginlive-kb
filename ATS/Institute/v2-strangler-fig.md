@@ -283,14 +283,14 @@ of its own type**.
   That is the rule working, not a bug — but it means an institute-wide total
   must count **DISTINCT attempts**, never a sum of per-group subtotals
   (`getSummary` in `DashboardV2.js`).
-- **An orphan diagnosis still lists.** A student in no schedule of that type (a
-  manual send) keeps their map's own id as the group key, so the map heads its
-  own row instead of vanishing. `folded_diag` / `LISTABLE` excludes only maps
-  that *found* a home, so nothing is listed twice.
-- `sched_roster` is built from the schedule's **own assigned students**, not
-  `student_lists.students_data` — the planned roster can name students who were
-  never assigned, and it is that jsonb expansion that cost the old owner
-  inference 19.5s.
+- An orphan diagnosis retains its map id internally, but it does **not** head a
+  Schedule-wise row. That table is limited to recurring schedules and deliberate
+  one-time sends; diagnosis is a baseline shown inside its owning schedule.
+- `sched_roster` normally uses the schedule's own assigned students. Before a
+  future schedule fires, no assignment map exists, so it falls back to that
+  schedule's `student_lists.students_data`. The JSON expansion is restricted to
+  schedules with no map; historical schedules stay on the indexed assignment
+  join and avoid the former 19.5-second institute-wide expansion.
 
 **Gotchas worth keeping:**
 
@@ -348,14 +348,26 @@ fixed for once.
 - **`getSchedule` (week rail) is deliberately untouched** — it is a calendar, it
   already renders diagnosis as its own `kind`, and an orphan diagnosis is a real
   dated event.
-- **The assessments list is deliberately untouched** — it is an inventory, and
-  hiding them there would delete real student-bearing assessments from the UI
-  (the original 2026-08-11 concern). Instead the **Schedule filter gained a
-  `Diagnosis` option** (`_constants.ts` `SCHEDULE_OPTIONS`): the rows already
-  badged themselves "Diagnosis" but could be neither selected nor excluded.
-  `valueLabel` in `lib/assessments/filters.ts` had to lose its
-  recurring/else ternary too, or the applied-filter chip read "One-time" over
-  rows badged "Diagnosis".
+- The Schedule-wise assessments list now applies the same diagnosis-map
+  exclusion. It contains only recurring and one-time rows; diagnosis remains
+  visible in the owning schedule's Schedule tab and student roster.
+
+#### Future schedules resolve diagnosis before their first run (2026-09-15)
+
+`84916f7` Development / `d53a11c` UAT institute-node.
+
+A future recurring schedule has no `assessment_institute_map` occurrence until
+the scheduler fires. Consequently its normal assigned-student roster is empty,
+so Diagnosis ownership could not be resolved: Student-wise returned no roster,
+the Schedule tab did not show Diagnosis as active, and the diagnosis maps
+appeared as separate Assessment rows.
+
+`MEMBER_CTE.sched_roster` now uses the stored student list only for schedules
+that have no occurrence. This folds the already-created Diagnosis attempts into
+the future schedule immediately, supplies Student-wise with those students, and
+keeps Diagnosis as the schedule's child row rather than a third Schedule-wise
+type. Once the first occurrence exists, resolution automatically returns to the
+indexed assigned-student path.
 
 Verified live on UAT after deploy, institute `1f78e8f3`: the cockpit returns
 **7 rows, 0 titled `Assessment #N`** (was 53), while the assessments list still
