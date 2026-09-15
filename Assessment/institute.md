@@ -94,6 +94,23 @@ This dropdown had **three independent "No data" bugs**, all fixed 2026-06-12. Th
 
 ### Status computation (Ongoing / Expired / Upcoming)
 
+#### V2 assessment list expiry (fixed 2026-09-15; UAT)
+
+The v2 list (`GET /institutes/assessments/v2/list`, consumed by
+`institute-react-v2` at `/v2/assessments`) derives `scheduled`, `live`,
+`aboutToExpire`, and `expired` at request time. Assessment-map
+`start_time`/`end_time` values contain IST wall-clock digits in timezone-less
+columns, so `institute-node/app/helpers/assessmentStatus.js` compares them
+against `Date.now() + 05:30`; a raw UTC clock leaves a closed assessment marked
+**About to expire** for another 5 hours 30 minutes. The exact end instant is
+expired (`now >= end`), not still active.
+
+The v2 frontend uses the same IST-wall-clock comparison in
+`src/lib/assessments/time.ts`. Consequently, a closed row cannot retain the
+amber **0 days left** warning while waiting for UTC to catch up. Missing or
+invalid end dates do not render a countdown. UAT commits: institute-node
+`a1483ac`, institute-react-v2 `f877740`.
+
 Status is **computed at request time** against `now = new Date()` — it is NOT stored in any DB column. There are **two distinct levels**, computed independently:
 
 1. **Parent schedule row** (the top-level "Communication"/"Aptitude" row) — uses `assessment_schedules.schedule_start_date` / `schedule_end_date`:
