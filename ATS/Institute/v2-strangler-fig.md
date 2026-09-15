@@ -779,12 +779,20 @@ Role-based or consistency columns. "Select all" first resolves every student
 matching the active server-side filters and sends those emails through the same
 path.
 
-**Student-wise is paged and searched in SQL, unlike the rest of v2.** A single
-institute already carries 10k students on DEV, so the "fetch everything, filter
-in the browser" pattern used elsewhere would ship megabytes and render 10k DOM
-rows. `GET /institutes/assessments/v2/students?instituteId&search&limit&offset`
+**Student-wise is paged and searched on the server, unlike the rest of v2.** A
+single institute already carries 10k students on DEV, so the "fetch everything,
+filter in the browser" pattern used elsewhere would ship megabytes and render
+10k DOM rows. `GET /institutes/assessments/v2/students?instituteId&search&limit&offset`
 → `{ students, total, limit, offset }`; the BFF route is
 `/v2/api/assessments/students`. Model: `app/models/StudentWiseV2.js`.
+
+As of 2026-09-15, the sortable aggregate columns also run on the server. The
+endpoint accepts `sort=taken|communication|aptitude|roleBased|consistency` and
+`order=asc|desc`. It computes the selected aggregate across the complete
+filtered cohort, orders that cohort, and only then applies `limit`/`offset`, so
+infinite-scroll pages form one globally correct order. Missing score values
+remain last in both directions. The browser no longer sorts its loaded subset;
+changing a header sort resets paging and fetches page one with the new query.
 
 Roster definition: the institute's campus students (`students.institute_campus_id`
 → `institutes_campuses.institute_id`) **UNION** every email the institute has
