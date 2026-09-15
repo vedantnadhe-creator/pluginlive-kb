@@ -40,6 +40,18 @@ the following presentation rules for schedule and one-time student lists:
 UAT frontend commits: `8666336` (student-wise score presentation) and
 `39d0fb3` (`+10 pts` delta visibility threshold).
 
+**V2 Diagnosis drawer score fix (2026-09-15, DEV + UAT; PROD pending):** the
+Schedule tab's folded Diagnosis row opens `OccurrenceDrawer`, not either legacy
+`DiagnosisList`. Its scoped API request supplies only the diagnosis map IDs;
+because those maps deliberately have `schedule_id = NULL`, `getStudents`
+mistook the scope for a one-time assessment and disabled NPS even though
+`allOccRows` still contained the owning recurring schedule. The drawer therefore
+rendered the raw pair average under `AVG SCORE (%)`. Recurrence is now derived
+from the complete group, so Communication/Aptitude Diagnosis rows return their
+latest curved progress score and no percent suffix. The header is the same
+`SCORE` label as every other occurrence. Verified on UAT against a real scoped
+Communication Diagnosis response (`supportsNps: true`, curved score present).
+
 ### Top-level Student-wise membership (2026-09-15)
 
 The top-level Student-wise table is an assessment-activity roster, not the

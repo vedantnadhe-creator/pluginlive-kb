@@ -211,6 +211,13 @@ the paired result's curved NPS as `SCORE` (`TpoDashBoard.npsScore`) as of
 keeps the v1 Diagnosis headline on the same scale and with the same column label
 as other assessment result tables.
 
+The institute-v2 Schedule Diagnosis drawer follows the same rule. Its scoped
+`AssessmentDetailV2.getStudents` request must determine recurrence from the full
+group (`allOccRows`), not from the selected diagnosis maps: diagnosis maps have
+no `schedule_id` by design. Using the scoped maps incorrectly set
+`supportsNps: false` and exposed the raw average percentage. Fixed on DEV + UAT
+2026-09-15; the drawer header is `SCORE` and the value is curved NPS.
+
 The roster hover uses the same component calculation as the student report
 drawer. Communication pairs each skill across the immediate predecessor and
 current confirmed CEFR (including a bridge when the level changes); Aptitude
