@@ -149,6 +149,7 @@ The assessment creation form supports "Scheduled" distribution mode:
 - **Frequency Dates** — admin selects specific dates when the assessment should be assigned (stored as `frequencyValue` array)
 - **Weekly recurrence** — all seven weekdays are available in the Admin v2 wizard.
 - **Monthly recurrence** — dates 1 through 31 are available. When the selected date does not exist in a month, that occurrence is generated for the month's last calendar day (for example, selecting the 31st produces February 28th, or February 29th in a leap year).
+- **Mixed college recipient cohorts** — Admin v2 captures Degree, Department and Year of Passing on each uploaded sheet/manual recipient when that recipient is added. A later cohort selection does not rewrite earlier uploads. Suggested cohorts and saved existing lists do not require these fields because Admin-node resolves their students against the selected institute campus and retains the enrollment already stored in the student backend. An email not mapped to that campus is treated as a new student and must carry its own complete cohort.
 - **Schedule Period** — `scheduleStartDate` and `scheduleEndDate` define the active window
 - **Validity Days** — how many days students have to complete each assigned assessment (`assessmentValidityDays`)
 - **Student List** — can use saved student lists or bulk upload
