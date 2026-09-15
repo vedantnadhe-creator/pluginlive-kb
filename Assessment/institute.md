@@ -38,6 +38,19 @@ the following presentation rules for schedule and one-time student lists:
 
 UAT frontend commit: `8666336` (promoted from Development commit `cd92733`).
 
+### Top-level Student-wise membership (2026-09-15)
+
+The top-level Student-wise table is an assessment-activity roster, not the
+institute's complete campus roster. A student appears only when the institute
+has at least one non-practice row for their email in
+`assessment.assessment_assigned_students`, joined through
+`assessment_institute_map.institute_id`. Student profile and course data are
+left-joined only to supply the name, degree, department, and passing year; a
+campus-linked profile without an assessment assignment does not create a row.
+
+Implemented by institute-node Development commit `61188a1` and UAT commit
+`d5e2eed`.
+
 ### V2 Sent/Taken counting contract (2026-09-15)
 
 Every v2 institute assessment surface uses the same eligibility and counting
