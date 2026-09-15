@@ -9,7 +9,7 @@
 | Property | Value |
 |---|---|
 | **Assessment Type** | `Role_Based` |
-| **Total Duration** | Admin-selected, **15–60 minutes** (default 30). Falls back to a question-count estimate when unset — see [Duration](#duration) |
+| **Total Duration** | Admin-selected, **1–240 minutes** in admin-react-v2 (default 30). Falls back to a question-count estimate when unset — see [Duration](#duration) |
 | **Sections** | MCQ, Subjective/Written, Video Response, Coding — **all weighted equally** (see [Overall Score](#overall-score)) |
 | **Question Generation** | AI-powered (Gemini via FastAPI) |
 | **Scoring** | MCQ: auto-graded. Subjective + Video: AI-scored (Gemini/Groq) |
@@ -96,15 +96,15 @@ The same sweep found `institute-node` `StudentListInfo.getCorporateAssessmentStu
 
 ## Duration
 
-Duration is **chosen by the admin at creation**, between **15 and 60 minutes** (default 30). It is stored per set on `assessment_config.duration_minutes` and drives the student's countdown.
+Duration is **chosen by the admin at creation**, between **1 and 240 minutes** in admin-react-v2 (default 30). It is stored per set on `assessment_config.duration_minutes` and drives the student's countdown.
 
 | Layer | Behavior |
 |---|---|
 | Admin UI (`AssessmentSelect.js`) | "Duration (minutes)" number input, `min=15 max=60 step=5`, default 30, rendered above Question Configuration in the `Role_Based` form. Sent as `duration` on both the broadcast and set-generation payloads |
-| Admin UI v2 (`admin-react-v2` `RoleBasedConfigPanel.tsx`) | Same 15–60 / step 5 / default 30 input, under an "Exam length" fieldset. Contract lives in `src/lib/assessments/roleBasedDuration.ts` (`ROLE_BASED_DURATION_LIMITS`, `isRoleBasedDurationValid`) and is enforced by `validateTypeConfig` before the float. Also drives the wizard's "total time" summary, which previously guessed 2 min/question |
-| admin-node intake | `broadcastHandler.createBroadcast` and `assessmentHandler.initiateRoleBasedGeneration` clamp with `Math.max(15, Math.min(60, parseInt(duration,10) \|\| 30))` and put `durationMinutes` on `generationPayload` |
+| Admin UI v2 (`admin-react-v2` `RoleBasedConfigPanel.tsx`) | 1–240 / default 30 input, under an "Exam length" fieldset. The contract is enforced before the float and also drives the wizard's "total time" summary |
+| admin-node intake | Role-based creation clamps valid configured values to 1–240 (default 30 when absent/invalid) and puts `durationMinutes` on `generationPayload` |
 | Persistence | `generationPayload.durationMinutes` → `assessmentSetWorker` → `script/generateRoleBasedQuestions.js`, which writes `assessment_config.duration_minutes` alongside `question_config` |
-| Resolver (single source of truth) | `student-node/app/helpers/roleBasedDuration.js`. `computeDurationMinutes({ configuredMinutes, sectionCounts })` — configured value wins, clamped 15–60; otherwise the estimate `MCQ 1.5 / Subjective 5 / Video 3 / Coding 10` (unknown section 2) min per question, rounded up to the nearest 5, minimum 10. `resolveRoleBasedDurations(prisma, setIds)` does the same for many sets in two batched queries |
+| Resolver (single source of truth) | `student-node/app/helpers/roleBasedDuration.js`. `computeDurationMinutes({ configuredMinutes, sectionCounts })` — configured value wins, clamped 1–240; otherwise the estimate `MCQ 1.5 / Subjective 5 / Video 3 / Coding 10` (unknown section 2) min per question, rounded up to the nearest 5, minimum 10. `resolveRoleBasedDurations(prisma, setIds)` does the same for many sets in two batched queries |
 | student-node — questions | `getRoleBasedAssessmentQuestions` calls `computeDurationMinutes` with its in-memory sections and returns `data.duration_minutes`. Drives the countdown |
 | student-node — list | `getActiveAssessments` calls `resolveRoleBasedDurations` for `Role_Based` rows that have a bound set and adds `duration_minutes` to each row. Drives the instruction screen. Wrapped in try/catch — a failure omits the field rather than failing the list |
 | Assessment-React — instruction | `RoleBasedassmt/instruction.js` renders `Duration - {assessment.duration_minutes} minutes`, falling back to "Duration - Varies by role set" when the field is absent |
@@ -114,11 +114,18 @@ Both endpoints go through the same resolver, so the advertised duration and the
 countdown always agree. Verified on UAT 2026-08-10: sets resolving to 10 / 25 /
 30 / 40 / 55 minutes all render their real value.
 
+The backend previously imposed an obsolete 15–60 minute clamp even though
+admin-react-v2 accepts 1–240. That changed an 8-minute selection to 15 before
+the worker persisted it, and student-node repeated the same floor on read. Both
+write and read clamps now match 1–240, so the configured value is preserved
+end-to-end (`admin-node` `e947fce`, `student-node` `c4da469d`; DEV + UAT
+2026-09-15, PROD pending).
+
 **Gotchas:**
 - The column is **nullable and back-compatible** — every set created before this feature has `duration_minutes = NULL` and keeps the old question-count estimate, so existing assessments are unaffected.
-- The estimate floor is **10** minutes but the admin-selected floor is **15**; a NULL-config set can therefore legitimately report a shorter duration than any admin could pick.
+- The estimate floor is **10** minutes, while an explicitly configured duration may be as short as **1** minute.
 - The timer remains **client-side only**. `submitAssessment` records `isAutoSubmitted` but student-node does **not** independently verify elapsed time against `duration_minutes`.
-- Duration does **not** change how many questions are generated — that is driven entirely by `question_config`. Setting 15 minutes on a 12-MCQ + 2-subjective + coding paper simply gives candidates less time for the same paper.
+- Duration does **not** change how many questions are generated — that is driven entirely by `question_config`. A short duration on a 12-MCQ + 2-subjective + coding paper simply gives candidates less time for the same paper.
 - **Broadcast rows have no set bound yet**, so `getActiveAssessments` cannot resolve their duration and the instruction screen shows "Varies by role set" until the candidate starts. The **OTP invite flow** (`InviteAssessmentRunner`) builds its assessment object from the resolve/verify endpoint, which does not carry `duration_minutes` either, so it shows the same fallback.
 - **PROD is missing `assessment.assessment_config.duration_minutes`** (DEV and UAT have it). Any release carrying the resolver must run that migration on PROD first, or the Prisma select on `assessmentConfig.durationMinutes` errors and candidates cannot start a role-based assessment.
 
@@ -804,7 +811,7 @@ Gotchas:
 | `questions` | AI-generated questions with `questionText`, linked to sections |
 | `question_options` | MCQ options with `optionValue` (1 = correct) |
 | `assessment_sections` | Section types: `MCQ Question`, `Subjective Question`, `Video Response`, `Coding Question` (Coding is an optional 4th section) |
-| `assessment_config` | Per-set role config incl. `question_config` JSON (`{ mcqCount, subjectiveCount, videoCount, codingCount }`) — the per-section question counts chosen at creation. A count of **0 excludes that section** from the generated exam. Also holds `duration_minutes` (nullable int, 15–60) — the admin-selected exam length; **NULL** means fall back to the question-count estimate |
+| `assessment_config` | Per-set role config incl. `question_config` JSON (`{ mcqCount, subjectiveCount, videoCount, codingCount }`) — the per-section question counts chosen at creation. A count of **0 excludes that section** from the generated exam. Also holds `duration_minutes` (nullable int, 1–240 for admin-react-v2) — the admin-selected exam length; **NULL** means fall back to the question-count estimate |
 | `assessment_set` | Assessment pack with `roleName` stored |
 | `assessment_question_map` | Maps generated questions to assessment set |
 | `assessment_assigned_students` | Per-student assignment with `scoresCalculated` flag |
@@ -819,7 +826,7 @@ Gotchas:
 - **Selected-section score columns** — the admin score tables (StudentsTable / CandidateList / StudentReport) show a column per section **selected at creation** (`assessment_config.question_config` count > 0), not a hardcoded MCQ/Subjective/Video/Coding set. admin-node resolves this once per assessment (`getRoleBasedSelectedSections`, falling back to sections actually present in the exam) and returns it as `assessmentInfo.roleBasedSections`; each row's `roleBasedScores` always carries a key per selected section (score value, or `null` when not yet scored → rendered `-`). So a 0-question section never appears, and a selected section is visible even before submission/scoring. `overallScore` averages only the sections that have scores (`null` until any section is scored). The **Excel export** (`exportStudentData`) uses the same selected-section columns via `resolveRoleBasedColumns` (shared helper, mirrored in admin-react's `roleBasedColumns.js`) — so the export includes the **Coding** column when selected and matches the on-screen tables (previously it hardcoded Overall/MCQ/Subjective/Video and dropped Coding).
 - **Skill Coverage Guarantee** — the prompt requires ALL provided skills to be assessed across MCQ + Written + Video sections.
 - **Seniority Adaptation** — question difficulty and focus adapts: Entry level (fundamentals), Intermediate (complex problem-solving), Senior (strategic thinking).
-- **Multi-Modal Assessment** — combines text-based MCQ, written analysis, and video communication in a single assessment whose length the admin sets (15–60 min, default 30).
+- **Multi-Modal Assessment** — combines text-based MCQ, written analysis, and video communication in a single assessment whose length the admin sets (1–240 min in admin-react-v2, default 30).
 - **Admin-Set Duration** — `assessment_config.duration_minutes` is the source of truth for the countdown; when NULL (every pre-feature set) student-node estimates from question counts instead. Enforcement is client-side only. See [Duration](#duration).
 - **AI Scoring** — subjective and video responses are scored by AI (Gemini 2.5 Pro or Groq Llama 3.3 70B) with detailed per-skill feedback.
 - **Speech-to-Text** — video responses are transcribed using Deepgram before AI analysis.
