@@ -779,6 +779,18 @@ Role-based or consistency columns. "Select all" first resolves every student
 matching the active server-side filters and sends those emails through the same
 path.
 
+On **Assessment Details → Student-wise performance**, **Export selection** is
+type-aware. For a recurring schedule it calls the same student-node schedule
+workbook endpoint used by the header **Schedule Details** download,
+`POST /assessment/exportSchedule/:scheduleId`, and supplies `studentEmails`.
+Student-node intersects that selection with the schedule roster before building
+the Overview sheet, Diagnosis sheet, and every Assessment sheet, so all sheets
+contain only the selected students. The header **Schedule Details** action omits
+`studentEmails` and therefore remains a full-schedule export. For a one-time
+assessment, Export selection calls the existing admin-node
+`POST /assessment/exportStudentData` endpoint with the assessment-institute map
+ID and `selectedEmails`, retaining the legacy Assessment Results workbook format.
+
 **Student-wise is paged and searched on the server, unlike the rest of v2.** A
 single institute already carries 10k students on DEV, so the "fetch everything,
 filter in the browser" pattern used elsewhere would ship megabytes and render

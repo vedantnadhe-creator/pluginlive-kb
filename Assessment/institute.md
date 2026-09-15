@@ -273,6 +273,15 @@ customAssessmentScores: true
 
 Re-runs `getStudentListForAssessment` with `pageSize: 'NA'` (all rows, no pagination) and builds the sheet with ExcelJS. Base columns mirror the on-screen table (Candidate Name, Email, Degree, Department, Progression Level, Assmt. Taken On, Taken / Sent, Total Score), then type-specific columns, then Proctoring.
 
+The schedule workbook endpoint, `POST /assessment/exportSchedule/:scheduleId`,
+also accepts an optional `studentEmails` array. When present, it filters the
+Overview, Diagnosis, and each per-assessment sheet to that selection; when
+omitted, it preserves the full-schedule export used by the Schedule Details
+button. The Institute v2 Assessment Details page uses this option only for a
+recurring schedule's bulk Export selection action. One-time selections continue
+through admin-node `POST /assessment/exportStudentData` so they keep the legacy
+Assessment Results workbook layout.
+
 For **Aptitude** the type-specific block opens with **Time Taken** (`mm:ss`) before Critical / Quantitative / Logical. It is filled from `timeTakenSeconds` via the `_fmtMmSs()` helper on `TpoDashBoard`, and is set **independently of `sectionScores`** — the clock lives on the assignment, not the score row, so gating it on scores would blank it. Unattempted candidates render `-`, matching the rest of that sheet. Only Aptitude gets the column; Communication and AI Interview keep their existing section/parameter columns.
 
 > The equivalent column in the admin results export renders a **blank** cell rather than `-` for a non-attempt — each export follows its own sheet's convention. See `Assessment/admin.md`.
