@@ -2166,7 +2166,7 @@ The import-free `src/lib/occurrenceReport.ts` owns the rule and has focused Node
 
 ### Upcoming schedule rows cannot download reports (2026-09-15)
 
-`institute-react-v2` Development `4e70992`, UAT `c464095`. **DEV + UAT deployed; PROD pending.**
+`institute-react-v2` Development `397d954`, UAT `81a09e7`. **DEV + UAT deployed; PROD pending.**
 
 In Assessment Details → Schedule → occurrence drawer, per-student report-download
 buttons are disabled while the occurrence phase is `upcoming`, even if the API
@@ -2174,6 +2174,11 @@ has already created and returned an `attemptId`. The tooltip says the report is
 available after the assessment starts. The click handler uses the same shared
 eligibility check, preventing a programmatic or stale-UI click from generating a
 future report containing premature scores.
+
+The occurrence drawer's header-level roster export follows the same lifecycle
+rule: it is disabled for upcoming schedules, explains that the roster becomes
+available after the assessment starts, and guards the export handler itself.
+Current and completed roster exports remain available.
 
 Current and completed occurrences remain downloadable when the student has a
 valid attempt and student id. Focused coverage includes the regression case of
