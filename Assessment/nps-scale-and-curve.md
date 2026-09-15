@@ -205,6 +205,12 @@ Students table and **21** on the assessment they had actually sat.
 | Schedule/diagnosis roster → Score hover | `AssessmentDetailV2.getStudents` | curved section progress for Communication/Aptitude; raw percentages for every other type |
 | Assessment detail → **student report drawer** | `AssessmentDetailV2.getStudentReport` | curved NPS — headline, every schedule row, the trend line and its cohort line |
 
+The legacy institute/admin Diagnosis roster and its schedule workbook also use
+the paired result's curved NPS as `SCORE` (`TpoDashBoard.npsScore`) as of
+2026-09-15 on DEV + UAT. Section breakdown values remain raw percentages. This
+keeps the v1 Diagnosis headline on the same scale and with the same column label
+as other assessment result tables.
+
 The roster hover uses the same component calculation as the student report
 drawer. Communication pairs each skill across the immediate predecessor and
 current confirmed CEFR (including a bridge when the level changes); Aptitude
