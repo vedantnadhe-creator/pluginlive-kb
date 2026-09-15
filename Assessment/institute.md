@@ -15,6 +15,29 @@ Institute assessments use a **two-API architecture**:
 
 This split exists because Communication and Aptitude are "standard" types with schedules, progression tracking, and CEFR/aptitude levels. Other types are standalone assignments without scheduling infrastructure.
 
+## V2 student-wise score presentation (2026-09-15)
+
+The institute v2 assessment screens (`institute-react-v2`, `/v2/assessments`) use
+the following presentation rules for schedule and one-time student lists:
+
+- The schedule student-wise table no longer exposes a Role-based score column,
+  legend entry, or sort key.
+- Score change is shown inline as a green/red up/down delta. A missing delta is
+  rendered as `--`; the score bar, value, and delta use fixed grid columns so
+  rows align vertically.
+- Communication and Aptitude level changes appear below the score bar as
+  `PreviousLevel » CurrentLevel`, colored by direction.
+- The attempts doughnut exposes its sent-versus-taken counts on hover.
+- One-time assessment performance includes a canonical **Proctoring** column:
+  **Good**, **Bad**, or **Disabled**. The helper in
+  `src/app/(app)/assessments/[id]/_constants.ts` is the single mapping source.
+- One-time assessments label their timestamp **Submitted on**. Their student
+  report drawer omits the schedule-wise performance card because one-time
+  assessments have no schedules.
+- The schedule completion bar tooltip is bound to its real `data-tip` value.
+
+UAT frontend commit: `8666336` (promoted from Development commit `cd92733`).
+
 ---
 
 ## Institute-Node: `StudentListInfo.js`
