@@ -110,7 +110,7 @@ The per-student `status` field ("Completed" / "In Progress" / "Pending" / "Dropo
 
 ---
 
-### `exportStudentData({ assessmentInstituteMapID, entityType, status, searchQuery, filters })`
+### `exportStudentData({ assessmentInstituteMapID, entityType, status, searchQuery, filters, selectedEmails })`
 
 Generates an **Excel (.xlsx) export** of all student data for a given assessment using ExcelJS.
 Returns a buffer for download.
@@ -119,7 +119,7 @@ Returns a buffer for download.
 
 **Supports:** College and Corporate
 
-**Columns are per assessment type.** A fixed base block (**Roll Number** — college only, Name, Email, Phone, Sent Date, Start Date, End Date, Status, Delivery Status, Delivery Issue) is followed by type-specific score columns, then Proctoring Status when proctoring is enabled.
+**Columns are per assessment type.** A fixed base block (**Roll Number** — college only, Name, Email, Phone, **Degree and Department — college only**, Sent Date, Start Date, End Date, Status, Delivery Status, Delivery Issue) is followed by type-specific score columns, then Proctoring Status when proctoring is enabled. Degree and Department use the same current-course-first values returned by `getAssessmentDetails`, falling back to the education profile and then `"-"`; corporate workbooks remain unchanged. The Institute v2 one-time **Export selection** flow passes `selectedEmails`, so its legacy Assessment Results workbook includes these course fields while containing only the checked students.
 
 **Roll Number** (added September 2026, requested by Swadha) **leads the sheet** — it is column A, the identifier a college looks a candidate up by — and carries the student's university roll number from `student.students.uni_roll_no`. The college candidate query selects it as `roll_number` and `getAssessmentDetails` maps it onto each row as `rollNumber`, falling back to `"-"` when the student has none (it is an optional field, so a dash is common). **The column is emitted only when `entityType === "college"`** — corporate candidates have no university roll number, so their export is unchanged and does not carry an always-empty column.
 
