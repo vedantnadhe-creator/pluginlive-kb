@@ -112,7 +112,14 @@ the old `AVG_OK = 70`:
 | Ladder | Boundaries |
 |---|---|
 | Communication | A1 `0–31.74` · A2 `31.74–52.65` · B1 `52.65–68.26` · B2 `68.26–80.73` · C1 `80.73–91.11` · C2 `91.11–100` |
-| Aptitude | Beginner `0–43.07` · Learner `43.07–68.26` · Competent `68.26–86.14` · Advanced `86.14–100` |
+| Aptitude | Beginner `0–43.07` · Intermediate `43.07–68.26` · Upper Intermediate `68.26–86.14` · Advanced `86.14–100` |
+
+The Aptitude calculation/storage ladder remains `Beginner / Learner / Competent /
+Advanced`. Institute v2 translates the middle two storage values at the shared
+API presentation boundary: `Learner → Intermediate` and `Competent → Upper
+Intermediate`. This applies consistently to dashboard competency rows, progress
+bands, assessment rosters, student-wise metrics, filters, drawers and exports;
+level indices and NPS ordering continue to use the stored values.
 
 Derived at runtime by `communicationBandBoundaries(k)` / `aptitudeBandBoundaries(k)`
 — do not hardcode them.

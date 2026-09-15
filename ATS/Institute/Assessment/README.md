@@ -144,7 +144,8 @@ The Assessment module provides the TPO-facing dashboard for managing and trackin
 - **Student lifecycle tracking:** Sent → Pending → In Progress → Dropped Off → Completed
 - **Assessment types:** Communication, Aptitude, Role-Based, Behavioral, Custom
 - **CEFR levels:** Communication assessments track A1–C2 levels
-- **Aptitude levels:** Beginner, Learner, Competent, Advanced
+- **Aptitude levels:** stored as Beginner, Learner, Competent, Advanced;
+  institute v2 displays Beginner, Intermediate, Upper Intermediate, Advanced
 - **Canonical achieved level:** All v2 overview, competency, performance, and
   report views read the stored grade from `assessment.progression_history`
   (`assessment_cefr` for Communication, `assessment_aptitude_level` for
