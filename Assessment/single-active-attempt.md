@@ -36,7 +36,23 @@ assignment.
 Prisma `select` and the returned objects) so the frontend can render the button
 state.
 
-### Resume rule — diagnosis only
+### Diagnosis retry rule
+
+**Changed 2026-09-15.** Diagnosis attempts may re-enter only after the row has
+been classified as `DROPOUT`. A diagnosis still marked `INPROGRESS` is refused,
+including through the Mix & Match scoped route, so two live sittings cannot run
+against one assignment. Re-entry atomically reclaims
+`DROPOUT → INPROGRESS`; only one caller can win. The candidate frontend then
+hydrates the assignment-scoped local attempt instead of auto-submitting it, so
+answers saved before the drop-off are retained. `COMPLETED` and non-diagnosis
+`DROPOUT` rows remain terminal.
+
+The policy is enforced at invite resolution, signed-in student session minting,
+the summary screen, reload guard, and the question-fetch/start boundary. DEV:
+student-node `e84a3f04`, assessment-react-v2 `0676ecf`. UAT: student-node
+`e4dafed4`, assessment-react-v2 `f6c6820`.
+
+### Historical resume rule
 
 Resume is gated on whether the assessment is a **diagnosis** assessment. That is
 read from the stored **`assessment_assigned_students.is_diagnosis`** flag, which

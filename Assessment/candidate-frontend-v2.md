@@ -142,6 +142,16 @@ scoped JWT. The URL is not consulted.
 
 ## What counts as a diagnosis
 
+**Dropped diagnosis re-entry (2026-09-15).** v2 no longer groups every
+`DROPOUT` with terminal attempts. When student-node confirms both
+`status=DROPOUT` and the stored `is_diagnosis=true` flag, the candidate may
+re-enter and the assignment-scoped `localStorage` attempt is hydrated instead
+of automatically submitted. `INPROGRESS` diagnosis rows are blocked; the
+question start boundary atomically changes an eligible dropped diagnosis back
+to `INPROGRESS`, preventing concurrent re-entry. Completed and non-diagnosis
+drop-offs remain unavailable. This applies to invite/OTP and signed-in student
+handoffs.
+
 **The stored `assessment_assigned_students.is_diagnosis` flag, written by
 admin-node at assignment time — never the assessment's name, and never a
 missing `schedule_id`.** Both guesses were in the candidate path until
