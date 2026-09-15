@@ -779,6 +779,17 @@ Role-based or consistency columns. "Select all" first resolves every student
 matching the active server-side filters and sends those emails through the same
 path.
 
+Assessment Details → **Student-wise performance** has a separate selection
+export. It uses the existing admin-node
+`POST /assessment/exportStudentData` endpoint through the v2 BFF, with
+`entityType: "college"`, `status: "sent"`, the current/latest occurrence's
+`assessmentInstituteMapID`, and the checked rows as `selectedEmails`. This
+downloads the legacy **Assessment Results** XLSX (identity and delivery fields,
+type-specific score columns, and proctoring status) instead of building the
+aggregate Student-wise CSV in the browser. For recurring schedules the workbook
+therefore describes the current/latest occurrence, while the on-screen table
+continues to aggregate the whole series.
+
 **Student-wise is paged and searched on the server, unlike the rest of v2.** A
 single institute already carries 10k students on DEV, so the "fetch everything,
 filter in the browser" pattern used elsewhere would ship megabytes and render
