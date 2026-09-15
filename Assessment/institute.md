@@ -22,9 +22,10 @@ the following presentation rules for schedule and one-time student lists:
 
 - The schedule student-wise table no longer exposes a Role-based score column,
   legend entry, or sort key.
-- Score change is shown inline as a green/red up/down delta. A missing delta is
-  rendered as `--`; the score bar, value, and delta use fixed grid columns so
-  rows align vertically.
+- Communication and Aptitude score change is shown inline only for gains of at
+  least `+10 pts`. Smaller gains, flat results, declines, and missing deltas do
+  not render a delta marker; the underlying values remain available for data
+  processing.
 - Communication and Aptitude level changes appear below the score bar as
   `PreviousLevel » CurrentLevel`, colored by direction.
 - The attempts doughnut exposes its sent-versus-taken counts on hover.
@@ -36,7 +37,8 @@ the following presentation rules for schedule and one-time student lists:
   assessments have no schedules.
 - The schedule completion bar tooltip is bound to its real `data-tip` value.
 
-UAT frontend commit: `8666336` (promoted from Development commit `cd92733`).
+UAT frontend commits: `8666336` (student-wise score presentation) and
+`39d0fb3` (`+10 pts` delta visibility threshold).
 
 ### Top-level Student-wise membership (2026-09-15)
 
