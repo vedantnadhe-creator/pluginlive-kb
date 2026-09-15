@@ -312,7 +312,7 @@ customAssessmentScores: true
 
 ### `exportExcelOfStudentListForAssessment()` (Excel export of the above)
 
-Re-runs `getStudentListForAssessment` with `pageSize: 'NA'` (all rows, no pagination) and builds the sheet with ExcelJS. Base columns mirror the on-screen table (Candidate Name, Email, Degree, Department, Progression Level, Assmt. Taken On, Taken / Sent, Total Score), then type-specific columns, then Proctoring.
+Re-runs `getStudentListForAssessment` with `pageSize: 'NA'` (all rows, no pagination) and builds the sheet with ExcelJS. Base columns are Roll Number, Candidate Name, Email, Degree, Department, Progression Level, Assmt. Taken On, Taken / Sent, and Total Score, followed by type-specific columns and Proctoring. Roll Number comes from `student.students.uni_roll_no` and falls back to `-`. The combined schedule workbook also includes it in the Overview student list and Diagnosis sheet, so every student-level sheet uses the same college identifier as the one-time Assessment Results export.
 
 The schedule workbook endpoint, `POST /assessment/exportSchedule/:scheduleId`,
 also accepts an optional `studentEmails` array. When present, it filters the

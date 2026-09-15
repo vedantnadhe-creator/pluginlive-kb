@@ -785,7 +785,9 @@ workbook endpoint used by the header **Schedule Details** download,
 `POST /assessment/exportSchedule/:scheduleId`, and supplies `studentEmails`.
 Student-node intersects that selection with the schedule roster before building
 the Overview sheet, Diagnosis sheet, and every Assessment sheet, so all sheets
-contain only the selected students. The header **Schedule Details** action omits
+contain only the selected students. Each of those student-level sheet sections
+includes **Roll Number** from the student's university roll number, with `-` for
+an unrecorded value. The header **Schedule Details** action omits
 `studentEmails` and therefore remains a full-schedule export. For a one-time
 assessment, Export selection calls the existing admin-node
 `POST /assessment/exportStudentData` endpoint with the assessment-institute map
