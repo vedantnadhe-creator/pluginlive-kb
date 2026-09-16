@@ -1784,6 +1784,22 @@ clamped `100 * gained_marks / total_marks` percentage. Keep the explicit
 Reasoning, Logical Reasoning and Quantitative to the existing hover without a
 frontend-specific Aptitude path.
 
+### Difficulty / Score reads the assigned set's type-specific level (2026-09-16)
+
+`eb1969c` institute-node Development / `87e2374` UAT. The assessment detail
+API used only `assessment_sets.cefr_level` for the Difficulty / Score column,
+the overview difficulty KPI, and the student report timeline. That is correct
+for Communication but always null for Aptitude: Aptitude sets store their
+assigned level in `assessment_sets.difficulty` (`easy`, `medium`, `hard`). As a
+result, Jershini's Aptitude Diagnosis drawer showed an em dash beside every
+student even though each assignment pointed to a real set.
+
+All three reads now use
+`COALESCE(assessment_sets.cefr_level, assessment_sets.difficulty)`. Keep that
+type-specific fallback at the API boundary so the existing frontend contract
+continues to receive one `assignedLevel` / `difficulty` field. DEV + UAT live;
+PROD pending.
+
 ### Recurring student reports use report points, not raw attempts
 
 `255302c` institute-node, `6393db5` frontend (2026-08-13; UAT merges
