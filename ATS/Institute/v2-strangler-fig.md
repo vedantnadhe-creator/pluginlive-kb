@@ -369,6 +369,15 @@ keeps Diagnosis as the schedule's child row rather than a third Schedule-wise
 type. Once the first occurrence exists, resolution automatically returns to the
 indexed assigned-student path.
 
+Pending Overview payloads must keep the full `DiagnosisGroup` contract even
+before anyone attempts the diagnosis: `avgScore` and `progressScore` are
+explicitly `null`, and `meta.supportsNps` is derived from the assessment type.
+Omitting those fields made the Progress trend treat `undefined` as a numeric
+point and crash on `.toFixed()` when a user manually reopened Overview. The
+frontend also treats null and undefined as the same empty-score state. Fixed in
+institute-node `13238e3` / UAT `1a8257b` and institute-react-v2 `feafb7c` / UAT
+`05588e7`; DEV + UAT deployed 2026-09-16, PROD pending.
+
 Verified live on UAT after deploy, institute `1f78e8f3`: the cockpit returns
 **7 rows, 0 titled `Assessment #N`** (was 53), while the assessments list still
 returns all **236** — `{one_time: 124, diagnosis: 55, recurring: 57}` — with the
