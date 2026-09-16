@@ -15,6 +15,16 @@ PROD went live 2026-09-16 on `release-v1.40` (images `2026-09-16-07-46-54-releas
   as regions and cities, mixed (`Maharashtra` + `Nashik`). Empty = all of India
   (ranked on course fit alone, and the panel says so). "Use job location"
   resets it. Typing shows each state with its live campus count.
+- **Campus tiers** (since 2026-09-16, UAT) — a tier band sits between *where* and
+  *how many* on one row. It is pre-filled by `GET /v2/sourcing/tier-suggestion`
+  from the role's title, CTC max and type (`src/modules/sourcing/tiers.ts`, pure
+  + unit-tested): up-market titles (research, quant, ML, PM, IB…) or high CTC
+  → tiers 1–2; volume titles (field sales, telecaller, BPO, collections…) or low
+  CTC / interns → tiers 2–4; otherwise the middle. Directory reality: tier 1 ≈
+  240 campuses, tier 2 ≈ 47k, tier 3 ≈ 200, tier 4 ≈ 39k, so a band is always
+  ≥ 2 tiers wide. The ranking (`POST /sourcing/runs` `tiers`) is then
+  **limited** to those tiers, and the reason is shown to the recruiter; it is a
+  default they can change, not a decision.
 - **Institutes to find** — 1–50, default 15. This is *campuses looked up*, not
   contacts found.
 - **Find institutes / Run again** — the run ranks every campus in the area that
@@ -61,6 +71,7 @@ PROD went live 2026-09-16 on `release-v1.40` (images `2026-09-16-07-46-54-releas
 | `POST /sourcing/runs` | start a run: role draft + `sourcingLocations` (cities/states) + `limit` ≤ 50 |
 | `GET /sourcing/runs/:id` | poll; the BFF strips contacts |
 | `POST /roles/:id/sourcing-selection` | store the ticked institutes after create |
+| `GET /sourcing/tier-suggestion?title&ctcMax&employmentType` | default tier band + reason |
 | `GET /cities/states` | Indian states/UTs with live campus counts (~100 ms) |
 | `GET/POST /roles/:id/outreach`, `/outreach/drafts` | email/WhatsApp send path — **unused**: no BFF route and corporate-node-v2 has no public ingress on PROD |
 
