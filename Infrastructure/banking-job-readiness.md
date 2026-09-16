@@ -1745,3 +1745,56 @@ syntax on a function. Their transactions were preflighted and rolled back withou
 The frontend was rebuilt on UAT and serves `index-B3-bR9Wx.js`. Site/Auth health return 200, all
 seven backend containers are up, and the database is healthy. Rollback snapshot:
 `~/banking-predeploy-20260912T090241Z/`.
+
+## 2026-09-16 — `bulk-export-worker` re-ran a job forever (~300 Gemini calls/hour); fixed in `f3c706f`/`6295e0a`, UAT routed through the LiteLLM gateway
+
+**Symptom (hosted project):** Google AI Studio showed a flat ~340K input tokens/hour on
+`gemini-3.6-flash` for 18+ hours. Every request body started with
+`Evaluate banking job readiness.\nCandidate: … Assessment: Banking - AML and KYC …` — the
+per-attempt "job readiness" prompt built in `supabase/functions/bulk-export-worker/index.ts`
+(Assessment Analytics → Bulk Export PDF/Excel). Model was `gemini-3.6-flash` because the hosted
+project has no usable gemini row in `llm_provider_configs`, so `_shared/llm.ts` falls to the env
+`GEMINI_API_KEY` with `PROVIDER_DEFAULTS.gemini.model`.
+
+**Root cause:** the worker is cron-invoked every minute, picks a `pending` job or a `running` job
+whose `heartbeat_at` is > 3 min old, processes a 20-attempt chunk (one LLM call per attempt) and
+writes progress. Every `bulk_export_jobs` write ignored its `{ error }` (supabase-js does not
+throw), and `max_attempts` was only enforced on a path `Promise.allSettled` can never reach. If the
+chunk/finalize write failed — or the isolate was killed before persisting — the job stayed
+`running`, went stale, and was re-picked indefinitely: 20 calls every ~4 min = 300/hour, ~1.1K
+tokens each. UAT still holds two rows from the hosted era with `total = 1` and
+`attempts = 14976 / 15058` (2026-07-02 → 08-09, when `processed_results` did not exist yet).
+`Cancel` in the admin panel was also clobbered by an in-flight invocation writing `running`/`pending`.
+
+**Fix (`main` `f3c706f` + `6295e0a`):**
+- every `bulk_export_jobs` write goes through `updateJob()` — a failed write fails the job;
+- stale-heartbeat recoveries count against `max_attempts` (a chunk that persisted normally comes
+  back as `pending` and does not count) → `failed` with
+  `abandoned after N failed recoveries at <progress>/<total>`;
+- all writes carry `.neq("status","cancelled")`, and a job fetched by `job_id` that is no longer
+  `pending`/`running` is skipped;
+- `_shared/llm.ts`: a provider row whose `provider = 'litellm'` gets the header
+  `x-litellm-tags: service:banking-app,module:<feature>` so the gateway attributes the call.
+
+**UAT (deployed 2026-09-16, `~/banking-sb/sync-functions.sh`):** `llm_provider_configs` has a
+per-feature row `application_feature = 'bulk-export-worker'`, `provider = 'litellm'`,
+`base_url = https://uat.pluginlive.com/ai-gateway/v1`, `default_model = gemini-2.5-flash`,
+priority 1, api_key = UAT gateway virtual key alias **`banking-app`** (`~/litellm/banking_app_vkey.txt`).
+`selectFeatureConfigs` puts feature rows ahead of `global`, so only this function is routed;
+everything else still uses the global gemini row. Verified: a 2-attempt export completed and both
+calls appear in `LiteLLM_SpendLogs` with `request_tags = [service:banking-app, module:bulk-export-worker]`
+under key alias `banking-app`; a seeded stale job with `attempts = 2` was marked `failed` with zero
+LLM calls; a `cancelled` job invoked by `job_id` stayed `cancelled` with zero LLM calls.
+
+**Hosted / PROD is NOT deployed** — nobody on the team holds credentials for `kbwjokmmzkgjwiqelrdc`.
+Until it is, kill the runaway in the hosted SQL editor:
+`update public.bulk_export_jobs set status='failed', last_error='killed: infinite re-pick loop', finished_at=now() where status in ('pending','running');`
+(the panel's Cancel button is not enough on the old code). The authoritative call count lives only in
+Google AI Studio usage-by-model for that key; the app's `llm_usage_logs` is written by the `chat`
+function alone.
+
+**Note on the UAT box:** at 04:15 UTC on 2026-09-16 the banking, pilvidya and eduspeak nginx vhosts
+were unlinked and their containers removed. Banking was brought back for this deploy
+(`docker compose up -d` in `~/banking-sb`, vhost re-linked); pilvidya and eduspeak were left down.
+UAT has no pg_cron, so only the enqueue kick runs the worker — a job with > 20 attempts stalls after
+its first chunk there (pre-existing, unchanged).
