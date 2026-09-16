@@ -4,7 +4,7 @@
 
 `PluginLive-Technologies/design-system` owns the reusable React UI and four-step assessment wizard. `admin-react-v2` and `corporate-react-v2` consume it at build time. Legacy Admin redirects creation into the v2 app. There is no separate design-system server or microfrontend runtime.
 
-The Next.js apps pin versioned `@pluginlive-technologies/assessment-creation` and `@pluginlive-technologies/ui` artifacts. Admin currently uses assessment creation 0.1.9. Packages are generated using `npm pack`, committed as `vendor/*.tgz`, and integrity-pinned in package-lock.json. This rollout does not publish to an npm registry. Both apps transpile the packages through Next.js and load their scoped styles. Docker dependency stages copy vendor before npm ci.
+The Next.js apps pin versioned `@pluginlive-technologies/assessment-creation` and `@pluginlive-technologies/ui` artifacts. Admin currently uses assessment creation 0.1.10. Packages are generated using `npm pack`, committed as `vendor/*.tgz`, and integrity-pinned in package-lock.json. This rollout does not publish to an npm registry. Both apps transpile the packages through Next.js and load their scoped styles. Docker dependency stages copy vendor before npm ci.
 
 ## Entry points and responsibilities
 
@@ -70,3 +70,13 @@ Assessments created for an institute through Admin v2 now require biometric veri
 Admin's `/api/assessments/mix-match` BFF also derives `allowVerification` from the entity segment instead of trusting the browser draft. It sends `true` for college and `false` for corporate in all three creation paths: one-time assignment, recurring schedule configuration and role-based broadcast creation. This server boundary ensures a stale or modified client cannot disable institute biometric verification.
 
 Admin consumes the versioned assessment-creation 0.1.9 artifact. Released revisions: DEV `beff006`, UAT `e569c6f`. The app was rebuilt independently in each target environment; tests (97), TypeScript, lint, deployed page/asset checks and the UAT no-DEV-URL check passed. PROD is unchanged.
+
+## Degree / Department can be unselected — DEV and UAT, 2026-09-16
+
+Shared package **0.1.10** (design-system `fix/select-field-clear-0.1.x`, `0e916fb`): the cohort and
+broadcast-scope Degree/Department `SelectField`s gain a clear control — an × in the chevron's place on
+hover/focus, and Backspace/Delete on the trigger. Before this a degree or department picked while
+creating a college assessment could not be unselected. Admin consumes the vendored 0.1.10 artifact
+(`60e2594`); released revisions DEV `60e2594`, UAT `24842a7`. Corporate v2 stays on 0.1.2-bugfix.1
+(it never renders these selects — recurring schedules and cohorts are college-only). PROD unchanged.
+
