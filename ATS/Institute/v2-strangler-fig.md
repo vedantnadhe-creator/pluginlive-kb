@@ -1861,11 +1861,15 @@ TPO goes to *find* a degree, and "BAF" / "BAFI" / "BBI" are far harder to scan
 than the words.
 
 Coverage: the master is polluted (~4.4k rows, mostly junk from the
-self-appending create path) but only ~213 carry a short form, and only exact
-lowercased-name matches are looked up, so the junk is inert. Of the 36 degrees
-that actually reach the TPO screens, **33 resolve**; the rest fall back to the
-full name (`Unknown`, `Bachelor's`, `Post Graduate Diploma` — fixable by adding
-short forms to those master rows, a data change, not code).
+self-appending create path), so the lookup reads **active rows only**
+(`institute.degrees.status = 1`) and then matches exact lowercased names. This
+also prevents an inactive duplicate from overriding the canonical short form:
+UAT once had both `Bachelor Of Arts → B.A` (active) and
+`BACHELOR OF ARTS → 786968` (inactive); the old case-insensitive `MIN` selected
+`786968` and rendered "786968 Arts" in Assigned To. Of the 36 degrees that
+actually reach the TPO screens, **33 resolve**; the rest fall back to the full
+name (`Unknown`, `Bachelor's`, `Post Graduate Diploma` — fixable by adding
+short forms to active master rows, a data change, not code).
 
 Gotchas worth keeping:
 
