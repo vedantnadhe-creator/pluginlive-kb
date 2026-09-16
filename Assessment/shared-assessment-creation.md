@@ -4,7 +4,7 @@
 
 `PluginLive-Technologies/design-system` owns the reusable React UI and four-step assessment wizard. `admin-react-v2` and `corporate-react-v2` consume it at build time. Legacy Admin redirects creation into the v2 app. There is no separate design-system server or microfrontend runtime.
 
-The Next.js apps pin versioned `@pluginlive-technologies/assessment-creation` and `@pluginlive-technologies/ui` artifacts. Admin currently uses assessment creation 0.1.10. Packages are generated using `npm pack`, committed as `vendor/*.tgz`, and integrity-pinned in package-lock.json. This rollout does not publish to an npm registry. Both apps transpile the packages through Next.js and load their scoped styles. Docker dependency stages copy vendor before npm ci.
+The Next.js apps pin versioned `@pluginlive-technologies/assessment-creation` and `@pluginlive-technologies/ui` artifacts. Admin currently uses assessment creation 0.1.11. Packages are generated using `npm pack`, committed as `vendor/*.tgz`, and integrity-pinned in package-lock.json. This rollout does not publish to an npm registry. Both apps transpile the packages through Next.js and load their scoped styles. Docker dependency stages copy vendor before npm ci.
 
 ## Entry points and responsibilities
 
@@ -63,7 +63,7 @@ Admin and Corporate now consume the vendored `assessment-creation` 0.1.2-bugfix.
 
 Released app revisions: Admin DEV `623d999`, UAT `826891c`; Corporate DEV `da355a8`, UAT `9270886`. The target environment's auto_deploy.sh rebuilt and switched each app. Shared package tests (27), Corporate integration tests (4), TypeScript and deployment page/asset checks passed. No production rollout is included.
 
-## Institute biometric verification default — DEV and UAT, 2026-09-16
+## Institute biometric verification default — DEV and UAT, 2026-09-16 (superseded same day — see below)
 
 Assessments created for an institute through Admin v2 now require biometric verification by default. The shared wizard initializes `biometric` to `true` for a `college` host and keeps it `false` for a `corporate` host.
 
@@ -80,3 +80,25 @@ creating a college assessment could not be unselected. Admin consumes the vendor
 (`60e2594`); released revisions DEV `60e2594`, UAT `24842a7`. Corporate v2 stays on 0.1.2-bugfix.1
 (it never renders these selects — recurring schedules and cohorts are college-only). PROD unchanged.
 
+## Biometric verification on for every segment — DEV and UAT, 2026-09-16
+
+Supersedes the institute-only default above. Product asked for corporates to be verified too, so
+the segment gate is gone entirely:
+
+- Shared package **0.1.11** (design-system `fix/biometric-default-on-0.1.x`, `c4f6dfc`, branched
+  from the 0.1.10 lineage): `EMPTY_DRAFT.biometric` is `true` and the college-only override in the
+  draft initialiser is removed. The Proctoring card still has no biometric switch — the flag is
+  carried in the draft, not editable.
+- Admin's `/api/assessments/mix-match` BFF sends `allowVerification: true` unconditionally in all
+  three creation paths (one-time assignment, recurring schedule, role-based broadcast). The
+  `requiresBiometricVerification(segment)` helper and its test were deleted — a literal `true` is
+  the whole rule now.
+- Admin consumes the vendored 0.1.11 artifact. Released revisions: DEV `e5db8bb`
+  (`~/releases/admin-react-v2/DEV-e5db8bbcf32a-…`), UAT `e8e3dc8` (merge of Development into UAT,
+  `~/releases/admin-react-v2/UAT-e8e3dc8fc6da-…`). Verified per environment: unit MainPID owns
+  `:3013`, compiled route chunk contains `allowVerification:!0` ×3, UAT bundle has no DEV URLs.
+  Tests (97), TypeScript and lint passed. PROD is unchanged.
+- **Not covered:** Corporate v2's own self-service creation (`corporate-react-v2`
+  `/api/assessments/mix-match`) still forwards `draft.biometric` from its pinned 0.1.2-bugfix.1
+  wizard, where the default is `false`. Assessments a corporate creates for itself are therefore
+  still unverified until that app is bumped or its BFF is hard-set the same way.
