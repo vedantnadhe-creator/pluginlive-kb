@@ -66,10 +66,36 @@ their real stored percentage; Role-based scores are included in the
 Student-wise schedule table rather than rendering an empty column.
 
 For a **one-time** assessment, Student-wise performance shows one **Attempt
-status** column instead of Attempt rate and Consistency. Its four labels are
-Pending, In progress, Dropped-off and Completed; the same labels drive the
-filter and CSV export. Recurring assessments retain Attempt rate and
-Consistency.
+status** column instead of Attempt rate and Consistency. Its labels are
+Not started, In progress, Not attempted, Dropped-off and Completed; the same
+labels drive the filter and CSV export. Recurring assessments retain Attempt
+rate and Consistency.
+
+### "Not attempted" is not "Dropped-off" (2026-09-16, DEV + UAT; PROD pending)
+
+`AssessmentDetailV2` derives five per-student states from the assignment row
+and the window: `completed` (status `COMPLETED`), `dropped` (status
+`DROPOUT` — student-node persists this only when a sitting was started and
+never submitted), `inProgress`, `absent` (assigned, never opened, window now
+closed — status still `PENDING`, `attempted = false`) and `notStarted`
+(assigned, never opened, window still open). `absent` is also what gives the
+row its **High risk** chip when there is no score to band.
+
+The v2 frontend used to fold `absent` and `dropped` into one **Dropped-off**
+chip (`attemptStatusKey` in `assessments/[id]/_constants.ts`). On PROD this
+made a Role_Based assessment whose window closed on 2026-09-11 show its seven
+`PENDING` students — who had never opened it — as "Dropped-off", which TPOs
+read as "started then abandoned". The two are now separate chips:
+
+| API status | Chip | Meaning |
+|---|---|---|
+| `dropped` | **Dropped-off** (amber) | started, never submitted |
+| `absent` | **Not attempted** (red) | never started, window closed |
+| `notStarted` | **Not started** (grey) | never started, window still open |
+
+Backend unchanged; only the label mapping and the filter/CSV vocabulary. Nudge
+remains available only for `notStarted`/`inProgress` — a closed window cannot
+be nudged.
 
 An open assessment is now **About to expire** only during its final 24 hours.
 With two or more days remaining it stays **Ongoing**, while the separate
