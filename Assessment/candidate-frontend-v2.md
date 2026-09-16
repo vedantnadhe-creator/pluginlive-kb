@@ -121,6 +121,16 @@ public `/assessment` and `/candidate-assessment-journey/v2/assessment/complete`
 routes returned HTTP 200 in both environments, both UAT containers remained
 healthy, and the UAT v1 bundle contained no `*.dev.pluginlive.com` hostname.
 
+**Institute invite and auto-submit gap corrected 2026-09-16.** The return
+marker was previously created only by the v1 dashboard handoff. An institute
+candidate entering through an email/OTP link therefore looked like a corporate
+invite at completion, and automatic submission left them on the terminal
+screen. After the live summary loads, v2 now uses its authoritative
+`isCorporate` ownership flag: institute assignments set the `/assessment`
+return marker and corporate assignments explicitly clear it. Manual, timed,
+violation-limit, and re-entry submissions all share the same completion route,
+so they now follow the same policy. Development `ccf7abb`; UAT `68cadc1`.
+
 **The `assigned` id is used once, to mint the token — and never again.**
 Everything downstream (`/students/mix-match/summary`, questions, save, submit,
 proctoring) takes the assignment from `req.user.assessmentAssignedId` inside the
