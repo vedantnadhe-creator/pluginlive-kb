@@ -899,11 +899,18 @@ candidate on a last question that was already `readOnly`: the control read
 **"Module completed"** and was `disabled` (`doneReviewing` in
 `QuestionPanel.tsx`), the clock kept running, and there was no route back to
 the review or to submit. The dispatch was also duplicated (fired twice,
-harmless but pointless). Fix: for a multi-module batch, `COMPLETE_PART` no
-longer fires on the way into the final review — only submission itself closes
-the part, mirroring `commitModule`. A single-assessment batch still commits
-immediately, since `finish()` follows in the same call with no dismissable
-dialog in between.
+harmless but pointless). Fix: `COMPLETE_PART` no longer fires on the way into
+the final review — only submission itself closes the part, mirroring
+`commitModule`.
+
+**Single-module assessments now use the same final confirmation** (2026-09-16,
+DEV + UAT; PROD pending). Finishing the only module used to call `finish()`
+immediately, while a multi-module assessment opened `FinalSubmitDialog` with
+the answer count and the irreversible-submit warning. The voluntary finish
+path now always opens that dialog, including when the only module is an AI
+Interview; its copy uses the singular "1 module". Forced submissions remain
+forced: final-module timeout, the violation limit, and dropped-attempt re-entry
+still submit without asking for confirmation.
 
 **Separate bug, same symptom ("stuck"), different cause:** finishing a module
 — draining the upload queue, saving the last response — reused the `busy`
