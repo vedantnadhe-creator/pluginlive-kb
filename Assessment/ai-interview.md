@@ -541,6 +541,14 @@ pin both constants, assert 1-of-8 scores on a drop-off but not on an early exit,
   `totalDuration`, `interviewIncomplete`, `partialInterview`, `totalAnswered`,
   `totalExpected`, `completionReason:'dropout'`), so **a drop-off and an early exit render
   identically**. Idempotent — a session already carrying a `completionReason` is left alone.
+  - **When the flip happens (2026-09-16, DEV+UAT):** `updateDropoutStatusCron` runs every 2
+    minutes (`script/scheduler.js`) and times an abandoned interview out at the set's own
+    `ai_interview_config.interview_duration` (seconds; 900 on most sets) **+ 5 min grace**
+    (`helpers/mixMatchDropout.aiInterviewTimeoutMinutes`), so a 15-minute interview the
+    candidate walked out of reads Dropped ~20 min after start. The flat **60-minute** runway it
+    used before remains only for a set with no config. The interview part of a Mix & Match
+    float is timed by the same rule inside `splitMixMatchParts`. Aptitude (60 min) and other
+    types (22 min) are unchanged. Re-entering the assessment still flips it immediately.
   - The `DROPOUT` flip also stamps `assessment_assigned_students.dropped_at` (August 2026) —
     both here in the cron and in `aiInterviewHandler`'s restart guard — so the admin
     dashboard shows when the candidate actually dropped instead of the assessment deadline.

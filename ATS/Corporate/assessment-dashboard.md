@@ -249,9 +249,14 @@ cache that can outlive a refresh.
 `GET /corporates/:corporateId/assessments/v2/:id/candidates` now returns
 `addedAt`: the earliest assignment `created_at` across that candidate's float
 parts, serialized as a genuine UTC ISO instant. Legacy candidates with no
-assignment timestamp receive `null`. The database orders **addedAt descending,
-nulls last, then name and email ascending**, so newest-first order holds across
-pagination. The detail hook uses these dates directly from each roster page;
+assignment timestamp receive `null`. It also returns `takenAt` — the newest of
+the candidate's start/submit instants across the float's parts, `null` until they
+open it. **Since 2026-09-16 (DEV+UAT) the roster is ordered by last attempt:**
+`ORDER BY last_taken_at DESC NULLS LAST, added_at DESC NULLS LAST, name, email` —
+whoever just sat it is on top, candidates who never opened it trail newest-assignment
+first, and the client's default sort (`lib/assessments/rosterOrder.byLastAttempt`)
+mirrors the same rule so page boundaries and on-screen order agree. Before that both
+layers ordered by `addedAt`. The detail hook uses these dates directly from each roster page;
 it no longer calls the admin-backed `candidates/added-at` report endpoint.
 Existing corporate ownership checks and pagination remain in place. No schema
 migration is required.

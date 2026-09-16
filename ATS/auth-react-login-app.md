@@ -49,3 +49,14 @@ Note the manifest `name`/`short_name` are still the CRA defaults ("Create React
 App Sample" / "React App"). They are no longer user-visible now that the install
 dialog cannot open, but they are worth renaming if the app is ever made
 installable on purpose.
+
+## Password reset revokes the temporary password (2026-09-16, DEV+UAT)
+
+`user_management.users` carries two credentials: `password` (sha256) and
+`temp_password` (the encrypted invite/temporary password that corporate invites
+and admin "temporary password" flows mint). Sign-in accepts either. Forgot-password
+and change-password in `user-management-node` (`app/handlers/user.js`) used to
+write only `password`, so the **old temporary password kept working after a
+reset** — the candidate could log in with both. Both handlers now also null
+`temp_password`. Covered by `test/handlers/passwordReset.spec.js` (reset → old
+temp password refused, new password accepted).

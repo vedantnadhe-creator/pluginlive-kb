@@ -188,6 +188,15 @@ being masked by a 500.
 company, so the section says so rather than rendering an empty box that reads as
 a failed load. Custom lists work for both segments.
 
+**Saved-list rows come in two spellings (2026-09-16, DEV+UAT).** v1's upload drawer
+stores `assessment.student_lists.students_data` rows as `first_name` / `last_name`
+plus the cohort (`degree`, `department`, `passingYear`); v2's own save writes
+`firstName` / `lastName`. The BFF normaliser (`lib/assessments/savedRecipientLists.ts`)
+reads both. Before, a v1-saved member's name fell back to their email and the invite
+opened "Dear jershini.y+…@pluginlive.com y"; the cohort was dropped too, which is what
+admin-node needs to enrol a list member who is not yet a student at the campus. v2 now
+also persists the cohort on save so its own lists round-trip the same way.
+
 **Type-list ordering.** Only Pre-Assessment Registration is pinned (first,
 undraggable, lock icon instead of a grip). AI Interview was briefly pinned last
 the same way (`a78c17b`) — that was never a requirement and was reverted in

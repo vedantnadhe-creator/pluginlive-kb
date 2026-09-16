@@ -108,6 +108,10 @@ The per-student `status` field ("Completed" / "In Progress" / "Pending" / "Dropo
 
 **Also returns:** `totalCount`, `cefrLevel`, `allowProctoring`, `instituteCampusId`, `sections`, assessment start/end times
 
+**Level rules (since 2026-09-16, DEV+UAT):**
+- **Achieved CEFR** (`cefrLevel`, also `getStudentAssessmentScores`) is the level `mapCEFRBasedOnQuestionSetAndScore(setLevel, avgScore)` yields for any scored Communication attempt. It used to be blanked to `"-"` whenever any enabled skill scored 0, which disagreed with the Excel export, the candidate PDF and the TPO dashboard (a candidate with 83% Listening / 15% Writing and 0 Reading/Speaking read `"-"` here and A1 everywhere else). A zero skill lowers the level; it no longer erases it.
+- **Aptitude level** (`aptitudeLevel`, level lookups, progression summary) is printed in the product vocabulary — `Beginner / Intermediate / Upper Intermediate / Advanced` — via `helpers/npsScale.friendlyAptitudeLevel`. `Learner` and `Competent` are the **stored** names (`aptitude_topic_progress.level_of_student`); chart buckets and the `aptitude_level` filter keep the stored keys (admin-react maps them on render).
+
 ---
 
 ### `exportStudentData({ assessmentInstituteMapID, entityType, status, searchQuery, filters, selectedEmails })`
@@ -119,7 +123,9 @@ Returns a buffer for download.
 
 **Supports:** College and Corporate
 
-**Columns are per assessment type.** A fixed base block (**Roll Number** — college only, Name, Email, Phone, **Degree and Department — college only**, Sent Date, Start Date, End Date, Status, Delivery Status, Delivery Issue) is followed by type-specific score columns, then Proctoring Status when proctoring is enabled. Degree and Department use the same current-course-first values returned by `getAssessmentDetails`, falling back to the education profile and then `"-"`; corporate workbooks remain unchanged. The Institute v2 one-time **Export selection** flow passes `selectedEmails`, so its legacy Assessment Results workbook includes these course fields while containing only the checked students.
+**Columns are per assessment type.** A fixed base block (**Roll Number** — college only, Name, Email, Phone, **Degree, Department**, Sent Date, Start Date, End Date, Status, Delivery Status, Delivery Issue) is followed by type-specific score columns, then Proctoring Status when proctoring is enabled. Degree and Department use the same current-course-first values returned by `getAssessmentDetails`, falling back to the education profile and then `"-"`. **Since 2026-09-16 (DEV+UAT) corporate workbooks carry Degree and Department too** — the corporate branch of `getAssessmentDetails` reads them off the same `student.current_course` / `education_profile` tables; a candidate floated with only name/email/mobile prints `"-"`.
+
+**Proctoring Status is read per assignment.** `helpers/proctoringVerdict.js` looks the finalised integrity report up by the row's `assessmentAssignedId` (mix-match rows list several under `assessmentAssignedIds`). A single-assessment row's `id` is its **email**, not an assignment id — reading `id` there sent the email to the UUID filter and the column exported blank for every completed student (regressed 2026-09-09, fixed 2026-09-16). The Institute v2 one-time **Export selection** flow passes `selectedEmails`, so its legacy Assessment Results workbook includes these course fields while containing only the checked students.
 
 **Roll Number** (added September 2026, requested by Swadha) **leads the sheet** — it is column A, the identifier a college looks a candidate up by — and carries the student's university roll number from `student.students.uni_roll_no`. The college candidate query selects it as `roll_number` and `getAssessmentDetails` maps it onto each row as `rollNumber`, falling back to `"-"` when the student has none (it is an optional field, so a dash is common). **The column is emitted only when `entityType === "college"`** — corporate candidates have no university roll number, so their export is unchanged and does not carry an always-empty column.
 
