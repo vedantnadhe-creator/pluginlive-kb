@@ -52,6 +52,13 @@ latest curved progress score and no percent suffix. The header is the same
 `SCORE` label as every other occurrence. Verified on UAT against a real scoped
 Communication Diagnosis response (`supportsNps: true`, curved score present).
 
+**V2 Diagnosis roster columns (2026-09-16, DEV + UAT; PROD pending):** the
+folded Diagnosis row no longer renders the `Difficulty / Score` column in
+`OccurrenceDrawer`. Diagnosis keeps its paired `SCORE`, Diagnosis Status,
+Proctoring, Sent / Taken, and Actions columns. Regular schedule occurrences
+still show `Difficulty / Score`; the shared visibility rule is covered by
+`src/lib/occurrenceReport.test.ts`.
+
 ### Top-level Student-wise membership (2026-09-15)
 
 The top-level Student-wise table is an assessment-activity roster, not the
