@@ -114,6 +114,13 @@ cannot inherit a stale institute marker from a reused tab. Institute handoffs
 still refresh the marker on every `?assigned=...&back=...` entry. Development
 `ac65609`; UAT merge `baef390`; rebuilt in both environments.
 
+**Deployment reverified 2026-09-16.** Both sides of this seam were rebuilt in
+DEV and UAT from their environment checkouts: `Assessment-React` serves the v1
+assessment list and `assessment-react-v2` serves the completion policy. Both
+public `/assessment` and `/candidate-assessment-journey/v2/assessment/complete`
+routes returned HTTP 200 in both environments, both UAT containers remained
+healthy, and the UAT v1 bundle contained no `*.dev.pluginlive.com` hostname.
+
 **The `assigned` id is used once, to mint the token — and never again.**
 Everything downstream (`/students/mix-match/summary`, questions, save, submit,
 proctoring) takes the assignment from `req.user.assessmentAssignedId` inside the
