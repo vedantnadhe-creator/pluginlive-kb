@@ -231,7 +231,33 @@ that is a **wildcard `*.pluginlive.com TXT "MS=ms24378662"`** catching every
 lookup — no record starts with `v=DMARC1`. The same wildcard makes DKIM selector
 probing meaningless: every `<anything>._domainkey.pluginlive.com` "resolves".
 
+**2026-09-16 — this is confirmed as the cause of corporates not receiving mail
+(knackrcm.com, syrmasgs.com).** OCI `outboundrelayed` logs show every message to
+them **accepted by Microsoft 365** (`250 2.6.0 Queued mail for delivery`) — no
+bounce, no suppression — and then junked/quarantined inside the tenant because
+SPF softfails, there is no DKIM signature (the `pluginlive.com` OCI email domain
+had no active key; a `pilindia205612` key created 2025-11-10 never had its CNAME
+published), and there is no DMARC. Gmail tolerates `compauth=fail`; Exchange
+Online does not. There is **no recipient-domain filtering** anywhere on the PROD
+path (relay `allowedRecipientDomains: all`; no app-side allowlist) — nothing to
+"remove" in code; only DNS fixes it.
+
 Fixing this means adding OCI's SPF include to the apex TXT record, publishing the
 OCI DKIM selector, and adding a real DMARC record — **all apex records, so all in
 Route 53.** MX points at Google Workspace, so tread carefully: a mistake in these
 records affects the company's own mail, not just platform sending.
+
+Records to publish (DKIM key `plmail2026` created in OCI on 2026-09-16, state
+`NEEDS_ATTENTION / NEED_DNS` until the CNAME resolves):
+
+| Name | Type | Value |
+|---|---|---|
+| `pluginlive.com` | TXT (replace SPF) | `v=spf1 include:_spf.google.com include:rp.oracleemaildelivery.com ~all` |
+| `plmail2026._domainkey.pluginlive.com` | CNAME | `plmail2026.pluginlive.com.dkim.bom1.oracleemaildelivery.com` |
+| `_dmarc.pluginlive.com` | TXT | `v=DMARC1; p=none; rua=mailto:devops@pluginlive.com` |
+
+Verify: `oci email dkim get --dkim-id <plmail2026 id>` → `lifecycle-state: ACTIVE`;
+`dig +short CNAME plmail2026._domainkey.pluginlive.com` returns the Oracle name
+(not the `MS=…` wildcard). Search delivery outcomes per recipient with
+`oci logging-search search-logs --search-query "search \"<PROD compartment>/<Default_Group>\" | where logContent = '*<domain>*'"`
+— the relay itself only logs failures, never successful recipients.
