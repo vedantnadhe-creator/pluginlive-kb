@@ -2328,6 +2328,49 @@ best-first, matching the other performance columns.
 column driving the row order would be hidden and the table would sit in an order
 nothing on screen explains.
 
+## Breakdown columns follow the assessment's configured sections (2026-09-16)
+
+institute-node `179ec93` / institute-react-v2 `a65218f` (DEV + UAT). The
+breakdown columns used to come from a fixed per-type list
+(`SCORE_SUB_CATEGORIES` — four skills for Communication, three tracks for
+Aptitude, nothing for anything else). An Aptitude run created with Critical
+Reasoning **disabled** therefore still drew a Critical Reasoning column, filled
+with "—" for every student — reported by Jershini.
+
+`GET /institutes/assessments/v2/:id/students` now returns
+**`meta.scoreSections: string[]`** — the columns, in display order — and the
+Performance tab renders exactly that (`SCORE_SUB_CATEGORIES` is gone).
+
+**Where the list comes from — the papers, not `enabled_sections`.**
+`assessment_institute_map.enabled_sections` cannot be the source: it is `{}`
+on every type except Communication, and on Communication `{}` means "all", so
+it cannot tell a disabled section from a default one. `loadConfiguredSections`
+instead reads the raw section names of the sets actually assigned on the
+group's maps: `assessment_assigned_students.assessment_set_id →
+assessment_question_map → questions → section_question_map → sections`
+(`custom_sections` via `questions.custom_section_id` for Custom). A section
+the wizard disabled has no questions in any set, so it never becomes a
+column; a section nobody has scored yet still does. For a series it is the
+union across the occurrences in scope (so the Schedule drawer's single-run
+view narrows with it). Nothing assigned yet → `[]` → no expand caret.
+
+**Per-type normalisation** (`scoreSectionColumns` in
+`helpers/assessmentBands.js`, spec `test/scoreSectionColumns.spec.js`):
+
+| Type | Columns |
+|---|---|
+| Communication | exercise names rolled up through `COMM_SKILLS` to the skills the rows report; order Speaking, Listening, Reading, Writing |
+| Aptitude | Quantitative, Logical Reasoning, Critical Reasoning — only the tracks present, in that order |
+| Role_Based | section names as-is (MCQ Question, Coding Question, Subjective Question, Video Response) — **new**: Role-based now has a breakdown |
+| Custom_Assessment | custom section names as-is — **new**; `loadAttemptSections` gained a `section_wise_stats` branch so the rows can fill them |
+| Behavior, AI_Interview, Hinglish | `[]` — no breakdown, as before |
+
+Row `sections` names already matched these for every type (progression
+breakdown names for NPS types, `groupCommSkills` for Communication, raw
+section names for Role-based), so the columns and the cells agree by
+construction. Verified on UAT after deploy: recent Aptitude runs return
+`["Quantitative"]`, `["Quantitative","Logical Reasoning"]` and all three.
+
 ## Diagnosis row downloads the pair-wide diagnosis PDF (2026-09-16)
 
 The download icon on the **Diagnosis** row of the student report drawer
