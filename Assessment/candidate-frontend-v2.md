@@ -529,8 +529,12 @@ existing responses, it did not fork the API. Scoring, progression, reports and
 proctoring processing are unchanged and live where they always did — see
 [README.md](README.md).
 
-## Microphone readiness — DEV and UAT, 2026-09-11
+## Microphone readiness — DEV and UAT, updated 2026-09-16
 
-DeviceCheckDialog now rejects a microphone track that is browser-reported muted, disabled or ended. It observes mute/disconnection and rechecks readiness when the candidate presses Begin. Permission alone is not treated as a ready microphone. This does not detect a physical mute switch that produces silent samples without notifying the browser. College biometric verification policy is unchanged.
+`DeviceCheckDialog` does not treat browser permission as proof that recorded answers will be usable. It first rejects a microphone track that is browser-reported muted, disabled or ended, observes later mute/disconnection events, and rechecks readiness when the candidate presses Begin.
 
-Deployed candidate revisions: DEV `ea0b477`, UAT `bd46a5f` (microphone fixes `40757a8` / `e479f26`, followed by a test-only nullable assertion correction required for the build). Both builds ran on their own environment through auto_deploy.sh. Microphone regression and all 11 answer-delivery tests passed; the UAT bundle check found no DEV URLs. No production rollout.
+When biometric verification is enabled, the shared v2 preflight now asks the candidate to read **“The microphone is recording my voice clearly.”** After a short prompt lead-in it records six seconds using the same preferred browser containers as assessment answers (WebM/Opus on supported desktop browsers, MP4/AAC on supported WebKit). The untouched blob is sent through the existing `/api/assessment/ai-interview/stt` batch-transcription proxy while its base64 form is sent through `/proctoring/detect-audio`. A full pass requires human audio plus at least three of the four distinctive phrase words (`microphone`, `recording`, `voice`, `clearly`) in the transcript. Silence, an empty/undecodable clip, or unclear/unrelated words blocks Begin and offers a microphone/background-noise retry. If the analysis service itself is unavailable, the row explicitly says the speech check is unavailable and falls back to the live-track permission result rather than locking every candidate out.
+
+Because this is the common candidate-v2 device dialog, the check protects Communication Paragraph Reading and Video Response as well as other biometric-enabled assessment flows that record candidate audio. It proves that the browser can create a decodable assessment-format clip and that STT can recover words; it is not merely a volume meter. Assessments with biometric verification disabled retain the permission/live-track check only. College biometric verification policy is unchanged.
+
+Current deployed candidate revisions: DEV `83f9dca`, UAT `c043e50`. Both builds ran in their own environment through `auto_deploy.sh`; the UAT bundle contained no DEV hostnames and a headless UAT invite-error load returned HTTP 200 with no page errors. No production rollout.
