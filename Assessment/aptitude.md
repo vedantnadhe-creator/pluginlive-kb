@@ -429,7 +429,9 @@ per-question map preferring a non-`SKIPPED` (and latest `submittedAt`) row befor
 answer lookups (scoring, guard, backfill) — see DB-Scripts `Aptitude Set Regeneration
 Race Fix/001`.
 
-**Transaction model:** Score calculation and `updateAptitudeProgression()` run inside a single Prisma `$transaction` (timeout: 30s). This is critical because aptitude scores are calculated on-the-fly after submission (not via cron), so there is **no retry mechanism** — if progression fails, the student's level won't update. The transaction ensures atomicity: either both scoring and progression succeed, or neither does.
+**Transaction model:** Score calculation and `updateAptitudeProgression()` run inside a single Prisma `$transaction` (timeout: 30s).
+
+> **Queue path (since 2026-08-24):** with `CALCULATION_ASYNC=true` the calc worker calls this with `skipProgression=true`, and progression runs as a separate `prog__<id>` job chained from the returned `progressionPending`. The method must therefore capture the transaction result and re-wrap it — `return await $transaction(...)` dropped `progressionPending` and silently disabled all aptitude progression until 2026-09-16 (`d197bead`). PROD attempts from the week of 08-31 were backfilled on 2026-09-16 via `POST /assessment/backfill-aptitude-progression` (115 students). Details: `Assessment/assignment-calculation-queue.md` → "Aptitude progression was never chained". This is critical because aptitude scores are calculated on-the-fly after submission (not via cron), so there is **no retry mechanism** — if progression fails, the student's level won't update. The transaction ensures atomicity: either both scoring and progression succeed, or neither does.
 
 > **Key difference from Communication:** Communication progression is `await`ed but outside a transaction. If it fails, the cron job retries the entire calculation. Aptitude has no such safety net, hence the transactional approach.
 

@@ -226,6 +226,57 @@ stops new ones, it does not retro-clean. Deleting it is safe (nothing reads it a
 a chain predecessor any more, and `backfillAptitudeProgression` for that student
 rebuilds the correct chain), but it has not been done. PROD has not been surveyed.
 
+### Aptitude progression was never chained (fixed 2026-09-16, DEV + UAT; PROD pending)
+
+Once aptitude scoring moved fully onto the calc queue (`c582e499`, 2026-08-24,
+`skipProgression=true`), **no aptitude `progression_history` /
+`aptitude_topic_progress` row was written at all** — UAT from 08-27, PROD 100% of
+college attempts from the week of 08-31 (178 attempts / 115 students / 7
+institutes by 09-16). Communication kept working.
+
+Cause: `calculateAptitudeScore` ended with
+`return await assessmentPrisma.$transaction(...)`, so the transaction's own
+`{ message, data }` was the method's result and the outer
+`return { …, progressionPending }` was dead code. `calcWorker` chains the
+progression job only from `result.progressionPending` → never for aptitude
+(`calc__<id>` exists in Redis, `prog__<id>` is never created; the pod log prints
+"Normal assessment processing completed successfully" **once** per attempt — the
+fixed code prints it twice — and never `[PROG WORKER] aptitude`). Practice
+aptitude still scores inline, so `max(created_at)` on aptitude rows is **not** a
+health signal; count college attempts without a row instead.
+
+Fix (`d197bead`, student-node): capture the transaction result and return
+`{ ...txResult, progressionPending }`. Regression spec
+`test/aptitudeProgressionPending.spec.js` drives the real method with a stubbed
+Prisma client (`npx mocha --timeout 60000 test/aptitudeProgressionPending.spec.js`
+inside the container — the default 2 s hook timeout is too short for module load).
+
+Recovery is the email-scoped backfill, which needs **no** deploy (the route and
+`backfillAptitudeProgression` predate the bug):
+`POST /assessment/backfill-aptitude-progression {"primaryEmails":[…],"batchSize":50}`
+on student-node (no prefix, no auth; in PROD call it from inside a pod on
+`127.0.0.1:8080`). It upserts per assignment (no deletes), rewrites
+`aptitude_topic_progress`, and mirrors the live gate (practice + institute
+non-one-time, `COMPLETED` only). Affected-student query: COMPLETED + scored +
+`is_auto_submitted=false` + `is_one_time=false` aptitude assignments with no
+`progression_history` row. PROD was backfilled this way on 2026-09-16: 115 students, 200 OK in 54 s,
+175 rows created (176/178 attempts filled — the other 2 are a lone diagnosis #1,
+which by design gets no row until #2). **Expect the replay to rewrite earlier rows
+of the same students** — it recomputed 306 of their 763 pre-existing rows (mostly
+competency/NPS, 24 level changes Learner→Competent) because the live path had
+frozen those at the diagnosis-2 value (see the sliding-window note in
+`aptitude.md`). No deletes; the pre-backfill rows are kept in
+`~/apt_progression_snapshot_20260916T182000Z.csv` on the PROD jump host.
+
+Two Communication-side leftovers found in the same PROD survey (not yet fixed):
+an admin **RECALCULATE** re-scores but its "Deferring CEFR progression" `add()`
+hits the retained completed `prog__<id>` job and is silently dropped (same class
+as the stable-jobId gotcha below — it re-enqueues `calc__` but never removes
+`prog__`); and a drop-off that the dropout scorer has already claimed, then the
+student re-enters and submits, finishes with the stale in-memory status →
+"Skipping CEFR progression for abandoned attempt" while the submit's own calc job
+is deduped by `calc__<id>`. Both recover via `POST /assessment/backfill-progression`.
+
 ### Retry model (Model A — sweeper-driven) + the stable-jobId gotcha
 
 On a scoring failure the worker does **NOT** throw — it catches, increments
