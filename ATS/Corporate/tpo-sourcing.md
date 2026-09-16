@@ -15,7 +15,7 @@ PROD went live 2026-09-16 on `release-v1.40` (images `2026-09-16-07-46-54-releas
   as regions and cities, mixed (`Maharashtra` + `Nashik`). Empty = all of India
   (ranked on course fit alone, and the panel says so). "Use job location"
   resets it. Typing shows each state with its live campus count.
-- **Campus tiers** (since 2026-09-16, UAT) — a tier band sits between *where* and
+- **Campus tiers** (since 2026-09-16, PROD `release-v1.40-hotfix-1`) — a tier band sits between *where* and
   *how many* on one row. It is pre-filled by `GET /v2/sourcing/tier-suggestion`
   from the role's title, CTC max and type (`src/modules/sourcing/tiers.ts`, pure
   + unit-tested): up-market titles (research, quant, ML, PM, IB…) or high CTC
