@@ -2312,6 +2312,24 @@ best-first, matching the other performance columns.
 column driving the row order would be hidden and the table would sit in an order
 nothing on screen explains.
 
+## Diagnosis row downloads the pair-wide diagnosis PDF (2026-09-16)
+
+The download icon on the **Diagnosis** row of the student report drawer
+(`StudentReportDrawer.tsx`) and the per-student download on the Diagnosis
+occurrence drawer (`OccurrenceDrawer.tsx`, `isDiagnosis`) used to fetch the
+single-attempt report of whichever paper the history row's `attemptId` pointed
+at. They now post `diagnosis: true`; the BFF `app/api/assessments/report/download`
+forwards that to student-node `POST /students/assessments/generateDiagnosisPDFReport`,
+which resolves the pair from the one attempt id and renders one document covering
+both baseline sittings (see `Assessment/communication.md` and
+`Assessment/aptitude.md` → *Diagnosis report*). The drawer row is disabled with
+"Available once both diagnostic attempts are completed" until the diagnosis
+history row is `submitted` (which is `every(submitted)` for the pair). Filenames
+end `-Diagnosis-report.pdf`.
+
+Shipped to DEV and UAT on 2026-09-16: `institute-react-v2` Development `c203c7e`
+(UAT merge `b0563f5`), `student-node` Development `0b35d6cb` (UAT merge `ddb1d688`).
+
 ## Schedule-history report and stored dropout status fix (2026-08-27)
 
 The Schedule tab's occurrence roster now returns each submitted attempt's

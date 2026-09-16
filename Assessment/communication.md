@@ -685,6 +685,42 @@ Use this after fixing progression/scoring bugs to recalculate historical data, o
   - Per-section scores with detailed metrics
   - Progression comparison (if previous assessment exists)
 
+#### Diagnosis report — `generateDiagnosisPDFReport()` (2026-09-16, DEV + UAT)
+
+One PDF for the **diagnosis pair** (both baseline sittings), rendered from
+`student-node/public/communicationDiagnosisReport.html`.
+
+- **Endpoint:** `POST /students/assessments/generateDiagnosisPDFReport`
+  `{ assessment_assigned_id, student_id }` — **either** attempt of the pair; the
+  sibling is resolved server-side (same lowercased email, `is_diagnosis`,
+  `is_practice = false`, same `assessment_type_id`, same institute — the
+  `diagnosisPair.js` rule). Fails when the attempt is not a diagnosis, is
+  corporate, or when either paper is not yet submitted.
+- **Generator split:** `generateCommunicationReport()` is now
+  `_buildCommunicationReportData()` (the full per-attempt template payload) +
+  `_renderReportPdf(templateFile, data)` (Handlebars + shared Puppeteer, A4,
+  50px margins, logo injected). The diagnosis document renders the standard
+  report's ability pages **verbatim** for each attempt from that same payload.
+  Pure pair assembly lives in `app/helpers/diagnosisReport.js`
+  (`buildCommunicationDiagnosisPayload`; tests `test/diagnosisReport.spec.js`).
+- **Which level is which — the report prints two different things and says so:**
+  - *Difficulty level* per attempt row = that paper's `assessment_sets.cefr_level`
+    — the level the admin configured. Both papers are generated in one assign at
+    that level, so they normally match; a delivery-time set-swap can drift the
+    second (DEV has an `A2, A1` pair), and the row prints what was actually served.
+  - *Confirmed CEFR level* card + triangle block = `progression_history.assessment_cefr`
+    of **diagnosis #2** (`cerfMapping[setLevel][avg(D1, D2)]`). **Never**
+    `suggested_cefr`, never re-derived from the score.
+  - *Overall score* = `progression_history.pair_average_score` of diagnosis #2
+    (falls back to the mean of the two attempts' R.2/L.1/S.4/W.3 composites when
+    the pair has not been graded). Ability rows show D1, D2 and the mean;
+    the standard report's Suggestions/Recommendations run on those means.
+- **Institute v2 UI:** the download icon on the **Diagnosis** row of the student
+  report drawer, and the per-student download on the Diagnosis occurrence
+  drawer, post `diagnosis: true` to the BFF `/api/assessments/report/download`,
+  which routes to this endpoint. The drawer row stays disabled until the pair's
+  history row is `submitted` (both papers).
+
 #### Canonical section and total score contract (2026-09-01)
 
 `assessment.communication_scores.score` is the source of truth for every

@@ -527,6 +527,26 @@ For aptitude, `calculateAssessmentScore()` routes to `calculateAptitudeScore()` 
   - Topic-wise detailed analysis
   - Progression comparison (if previous assessment exists)
 
+#### Diagnosis report — `generateDiagnosisPDFReport()` (2026-09-16, DEV + UAT)
+
+One PDF for the **diagnosis pair**, rendered from
+`student-node/public/aptitudeDiagnosisReport.html`. Same endpoint, pair
+resolution and generator split as Communication (see
+[communication.md](communication.md) → *Diagnosis report*):
+`generateAptitudePDFReport()` = `_buildAptitudeReportData()` +
+`_renderReportPdf()`; pair assembly in `app/helpers/diagnosisReport.js`
+(`buildAptitudeDiagnosisPayload`).
+
+- *Difficulty level* per attempt row = that paper's `assessment_sets.difficulty`
+  (the schedule's configured difficulty; both diagnosis sets share it).
+- *Confirmed proficiency level* = `progression_history.assessment_aptitude_level`
+  of diagnosis #2 (`getLevel(difficulty, competencyScore)`), mapped
+  Learner→Intermediate, Competent→Upper Intermediate for display. Not derived here.
+- *Overall score* = mean of the two attempts' percentages. Sections and topics are
+  paired **by name** across the two papers (a topic on only one paper shows
+  `0/0` on the other and no Change); Confirmed = mean, band Strong ≥70 /
+  Developing 40–69 / Needs focus <40.
+
 **Proficiency-level visibility on the report (who sees the bar).** As of
 2026-06-29 the "Proficiency Level" bar renders **only for institute reports**:
 
