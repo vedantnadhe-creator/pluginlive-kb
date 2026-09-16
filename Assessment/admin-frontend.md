@@ -426,6 +426,16 @@ When `isDiagnosis = true`:
 - Checks `assessmentAssignedId1` and `assessmentAssignedId2` for report availability
 - Shows dropdown button with "Assessment #1" / "Assessment #2" options
 - `handleDownloadReport(assignedId)` downloads the specific assessment report
+- **Only-one-paper gate (2026-09-16, DEV + UAT; PROD pending):** the roster sets
+  `assessmentAssignedId1/2` only for *attempted* papers, so a `1/2` student has
+  exactly one id. `Partials/StudentReport/reportDownloadGate.js`
+  (`isSingleDiagnosisAttempt(student, isDiagnosis)`) disables **Download Report**
+  for that case and the hover tooltip reads **"Only 1 diagnosis attempted"**
+  (an AntD `Tooltip` around a wrapper `<span>`, because a disabled button swallows
+  mouse events). The click handler repeats the guard with a `message.warning`.
+  `0/2` and `2/2` fall through to the existing `reportAvailable` gate. The same
+  helper + framework-free node test (`reportDownloadGate.test.js`) ships in
+  **both** admin-react and institute-react.
 
 ---
 
