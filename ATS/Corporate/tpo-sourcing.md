@@ -75,7 +75,7 @@ PROD is **pending** (release cut in progress 2026-09-16).
   (role_id, campus_id)`): campus, rank shown, links to run and lead.
 - `tpo_outreach` — audit of sends; empty while the send path is unused.
 
-Applied DEV 2026-09-15/16, UAT 2026-09-16, PROD pending.
+Applied DEV 2026-09-15/16, UAT 2026-09-16, PROD 2026-09-16 (tables only; code ships with release-v1.40).
 
 ## Gotchas
 
