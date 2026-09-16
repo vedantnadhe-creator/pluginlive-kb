@@ -907,10 +907,15 @@ the final review — only submission itself closes the part, mirroring
 DEV + UAT; PROD pending). Finishing the only module used to call `finish()`
 immediately, while a multi-module assessment opened `FinalSubmitDialog` with
 the answer count and the irreversible-submit warning. The voluntary finish
-path now always opens that dialog, including when the only module is an AI
-Interview; its copy uses the singular "1 module". Forced submissions remain
-forced: final-module timeout, the violation limit, and dropped-attempt re-entry
-still submit without asking for confirmation.
+path now opens that dialog for every question-based assessment; its copy uses
+the singular "1 module" when appropriate. A completed AI Interview is the
+exception: every response has already been finalized through the interview
+endpoint, and earlier modules cannot be reopened, so a last or standalone AI
+Interview submits directly. An AI Interview with a following module still
+shows the non-dismissible handover before that module's timer starts. Manual
+**End interview** keeps its own early-end confirmation. Forced submissions
+remain forced: final-module timeout, the violation limit, and dropped-attempt
+re-entry still submit without asking for confirmation.
 
 **Separate bug, same symptom ("stuck"), different cause:** finishing a module
 — draining the upload queue, saving the last response — reused the `busy`
