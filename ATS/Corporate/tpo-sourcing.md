@@ -1,4 +1,4 @@
-# Suggested institutes / TPO sourcing (LIVE on DEV + UAT since 2026-09-16)
+# Suggested institutes / TPO sourcing (LIVE on DEV + UAT + PROD since 2026-09-16)
 
 Create-role wizard step 4 ("Invite institutes & NGOs") no longer shows the old
 "Evaluation agent suggested" column or the "Search & add" campus picker. It
@@ -7,7 +7,7 @@ shows one **Suggested institutes** panel: the recruiter says *where to look* and
 **Nothing is sent from the corporate side** — the ticked institutes are stored
 and Client Success works the list from the database.
 
-PROD is **pending** (release cut in progress 2026-09-16).
+PROD went live 2026-09-16 on `release-v1.40` (images `2026-09-16-07-46-54-release-v1.40`).
 
 ## What the recruiter sees
 
