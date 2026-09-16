@@ -4,7 +4,7 @@
 
 `PluginLive-Technologies/design-system` owns the reusable React UI and four-step assessment wizard. `admin-react-v2` and `corporate-react-v2` consume it at build time. Legacy Admin redirects creation into the v2 app. There is no separate design-system server or microfrontend runtime.
 
-The two Next.js apps pin `@pluginlive-technologies/assessment-creation` 0.1.2-bugfix.1 and `@pluginlive-technologies/ui` 0.1.0. Packages are generated using `npm pack`, committed as `vendor/*.tgz`, and integrity-pinned in package-lock.json. This rollout does not publish to an npm registry. Both apps transpile the packages through Next.js and load their scoped styles. Docker dependency stages copy vendor before npm ci.
+The Next.js apps pin versioned `@pluginlive-technologies/assessment-creation` and `@pluginlive-technologies/ui` artifacts. Admin currently uses assessment creation 0.1.9. Packages are generated using `npm pack`, committed as `vendor/*.tgz`, and integrity-pinned in package-lock.json. This rollout does not publish to an npm registry. Both apps transpile the packages through Next.js and load their scoped styles. Docker dependency stages copy vendor before npm ci.
 
 ## Entry points and responsibilities
 
@@ -62,3 +62,11 @@ Admin and Corporate now consume the vendored `assessment-creation` 0.1.2-bugfix.
 - Hinglish remains a language option and is excluded from the unsupported-assessment warning. This does not delete stored legacy assessment types or alter quotas.
 
 Released app revisions: Admin DEV `623d999`, UAT `826891c`; Corporate DEV `da355a8`, UAT `9270886`. The target environment's auto_deploy.sh rebuilt and switched each app. Shared package tests (27), Corporate integration tests (4), TypeScript and deployment page/asset checks passed. No production rollout is included.
+
+## Institute biometric verification default — DEV and UAT, 2026-09-16
+
+Assessments created for an institute through Admin v2 now require biometric verification by default. The shared wizard initializes `biometric` to `true` for a `college` host and keeps it `false` for a `corporate` host.
+
+Admin's `/api/assessments/mix-match` BFF also derives `allowVerification` from the entity segment instead of trusting the browser draft. It sends `true` for college and `false` for corporate in all three creation paths: one-time assignment, recurring schedule configuration and role-based broadcast creation. This server boundary ensures a stale or modified client cannot disable institute biometric verification.
+
+Admin consumes the versioned assessment-creation 0.1.9 artifact. Released revisions: DEV `beff006`, UAT `e569c6f`. The app was rebuilt independently in each target environment; tests (97), TypeScript, lint, deployed page/asset checks and the UAT no-DEV-URL check passed. PROD is unchanged.
