@@ -256,6 +256,8 @@ Records to publish (DKIM key `plmail2026` created in OCI on 2026-09-16, state
 | `plmail2026._domainkey.pluginlive.com` | CNAME | `plmail2026.pluginlive.com.dkim.bom1.oracleemaildelivery.com` |
 | `_dmarc.pluginlive.com` | TXT | `v=DMARC1; p=none; rua=mailto:devops@pluginlive.com` |
 
+**Published 2026-09-17** (SPF include, DKIM CNAME, `_dmarc` with `p=none; rua=mailto:mandate@pluginlive.com`). OCI DKIM `plmail2026` is ACTIVE and the domain's active key. mail-tester from the DEV relay (same sender/key): 9.9/10 — `spf=pass`, `dkim=pass` (`s=plmail2026`), `dmarc=pass`. Next step once DMARC reports look clean: `p=quarantine`.
+
 Verify: `oci email dkim get --dkim-id <plmail2026 id>` → `lifecycle-state: ACTIVE`;
 `dig +short CNAME plmail2026._domainkey.pluginlive.com` returns the Oracle name
 (not the `MS=…` wildcard). Search delivery outcomes per recipient with
