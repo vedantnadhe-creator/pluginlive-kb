@@ -15,6 +15,8 @@ Two consequences that catch people out:
 
 Refreshes are debounced per MV via `pgRefreshMvs` (`SEARCH_MV_REFRESH_TTL_SECONDS`, default 900; `institutes_master`, `institute_campus_cources` and `del_index_institute_campus_cources` override to 30 s so a user-initiated save is visible immediately). Outcomes land in `search_engine.refresh_log`.
 
+**`?force=1` on the degree/stream syncs (DEV + UAT, 2026-09-17).** `POST /sync/degrees/streams/specialisations` and `/sync/degrees/streams/specialisations/events` accept `force=1|true`, which drops the debounce to `SyncService.USER_SYNC_TTL_SECONDS` (30 s) for that call. Admin's Add Candidate degree/department dropdown reads `mv_events_degree_stream_specialisations_master` through `/search/degrees/streams/specialisations/events`, and the `/ingest/*` writes institute-node sends are acknowledged no-ops under the PG engine — so before this a department a college added could take up to 15 minutes to become selectable (Swadha Foundation, PROD, 2026-09-16: two B.Tech AI departments created 23 s after a refresh started were invisible until the next cycle, 17 minutes later). institute-node's `courseHandler` now fires `ElasticSearchService.refreshCampusCourses()` (fire-and-forget, `?force=1`) after a course add / update / status change / delete / bulk-create. Verified on UAT: forced call refreshed in 4.8 s, a repeat 2 s later logged `skipped … (refreshed < 30s ago)`. The Admin-role `api-key` is required (the frontend's user-role key gets 403). PROD unchanged.
+
 The sync service is the largest module (~260KB); most of its bulk is the legacy SQL and ES bulk-insert logic kept behind the engine flag.
 
 ---
