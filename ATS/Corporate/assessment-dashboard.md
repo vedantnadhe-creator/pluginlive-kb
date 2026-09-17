@@ -1452,11 +1452,20 @@ wired in `sortValue` so restoring a column is an uncomment rather than a
 re-derivation. Communication's breakdown now reads by competency area
 (Reading / Writing / Listening / Speaking) instead of by question type.
 
-### What is NOT editable
+### Editable delivery settings
 
-**Per-assessment validity.** It lives on `assessment_schedules`, i.e. on
-recurring schedules, and a one-time corporate float has no schedule row to hold
-it. The field on the Manage drawer is vestigial for corporate.
+**Per-candidate assessment validity** is editable for corporate Mix & Match
+groups and is stored on `mix_match_groups.assessment_validity_days`. Manage
+loads `GET /api/assessments/[id]` before opening and passes its `validityDays`
+and proctoring flag into the drawer. A stored value
+of 5 therefore appears as **5 days**; a legacy group without a stored value
+stays unset. Saving updates validity through the existing PATCH route, and
+the page retains the new value when the drawer reopens. DEV's newer screen
+also retains the published configurations returned with these settings.
+The former page mapping forwarded only proctoring, silently dropping the
+validity returned by the API. Regression coverage:
+`tests/manage-assessment-settings.test.cjs` in corporate-react-v2.
+Deployed 2026-09-17: DEV `8486e63`, UAT `e402d7c`; PROD pending.
 
 Proctoring IS editable: `allow_proctoring`/`allow_verification` are plain columns
 on the map row, so they ride the same `updateMany` as the end time and therefore
