@@ -29,9 +29,16 @@ the following presentation rules for schedule and one-time student lists:
 - Communication and Aptitude level changes appear below the score bar as
   `PreviousLevel » CurrentLevel`, colored by direction.
 - The attempts doughnut exposes its sent-versus-taken counts on hover.
-- One-time assessment performance includes a canonical **Proctoring** column:
-  **Good**, **Bad**, or **Disabled**. The helper in
-  `src/app/(app)/assessments/[id]/_constants.ts` is the single mapping source.
+- One-time assessment performance includes a canonical **Proctoring** column
+  (helper `proctoringStatus` in `src/app/(app)/assessments/[id]/_constants.ts`
+  is the single mapping source). Four outcomes since 2026-09-17 (DEV + UAT):
+  **Good** / **Bad** from the integrity band; **Pending** when the student sat
+  it but no report has landed (or it captured nothing, `no_data`); a dash when
+  the student has not started / is absent (nothing to proctor yet); **Disabled**
+  only when the run itself is not proctored (`proctored: false`). Before this the
+  3-state model printed **Disabled** for every row without a verdict, so a
+  not-started student on a run the TPO had just switched proctoring ON for read
+  as if proctoring were off.
 - One-time assessments label their timestamp **Submitted on**. Their student
   report drawer omits the schedule-wise performance card because one-time
   assessments have no schedules.
