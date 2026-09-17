@@ -154,6 +154,18 @@ from the Bullseye security package mirror. The final nginx runtime is unchanged.
 Regression check: `node --test tests/corporate-landing.test.cjs` (23 tests).
 Production has not received these changes.
 
+## ATS bridge visibility (UAT, 2026-09-17)
+
+The v2 sidebar reads the authenticated corporate's `accessLevel` through
+`GET /api/me/corporate`. Its **Back to ATS** bridge appears only when the
+corporate includes ATS: `accessLevel` 1 (ATS only) or 3 (both products).
+It is hidden for 0 (neither), 2 (Assessment only), absent/malformed values, and
+while the access lookup is pending. This prevents Assessment-only users from
+being offered a route to a product they do not have.
+
+UAT commit: `4ae4452` (`corporate-react-v2`). Production has not received this
+change.
+
 ## Gotcha — the nav flip must not reach an env without the v2 app
 
 **The flip and the v2 deployment are in different repos, so they promote
