@@ -757,6 +757,28 @@ Deliberate boundaries, so nobody "restores" the wrong thing later:
 - The column is **not** re-coloured to claim improvement that didn't happen.
   Hiding a decline is a product call; reporting it as a gain would be false.
 
+### Progress trend delta chip only for gains ≥ 10 (2026-09-17, DEV + UAT)
+
+`7432d7c` Development, UAT merge `3c572cd`. The `+N` chip beside the sparkline
+in Assessment Details → Student-wise performance → Progress trend, and the
+"**+N best gain**" line under the headline score in the student report drawer,
+now print only when the delta is **≥ 10**. Both go through the one existing
+predicate `shouldShowScoreDelta` (`src/lib/assessments/scoreDelta.ts`) that the
+Manage Assessments student-wise table already used for its `+10 pts` marker, so
+all three surfaces gate on the same number.
+
+Boundaries, same spirit as the 2026-08-11 rule above:
+
+- **The sparkline line is still drawn** for any flat or improving series; only
+  the number is withheld for gains of 0–9. A decline / insufficient history is
+  still the bare `—`. The drawer, which has no line, reads `—` for anything
+  under 10.
+- `trendDelta` / `npsDelta` in the payloads are **unchanged** — sorting by
+  Progress trend, exports and the drawer's data all still carry a +7.
+- To change the threshold, change `shouldShowScoreDelta` (its test is
+  `scoreDelta.test.mjs`, run with `npx tsx --test` on Node 20 — plain
+  `node --test` cannot import the `.ts`). Do not add a second constant.
+
 With nothing red reachable, the two-colour branch and the `.spark-delta.down`
 variant were deleted rather than left as dead code — `down` no longer appears
 in the shipped bundle, which is the quickest way to verify a deploy took.

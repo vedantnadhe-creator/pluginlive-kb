@@ -25,7 +25,11 @@ the following presentation rules for schedule and one-time student lists:
 - Communication and Aptitude score change is shown inline only for gains of at
   least `+10 pts`. Smaller gains, flat results, declines, and missing deltas do
   not render a delta marker; the underlying values remain available for data
-  processing.
+  processing. Since 2026-09-17 (DEV + UAT) the Assessment Details → Student-wise
+  performance → **Progress trend** `+N` chip and the report drawer's
+  "+N best gain" line obey the same `>= 10` rule via the shared
+  `shouldShowScoreDelta` helper (the sparkline line itself is still drawn for
+  smaller gains; sort still uses the raw delta).
 - Communication and Aptitude level changes appear below the score bar as
   `PreviousLevel » CurrentLevel`, colored by direction.
 - The attempts doughnut exposes its sent-versus-taken counts on hover.

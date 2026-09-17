@@ -285,7 +285,9 @@ Three shapes to keep straight in that payload:
    first-of-pair diagnosis has no NPS; treating that as 0 invents a starting
    point at the floor and inflates every delta). The drawer's caption says
    **"best gain"** — it used to say "vs last", describing a run-over-run change
-   this has never been.
+   this has never been. Display-only gate (2026-09-17): both surfaces print the
+   figure only when it is ≥ 10 (`shouldShowScoreDelta`); the value itself is
+   still computed, sorted on and exported for smaller gains.
 2. **Never band a progress score against `assessmentBands.LADDERS`.** Those are
    the raw-percentage cutoffs (Communication `30/45/60/75/90`) and they do
    **not** match the curved boundaries `npsScale` derives
