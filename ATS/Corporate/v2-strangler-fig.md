@@ -121,6 +121,39 @@ case-insensitively — v1's own nav item uses the lowercase form too.
 (v2 is mounted at `<host>/v2`, v1 at `<host>/`), so a bare absolute path is
 already an ATS link and the session is shared.
 
+## Feature-based sign-in landing (DEV + UAT, 2026-09-17)
+
+Corporate sign-in chooses its initial dashboard from the corporate's fresh
+`accessLevel` in `GET /corporates/:corporateId`:
+
+| Feature access | accessLevel | Landing |
+|---|---|---|
+| Neither | 0 | v1 `/dashboard` |
+| ATS only | 1 | v1 `/dashboard` |
+| Assessment only | 2 | v2 `/v2/dashboard` |
+| Both | 3 | v1 `/dashboard` |
+
+Missing/unknown access levels or a failed corporate lookup fall back to v1.
+This affects sign-in landing, not authorization or explicit dashboard links.
+The shared authentication service still sends users to corporate `/signin`.
+`UserSignin` waits for `SignIn`/`corporateDetails` to return before choosing the
+destination; a new URL token takes precedence over a previous account's session.
+Before hard-navigating to v2 with `location.replace`, it writes the active token
+to `localStorage.token`, which v2 already reads, avoiding a race with redux-persist.
+
+`routes/Components/UserRouter.js` matches sign-in and the authenticated shell
+exclusively. While the lookup is pending, only the loading screen mounts.
+Mounting `AuthRouter` alongside sign-in caused a brief v1 shell / Page Not Found
+flash after the token was saved. The root route redirects to `/signin` before
+mounting the authenticated shell too.
+
+UAT commits: `73b097a2f` (landing rule), `1adc22d5c` (exclusive routing).
+The UAT Docker build stage uses `node:20-bullseye` with its bundled build tools
+(`bbc76d382`); installing those tools into the slim image failed with HTTP 404s
+from the Bullseye security package mirror. The final nginx runtime is unchanged.
+Regression check: `node --test tests/corporate-landing.test.cjs` (23 tests).
+Production has not received these changes.
+
 ## Gotcha — the nav flip must not reach an env without the v2 app
 
 **The flip and the v2 deployment are in different repos, so they promote
