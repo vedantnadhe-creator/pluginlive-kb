@@ -496,6 +496,7 @@ Sources, all nullable so the UI shows a dash rather than an invention:
 | qualification | `current_course.degree` + `department` |
 | graduationYear | `current_course.ended_on` |
 | proctoring | `assessment.proctoring_reports` (band, score, summary, timeline) |
+| proctoring.snapshots / snapshotStats / snapshotsPending | every `proctoring_snapshots` row of every attempted part, via student-node `POST /students/assessments/proctoring/snapshots` (see below) |
 
 **Coverage is genuinely sparse and that is the honest picture** — UAT: mobile
 11%, city 5%, degree 9%, and 475 of 782 submitted corporate attempts (61%) have
@@ -514,6 +515,68 @@ Three data traps, all live in this data:
 
 A failed fetch is rendered as "could not be loaded", NOT as "no details on
 file" — a network error is not a claim about the candidate's record.
+
+## Candidate drawer — Performance tabs read the real report (DEV + UAT, 2026-09-17)
+
+The Overview / Detailed Analysis / Recommendations tabs render the same
+report-v2 Views the `/reports/*` pages use (Aptitude, Communication incl.
+Hinglish, Role Based, Behaviour, AI Interview, Mix & Match), and since
+2026-09-17 they read **real data**. Until then every `use<Type>Report` hook
+merged the candidate's name and section scores over a static `MOCK_REPORT`
+and silently fell back to the whole mock when the API failed — a recruiter
+could see fabricated question responses and proctoring flags for a real
+candidate.
+
+Pipeline (one call per candidate, all parts at once):
+
+| hop | route | what it does |
+|---|---|---|
+| student-node | `POST /students/assessments/reportV2` `{assessment_assigned_id, student_id}` → `{type, report}` | `Assessment.generateReportV2` builds the **same template model the PDF renders** (`_build<Type>ReportData`; Role Based / AI Interview / Behaviour were split out of their PDF generators for this) and `helpers/reportV2Mapper.js` maps it to the report-v2 contract. PDF and screen can never disagree on a number. |
+| corporate-node | `GET /corporates/:id/assessments/v2/:id/candidates/report/full?email&type` → `{title, reports:[{type, status:"ready"\|"unavailable", report\|reason}]}` | Tenant guard = `getReportTargets` (same readiness reasons as the PDF download: still scoring / never finished / no student profile); Custom → `unavailable` (no report of this kind). Hinglish arrives as type **Communication**. |
+| corporate-react-v2 | BFF `/api/assessments/[id]/candidates/report/full`; `lib/reports/useCandidateFullReport` + `pickPart` | Hooks return `loading \| ready \| unavailable \| error`; the Views render `ReportStateNotice` with the server's reason. The design mocks survive **only** for a `/reports/*` page opened with no `assessmentId`/`email`. |
+
+What the mapper carries per type: Aptitude categories/topics/difficulty split;
+Communication sections with per-question rows (Speaking video and Reading
+audio are presigned from `student_answers.object_key`, purged objects skipped),
+CEFR from the PDF's `computedCefrLevel`, and the PDF's band-based improvement
+suggestions as Recommendations (templated text driven by the real section
+scores — Communication has no stored per-candidate AI recommendations);
+Role Based MCQ (option ids resolved to text) / Subjective / **Video** / Coding
+with test cases plus the stored comprehensive feedback; Behaviour competencies,
+behaviours, strengths/weaknesses, matching roles; AI Interview verdict,
+parameters, transcript, speech, strengths/concerns, partial-interview and
+language-switch notes (unscored sessions print the reason, never a 0).
+
+Gotchas:
+
+- Hinglish's Video Response metadata is a **flat** shape (`transcript`,
+  `fluency`, `vocabulary`, `clarity`, `ai_feedback`), unlike English's nested
+  `detailed_analysis` — the mapper special-cases it.
+- Listening / Reading store only aggregates (no per-question rows exist), so
+  those sections show metrics, not a question table.
+- An error is rendered as "could not be loaded", never as "no report".
+- The drawer currently fetches `/report/full` twice per open (the Overview and
+  Detail wrappers each mount the hook) — harmless.
+
+### Proctoring snapshot gallery — same as admin (DEV + UAT, 2026-09-17)
+
+The Proctoring tab's "Snapshot proof" card replicates admin's
+`getProctoringDetails` gallery: **every** frame of **every** proctoring
+session of every attempted part, oldest capture first (so the stray
+one-frame post-submit session no longer hides the real 60–250), with admin's
+counts — Total / Single face / No face / Multiple faces — and per-frame IST
+time + face count. `flagged` is admin's rule: anything but exactly one face.
+
+- student-node `POST /students/assessments/proctoring/snapshots` signs every
+  frame **in-process** (admin does one `get_image_url` HTTP round trip per
+  frame); returns `pending: true` and no frames while any session's
+  `is_valid` is still null (face analysis running), and keeps purged frames
+  (asset retention) as `expired` rows without a URL.
+- corporate-node merges the parts into `/candidates/profile` →
+  `proctoring.snapshots`, `snapshotStats`, `snapshotsPending`. Proctoring is
+  returned when frames exist even before an integrity report is finalized
+  (`band` null → the drawer shows "No integrity report yet" instead of a
+  verdict).
 
 ## Bulk performance reports (DEV + UAT, 2026-09-09)
 
