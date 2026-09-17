@@ -705,7 +705,25 @@ In a transaction:
   - Handles video upload retry logic (waits up to 3 × 60s for upload)
   - Generates presigned URL from OCI Object Storage
   - Calls FastAPI `calculateRoleBasedVideoScore()`:
-    - STT via Deepgram → transcription
+    - STT via Deepgram `nova-3` → transcription. **If nova returns 0 words, the clip
+      is re-transcribed by Gemini 2.5 Flash audio** (`_fallback_transcribe` in
+      `fastapi-ai-engine/routers/rolespecific.py`; ffmpeg → 16 kHz mono wav → the
+      existing gateway Gemini client). The response carries `transcription_engine`
+      (`nova-3` | `gemini-2.5-flash`) and it is persisted per question in
+      `role_based_scores.metadata.detailed_scores[]`. Why: Deepgram's nova models
+      return an *empty* transcript (confidence 0, `language_confidence` 0–50 %) for
+      some quiet, heavily accented Indian-English speakers instead of a best-effort
+      one — Christ Lavasa (2026-09-10/17) had 12 real answers scored 0 as
+      "Response too short (0 words)". Level and room noise were ruled out (a working
+      voice attenuated / with noise added still transcribes at 100 %). Fallback
+      answers have no word timings, so `pause_count`/WPM read 0 for them and filler
+      count comes from the text. Silent clips still return "" from both engines.
+      Deepgram whisper was rejected as the fallback: 80–213 s per audio-minute and
+      600 s timeouts. Bake-off of 6 engines (Sarvam saarika v2.5 is the strongest
+      deterministic alternative): `pl-dev-public-docs/stt-benchmark-role-based-20260917/`.
+      DEV + UAT 2026-09-17 (`2eb2627`), PROD pending.
+    - The `min_words` floor (50) still zeroes every metric for shorter answers; the
+      transcript is stored regardless so the report shows what was said.
     - AI analysis via Gemini/Groq with scoring weights:
       - Content Relevance: 30%
       - Communication Skills: 25%
@@ -722,7 +740,16 @@ In a transaction:
 - Returns: per-skill combined scores, details with source indication, average across all skills
 
 **`storeRoleBasedScores(assessment_assigned_id, mcqScore, subjectiveScore, videoResponseScore)`**
-- Handles retake detection (existing scores → `isRetake: true`)
+- **A recalculation replaces the attempt's rows** (`100e23c9`, DEV + UAT 2026-09-17,
+  PROD pending): every existing `role_based_scores` row for the assignment is
+  deleted inside the transaction and the fresh set is stored with
+  `is_retake=false`. Previously a re-run kept the originals and inserted the new
+  rows as `is_retake=true` — Role_Based has no retake flow, so all 163 such rows
+  in PROD were recalculations, and readers had to pick "newest row per section"
+  (see *Current section score selection* above; that selection logic stays as a
+  safety net for historical duplicates). The 16 Christ Lavasa students re-scored
+  on 2026-09-17 were normalised the same way by hand (one row per section,
+  `is_retake=false`; backup of the prior rows kept on the DEV box).
 - Deduplicates: deletes existing scores atomically before inserting
 - Stores 3 rows in `roleBasedScores` table:
   - MCQ score row with `metadata: { correct_answers, total_questions, detailed_scores }`
