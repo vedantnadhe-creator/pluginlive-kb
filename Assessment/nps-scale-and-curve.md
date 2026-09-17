@@ -177,6 +177,13 @@ survivorship bias, and the more able half. Surface `n` alongside any
 Communication NPS average. Backfilling diagnosis #1 from the completed pair
 (mirroring Aptitude) is a write-path change and is **not** done.
 
+**How the TPO v2 detail page presents this (17 Sept 2026):** a diagnosis student
+shows a progress score **only once both papers are graded**; a lone paper reads
+`—` rather than its raw percentage, and the group never falls back to raw
+scores even when nobody has an NPS yet. See
+`ATS/Institute/v2-strangler-fig.md` ("Diagnosis groups are the exception to the
+fallback").
+
 ## Also still open
 
 The **Aptitude diagnosis baseline is on a different ladder than the NPS it is

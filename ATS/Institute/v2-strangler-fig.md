@@ -451,6 +451,25 @@ zero NPS — without the fallback its chart would have gone **blank**, trading o
 empty-state complaint for a worse one. The fallback is **all-or-nothing per
 series**; the two scales are never mixed inside one chart.
 
+**Diagnosis groups are the exception to the fallback (17 Sept 2026, institute-node
+`375c3b2` DEV, `7a4f640` UAT).** A diagnosis is scored as a PAIR — Communication
+writes the NPS when paper 2 lands, Aptitude backfills both papers at that moment
+— so one paper's raw percentage is unanchored. `loadOccurrences` /
+`loadDiagnosisMaps` now select an `is_diagnosis` flag, and both `getStudents` and
+`getOverview` gate the ladder on `(isRecurring || hasDiagnosis) && hasNps(type)`
+and never take the raw fallback when `hasDiagnosis`. Per student on the
+Student-wise tab: **both papers graded → curved NPS + level; one paper only →
+`—`** (no level, no risk chip; `rawScore` is still on the row, just not
+rendered). Before this, a schedule that had **not fired a run yet** (it owns only
+its baseline pair, and diagnosis maps carry no `schedule_id` by design) and an
+orphan pair both read `isRecurring = false` and showed every paper as a raw %
+with a level banded off it — PROD `bfb06c15` "Communication" showed a
+first-of-pair student at 76.11%. PROD check before shipping: every group that
+loses the fallback is diagnosis-only (0 submitted runs), so no legacy run
+cohort goes blank. Verified live on UAT: pending `daa` (Communication, pair
+complete) 12.33% → **4.83 A1**; `Something went wrong` (Aptitude, one paper)
+2.6% "Beginner" → **`—`**.
+
 Verified live on UAT: `acsac` returns `kpis.avgScore 18.3` and
 `diagnosis.progressScore 18.3` (raw would have been 35.05), so the trend now
 draws its baseline instead of an empty state. On DEV `3fbb2b11` plots
