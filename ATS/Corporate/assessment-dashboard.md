@@ -1467,6 +1467,17 @@ validity returned by the API. Regression coverage:
 `tests/manage-assessment-settings.test.cjs` in corporate-react-v2.
 Deployed 2026-09-17: DEV `8486e63`, UAT `e402d7c`; PROD pending.
 
+The editable-details backend resolves validity through the group for **both ID
+forms** used by the assessment dashboard. Multi-type rows open with a Mix &
+Match group ID, while a single-type micro-frontend float opens with its part's
+`assessment_corporate_map_id`. The part row's `mix_match_group_id` is now
+followed before reading or updating validity, so the value entered at creation
+(for example 9 days) is not mistaken for an unset legacy value. The same
+resolution scopes name/window updates, candidates, short-link expiry and every
+part of the float consistently. Regression coverage lives in admin-node's
+`test/editAssessmentDetails.spec.js`. Deployed 2026-09-17: DEV `c08eba9`, UAT
+`38b4b37`; PROD pending.
+
 Proctoring IS editable: `allow_proctoring`/`allow_verification` are plain columns
 on the map row, so they ride the same `updateMany` as the end time and therefore
 work for a mix-match float — unlike admin-node's `configuration` patch, which
