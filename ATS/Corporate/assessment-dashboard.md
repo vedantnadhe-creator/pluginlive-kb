@@ -1642,3 +1642,26 @@ The part/candidate query carries the latest scored attempt's timestamp, assignme
 Validation: `node scripts/check-dashboard-communication-levels.js` covers false C1 classifications, the paper-level cap, stored CEFR, latest attempts, duplicate candidates, missing metadata and dashboard headcounts. The running DEV and UAT containers pass this check and their health endpoints return success. UAT's `demo replica knack rcm` returns A1=57, A2=38, B1=5, C1=0 (100 assessed). DEV has no Knack-named corporate.
 
 Release: corporate-node Development `3cf77140`, UAT `b5534e75`, deployed using auto_deploy.sh. **PROD remains pending by user instruction.** A prior read-only check against PROD reproduced Knack RCM's old counts exactly (117 assessed, including C1=17); the corrected query produced A1=59, A2=52, B1=6, C1=0 without modifying any production data.
+
+## Legacy Hinglish is reported as Communication (DEV + UAT, 2026-09-17)
+
+`Hinglish` is a legacy database assessment type, but it represents the response
+language of a Communication assessment. Corporate v2 therefore normalizes
+`assessment_type.type_name = 'Hinglish'` to `Communication` before aggregating
+dashboard, assessment-list, candidate, score, CEFR and filter data. The UI does
+not expose Hinglish as a separate assessment category.
+
+The usage widget applies the same normalization and combines legacy Hinglish and
+Communication subscription rows. Used tokens and finite limits are added; if
+either underlying row is unlimited, the combined Communication pack is
+unlimited. Existing map rows, assignments and scores remain unchanged.
+
+For Meesho, this makes the four legacy Hinglish assignments appear under
+Communication (one completed). The separate `Communication Test` map still has
+zero assignments and correctly remains empty on its detail page.
+
+Validation: `scripts/check-corporate-hinglish-reporting.js` covers labels,
+combined counts, candidate filters, CEFR input and usage grouping. The deployed
+DEV and UAT containers pass it and the existing dashboard CEFR check; both
+health endpoints return success. Release: corporate-node Development
+`a798a34b`, UAT `9b68bb2f`. **PROD remains pending.**
