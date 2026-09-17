@@ -558,6 +558,34 @@ Gotchas:
 - The drawer currently fetches `/report/full` twice per open (the Overview and
   Detail wrappers each mount the hook) — harmless.
 
+### Recorded answers play in place (DEV + UAT, 2026-09-17)
+
+Every recorded answer in the drawer is played inside the app; nothing links
+to the raw signed file any more (a plain `<a href>` navigated the whole tab
+to a bare browser player).
+
+| answer | control |
+|---|---|
+| Communication Reading (audio) | inline `AudioPlayer` — play/pause toggle, **seekable** 4px track (a native range input: drag, click, arrow keys), time shows clip length until playback starts and remaining time after |
+| Communication Speaking (video) | "Watch recording" button → `RecordingModal`, a `<video controls>` portaled to `document.body` and centred on the viewport (the drawer's transform would otherwise trap a fixed modal) |
+| AI Interview answers (audio) | one inline `AudioPlayer` per answered turn, from the new `transcript[i].media_href` |
+
+- student-node signs the AI Interview clips per turn in `generateReportV2`
+  (`_signInterviewRecordings`): each `ai_interview_interactions.
+  response_object_key` (the raw microphone clip under `audio/`, kept since
+  the 2026-09-11 "retain raw candidate audio" fix) is presigned; purged or
+  keyless turns get no control. **Interviews taken before 2026-09-11 have no
+  clips** — the key was not persisted then even where the object exists.
+- Browser-recorded webm carries no duration header, so `<audio>` reports
+  `Infinity` until the browser scans to the end; the player seeks past the
+  end once to force the scan (`durationchange` then rewinds to 0). Without
+  this the AI Interview player sat at 0:00 with a dead bar.
+- Only one clip plays at a time (starting one pauses every other `<audio>`;
+  the video modal pauses them too). A source that fails to load goes inert
+  with "—" instead of crashing.
+- The drawer header's report **download menu was removed** (not needed for
+  now); the bulk report bundle on the assessment page is unaffected.
+
 ### Proctoring snapshot gallery — same as admin (DEV + UAT, 2026-09-17)
 
 The Proctoring tab's "Snapshot proof" card replicates admin's
