@@ -569,6 +569,7 @@ to a bare browser player).
 | Communication Reading (audio) | inline `AudioPlayer` — play/pause toggle, **seekable** 4px track (a native range input: drag, click, arrow keys), time shows clip length until playback starts and remaining time after |
 | Communication Speaking (video) | "Watch recording" button → `RecordingModal`, a `<video controls>` portaled to `document.body` and centred on the viewport (the drawer's transform would otherwise trap a fixed modal) |
 | AI Interview answers (audio) | one inline `AudioPlayer` per answered turn, from the new `transcript[i].media_href` |
+| Role Based Video Response (video) | "Watch recording" → `RecordingModal`, same as Communication Speaking — the answers are `student_answers.object_key` under `videos/` too, so `generateReportV2` reuses the same signer (`sections.video.questions[].media_href`) |
 
 - student-node signs the AI Interview clips per turn in `generateReportV2`
   (`_signInterviewRecordings`): each `ai_interview_interactions.
@@ -580,6 +581,9 @@ to a bare browser player).
   `Infinity` until the browser scans to the end; the player seeks past the
   end once to force the scan (`durationchange` then rewinds to 0). Without
   this the AI Interview player sat at 0:00 with a dead bar.
+- Bucket lifecycle can have removed an old clip while its row still has
+  `purged_at = null` (seen on a Feb 2026 Role Based answer): the signed URL
+  404s and the control goes inert — not a signing bug.
 - Only one clip plays at a time (starting one pauses every other `<audio>`;
   the video modal pauses them too). A source that fails to load goes inert
   with "—" instead of crashing.
