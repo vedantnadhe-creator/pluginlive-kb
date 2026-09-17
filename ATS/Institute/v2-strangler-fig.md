@@ -667,6 +667,39 @@ that anchors that score. For Communication this is the expected state after
 the first diagnosis sitting: scoring has run, but the pair awards its CEFR only
 after the second sitting is scored. DEV + UAT live (2026-09-15); PROD pending.
 
+### Report drawer headline: stored grade or nothing, with the reason (2026-09-17)
+
+`45b75a0` institute-node + `51d4060` institute-react-v2 (DEV + UAT 2026-09-17;
+PROD pending). The 2026-08-12 fix above left one leak: the report drawer's
+**Achieved Level** cell still fell through `levelOf(ladder, cefr, avgScore)`
+when `progression_history` had no grade, and banded the raw average. PROD
+repro: a student who had sat only diagnosis paper 1 of 2 at 57.63% read
+**"B1 (Intermediate)"** with the caption "Current difficulty A2", beside a
+roster row that correctly read "—" and a score cell saying "No progress score
+yet".
+
+Rule now, for every surface that reports an NPS (`npsType` — recurring
+Communication / Aptitude): **the level is `progression_history`'s stored grade
+or null; the raw percentage is never banded into a level.** When it is null the
+API says why, via `headline.levelState` + `headline.levelSub`
+(`progressionLevelState` in `assessmentBands.js`):
+
+| `levelState` | `levelSub` | when |
+|---|---|---|
+| `graded` | "" | a stored grade exists (FE captions "Current difficulty X") |
+| `not_attempted` | Pending attempt | nothing submitted |
+| `diagnosis_pending` | Diagnosis not completed (1/2) | diagnosis papers still outstanding |
+| `grading_pending` | Level pending | every paper in, no grade yet (scoring lag, zero-core-section exclusion, one-time map) |
+
+The frontend (`StudentReportDrawer.tsx`) prints `levelSub` under the dash and
+keeps "Current difficulty X" only under a real level. Types without a
+progression ladder (Role_Based, Custom, AI_Interview) keep the score band —
+it is their only level. Behavior is unchanged (no headline level by design).
+
+Verify: `GET /institutes/assessments/v2/:scheduleId/students/report?instituteId=&email=`
+on :8081 for a student with one diagnosis paper done → `level: null,
+levelState: "diagnosis_pending"`. Spec: `test/progressionLevelState.spec.js`.
+
 ### Proctoring is usually absent, and that is the data (2026-08-12)
 
 Measured before changing anything, and worth re-measuring before anyone
