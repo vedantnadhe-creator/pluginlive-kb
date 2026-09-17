@@ -722,8 +722,13 @@ In a transaction:
       600 s timeouts. Bake-off of 6 engines (Sarvam saarika v2.5 is the strongest
       deterministic alternative): `pl-dev-public-docs/stt-benchmark-role-based-20260917/`.
       DEV + UAT 2026-09-17 (`2eb2627`), PROD pending.
-    - The `min_words` floor (50) still zeroes every metric for shorter answers; the
-      transcript is stored regardless so the report shows what was said.
+    - **No word-count floor** (`a2dd019`, DEV + UAT 2026-09-17, PROD pending): only a
+      clip with 0 transcribed words scores 0 ("No speech detected"). Shorter answers
+      are evaluated normally and lose marks through the length component of the
+      communication score (<30 words 0.2, 30–49 0.5, 50–74 0.7, 75–99 0.9) and the
+      LLM's own judgement — e.g. a correct 22-word correlation-vs-causation answer
+      now scores ~20–40 instead of 0. Until then the 50-word cap (`min_words`) zeroed
+      every metric; `min_words` survives only as the `meets_minimum_length` flag.
     - AI analysis via Gemini/Groq with scoring weights:
       - Content Relevance: 30%
       - Communication Skills: 25%
