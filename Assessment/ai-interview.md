@@ -62,42 +62,46 @@ the full mechanics — as of 2026-07-16 both `overall_score` and `verdict` are
 **recomputed deterministically in code** from the LLM's per-parameter ratings,
 not taken from the model's own numbers.
 
-### Corporate fitness display (DEV + UAT, 2026-09-17; PROD pending)
+### AI Interview fitness display (DEV + UAT, 2026-09-18; PROD pending)
 
-The corporate AI Interview roster, Fitness filter, embedded report and downloaded
-PDF use three display labels:
+AI Interview verdicts use **Fit / Borderline / Not Fit** across the corporate
+roster and Fitness filter, corporate/institute embedded reports, downloaded PDF,
+Admin recruiter report, Admin session-lookup report, and Admin Excel export.
 
 | Stored AI verdict | Display label |
 |---|---|
-| `Fit` or `Strong Fit` | **Strong** |
-| `Borderline` | **Weak** |
+| `Fit` or `Strong Fit` | **Fit** |
+| `Borderline` | **Borderline** |
 | `Not Fit` | **Not Fit** |
 
-There is no **Medium** option for AI Interview fitness. The roster previously
-used the generic overall-score bands (75+ Strong, 60–74 Medium, below 60 Weak),
-which could label a 74/100 `Fit` interview as Medium. It now uses the most recent
-interview session and its most recent score, matching the report. The stored AI
-verdict remains authoritative; the report's rounded-score fallback applies only
-when a recognized verdict is absent. Unscored interviews show no fitness verdict.
-For a mixed assessment, the Fitness column uses its AI Interview result rather
-than the average across assessment types.
+This supersedes the September 17 Strong/Weak display wording. There is no
+**Medium** option and no separate **Strong Fit** display band for AI Interview.
+The roster uses the most recent interview session and its most recent score,
+matching the report. The stored AI verdict remains authoritative; the report's
+rounded-score fallback applies only when a recognized verdict is absent.
+Unscored interviews show no fitness verdict. For a mixed assessment, the Fitness
+column uses its AI Interview result rather than the average across types.
 
 Numeric scores, stored verdicts and scoring thresholds are unchanged. Other
 assessment types and ATS role-fit categories retain their existing bands. The
 report-v2 JSON `overall.verdict` contains the display label while `verdict_key`
-retains the existing canonical key for compatibility.
+retains the existing canonical key for compatibility. Admin reports and Excel
+retain their defensive score ceiling before collapsing `Strong Fit` to `Fit`.
+The corporate embedded report also maps its verdict key to these same labels.
 
-Implementation: corporate-react-v2 DEV `03f270a`, UAT `e00ae1a`;
-corporate-node DEV `df40c0c2`, UAT `cbf6421d`;
-student-node DEV `8d5bb336`, UAT `9b39c242`. No database migration.
+Implementation: corporate-react-v2 DEV `4426ec7`, UAT `19f4e4f`;
+student-node DEV `b5d745ed`, UAT `266c55ba`;
+admin-node DEV `d413e79`, UAT `06602fc`;
+admin-react DEV `f6794f27`, UAT `0991ee78`.
+The corporate-node roster mapping from September 17 remains unchanged
+(DEV `df40c0c2`, UAT `cbf6421d`). No database migration.
 
-Deployed using `auto_deploy.sh` in both environments, with separate frontend
-builds on each server. All 21 focused tests passed before promotion; UAT backend
-regressions passed again after cherry-picking. Live authenticated browser checks
-verified the roster/filter and report labels in DEV and UAT, plus a downloaded
-PDF in each environment, with no page errors. The reported UAT roster had 37
-candidates: 12 Strong, 5 Weak, 7 Not Fit, and 13 unscored. Both API containers were
-running without restarts and both frontend services were active after deployment.
+Validation: 18 focused tests passed on each environment branch, and corporate
+TypeScript checking passed. UAT was rebuilt on its own server; its executable
+frontend bundles passed the DEV-URL scan. Authenticated UAT browser checks
+verified all three Fitness options, three embedded reports, and a downloaded
+PDF with no page errors. Admin lint retains 27 pre-existing findings, with no
+new findings introduced by this change.
 
 ### Why these bands — rationale
 
