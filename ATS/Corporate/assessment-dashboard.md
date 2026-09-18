@@ -77,14 +77,19 @@ to v1 too. Flip one without the other and the two sidebars point at each other.
   `NOW() + INTERVAL '5 hours 30 minutes'`, and emit dates re-tagged `+05:30`
   (`istIsoOf`). `.toISOString()` shifts every date by 5h30m in the UI.
 - **Candidate validity is group-level configuration with a candidate-level
-  result.** `mix_match_groups.assessment_validity_days` stores the positive
-  number entered in Create/Manage. A candidate closes at
+  result — and it is optional (DEV + UAT since 2026-09-18).**
+  `mix_match_groups.assessment_validity_days` stores the positive number
+  entered in Create/Manage, or NULL when the field is left blank. With a value,
+  a candidate closes at
   `min(group end, max(group start, assignment created_at) + validity days)`;
   adding someone later starts their validity from that later assignment time,
-  while the overall assessment end remains a hard cap. NULL on an older group
-  preserves the legacy overall window. Invite links and both standard and AI
-  Interview launch gates use the same deadline. DEV + UAT applied 2026-09-09;
-  PROD pending.
+  while the overall assessment end remains a hard cap. NULL (blank, cleared, or
+  an older group) means every candidate keeps access until the assessment end
+  date — the same rule the legacy overall window used. Invite links and both
+  standard and AI Interview launch gates use the same deadline
+  (`student-node/app/helpers/assessmentWindow.js` falls back to the map end
+  when `validityDays` is not a positive integer). Per-candidate rule DEV + UAT
+  2026-09-09; optional validity DEV + UAT 2026-09-18; PROD pending both.
 - **A float is one row per type**, tied by `mix_match_group_id`. Identity is
   `COALESCE(mix_match_group_id, assessment_corporate_map_id)`; a one-part group
   keeps its own map id and type. `:id` resolves either form.
@@ -264,6 +269,20 @@ migration is required.
 The corporate UI commit also makes filter values individually removable and
 renames the schedule surface to Assessment Calendar and the dashboard panel
 to Active Assessments. These labels reuse the existing APIs.
+
+### Active Assessments are listed newest-created first (DEV + UAT, 2026-09-18)
+
+`CorporateDashboardV2.getAssessmentBlocks` (`dashboard/v2/assessment`) used to
+order the Active Assessments panel by `candidatesAssigned` descending, and its
+"no active float" fallback picked the five most recently *ending* floats — so a
+freshly created assessment sank below older, bigger ones. The float CTE now
+carries `MIN(acm.created_at) AS created_at` and the fold sorts every float by
+`createdAt DESC` (falling back to `starts_at` for legacy maps without a
+creation timestamp, then id for a stable tie-break). The active filter and the
+five-item recent fallback both take that order, so the last assessment created
+is the first shown, matching the assessments list. Coverage:
+`test/corporateDashboardV2.spec.js` "assessment ordering". Deployed DEV
+`a776a3bb`, UAT `bef4aa2e`; PROD pending.
 
 ### Sorting the roster is a three-state cycle (DEV + UAT, 2026-09-08)
 
@@ -1561,6 +1580,27 @@ The former page mapping forwarded only proctoring, silently dropping the
 validity returned by the API. Regression coverage:
 `tests/manage-assessment-settings.test.cjs` in corporate-react-v2.
 Deployed 2026-09-17: DEV `8486e63`, UAT `e402d7c`; PROD pending.
+
+**Validity is optional since 2026-09-18 (DEV `3e834ea`, UAT `82fcc78`; PROD
+pending).** The Manage field reads "Per-Candidate Assessment Validity
+(optional)"; clearing it sends `validityDays: null` through `PATCH
+/api/assessments/[id]` → admin-node `updateAssessmentDetails`
+(`assessmentValidityDays: { type: ["integer", "null"] }`), which writes NULL to
+`mix_match_groups.assessment_validity_days` and re-materialises every issued
+invite short-link's `expires_at` from the stored group value (`LEAST(end_time,
+… + grp.assessment_validity_days * '1 day')` — NULL collapses to the end
+time). The detail view keeps `null` (not the previous value) on reopen.
+Creation does the same: the wizard (corp `0.1.2-bugfix.2`, admin `0.1.12`) no
+longer seeds 7 days or blocks the Send step on a blank value, the review step
+reads "Until assessment end date", and both BFFs forward a blank as `null`
+(`corporate-react-v2 /api/assessments/mix-match`) or omit the key
+(`admin-react-v2 lib/assessments/candidateValidity.ts`, which used to
+substitute 3 days). `POST /assessment/assignMixMatchAssessment` accepts null
+for corporates. Entered values must still be positive whole days — `0`, `-1`,
+`1.5`, `abc` are 400s at the BFF. Coverage: corporate-react-v2
+`tests/shared-assessment.test.ts` + `tests/manage-assessment-settings.test.cjs`,
+admin-node `test/editAssessmentDetails.spec.js` ("clears group validity…") and
+`test/mixMatchVerification.test.js`.
 
 The editable-details backend resolves validity through the group for **both ID
 forms** used by the assessment dashboard. Multi-type rows open with a Mix &

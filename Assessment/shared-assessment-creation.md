@@ -4,7 +4,7 @@
 
 `PluginLive-Technologies/design-system` owns the reusable React UI and four-step assessment wizard. `admin-react-v2` and `corporate-react-v2` consume it at build time. Legacy Admin redirects creation into the v2 app. There is no separate design-system server or microfrontend runtime.
 
-The Next.js apps pin versioned `@pluginlive-technologies/assessment-creation` and `@pluginlive-technologies/ui` artifacts. Admin currently uses assessment creation 0.1.11. Packages are generated using `npm pack`, committed as `vendor/*.tgz`, and integrity-pinned in package-lock.json. This rollout does not publish to an npm registry. Both apps transpile the packages through Next.js and load their scoped styles. Docker dependency stages copy vendor before npm ci.
+The Next.js apps pin versioned `@pluginlive-technologies/assessment-creation` and `@pluginlive-technologies/ui` artifacts. Admin currently uses assessment creation 0.1.12; Corporate uses 0.1.2-bugfix.2. Packages are generated using `npm pack`, committed as `vendor/*.tgz`, and integrity-pinned in package-lock.json. This rollout does not publish to an npm registry. Both apps transpile the packages through Next.js and load their scoped styles. Docker dependency stages copy vendor before npm ci.
 
 ## Entry points and responsibilities
 
@@ -102,3 +102,19 @@ the segment gate is gone entirely:
   `/api/assessments/mix-match`) still forwards `draft.biometric` from its pinned 0.1.2-bugfix.1
   wizard, where the default is `false`. Assessments a corporate creates for itself are therefore
   still unverified until that app is bumped or its BFF is hard-set the same way.
+
+### 2026-09-18 — candidate validity is optional (wizard 0.1.12 admin / 0.1.2-bugfix.2 corp)
+
+Both lineages got the same four-file source change (`StepSendAssessment.tsx`, `StepReviewAndFloat.tsx`,
+`hooks/useAssessmentWizard.ts`, `lib/candidateValidity.ts`): `CORPORATE_DEFAULT_VALIDITY_DAYS = "7"`
+is gone, the corporate draft starts blank, the Send step's `hasValidity` gate passes a blank value,
+the label reads "Candidate validity (days) *optional*", and the review card says "Until assessment
+end date" when blank. Entered values must still be > 0.
+
+- design-system: admin lineage `fix/biometric-default-on-0.1.x` `50ee59d` = **0.1.12** (on top of
+  0.1.11); corp lineage `fix/assessment-bug-report` `57ee126` = **0.1.2-bugfix.2** (on top of
+  0.1.2-bugfix.1). Neither branch is on origin — worktrees `~/worktrees/design-system-select-clear-019`
+  and `~/worktrees/assessment-bugfix-shared` on the DEV box.
+- admin-react-v2 DEV `37ef14c`, UAT `6243fc7`; corporate-react-v2 DEV `3e834ea`, UAT `82fcc78`.
+  Backend: admin-node DEV `db31cb3`, UAT `4a92654`. PROD unchanged.
+- Corp is still on the 0.1.2 lineage, so the biometric gap above is unchanged by this bump.
