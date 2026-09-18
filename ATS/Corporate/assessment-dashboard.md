@@ -415,7 +415,7 @@ Two admin-side traps found while tracing this:
 ## Export Sheet
 
 The roster's bulk-bar Export Sheet streams the SAME Excel the admin side
-produces: `GET /corporates/:id/assessments/v2/:id/candidates/export` proxies
+produces: `POST /corporates/:id/assessments/v2/:id/candidates/export` proxies
 admin-node's `/assessment/exportStudentData` with `entityType=corporate`.
 Columns: Name, Email, Phone, Sent/Start/End dates, Status,
 Delivery Status, Delivery Issue, Overall Score, Verdict (plus a % column per
@@ -436,8 +436,31 @@ returned 2, omitting the candidate sitting at 0% that the roster plainly lists.
 candidate emails as `selectedEmails`; the BFF and corporate-node pass that JSON
 list to admin-node, which intersects it (case-insensitively) with the already
 tenant-guarded `sent` roster before it builds the workbook. The toast reports
-the exported selection count. Omitting `selectedEmails` preserves the existing
-full-roster export for other callers.
+the exported selection count. Omitting/emptying `selectedEmails` is an explicit
+empty-sheet request — the UI only shows Export once at least one row is ticked,
+it never asks for the full roster implicitly.
+
+**POST body, not a GET query string (DEV + UAT, 2026-09-18).** The Export
+button and the candidate-drawer Excel download both used to fire
+`GET …/export?selectedEmails=[…]`. A float with a few hundred candidates ticked
+put several KB of JSON in the URL; on UAT the proxy closed the connection
+outright (`ERR_CONNECTION_CLOSED`) before the request was even answered — a
+148-candidate selection on a real corporate float reproduced it. Both browser
+callers, the BFF, corporate-node and admin-node now agree on
+`POST { search?, selectedEmails }` end to end; the BFF's GET handler is gone
+(405). Verified on UAT against the exact failing case: the same
+148-candidate selection that 500'd/closed over GET returns 200 with all 148
+rows over POST.
+
+**Export filename must be Content-Disposition-safe (DEV + UAT, 2026-09-18).**
+`exportStudentData` built the `Content-Disposition` filename straight from the
+assessment title. A title with an em dash, middle dot, or other non-Latin-1
+character (`BDE — Communication · 56adf4a3`) made Node throw
+`ERR_INVALID_CHAR` on the header and the whole export came back 500 — visible
+even with a `selectedEmails` list as small as one or three candidates, so it
+was easy to mistake for a second selection-size bug. `Assessment.exportStudentData`
+now strips the name/type down to `[\w.()&+-]` before building the filename;
+`&` and parens survive (`F&E(SelfPickUp)`), an em dash does not.
 
 **Communication exports include both the assigned target and the result.**
 `Assigned CEFR Level` is the level used to create the candidate's paper;
@@ -992,10 +1015,11 @@ Fixed 2026-09-08 (DEV + UAT; PROD pending):
   so a Custom-only candidate 404s instead of being silently handed a different
   part's PDF via `targets[0]`.
 - `corporate-react-v2` `ReportDownloadMenu` routes the Custom row to
-  **`GET /candidates/export?selectedEmails=["<email>"]`** — the existing
-  admin-node `exportStudentData` proxy, whose float export carries a
-  `Custom Assessment %` column — and saves it as `.xlsx`. Rows name their
-  format (`PDF` / `Excel`) only on a mixed float, and the footer reads
+  **`POST /candidates/export { selectedEmails: ["<email>"] }`** — a GET
+  `?selectedEmails=` query string until 2026-09-18, see Export Sheet above —
+  the existing admin-node `exportStudentData` proxy, whose float export
+  carries a `Custom Assessment %` column — and saves it as `.xlsx`. Rows name
+  their format (`PDF` / `Excel`) only on a mixed float, and the footer reads
   "N files" rather than "N PDFs" when the two are mixed.
 
 Verified on UAT against a live Aptitude + Role_Based + Custom float: Custom
