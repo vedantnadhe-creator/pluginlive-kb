@@ -261,7 +261,11 @@ open it. **Since 2026-09-16 (DEV+UAT) the roster is ordered by last attempt:**
 whoever just sat it is on top, candidates who never opened it trail newest-assignment
 first, and the client's default sort (`lib/assessments/rosterOrder.byLastAttempt`)
 mirrors the same rule so page boundaries and on-screen order agree. Before that both
-layers ordered by `addedAt`. The detail hook uses these dates directly from each roster page;
+layers ordered by `addedAt`. **Gotcha (2026-09-17/18):** a file-level re-land of
+`CandidatesTable.tsx` (`a003a7f`) silently put the added-time sort back while
+corporate-node kept paging by last attempt, so the roster showed never-opened
+candidates above the latest finisher again; re-landed 2026-09-18 with
+`tests/roster-default-order.test.ts` guarding the wiring. The detail hook uses these dates directly from each roster page;
 it no longer calls the admin-backed `candidates/added-at` report endpoint.
 Existing corporate ownership checks and pagination remain in place. No schema
 migration is required.
