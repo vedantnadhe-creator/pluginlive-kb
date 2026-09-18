@@ -100,8 +100,13 @@ Validation: 18 focused tests passed on each environment branch, and corporate
 TypeScript checking passed. UAT was rebuilt on its own server; its executable
 frontend bundles passed the DEV-URL scan. Authenticated UAT browser checks
 verified all three Fitness options, three embedded reports, and a downloaded
-PDF with no page errors. Admin lint retains 27 pre-existing findings, with no
-new findings introduced by this change.
+PDF with no page errors. DEV browser checks also verified all three Fitness
+options, two available scored reports and a downloaded PDF with no page errors.
+Both Admin sign-in redirects loaded successfully without page errors. The DEV
+corporate release is `3e834ea` (includes the label correction plus subsequent
+assessment changes); all four affected services are running in each environment.
+Admin lint retains 27 pre-existing findings, with no new findings introduced by
+this change.
 
 ### Why these bands — rationale
 
