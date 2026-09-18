@@ -274,6 +274,18 @@ The corporate UI commit also makes filter values individually removable and
 renames the schedule surface to Assessment Calendar and the dashboard panel
 to Active Assessments. These labels reuse the existing APIs.
 
+### Candidate drawer download icon is back, for every attempted candidate (DEV + UAT, 2026-09-18)
+
+`0c4538b` (2026-09-17) removed the drawer-header `ReportDownloadMenu` "as not needed for
+now"; product wants it. Restored by `9d8f92a` (DEV; UAT merge `d27864f`) with one change:
+the icon used to render only when the legacy per-type breakdown fetch (`report`) came back
+non-empty, and that endpoint is flaky, so some attempted candidates had no download at
+all. The menu's parts now come from the roster's `candidate.byType`, so any attempted
+candidate gets the icon. PDF parts go through `/api/assessments/[id]/candidates/report/download`
+(student-node's PDF path); a Custom part resolves to the candidate-scoped Excel sheet
+(`…/candidates/export?selectedEmails=[…]`) inside the same menu. Regression:
+`tests/candidate-report-download.test.cjs`. PROD unchanged.
+
 ### Active Assessments are listed newest-created first (DEV + UAT, 2026-09-18)
 
 `CorporateDashboardV2.getAssessmentBlocks` (`dashboard/v2/assessment`) used to
