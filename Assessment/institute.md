@@ -51,6 +51,17 @@ the following presentation rules for schedule and one-time student lists:
 UAT frontend commits: `8666336` (student-wise score presentation) and
 `39d0fb3` (`+10 pts` delta visibility threshold).
 
+**Top-level Student-wise NPS sorting (2026-09-18, DEV + UAT):** Communication
+and Aptitude columns sort only students whose metric is a real progression
+score (`isProgressScore: true`). A student with just the first Communication
+diagnosis paper has no NPS yet; their raw-percentage fallback is therefore
+treated as NULL for ordering and remains after all NPS-bearing students in
+both ascending and descending sorts. The table can still display legacy raw
+fallback values where applicable, but they never rank against NPS. The active
+sort header highlights only the arrow for the selected direction; the other
+arrow stays neutral. Implemented by institute-node UAT commit `ded7b65` and
+institute-react-v2 UAT commit `354d473`.
+
 **V2 Diagnosis drawer score fix (2026-09-15, DEV + UAT; PROD pending):** the
 Schedule tab's folded Diagnosis row opens `OccurrenceDrawer`, not either legacy
 `DiagnosisList`. Its scoped API request supplies only the diagnosis map IDs;
