@@ -607,8 +607,8 @@ file" — a network error is not a claim about the candidate's record.
 
 The Overview / Detailed Analysis / Recommendations tabs render the same
 report-v2 Views the `/reports/*` pages use (Aptitude, Communication incl.
-Hinglish, Role Based, Behaviour, AI Interview, Mix & Match), and since
-2026-09-17 they read **real data**. Until then every `use<Type>Report` hook
+Hinglish, Role Based, Behaviour, AI Interview, **Custom** since 2026-09-18,
+Mix & Match), and since 2026-09-17 they read **real data**. Until then every `use<Type>Report` hook
 merged the candidate's name and section scores over a static `MOCK_REPORT`
 and silently fell back to the whole mock when the API failed — a recruiter
 could see fabricated question responses and proctoring flags for a real
@@ -619,7 +619,7 @@ Pipeline (one call per candidate, all parts at once):
 | hop | route | what it does |
 |---|---|---|
 | student-node | `POST /students/assessments/reportV2` `{assessment_assigned_id, student_id}` → `{type, report}` | `Assessment.generateReportV2` builds the **same template model the PDF renders** (`_build<Type>ReportData`; Role Based / AI Interview / Behaviour were split out of their PDF generators for this) and `helpers/reportV2Mapper.js` maps it to the report-v2 contract. PDF and screen can never disagree on a number. |
-| corporate-node | `GET /corporates/:id/assessments/v2/:id/candidates/report/full?email&type` → `{title, reports:[{type, status:"ready"\|"unavailable", report\|reason}]}` | Tenant guard = `getReportTargets` (same readiness reasons as the PDF download: still scoring / never finished / no student profile); Custom → `unavailable` (no report of this kind). Hinglish arrives as type **Communication**. |
+| corporate-node | `GET /corporates/:id/assessments/v2/:id/candidates/report/full?email&type` → `{title, overall:{score, level, parts:[{type, score}]}, reports:[{type, status:"ready"\|"unavailable", report\|reason}]}` | Tenant guard = `getReportTargets` (same readiness reasons as the PDF download: still scoring / never finished / no student profile). Every type incl. Custom is served. `overall` (2026-09-18) is the candidate's float-wide score — **the same mean the roster row, its level band and the score filter use** (`getCandidateOverallScore`: AVG of `SCORE_EXPR` over attempted parts, Behaviour absent because it has no percentage). Hinglish arrives as type **Communication**. |
 | corporate-react-v2 | BFF `/api/assessments/[id]/candidates/report/full`; `lib/reports/useCandidateFullReport` + `pickPart` | Hooks return `loading \| ready \| unavailable \| error`; the Views render `ReportStateNotice` with the server's reason. The design mocks survive **only** for a `/reports/*` page opened with no `assessmentId`/`email`. |
 
 What the mapper carries per type: Aptitude categories/topics/difficulty split;
@@ -642,8 +642,60 @@ Gotchas:
 - Listening / Reading store only aggregates (no per-question rows exist), so
   those sections show metrics, not a question table.
 - An error is rendered as "could not be loaded", never as "no report".
-- The drawer currently fetches `/report/full` twice per open (the Overview and
-  Detail wrappers each mount the hook) — harmless.
+- **One `/report/full` request per drawer open (2026-09-18).** Every tab is
+  its own keyed subtree, so each switch used to mount a fresh wrapper whose
+  hook refetched and repainted from "loading" (plus two requests on open).
+  `useCandidateFullReport` now keeps a module-level in-flight/settled cache
+  per `assessmentId|email` that every consumer (Overview, per-type tabs,
+  Recommendations, Mix & Match) shares, seeded on mount so a tab switch
+  paints at once; a failed request is never cached; the drawer calls
+  `dropCandidateFullReport` on close so a reopen fetches fresh. Deliberately
+  **in memory, not localStorage**: the body carries presigned media URLs that
+  expire in minutes and scores that may still be landing.
+
+### Custom Assessment report (DEV + UAT, 2026-09-18)
+
+Custom has no PDF (see below) but it does have an on-screen report now —
+the designer's `src/app/reports/custom-assessment-report/` (Overview with
+per-section cards, Detailed Analysis with a question-by-question review,
+Proctoring), rendered in the drawer via `CustomPerf` and as the Custom tab
+of a Mix & Match float.
+
+- student-node `_buildCustomReportData` + `reportV2Mapper.mapCustom` read
+  the rows the scorer scored from: the set's questions/options, the section
+  configs, the candidate's `student_answers` and the stored
+  `custom_assessment_scores` row (latest, retake first). Section marks are the
+  stored `section_wise_stats` (keyed by section NAME, mapped back to the
+  section id), never a second computation. Marks per question = section marks
+  / questions in the section.
+- Grading mirrors `calculateCustomAssessmentScore`: only MCQ is graded, the
+  correct option is `optionValue > 0`, the candidate's pick is
+  `answerText === option.id`. A question **with no option marked correct** is
+  skipped by the scorer, so the report emits `correctIndex: null` and the UI
+  says "Not scored" rather than implying a verdict; an option-less question is
+  `kind: "short"` with the typed answer and `isCorrect: null` (no answer key
+  exists). In practice every served question on DEV/UAT is MCQ.
+- **Image questions and image-only options** (sheet uploads store an
+  `object_key` with empty `option_text`) are presigned like the candidate app
+  does (`images/` prefix stripped, `generatePreSignedURLImage`) into
+  `image` / `optionImages`; a key the bucket no longer holds (never uploaded
+  or purged — DEV's sheet has `images/question_r6.png` → 404) hides itself on
+  error instead of leaving a broken-image icon.
+- corporate-node's `getReportTargets` no longer excludes Custom from
+  `renderable`; the PDF download path keeps its own Custom guard.
+- The drawer's old Custom fallback (legacy `/candidates/report` dimension
+  cards and its fetch) is gone.
+
+### Mix & Match final score is the server figure (DEV + UAT, 2026-09-18)
+
+The Overview tab of a Mix & Match report (`CumulativeOverview`) used to
+compute a plain client-side average of whichever part reports rendered,
+folding Behaviour in as `average_level / 5`, so it could disagree with the
+score in the roster row. It now shows `overall` from `/report/full` (see the
+table above): the score, its level band and the per-part breakdown; Behaviour
+is listed with its level and marked "not in the score". The drawer's Overview
+tab, previously hidden for mix floats, is shown again for them and is the
+landing tab — the final score is the first thing a recruiter sees.
 
 ### Recorded answers play in place (DEV + UAT, 2026-09-17)
 
