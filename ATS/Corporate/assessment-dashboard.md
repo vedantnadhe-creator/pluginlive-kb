@@ -286,6 +286,35 @@ candidate gets the icon. PDF parts go through `/api/assessments/[id]/candidates/
 (`…/candidates/export?selectedEmails=[…]`) inside the same menu. Regression:
 `tests/candidate-report-download.test.cjs`. PROD unchanged.
 
+### Detail page reads in ms, not seconds (DEV + UAT, 2026-09-18)
+
+The L2 assessment detail page (`/v2/assessments/:id`) sat on its skeleton for
+~7s on UAT (148 candidates) — three upstream causes, all in `corporate-node`:
+
+- `SCORE_JOINS` (`app/helpers/assessmentScoreSql.js`), shared by every
+  `CorporateAssessmentDetailV2` read, aggregated the **whole**
+  `communication_scores` table into a derived `GROUP BY` on every call — the
+  planner can't push the caller's map-id filter through a `GROUP BY`, so a
+  148-candidate roster paid for all 35k UAT rows (86k on PROD), ~470ms per
+  query × three queries a page. Rewritten as `LEFT JOIN LATERAL` correlated on
+  the outer `aas` row, so each lookup probes the `assessment_assigned_id`
+  index per candidate instead.
+- `aas.assessment_corporate_map_id::text = ANY($1)` cast defeated
+  `idx_aas_corporate_map_status` and seq-scanned assignments; now
+  `= ANY($1::uuid[])`.
+- Postgres JIT was compiling these expression-heavy reads before running them
+  — 3.3s of a 3.4s roster query on DEV. `getPrismaInstance()`
+  (`app/helpers/utils.js`) now appends `options=-c jit=off` to the datasource
+  URL for every session this service opens (code-level, not an env var — no
+  `.env.*` change needed).
+- The roster row's `addedAt` gained admin-node's own fallback
+  (`invite_sent_at` → `created_at` → the map's `start_time`), so the frontend
+  no longer makes a second, ~2.7s `/candidates/added-at` round-trip to
+  admin-node's full `/assessment/details` just to sort by it.
+
+Roster query 720ms → 9ms, overview 649ms → 5ms (UAT, `EXPLAIN ANALYZE`).
+Deployed DEV `82463576`, UAT `2edf4de4`; PROD pending.
+
 ### Active Assessments are listed newest-created first (DEV + UAT, 2026-09-18)
 
 `CorporateDashboardV2.getAssessmentBlocks` (`dashboard/v2/assessment`) used to
