@@ -124,9 +124,36 @@ contract and rendering are unchanged.
 
 DEV + UAT 2026-09-09 (corporate-node `d3dfab5e`). **PROD pending.**
 
-### Still unreconciled — there are FOUR proctoring verdicts on this platform
+### Institute v2 now follows Admin's rule, not corporate's (DEV + UAT 2026-09-18)
 
-Do not assume any two surfaces agree. Measured on UAT 2026-09-08:
+Institute React v2's roster and student-report drawer were trusting the raw
+`integrity_band` alone (band-only, like corporate/rule 4 below) — so a
+candidate the admin dashboard flagged **Bad** under the 80% face-snapshot rule
+still showed **Clean** in Institute v2 for the same attempt. Reported by the
+user with a side-by-side screenshot; corrected to follow Admin's reading,
+per an explicit "follow the Admin side" instruction — the opposite direction
+from the corporate fix above, which *dropped* the 80% rule.
+
+`institute-node app/helpers/proctoringVerdict.js` (new) ports rule 1 —
+`legacyProctoringBand()` flags an attempt if *any* of its `proctoring_logs`
+has `valid_snapshots / total_snapshots < 0.8` (a log with 0 snapshots is
+auto-flagged), gated on at least one log having `is_valid !== null` so a
+never-evaluated attempt isn't invented as bad. `combinedProctoringBand()`
+then OR-combines it with the stored band: `review`/`high_concern` pass
+through untouched, a legacy-bad flips the result to `bad` even over a clean
+band, otherwise the stored band wins (falling back to the legacy verdict only
+when the band itself is missing/`no_data`). `app/models/AssessmentDetailV2.js
+loadProctoring()` (roster) and the single-student report query both run the
+combined band per attempt.
+
+DEV + UAT 2026-09-18 (institute-node `5280caa` Development, merged to UAT
+`5080d90`). **PROD pending.** No institute-react-v2 frontend change was
+needed — its `proctoringStatus()` already trusted whatever `band` the API
+returned; the gap was purely on the institute-node API side.
+
+### Still unreconciled — there are still (at least) FOUR proctoring verdicts on this platform
+
+Do not assume any two surfaces agree. Measured on UAT 2026-09-08 (before the institute-v2 fix above):
 
 | # | Rule | Where | Feeds |
 |---|---|---|---|
@@ -134,6 +161,7 @@ Do not assume any two surfaces agree. Measured on UAT 2026-09-08:
 | 2 | `invalidFaces <= face_limit (5)` AND no phone | student-node `detectFaces` / snapshot cron | writes `proctoring_logs.is_valid` |
 | 3 | `band === 'review'` **OR** rule 1 | admin-react `StudentReport/index.js` badge | the admin drawer in the screenshot |
 | 4 | the integrity band | corporate-node + corporate-react-v2 | corporate roster column + drawer chip |
+| 5 | the integrity band **OR** rule 1 (same shape as rule 3, without the `review` special-case) | institute-node + institute-react-v2 | institute roster column + report drawer |
 
 **Rules 1 and 4 disagree on 72% of clean-band reports** (793 of 1,100 clean reports
 are flagged by the 80% face rule). So after this fix admin and corporate still differ on
