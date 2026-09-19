@@ -1265,3 +1265,59 @@ Backups: `~/eduspeak-sb/functions.bak-20260915T053205Z/` (pre-sync function tree
 container layer was wiped out from under both PilVidya and Banking on 2026-09-14/15. Worth a
 disk-cleanup pass (`docker builder prune`, old `*-predeploy-*`/`*-dist-backup-*` directories) —
 not done as part of this recovery since it wasn't asked for.
+
+## 2026-09-19 — restored after the 09-16 teardown + redeployed to `8c042971` (33 commits, 7 migrations)
+
+PilVidya UAT had been deliberately torn down on 2026-09-16 (vhosts unlinked, containers **and
+images** removed; the OCI database untouched). Brought back on request and advanced from
+`e32c835b` to `8c042971` in the same pass. Predeploy dump
+`~/pilvidya-data-import/backups/eduspeak_uat_predeploy_20260919T015136Z.dump` (DEV box);
+env/functions snapshot `~/pilvidya-predeploy-20260919T015136Z/` (UAT box); the exact SQL applied
+is in `~/pilvidya-data-import/newmigs/20260919T015136Z/*.uat.sql` next to the `*.upstream.sql`
+originals (DEV box).
+
+**Restore recipe** (nothing was scripted before; this is the whole thing): `docker compose up -d`
+in `~/eduspeak-sb`; `rsync -a --delete --exclude='main/'` the repo's `supabase/functions/` into
+`~/eduspeak-sb/functions/`; frontend image built from `frontend/` with the three `VITE_SUPABASE_*`
+values from `frontend/.env.uat` passed as `--build-arg` (the Dockerfile declares only those three;
+`.env*` is dockerignored, so build-args are the only way in — `VITE_API_URL` is unused outside a
+`.bak` file, `VITE_SITE_URL` is unread) → `docker run -p 3008:80`; `eduspeaknode:uat` rebuilt from
+the still-stale `~/api/eduspeak-india-node/backend` (`--build-arg ENVIRONMENT=uat`) → `-p 8086:5001`;
+re-symlink `pilvidya-uat.conf` + `eduspeak-uat.conf` (301) into `sites-enabled`, reload nginx.
+
+**Release content:** Trainer Journey (RBAC, `trainer-register` function, trainer profiles/
+subscriptions/institute mappings, skill growth), Foreign Language P1–P6 (unified
+`learning_content` repository + `resolve_learning_pack()`, per-skill `student_skill_progress` +
+`record_skill_attempt()`), CEFR/AI-adaptive FL framework, competitive exams + 3D video generation
+columns, quiz→`student_progress` wiring via `save_lesson_progress`, teacher Lessons tab, logo text
+cleanup, and two "comprehensive repair" migrations written against the hosted-dev schema.
+
+**Migration reconciliation (all seven applied, each in its own transaction, as `pluatadmin`):**
+
+| File | On UAT |
+|---|---|
+| `20260914050000_trainer_journey_core` | **Partial.** `module_mappings` skipped — it FKs `curriculums`, `modules`, `departments`, none of which exist here (this is a schools-tenancy app; `institutes` does exist). The `skill_growth` "trainers can view their students" policy skipped — joins `student_institute`, also absent. `trainer_institutes`, `trainer_plans`, `assessment_mappings`, `skill_growth` created. |
+| `20260914060000_trainer_profiles_and_subscriptions` | Verbatim. |
+| `20260916090000_unified_learning_content_model` | Verbatim (all six helper functions it calls already existed). |
+| `20260916110000_fl_p3_p6_support` | Verbatim. |
+| `20260916120000_repair_missing_core_tables` | Effectively a no-op — every table it "repairs" already existed from 09-09. Its two `USING (true)` policies on `student_question_history` were **not** applied; UAT keeps the scoped `sqh_*` policies. |
+| `20260916150000_comprehensive_repair_v2` | **Adapted.** `CREATE EXTENSION pg_cron / pg_net` removed (not installable on this cluster). Because every table it targets pre-existed, `CREATE TABLE IF NOT EXISTS` could not add the columns the rest of the file assumes, so these were added explicitly: `schools.is_public` (needed by its own "Public can read public schools" policy — note `anon` already holds SELECT on `schools` via `03_grants.sql`, so anonymous school listing is now live, which is what the signup school-picker wants), `curriculum_artifacts.deleted_at`, `ai_video_assets.deleted_at`. `student_progress.deleted_at` / `teacher_profile_id` came from its own DO blocks. The `UPDATE assessment_assignments SET deleted_at` was dropped (the file never adds that column). **Deliberately not applied:** its policies on `student_progress`, `student_curriculum_progress` and `curriculum_artifacts` — each is "any row where the caller has *a* teacher profile", i.e. any teacher reads every school's data, which would silently undo the 09-12 school-tenancy policies (`can_access_student`, `can_access_school`). The `fee_invoices` student/parent read-own and `live_classes` class-scoped read policies were applied. The unique index on `curriculum_artifacts (topic, board, class_level, subject)` applied cleanly (0 duplicate groups). |
+| `20260919120000_populate_user_roles` | Upstream file is **syntactically broken** — it contains literal `\$\$` (escaped dollar quotes, from the "remove backticks" fix-up commits) and will not parse anywhere. Fixed in the deployment copy. Its admin seed then inserted 0 rows because it guards on "any `user_roles` row for this user" and `prakash.chinnadurai@gmail.com` already held `principal`; added the `admin` row manually (`UNIQUE (user_id, role)` allows both), which is the file's stated intent. Its three new policies were added alongside the existing `is_platform_admin`-based ones. |
+
+`03_grants.sql` and `05_sensitive_columns.sql` reapplied afterwards; `password_hash` is still not
+SELECT-able by `authenticated`.
+
+**Upstream defect found:** `calculate-skill-growth` reads `ai_practice_sessions`, a table no
+migration in the repo creates, so it returns 500 (`42P01`) on every call. Nothing in the frontend
+or other functions invokes it, so it is dead code rather than a live break. Not patched.
+
+Verification: `/`, `/student-entry`, `/auth`, `/admin/login`, `/status`, `/sb/rest/v1/`,
+`/sb/auth/v1/health` all 200; `eduspeak.uat` 301 → pilvidya; `eduspeaknode` `/health` ok; bundle
+contains no hosted/DEV Supabase URL (only the `project.supabase.co` placeholder string); all eight
+new tables reachable through PostgREST (200, not 404); 147 function dirs synced, dispatcher intact,
+0 boot errors; `trainer-register` → 401 unauthenticated, `student-authenticate-profile` → its
+validation body. Browser E2E (`~/pilvidya-data-import/e2e.cjs`): 5 anonymous routes + admin login
++ 3 authed routes, 0 page errors, 0 failed requests, 0 `supabase.co`, 0 `/sb` ≥400.
+
+Images: `eduspeakreact:8c042971-uat`, `eduspeaknode:uat`. Banking remains down (stopped 09-18,
+volumes intact).
