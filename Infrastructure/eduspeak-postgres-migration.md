@@ -1321,3 +1321,22 @@ validation body. Browser E2E (`~/pilvidya-data-import/e2e.cjs`): 5 anonymous rou
 
 Images: `eduspeakreact:8c042971-uat`, `eduspeaknode:uat`. Banking remains down (stopped 09-18,
 volumes intact).
+
+### 2026-09-19 (later) — `de0bbdb5`: DB-only delta, no rebuild
+
+Upstream grew `20260916150000_comprehensive_repair_v2.sql` by 249 lines (11 admin-dashboard /
+notification / OTP tables). Every one of those tables already existed on UAT, so the delta is
+grants + policies only; applied from `~/pilvidya-data-import/newmigs/20260919T015136Z/*.delta_de0bbdb5.*`
+with two omissions: the `mobile_otps` policies (`INSERT TO public WITH CHECK (true)` and a read
+policy whose predicate ends in `OR true` — any signed-in user could read every OTP hash; the table is
+only touched by the `parent-request-otp` / `parent-verify-otp` functions via `service_role`, so no
+client needs either) and the `app_usage_events_staff_read` replacement (UAT keeps the
+`can_access_sprint_school`-scoped version from 09-12; upstream's is admin-only). Grant baseline
+reapplied, PostgREST `SIGUSR1`'d, checkout fast-forwarded. No frontend or function files changed.
+
+**Nightly prune, for the record:** the 09-16 image loss and the 09-19 banking container loss are
+both `/usr/local/bin/system-cleanup.sh` (root cron 03:00: `docker image prune -af`,
+`docker container prune --filter until=24h`). Rollback images tagged `eduspeakreact:predeploy-*` do
+**not** survive the night unless a container is running from them; keep the DB dump + `.env` +
+functions snapshot as the real rollback, and treat any "stopped, restore later" plan as a same-day
+plan.

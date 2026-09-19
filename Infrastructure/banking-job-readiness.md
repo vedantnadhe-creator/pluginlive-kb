@@ -1798,3 +1798,53 @@ were unlinked and their containers removed. Banking was brought back for this de
 (`docker compose up -d` in `~/banking-sb`, vhost re-linked); pilvidya and eduspeak were left down.
 UAT has no pg_cron, so only the enqueue kick runs the worker — a job with > 20 attempts stalls after
 its first chunk there (pre-existing, unchanged).
+
+## 2026-09-19 — restored after the 09-18 teardown + redeployed to `a8c32ef` (60 commits, 8 migrations)
+
+Banking UAT had been taken down 2026-09-18 with `docker compose stop` and the vhost unlinked. By
+the next morning the stopped containers were **gone**: `/usr/local/bin/system-cleanup.sh` (root
+cron `/etc/cron.d/system-cleanup`, 03:00 daily) runs `docker image prune -af` and
+`docker container prune -f --filter until=24h`, so any stopped container older than a day and every
+image not attached to a running container is deleted nightly. Named volumes survive (`volume prune`
+without `--all` only takes anonymous ones), so `banking-sb_banking-pgdata` / `banking-sb_banking-storage`
+were intact — 70 profiles, 70 auth users, 52 students, 9 trainers, all present. **"compose stop" is
+not a restorable state on this box, and no rollback image survives a night.** Restore is
+`docker compose up -d` in `~/banking-sb` (recreates from the compose file against the volumes).
+Predeploy: `~/banking-sb/banking_uat_predeploy_20260919T143901Z.dump`,
+`~/bankingjobreadiness/dist.bak-predeploy-20260919T143901Z/`, `.env.bak-predeploy-20260919T143901Z`.
+
+**Release content:** trainer workspace & portal (`/login/trainer`, `/journey/trainer`), module
+builder flow wired, trainer bulk student onboarding (`trainer_bulk_jobs` + `bulk-create-users`),
+curriculum submissions with revision history, trainer diff pins, cursor-paged trainer CSV/PDF
+export jobs (`trainer_export_jobs` + ten `SECURITY DEFINER` RPCs gated by
+`trainer_request_allowed()`), per-module question bank (`module_questions`), curriculum
+subject/topic/subtopic hierarchy, `findAndLinkMigratedStudent` fallback for students with no
+email/mobile, `students.onboarded_by`, unique `students.user_id` / `trainers.user_id`.
+
+**The `.env.local` landmine fired.** `a8c32ef` commits `VITE_SUPABASE_URL` /
+`VITE_SUPABASE_ANON_KEY` for a hosted project (`pfzstzxffbentcxlrior`) in `.env.local`, which Vite
+loads above `.env`. A plain `npm run build` would have shipped a UAT bundle pointing at that
+hosted URL. Built instead with the three `VITE_SUPABASE_*` values from `.env` exported as **shell
+env**, which outranks every `.env*` file. Bundle audit after build: the only `supabase.co`/project-ref
+strings are the `AdminSecurityMigration` panel's default form value and a vendor `api.supabase.co`
+constant — not endpoints; `https://banking.uat.pluginlive.com/sb` appears 10×. Do this on every
+banking build from now on.
+
+**Migrations — three needed `fixups/` (the replay mechanism where a same-basename file wins):**
+
+| File | On UAT |
+|---|---|
+| `20260311153726_4dc873b4…` | **No-op fixup.** Added upstream in "Connected to Lovable Cloud" as a fresh-project baseline (`CREATE TYPE app_role`, `CREATE TABLE profiles/user_roles/modules/…`). Everything exists here from the 118-file replay and `CREATE TYPE` has no `IF NOT EXISTS`. |
+| `20260919082444`, `082524` | Verbatim. Dedupes by `user_id` (0 duplicates here) then unique indexes on `students.user_id` / `trainers.user_id`. |
+| `20260919083047`, `083502`, `092440` | Verbatim (`IF NOT EXISTS` throughout). |
+| `20260919085510_6785f3d3…` | **Fixup.** Upstream's own `20260710120000_pil_feature_merge_compat.sql` already created stub `curriculum_submissions` / `curriculum_submission_history` / `trainer_export_jobs` with different columns (the stub `trainer_export_jobs` had `export_type` and none of `trainer_email`, `format`, the cursor columns the new RPCs insert), and this file re-creates them with bare `CREATE TABLE` — so it fails on any DB that ran the compat file, which is an upstream self-inconsistency. All three stubs were empty. The fixup is a DO-block guard that raises if any of them has rows, `DROP TABLE … CASCADE`, then the upstream file verbatim, then re-adds `trainer_export_jobs` to the `supabase_realtime` publication (`sql/04_realtime_publication.sql` had it). |
+| `20260919091651_8cbeaf45…` | **Fixup**, same reason: compat stubs for `curriculum_subjects` / `curriculum_topics` / `curriculum_subtopics` (subjects/topics had no `updated_at`, yet this file attaches an `updated_at` trigger to them). Empty; guard + drop + upstream verbatim. |
+
+`sql/03_grants.sql` + `04_realtime_publication.sql` reapplied. 87 functions synced with the 3
+standing function-fixups (`main`, `mcp`, `live-session-rsvp`), 0 boot errors.
+
+Verification: `/`, `/admin/dashboard`, `/sb/rest/v1/`, `/sb/auth/v1/health` 200; all new tables
+200 through PostgREST; `candidate-otp-login` → its validation body, `bulk-create-users` → "Not
+authenticated", `ai-personal-coach` / `generate-daily-practice-plan` → 400 validation (handlers
+load). Headless browser on `/`, `/admin/dashboard`, `/login/trainer`, `/journey/trainer`: 0 page
+errors, 0 failed requests, 0 `supabase.co` requests, 0 `/sb` ≥400.
