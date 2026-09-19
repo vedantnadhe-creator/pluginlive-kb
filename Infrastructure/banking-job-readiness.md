@@ -1848,3 +1848,61 @@ Verification: `/`, `/admin/dashboard`, `/sb/rest/v1/`, `/sb/auth/v1/health` 200;
 authenticated", `ai-personal-coach` / `generate-daily-practice-plan` → 400 validation (handlers
 load). Headless browser on `/`, `/admin/dashboard`, `/login/trainer`, `/journey/trainer`: 0 page
 errors, 0 failed requests, 0 `supabase.co` requests, 0 `/sb` ≥400.
+
+### 2026-09-19 (later) — "migration is not done properly": full reconciliation of all 190 files
+
+The morning pass applied only the 8 files that were *new in the diff*. That was the wrong unit of
+work for this stack: `replay-migrations.sh` runs each file as one transaction and **records
+nothing durable**, so `migration-run/ok.txt` / `failed.txt` were a stale 2026-08-22 snapshot
+(157 of the then-files; 43 of the 44 "failures" were benign "already exists" on the first
+statement — which says nothing about whether the *rest* of that file ever landed). Several
+files had in fact never fully applied and nobody could tell.
+
+**New tool — `~/banking-sb/reconcile.py`** (source of truth from now on). Walks every migration
+in replay order (fixup wins over upstream), extracts what each expects to exist — tables,
+columns, functions, policies, indexes, triggers, enum values, views, storage buckets — honours
+later `DROP`/`RENAME`s, then diffs against the live catalog and prints MISSING grouped by file.
+First run: **118 missing objects across 10 files.** After this pass: 12, all explained below.
+`~/banking-sb/apply_list.sh dry|real` runs a named list of files fixup-aware (dry = each file in
+a rolled-back transaction, so pre-file dependencies show as false failures there).
+
+**What had never landed, and why:**
+
+| File | Root cause | Resolution |
+|---|---|---|
+| `20260811015532` | `module_group_assignments` / `trainer_students` pre-existed as compat stubs with fewer columns → `CREATE TABLE IF NOT EXISTS` skipped, bare `CREATE POLICY` aborted the file on 08-22. `created_by`, `updated_at`, `assigned_by` never added. | fixup: explicit `ADD COLUMN IF NOT EXISTS` + `DROP … IF EXISTS` guards; rest verbatim |
+| `20260811113000_assessment_tables_schema` | never applied (six `*_select_authenticated` policies missing) | verbatim |
+| `20260811113000_minimal_assessment_tables` | **broken upstream everywhere**: `format('…"_%_auth_select"…')` — `%_` is not a specifier. Its table shapes (`selected_answer`, `event_type`/`payload`) also contradict hosted `types.ts` (`selected_option`, `violation_type`), so hosted never ran it either | no-op fixup |
+| `20260811163000` | never applied | verbatim (admin_section_content repair) |
+| `20260822041849` | failed 08-22 ("permission denied for schema extensions"), never revisited; also assumes `trainers.department/password` and `students.password` exist. So the bcrypt password trigger, `verify_trainer_password()`, `trainers_college_idx`, the four trainers policies and the reminder_deliveries fix were all missing | pre-file `20260822041848_uat_…` adds the columns; upstream verbatim |
+| `20260823105238` | tables pre-existed as stubs → `student_module_progress.student_name/completed_at/score`, `student_assessment_scores.student_name/module/max_score/created_at`, `proctoring_defaults.config` never added (all present on hosted per `types.ts`) | pre-file `20260823105239_uat_…` adds them |
+| `20260828133000` | never applied: **`video_generation_jobs` did not exist**, nor `curriculum_videos.media_*`/`generation_*`, the taxonomy validators/triggers, `save_module_group_mapping()` | verbatim |
+| `20260829164121` | `sms_gateway_settings` pre-existed as a compat stub (`api_key_encrypted`, `settings`; none of the OTP/provider columns `candidate-otp-login` reads), file uses bare `CREATE TABLE` | fixup: guard-if-rows → drop stub → verbatim; pre-file `20260829164122_uat_…` recreates the `sms_gateway_public` view the drop cascaded away, with the four columns `update-sms-gateway/index_test.ts` specifies |
+| `20260911130000` (security RLS fix) | calls `has_role(uuid, text)` which this DB never had; also bare-creates three `student_solved_challenges` policies that `20260811140000` already created → aborts on any DB incl. hosted | pre-file `20260911125900_uat_has_role_text_overload.sql`; fixup adds `DROP POLICY IF EXISTS` before each create so this file's later definitions win, except the two `practice_plans` policies the even-later `132000` redefines |
+| `20260911132000` (function hardening) | **broken upstream everywhere**: `LANGUAGE plpgsql` with a bare SQL body (syntax error), `CREATE POLICY … ON <function> FOR EXECUTE` (not SQL), and a `practice_plan_tasks.student_id` predicate on a column the table has never had (ownership is via `plan_id`) | fixup: `LANGUAGE sql`, function "policy" as `REVOKE/GRANT EXECUTE`, task-read policy via `plan_id → practice_plans.student_id` (the form `20260811235500` uses) |
+
+Remaining 12 "missing" after the pass, all intentional: the compat stub's `sms_gateway_settings.api_key_encrypted/settings` (superseded by the real hosted shape), the nine never-real columns from `assessment_tables_schema`, and a `pg_temp` function.
+
+**Column-level boundary — `sql/05_sensitive_columns.sql`** (wired into `rebuild.sh` step 6 after
+`03_grants.sql`; re-run it after any migration that adds columns to those tables). Postgres
+cannot revoke one column out of a table-level grant, so upstream's `REVOKE SELECT (password)`
+is a silent no-op — on hosted too. The script recomputes the allow-list from the catalog:
+`students.password` / `trainers.password` hidden from **anon only** — the frontend does
+`.select("*")` on both tables as the signed-in user (TrainerProfile, StudentProfilePage,
+Institute*Manager, useTrainerData), so restricting `authenticated` would break those screens;
+hosted behaves the same. **Residual upstream defect: signed-in users can read bcrypt hashes.**
+`sms_gateway_settings`: anon sees only `provider, enabled, otp_length, otp_validity_minutes`
+(the test file's spec); `authenticated` keeps the full row.
+
+`trainer_curricula.module_id` is `text` here (today's `20260919091651` declared it so and ran
+first); in upstream order `20260828133000` would have made it `uuid` FK→`modules`. Kept `text`
+(superset, both rows null, hosted `types.ts` can't distinguish).
+
+Verification: reconcile clean (12 explained); `video_generation_jobs`, `student_module_progress`,
+`student_assessment_scores`, `trainers` 200 via PostgREST; anon `trainers?select=password` and
+`sms_gateway_settings?select=*` → 401, `sms_gateway_public` → 200 with the four fields; triggers
+`students_hash_password`, `trainers_hash_password`, `validate_trainer_curricula_taxonomy`,
+`update_sms_gateway_settings_updated_at` present; functions 0 boot errors; browser E2E on `/`,
+`/admin/dashboard`, `/login/trainer`, `/journey/trainer`, `/login/candidate` 0 errors / 0 hosted /
+0 `/sb` ≥400. Two real trainer signups (`/auth/v1/signup` → token 200) happened mid-pass —
+data counts moved 70→72 profiles, 9→11 trainers for that reason, not from the migrations.
