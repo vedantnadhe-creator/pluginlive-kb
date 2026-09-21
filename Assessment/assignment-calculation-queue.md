@@ -60,7 +60,9 @@ prepare-set barrier.
   queue. Every paper has a distinct question fingerprint; each diagnosis B paper
   also excludes its paired A paper's questions.
 - Diagnosis cohorts receive two set keys per batch (`diagnosisSet<n>A/B`), while a
-  main cohort receives one (`mainSet<n>`). No schema change is required.
+  main cohort receives one (`mainSet<n>`). Diagnosis distribution is evaluated only
+  for institute, non-one-time cohorts that actually require diagnosis; corporate and
+  one-time cohorts skip it entirely. No schema change is required.
 - **prepare-set is upstream of the per-student loop.** A permanent generator failure
   used to mark only the **job** `failed` and leave every item `pending` with no
   `last_error` — so the Activity UI showed **FAILED = 0** and a blank **REASON**
