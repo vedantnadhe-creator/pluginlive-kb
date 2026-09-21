@@ -166,6 +166,8 @@ returned; the gap was purely on the institute-node API side.
 
 ### Still unreconciled — there are still (at least) FOUR proctoring verdicts on this platform
 
+**2026-09-21 — QA on the UAT Swadha replica: expired Role_Based "Associate System Engineer" (`de3c602d…`) showed Bad on the v2 roster but Good in the export.** All 13 attempts hold a `clean` / 100 report; their `proctoring_logs` rows are `is_valid = true` with **zero `proctoring_snapshots` rows** (the replica never copied snapshots — PROD hits the same shape once snapshot rows are purged). Rule 1's `total_snapshots === 0 → flagged` clause, OR-ed in by `5280caa` three days earlier, turned the clean report into `bad` while admin-node/student-node exports read the band only. Fixed by dropping the legacy OR from institute-node entirely (row 5 below); verified on UAT: roster + drawer now `clean`/100 for all 13, export `Good`. The admin v1 badge (rule 3) is now the only surface still applying the 80% rule.
+
 Do not assume any two surfaces agree. Measured on UAT 2026-09-08 (before the institute-v2 fix above):
 
 | # | Rule | Where | Feeds |
@@ -174,7 +176,7 @@ Do not assume any two surfaces agree. Measured on UAT 2026-09-08 (before the ins
 | 2 | `invalidFaces <= face_limit (5)` AND no phone | student-node `detectFaces` / snapshot cron | writes `proctoring_logs.is_valid` |
 | 3 | `band === 'review'` **OR** rule 1 | admin-react `StudentReport/index.js` badge | the admin drawer in the screenshot |
 | 4 | the integrity band | corporate-node + corporate-react-v2 | corporate roster column + drawer chip |
-| 5 | the integrity band **OR** rule 1 (same shape as rule 3, without the `review` special-case) | institute-node + institute-react-v2 | institute roster column + report drawer |
+| 5 | ~~the integrity band **OR** rule 1~~ **retired 2026-09-21 → the integrity band (rule 4)**; diagnosis row collapses the pair (any Bad wins) | institute-node `helpers/proctoringVerdict.js` + institute-react-v2 | institute roster column, diagnosis row, report drawer. DEV `e539374`, UAT `2bb1d14`; PROD pending |
 | 6 | ~~`proctoring_logs.is_valid` all-true → Good, else Bad; completed with no logs → Bad~~ **retired 2026-09-21 → the integrity band (rule 4)** | student-node `TpoDashBoard.js` via `helpers/proctoringVerdict.js` | TPO Excel exports (per-assessment, diagnosis, schedule sheets) + v1 institute candidate list. DEV+UAT; PROD pending |
 
 **Rules 1 and 4 disagree on 72% of clean-band reports** (793 of 1,100 clean reports
