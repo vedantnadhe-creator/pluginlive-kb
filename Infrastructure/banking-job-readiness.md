@@ -42,6 +42,7 @@ nvm use 20 && npm install && npm run build
 | 2026-08-27 | `5b4b5f2` | none (161 migrations unchanged, no new files) | 7 commits (`423fd65`→`5b4b5f2`); fixes taxonomy 400 errors, bulk-created-candidate OTP compatibility (`bulk-create-users` now writes `Otp_<mobile>_1234`, matching the login policy fix from 2026-08-21). No `supabase/migrations` or fixed-up edge function touched. Unit suite 348/349 (same stale `LLM_PROVIDER_TIMEOUT_MS = 15000` literal from 2026-08-25, still not a regression). |
 | 2026-08-28 | `6f87c4c` | none | 1 commit; **module topics now auto-link real YouTube videos** — see *Module videos: search queries vs. playable URLs*. Also the day the UAT **YouTube Data API key was finally configured**. Unit suite 370/371 (same stale `LLM_PROVIDER_TIMEOUT_MS` literal). |
 | 2026-08-28 | `9ab7c00` | `20260828083515_llm_settings_tts_columns_and_audit_actor_text` (applied) | Schema-only; **no rebuild** (the commit touches no `src/`). Fixes both Admin → LLM Config save failures — see *Admin → LLM Config could not save*. |
+| 2026-09-21 | `b505d58` | `20260919100000_institute_city_management` (verbatim), `20260919110000` (verbatim, no-op), `20260919110001_fix_super_admin_enum` (**fixup** — verbatim would CASCADE-drop `has_role`) | 19 commits; **RBAC role filter gains Trainer**; institute/city masters on registration; hallucination-risk badge in AI coach. See *2026-09-21* section. |
 
 `20260810100000` needed **no fixup** — it is `ALTER COLUMN … SET DEFAULT` plus a distinct-union
 `UPDATE`, so it is naturally idempotent. Effect on UAT: per-admin `allowed_tabs` went 56 → 58 and
@@ -1906,3 +1907,48 @@ Verification: reconcile clean (12 explained); `video_generation_jobs`, `student_
 `/admin/dashboard`, `/login/trainer`, `/journey/trainer`, `/login/candidate` 0 errors / 0 hosted /
 0 `/sb` ≥400. Two real trainer signups (`/auth/v1/signup` → token 200) happened mid-pass —
 data counts moved 70→72 profiles, 9→11 trainers for that reason, not from the migrations.
+
+## 2026-09-21 — redeployed to `b505d58` (19 commits, 3 migrations; RBAC Trainer filter)
+
+Trigger: Admin → User Management → **Roles & Access** role filter listed only *All / Admin /
+Taxonomy Editor / Candidate* — `trainer` was never added to the hardcoded `<Select>` in
+`src/components/admin/AdminRBAC.tsx`, even though the per-row badges and the `filtered`
+predicate (`u.roles.includes(filterRole)`) already handled any `user_roles.role`. Fix is one
+`<SelectItem value="trainer">` (our commit `b505d58`, rebased onto upstream `abe40cb`, pushed to
+`main`). Verified live headless as `demo.admin`: options now `All Roles / Admin / Taxonomy
+Editor / Trainer / Candidate`; selecting Trainer → `Select all (12)`, 12 rows all badged
+`trainer`, 0 page errors, 0 `/sb` ≥400.
+
+**Deliberately NOT added:** Trainer to the per-row *Roles ▸ Assign roles* menu
+(`ASSIGNABLE_ROLES` stays `admin | taxonomy_editor`). Trainer login needs a matching
+`trainers` row (see *Login.tsx* trainer branch: "Trainer profile not found" + forced signOut);
+granting only the `user_roles` row from RBAC would mint accounts that cannot log in. Trainer
+provisioning stays on the registration → *Trainer / Teacher Journey* approval path.
+
+**Upstream carried in (`a8c32ef`→`abe40cb`, 18 commits):** LLM hallucination-detection hook +
+`RiskLevelBadge` in the AI coach widget; institute/city masters on the registration form
+(`Login.tsx` now loads `institutes` + `cities` and can add new ones inline); vitest/CI scaffolding
+(`.github/workflows/test.yml`, `supabase/tests/`). No edge function changed — functions not
+re-synced. `package.json` change is scripts-only, no `npm install` needed.
+
+**Migrations — 2 of 3 replayed as shipped, 1 via fixup:**
+
+| File | UAT | Why |
+|---|---|---|
+| `20260919100000_institute_city_management` | applied verbatim | additive: `cities`, `institute_city` (UNIQUE institute+city), `institutes.city_id` + index, RLS admin-write via `has_role`; backfills `city_id` from the legacy `institutes.city` text |
+| `20260919110000_add_admin_role_for_sms_gateway` | applied verbatim, **no-op** | inserts `admin` + `super_admin` for `prakash.chinnadurai@gmail.com` only `WHERE admin_role_count = 0`; UAT has 14 admins. Would have failed on hosted-shaped DBs lacking `super_admin` — UAT's enum already had it |
+| `20260919110001_fix_super_admin_enum` | **fixup** `~/banking-sb/fixups/<same name>.sql` | upstream recreates `app_role` as `('admin','trainer','student','super_admin')` via `ALTER COLUMN … USING role::text::temp_app_role` then `DROP TYPE app_role CASCADE`. On UAT it fails on the 69 `candidate` / 8 `taxonomy_editor` rows, and the CASCADE would drop `has_role()` plus ~255 dependents (every RLS policy). Also has bare `RAISE NOTICE` outside a DO block (syntax error). Fixup keeps the intent: enum value already present, so only the guarded `super_admin` backfill for that email runs (1 row) |
+
+Do **not** let `20260919110001` run verbatim on any environment that has candidates — which is
+all of them. Its own header claims "the enum only has admin and trainer", which is false
+everywhere this app has ever been deployed.
+
+Post-apply: `NOTIFY pgrst, 'reload schema'` (anon `cities?select=id` → 200); `reconcile.py` at
+the known 12 explained leftovers; `candidate` rows still 69; `super_admin` rows 0→1.
+
+Build: `set -a; . ./.env; set +a` then `npm run build -- --outDir /tmp/banking-dist-new`,
+audited (`api.supabase.co` vendor hit only, self-hosted `/sb` URL present, `value:"trainer"`
+option compiled), then atomically swapped into `dist/`. Snapshot
+`~/banking-predeploy-20260921T075713Z/` (dist + env) and
+`~/banking-sb/banking_uat_predeploy_20260921T075713Z.dump`. Local UAT-only diffs (`.env`,
+`supabase/functions/mcp/index.ts`) carried across the rebase via stash, still present.
