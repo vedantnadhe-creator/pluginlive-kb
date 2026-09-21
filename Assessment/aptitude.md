@@ -246,6 +246,14 @@ flowchart TD
 - Admin selects **assessment type** = `Aptitude`
 - Configures: name, dates, sections (Quantitative/Logical/Critical), subtopics, difficulty, negative marking, proctoring
 - Supports **one-time** and **scheduled** distribution
+- Since 2026-09-21 (DEV + UAT; PROD pending), assignment generates multiple
+  on-the-fly papers instead of binding the entire cohort to one set. It uses the
+  Role-Based rule `maxPerSet = max(5, ceil(20% × candidates))`, shuffles the
+  candidates, and distributes them evenly across at most five sets. Generated
+  papers must have distinct question fingerprints. Diagnosis generates an A/B pair
+  for every cohort batch, and each B paper excludes the questions in its paired A
+  paper. The assignment queue resolves each candidate's explicit `setKey` only
+  after the batch prepare-set job completes; no schema change was needed.
 - `renderAptitudeTopics()` hoists the section cards, `TopicSelectionModal` and the selection summary **above** the institute/corporate branch, so both flows share one picker; only the surrounding config differs (institute is fixed at 30 min / 25 Q, corporate chooses 30, 45, or 60 minutes). See *Topic selection* above.
 - Two sites used to overwrite the admin's picks with every topic — the save path and `handleDifficultyLevelChange` (so changing difficulty **after** picking topics silently discarded them). Both now fill in only what the admin did not choose, so an untouched form still defaults to every section and topic.
 

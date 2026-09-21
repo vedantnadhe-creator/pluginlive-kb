@@ -41,6 +41,26 @@ Both are **flag-gated** so the old paths stay reachable for instant rollback.
   generated on the fly (e.g. Communication picks/creates a set via
   `Assessment.js` `assessmentSet.findMany`) gate here; the barrier resumes
   `orchestrate` only once every set is ready.
+
+#### Batched paper distribution (2026-09-21, DEV + UAT; PROD pending)
+
+Communication and Aptitude now use the same cohort-sizing rule as Role-Based:
+`maxPerSet = max(5, ceil(20% × candidates))` and
+`totalSets = ceil(candidates / maxPerSet)` (therefore at most five sets). The
+cohort is shuffled, distributed evenly, and each assignment item carries explicit
+`__assign` entries whose `setKey` resolves through `configSnapshot.sets` after the
+prepare-set barrier.
+
+- **Communication:** one batch spec selects distinct complete sets matching domain,
+  CEFR, accent, and enabled sections. Sets already seen by the cohort and sets
+  already chosen for the batch are excluded. The default Indian-accent path reuses
+  the pre-generated pool first; any shortage is generated on the queue. Non-default
+  accents and free-text topics use the same batch path but normally generate.
+- **Aptitude:** batch specs generate the required main and diagnosis papers on the
+  queue. Every paper has a distinct question fingerprint; each diagnosis B paper
+  also excludes its paired A paper's questions.
+- Diagnosis cohorts receive two set keys per batch (`diagnosisSet<n>A/B`), while a
+  main cohort receives one (`mainSet<n>`). No schema change is required.
 - **prepare-set is upstream of the per-student loop.** A permanent generator failure
   used to mark only the **job** `failed` and leave every item `pending` with no
   `last_error` — so the Activity UI showed **FAILED = 0** and a blank **REASON**

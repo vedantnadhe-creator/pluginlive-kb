@@ -370,9 +370,19 @@ both DEV and UAT were deployed and verified on 2026-09-21. PROD pending.
 >
 > **Fixed (was: delivery-time set-swaps are accent-blind).** `student-node getCommunicationAssessmentQuestions` has **three** set-swap queries (CEFR-from-progression, CEFR-from-profile, and the malformed-set **validation swap**) that used to filter only on `cefrLevel + assessmentTypeId + assessmentDomainId + isActive` — **never `accent`**. When a swap fired it picked a random set from the ~99% `en-IN` pool, silently reverting a freshly-generated `en-US`/`en-GB`/`en-AU` set to Indian at start time. The two CEFR swaps are gated on `!isOneTime && is_institute` (institute-scheduled only); the **validation swap is ungated**, so it also swapped one-time *and* corporate papers across accents. All three where-clauses are now accent-scoped through the shared `buildSwapWhere` helper (`student-node/app/helpers/communicationSetSwap.js`), which never widens `accent` — if it is ever missing the clause matches nothing and no swap happens, rather than crossing accents. Deployed through PROD (`release-v1.39`).
 
-#### Queued accent/topic set generation (2026-07-31, DEV + UAT)
+#### Queued accent/topic set generation (2026-07-31; batched 2026-09-21, DEV + UAT)
 
 A Communication assign **generates** a set whenever the pool can't serve the requested configuration — a **non-default listening accent**, a **free-text topic** (a topic that isn't a registered `assessment_domain`, which resolves `domainId` to `Universal`), or simply **no complete set at the requested CEFR level** in that accent's pool. Everything else is pool-picked.
+
+Assignments no longer bind the whole cohort to one paper. The main cohort and the
+diagnosis cohort are independently split using the Role-Based rule
+`max(5, ceil(20% × cohort))`, capped naturally at five sets, then shuffled and
+balanced across those sets. The Indian/default-accent path selects that many
+distinct complete pre-generated sets; if the matching pool is short, only the
+missing sets are generated. US and other non-default accents, free-text topics, and
+all pool misses generate the required distinct sets through the same prepare-set
+batch. Diagnosis creates two distinct papers per cohort batch so Assessment #2 is
+not a repeat of Assessment #1.
 
 That generation used to run **inline inside the admin's assign HTTP request**, before the job row existed: an LLM call plus Google TTS for the whole set. The request blocked for the entire generation, no progress was visible anywhere, and any failure became a bare 500 with nothing to retry.
 
