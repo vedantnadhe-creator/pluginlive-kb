@@ -513,6 +513,37 @@ corporateMap.response_language  →  instituteMap.response_language  →  Englis
 | `calculate_email_writing_score` | AI evaluation of email — phrasing, voice/tone, format, grammar, spelling |
 | `calculate_dictation_score_endpoint` | Compares user text vs reference — word accuracy, character accuracy, punctuation, capitalization |
 
+### Dictation audio-key collisions and historical repair (2026-09-21)
+
+Dictation TTS filenames used to be built as
+`google_audio_<YYYYMMDDHHMMSS>_sentence_<N>.mp3`. Parallel set generations in
+the same second therefore wrote to the same OCI object keys: the later audio
+overwrote the earlier audio while each question retained its own reference
+text. Candidates were then graded against text different from what they heard.
+
+The generator now appends an eight-character UUID fragment once per Dictation
+set in both the Communication and Hinglish generators, so all five sentences
+share a set identifier without sharing keys with another generation. This is
+on `fastapi-ai-engine` Development (`95f7763`) and UAT (`505ec18`); it is not on
+PROD yet.
+
+The historical PROD repair treated the surviving audio as the source of truth:
+181 affected sentence keys across 149 questions were updated to their verified
+audio transcripts. No candidate answers or OCI objects were changed. The 1,257
+existing Dictation score rows that actually used those questions were
+recalculated, followed by a replay of both real and practice Communication
+progression for 644 candidates. One orphan response was intentionally excluded
+because its assignment was configured and scored with Email Writing and had no
+stored Dictation score row. Backups are in
+`assessment.revert_20260921_dictation_collision_subq`,
+`assessment.revert_20260921_dictation_collision_scores`, and
+`assessment.revert_20260921_dictation_collision_progression`.
+
+Do not use `resetForRecalculation` for this kind of correction: it deletes all
+Communication section scores and re-runs unrelated media scoring. Repair the
+Dictation row and metadata only, invalidate the affected progression cache, and
+then replay the candidate's full practice and real Communication chains.
+
 **Speech scoring weights (Paragraph Reading):**
 - Pronunciation (accuracy): 25%
 - Completeness: 35%
