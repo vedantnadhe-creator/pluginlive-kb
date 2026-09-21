@@ -987,6 +987,57 @@ Verified on UAT float `457f6e33…` (62 candidates, 35 takers): the rendered tab
 now leads with the 4 Sept 11:10 attempt instead of the top scorer, all 62 rows
 in the DOM, timestamps strictly non-increasing, non-starters last.
 
+## Last Activity, Avg. and "results found" (DEV + UAT, 2026-09-21)
+
+corporate-react-v2 `cd7fb31` (Development) / merge `9d4abad` (UAT). No
+backend change — every figure below reads a value corporate-node already
+returned.
+
+**Last Activity** column on the detail roster: `fmtLastActivity(takenAt)`
+renders the time since the candidate's `takenAt` as ONE unit, rounded down
+("45 Min", "2 Hr", "3 Days"); `null` (never opened) is "—". Sortable on the raw
+instant (`sortKey: "lastActivity"`). Because `takenAt` is
+`MAX(GREATEST(submitted_at, assessment_started_at))`, an in-progress candidate
+shows time since they *started*, not since their last answer — those are the
+only activity stamps `assessment_assigned_students` holds.
+
+**Avg.** column, Mix & Match floats only: `Math.ceil(mean(byType[].score))`
+over the types the candidate actually attempted (`byType` only carries scored
+parts), so someone who sat 2 of 3 parts is averaged over 2, not dragged down by
+the part they skipped. A tooltip flags the average as partial when
+`byType.length < types.length`. Note this is NOT the same number as the row's
+`score` (corporate-node's `AVG(...) FILTER (WHERE attempted)`, `Math.round`ed):
+the column rounds up per spec while the Score filter and Fit banding still use
+the server figure, so the two can differ by 1.
+
+**"NN results found"** now leads the applied-filters bar on all three screens
+(assessments list, detail roster, roles), before the "Applied" chips. Where the
+number comes from differs per screen and matters:
+
+| Screen | Count | Why it is honest |
+|---|---|---|
+| Assessment-wise list | `filters.assessments.length` (client) | `/v2/list` is one unpaged fetch, filtered in the browser |
+| Candidate-wise list | `pagination.totalCount` from corporate-node | rows are paged upstream; the browser only holds one page |
+| Detail roster | `filtered.length` (client) | the whole roster is paged in (`ROSTER_MAX_PAGES`), so the client array IS the roster |
+| Roles | `pagination.total` from corporate-node-v2 | paged upstream, filters applied in SQL |
+
+`matchesCandidateSearch` (CandidateFilters.tsx) is the one search predicate the
+roster table and its count share, so the two cannot disagree.
+
+### Fix: the Candidate-wise Fit filter never reached the backend (`2e9ffd2`)
+
+The count exposed a dead filter. `useCandidates` sends `fit=strong,weak`,
+corporate-node's `getCandidates` applies it (`FIT_SQL`), but the BFF
+`src/app/api/assessments/candidates/route.ts` forwarded only `type` and `band`
+and dropped `fit` — so picking a Fit left rows and total unfiltered while the
+popover counted "Strong (2)". Probe before the fix (DEV corporate 7fd6620f):
+`type=Aptitude → 10`, `band=high → 7`, `fit=strong → 3287` (the unfiltered
+total). After: UAT corporate a3244a46 `fit=strong → 2`, `fit=weak → 90`,
+matching `filterOptions.fits`. `tests/assessment-read-wiring.test.ts` now
+asserts all three popover params reach upstream (run with
+`node --conditions=react-server --import tsx --test`; the `server-only` guard
+throws without that condition). PROD pending.
+
 ## List order
 
 The assessments list is ordered **newest-created first**, on
