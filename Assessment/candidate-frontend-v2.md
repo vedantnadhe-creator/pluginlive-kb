@@ -459,6 +459,23 @@ false`, `capture_heatmaps: false`, `capture_performance: false`,
 [otp-invite.md](otp-invite.md) for why the funnel is built from explicit
 `invite_*` / `assessment_*` events rather than `$pageview`.
 
+### Replay sampling by assignment owner (UAT 2026-09-21)
+
+Production and UAT sample institute session replays at `0.3`. Corporate
+assessment sessions override that sampling decision with
+`posthog.startSessionRecording(true)`, so every corporate sitting is requested
+for replay once the authoritative summary identifies its owner. The
+`isCorporate` value is stored with the scoped assessment session and the root
+`PostHogInit` reapplies the override after a refresh or direct resume on
+`/assessment/start` or `/assessment/take`. The marker is removed by the normal
+assessment-session cleanup after submission.
+
+DEV remains replay-disabled. UAT replay is deliberately enabled so the
+institute-sampled / corporate-forced policy can be exercised before production.
+This is an application-side guarantee: ad blockers, disabled JavaScript,
+network loss, browser termination, or a server-side PostHog recording policy
+can still prevent delivery.
+
 **Init is on mount, never gated on knowing the candidate.** This is the v1 bug
 (fixed 2026-07-31) that made the entire OTP invite journey invisible for months.
 v2 is invite-first, so the same mistake would cost more here.
