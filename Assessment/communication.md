@@ -322,6 +322,31 @@ Regression test: *firstUnanswered ignores a question whose Communication clock
 has expired* in `exam.test.ts`. `assessment-react-v2` `998d9eb`, DEV + UAT
 2026-09-21, PROD pending.
 
+### Image descriptions can recover from a failed image request (2026-09-21)
+
+The v2 Question Based Response screen receives a seven-day presigned OCI image
+URL from `student-node`. A valid object can still fail to load when the
+candidate's connection drops during the browser's separate image request. The
+screen previously replaced the broken image with an informational message but
+gave the candidate no way to recover without refreshing the assessment.
+
+`assessment-react-v2/src/app/_components/exam/WritingAnswer.tsx` now shows a
+**Retry image** button after an image load error. Retrying mounts a fresh image
+element with the original signed URL. Failure state is associated with that
+specific URL, so a failed image cannot leave a later image question stuck in
+the unavailable state. Missing media is still filtered before delivery by
+`hasRequiredMedia`; this recovery is for a URL that was supplied but whose
+browser request failed.
+
+Reported against PROD candidate `raushandeb2007@gmail.com`. Their assigned
+object (`generated_image_20260911_000205_838.jpg`) was present and returned HTTP
+200 when checked, supporting a transient client/network failure rather than a
+missing question asset. Regression coverage lives in
+`src/lib/retryableImage.test.ts`.
+
+Shipped in `assessment-react-v2` Development `9bd0fac` and UAT merge `02279e2`;
+both DEV and UAT were deployed and verified on 2026-09-21. PROD pending.
+
 ---
 
 ## File Reference
