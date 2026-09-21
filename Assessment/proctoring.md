@@ -174,6 +174,7 @@ Do not assume any two surfaces agree. Measured on UAT 2026-09-08 (before the ins
 | 3 | `band === 'review'` **OR** rule 1 | admin-react `StudentReport/index.js` badge | the admin drawer in the screenshot |
 | 4 | the integrity band | corporate-node + corporate-react-v2 | corporate roster column + drawer chip |
 | 5 | the integrity band **OR** rule 1 (same shape as rule 3, without the `review` special-case) | institute-node + institute-react-v2 | institute roster column + report drawer |
+| 6 | ~~`proctoring_logs.is_valid` all-true → Good, else Bad; completed with no logs → Bad~~ **retired 2026-09-21 → the integrity band (rule 4)** | student-node `TpoDashBoard.js` via `helpers/proctoringVerdict.js` | TPO Excel exports (per-assessment, diagnosis, schedule sheets) + v1 institute candidate list. DEV+UAT; PROD pending |
 
 **Rules 1 and 4 disagree on 72% of clean-band reports** (793 of 1,100 clean reports
 are flagged by the 80% face rule). So after this fix admin and corporate still differ on
