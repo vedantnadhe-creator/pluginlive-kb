@@ -300,6 +300,28 @@ Shipped to `assessment-react-v2` Development (`74c7a29`) and UAT (`79cc5ef`).
 Both DEV and UAT deployed and verified — HTTP 200, no DEV URLs in the UAT
 bundle. PROD pending.
 
+### Finish is not blocked by a timed-out image description (2026-09-21)
+
+The kept-but-under-minimum response above had a second-order bug: at module
+finish, `finishCurrentModule` runs `firstUnanswered()`, which used `isAnswered`
+alone — so a 40-word description whose clock had expired (or an empty one)
+still counted as a **gap**. It dispatched a `JUMP` back to that question with
+the toast *"Every question in this section must be answered before you can
+finish."* — but Communication is sequential (`freeNavigation: false`), so the
+reducer refuses the jump. The candidate stayed on the last question and Finish
+toasted forever. Reported as *"If image based timer ends before writing 60
+words — blocker while submitting the assessment"*.
+
+**Current behaviour.** `firstUnanswered()` skips any question whose
+Communication clock has already expired (`clockExpired()` in
+`src/app/_mock/exam.ts`, keyed on `communicationTimerSpec` +
+`attempt.communicationTimers[key].expired`). A timed-out question is settled
+with whatever it holds; the partial text is still submitted and scored as
+before, and the pre-expiry 60-word gate on Next/Finish is unchanged.
+Regression test: *firstUnanswered ignores a question whose Communication clock
+has expired* in `exam.test.ts`. `assessment-react-v2` `998d9eb`, DEV + UAT
+2026-09-21, PROD pending.
+
 ---
 
 ## File Reference

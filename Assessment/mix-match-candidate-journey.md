@@ -462,8 +462,11 @@ trace. The nginx logs for a failed sitting show **no upload request at all**.
 The blob is now written to **IndexedDB** (`pl.v2.uploads`, store `pending`)
 first and uploaded from there, so it survives a reload, a crash, a lost
 connection and the submit itself, and is picked up again by whatever page loads
-next — including the completion screen. Retries back off across eight attempts
-and resume on `online` and on the tab becoming visible.
+next — including the completion screen. Retries back off (2s → 60s cap) for as
+long as the store holds the blob and resume on `online` and on the tab
+becoming visible. **A take is never dropped for want of attempts** — only when
+the server refuses it outright (see *A recording that lands after scoring*,
+below).
 
 - v1 tracked in-flight uploads and drained them before finalising
   (`createInflightUploads`). That guarantee is kept: the final submit awaits the
@@ -1122,6 +1125,79 @@ Three changes:
    server-side question by question**, so a recording that is never going up
    must not cost the candidate the module they finished, the hand-over when
    their clock runs out, or the submit itself.
+
+### A recording that lands after scoring, or never (2026-09-21)
+
+Reported from PROD as *"Speaking/Reading — video/audio missing for some
+candidates"* (corporate float `Campus 17 Sep 26`, map `093941ec`): 8 of 68
+submitted candidates had **no `student_answers` row for the Video Response**
+(`77cdd51f`), one of them also none for the read-aloud, all scored 0 on
+Speaking. 7 of the 8 sat inside one 90-minute window on 18 Sep.
+
+**What it was not.** Loki for that window (`{namespace="api",filename=~".*student-node.*"} |= "VIDEO_UPLOAD"`)
+showed every upload that reached the handler was written — 68 starts, 54 rows
+created + 14 updated, 0 skipped, 0 DB failures. The bucket held 130 objects
+against 99 rows, but the 31 extra were first takes replaced by the allowed
+one-time re-record (same row updated) — harmless. The mix-match upload ingress
+allows 150 MB / 600 s. The recordings simply **never arrived**.
+
+**What it was.** Uploads that *did* land in that window took **10–31 minutes**
+(the filename carries the recording timestamp; the row's `submitted_at` is
+when it landed) — ~40 candidates on one campus link pushing 20–40 MB each.
+Against that, the client (`lib/uploadQueue.ts`, `take/page.tsx`):
+
+- deleted a take from IndexedDB after **8 refused attempts** (~3 min of
+  backoff) — gone for good;
+- the final submit's `drainUploads` gave up after **180 s** and submitted
+  anyway, so the part was scored without the video → Speaking 0;
+- a take that landed *after* scoring was stored by `uploadVideo`/`uploadAudio`
+  but **nothing re-scored** the part (`scores_calculated` stayed `true`).
+
+Either way the score was 0, and the take was lost or ignored.
+
+**Current behaviour.**
+
+1. `uploadQueue.ts` — a take is dropped only when the server **refuses it
+   outright** (4xx other than 401/408/429 → `rejected`, flagged as
+   undeliverable, toast on the next drain) or on two 401s (`unauthorized`,
+   another sitting's stale token). Network failures, 5xx, 408 and 429 retry
+   with the capped backoff for as long as the blob is in the store, from
+   whatever page loads next (`resumeUploads` on the take **and** completion
+   pages). `STALLED_ATTEMPTS` = 8 only marks the point at which a stall is
+   reported.
+2. `FinalSubmitDialog` shows *"N of your recordings are still uploading…"* for
+   **this sitting's** pending takes (`useUploadsPending`, scoped by assignment
+   id via `UploadState.pendingAssignments`), so the candidate can choose to
+   wait. The 180 s drain bound is unchanged — a dead network must never trap
+   a candidate on the submit button.
+3. `student-node` `uploadVideo` / `uploadAudio` — after the answer row is
+   durable, `helpers/lateRecordingRescore.js` checks the assignment: if
+   `scores_calculated` is already `true`, it calls
+   `resetAssessmentForRecalculation` (scores deleted, flags reset, calc job
+   re-enqueued — see `assignment-calculation-queue.md`) so the late take is
+   scored. Not scored yet → nothing to do, the queued calc reads the row.
+   `is_processing` → skipped (ponytail: a calc mid-flight may already be past
+   that section; upgrade path is to re-enqueue once it clears). Skipped for the
+   AI Interview session audio, which has its own post-completion scoring. The
+   upload response never depends on the outcome.
+4. Telemetry — every take's fate is a PostHog `recording_upload` event
+   (`outcome` landed / stalled / rejected / unauthorized, `kind`, `attempts`,
+   `bytes`, `queued_ms`, `status`), installed once per tab by
+   `lib/uploadTelemetry.ts`. Before this there was no client-side signal at
+   all for this path. A float whose `queued_ms` runs to minutes is the early
+   warning for Speaking zeros.
+
+The 8 PROD recordings are unrecoverable (never landed; the scoped JWT lasts
+~5 h). Other Speaking zeros in the same float are different causes: a video
+present with `word_count = 0` is the quiet-mic / nova-3 empty transcript
+(`communication.md`), and 8–25 words echoing the prompt is the candidate
+reading the question aloud (< 30 words → 0 by rule).
+
+Shipped DEV + UAT 2026-09-21: `assessment-react-v2` `9a60fe1`, `student-node`
+`294ee55a`. PROD pending. Covered by `src/lib/uploadQueue.test.ts` (a refused
+take is kept and lands when the service returns; an outright 4xx is dropped
+and reported; a landed take reports its wait) and
+`test/lateRecordingRescore.spec.js`.
 
 **Evidence** — UAT group `298491be` ("All assesment in view", Custom → Aptitude
 → …): `prabha+niwjwooo` and `prabha+tyuuwiiw` each answered all 6 Custom
