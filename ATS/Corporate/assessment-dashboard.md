@@ -693,9 +693,17 @@ compute a plain client-side average of whichever part reports rendered,
 folding Behaviour in as `average_level / 5`, so it could disagree with the
 score in the roster row. It now shows `overall` from `/report/full` (see the
 table above): the score, its level band and the per-part breakdown; Behaviour
-is listed with its level and marked "not in the score". The drawer's Overview
-tab, previously hidden for mix floats, is shown again for them and is the
-landing tab — the final score is the first thing a recruiter sees.
+is listed with its level and marked "not in the score". This data-source fix
+is still in place.
+
+**2026-09-22 — Overview tab hidden again for Mix & Match (DEV + UAT).** The
+2026-09-18 change above also un-hid the drawer's Overview tab for mix floats
+and made it the landing tab. That part was reverted: Overview is hidden again
+for mix-n-match candidates (`{singleType && (...)}` guards the tab button;
+the drawer opens on the first bundled type's own tab instead, same as before
+2026-09-18). Single-type candidates are unaffected — they still land on and
+can select Overview. `CandidateReportDrawer.tsx`'s two hunks only; the
+`/report/full` data-source fix for `CumulativeOverview` itself was untouched.
 
 ### Recorded answers play in place (DEV + UAT, 2026-09-17)
 
