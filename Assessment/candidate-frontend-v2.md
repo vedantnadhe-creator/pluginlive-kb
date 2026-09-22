@@ -564,6 +564,20 @@ existing responses, it did not fork the API. Scoring, progression, reports and
 proctoring processing are unchanged and live where they always did — see
 [README.md](README.md).
 
+## Direct audio/video upload — DEV + UAT 2026-09-22; PROD pending
+
+`uploadQueue.ts` now requests a signed Oracle upload URL from student-node for ordinary
+recordings, uploads the browser blob directly to Object Storage, then confirms completion.
+This removes the student-node proxy leg and its full-file memory buffering. The queue does not
+consider a take landed until confirmation succeeds, and submission drainage still waits for
+this sitting's queued media.
+
+The server creates the pending answer before returning the URL, so scoring can distinguish an
+upload in flight from a skipped response. If initialization fails for a non-authentication
+reason, v2 automatically retries through the existing multipart path; 401/403 responses stay
+on the authentication recovery path. See [assignment-calculation-queue.md](assignment-calculation-queue.md)
+for the server-side settlement barrier, late-arrival recalculation, and progression behavior.
+
 ## Microphone readiness — DEV and UAT, updated 2026-09-17
 
 `DeviceCheckDialog` does not treat browser permission as proof that recorded answers will be usable. It first rejects a microphone track that is browser-reported muted, disabled or ended, observes later mute/disconnection events, and rechecks readiness when the candidate presses Begin.

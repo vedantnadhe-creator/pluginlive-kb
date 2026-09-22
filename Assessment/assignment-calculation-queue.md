@@ -412,17 +412,25 @@ predecessor's progression hadn't been written yet → wrong-difficulty set.
   the intended level (predecessor's `suggestedCefr`) instead of the served set level.
   See `communication.md` §8 Backfill API. (Communication only; aptitude has no simulate path yet.)
 
-## Video upload-wait optimization (scoring)
+## Direct recording upload and scoring settlement (DEV + UAT 2026-09-22; PROD pending)
 
-Communication/Hinglish video scoring used to wait **3 × 60s for every missing video** —
-including ones the student never recorded — adding ~3 min to a calc even for a reading-only
-submission. Now (`student-node/app/helpers/videoUploadWait.js`,
-`resolveAttemptedVideoUrl`): only wait when the student **attempted** the video (a
-`student_answers` row exists but its `object_key` upload is still landing → short bounded
-retry, default **3 × 10s**, env `VIDEO_UPLOAD_WAIT_RETRIES` / `VIDEO_UPLOAD_WAIT_INTERVAL_SEC`).
-A **skipped** video (no answer row) is scored 0 **immediately**. Mirrors the skip
-optimization already in `RoleBasedCalculations`. The frontend already awaits all audio/video
-uploads before calling submit, so by enqueue time attempted media is saved.
+Candidate v2 sends ordinary audio/video recordings directly from the browser to Oracle
+Object Storage. Before the PUT, student-node creates a pending `student_answers` row and
+returns a short-lived signed upload URL. After the PUT, the browser calls the completion
+endpoint; student-node verifies the object's existence and size before attaching its key.
+Object names include the assignment ID and a UUID fragment. If direct-upload initialization
+fails, the queue falls back to the existing multipart endpoint (401/403 remain authentication
+failures so normal token renewal can run).
+
+The calculation worker now treats a pending recording row as unsettled and defers scoring;
+upload completion immediately wakes the calculation queue. This closes the old race where
+the assessment could score while a recording was still in transit. The legacy bounded
+`videoUploadWait` remains as a compatibility guard for multipart/v1 traffic.
+
+If a recording nevertheless lands after a score was produced, the completion path invalidates
+the stale result and enqueues one idempotent recalculation. The ordinary calculation lifecycle
+then enqueues Communication/Aptitude progression when the assignment is eligible, so a corrected
+scheduled score also replays its progression chain. Candidate answers are never rewritten.
 
 ## Schema (apply per env, idempotent)
 
