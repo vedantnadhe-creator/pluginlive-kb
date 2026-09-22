@@ -686,6 +686,41 @@ of a Mix & Match float.
 - The drawer's old Custom fallback (legacy `/candidates/report` dimension
   cards and its fetch) is gone.
 
+### Assessment detail header: "More options" kebab, Duplicate Assessment (DEV + UAT, 2026-09-22)
+
+The standalone Manage (gear icon) and Share buttons in the assessment
+detail header are gone, replaced by one "More options" kebab (always the
+row's last element) holding, in order: **Share Link**, **Duplicate
+Assessment**, **Manage Assessment**. Manage stays gated by `canManage`,
+same as the old gear icon was; Share Link drops out of the menu once the
+assessment is closed (a closed float can't be shared), same as before.
+
+**Duplicate Assessment** is new: confirms via a dialog, then redirects to
+`/assessments/new?duplicateTitle=&duplicateTypes=`, carrying the source
+assessment's title and type selection as search params
+(`mapSubscribedTypeNames` maps the admin-node wire type names to wizard
+type keys). No backend call happens on Confirm and no draft record is
+created — the wizard's own existing publish flow is what creates the new
+assessment for real, once the user finishes configuring it there.
+Candidates are never carried over.
+
+**Known gap, not a bug:** those search params are currently read by
+nothing. This app's create wizard is the shared
+`@pluginlive-technologies/assessment-creation` package (also used by
+admin-react-v2) — its `useAssessmentWizard()` hook takes no arguments and
+the `AssessmentHost` type has no seed field, so there is no way for
+corporate-react-v2 alone to make the wizard land pre-filled. Duplicate
+Assessment today just opens a **blank** wizard; the confirmation dialog's
+copy is written to not claim otherwise ("go to the setup wizard to create
+a new assessment based on **X**", not "already filled in"). Fixing this
+for real needs a seed param added to the shared package's hook + host — a
+change reviewed against every consumer of that package, not scoped to
+this repo. Once that lands, wiring `duplicateTitle`/`duplicateTypes` into
+it is the only remaining step on this side; only title + type should be
+seeded even then (not per-type deep config — `GET /api/assessments/[id]`
+returns generic backend-shaped `label/value` pairs with no field keys
+defined anywhere in this repo, so guessing at them risks wrong values).
+
 ### Mix & Match final score is the server figure (DEV + UAT, 2026-09-18)
 
 The Overview tab of a Mix & Match report (`CumulativeOverview`) used to
