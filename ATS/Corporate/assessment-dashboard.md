@@ -696,14 +696,21 @@ table above): the score, its level band and the per-part breakdown; Behaviour
 is listed with its level and marked "not in the score". This data-source fix
 is still in place.
 
-**2026-09-22 — Overview tab hidden again for Mix & Match (DEV + UAT).** The
-2026-09-18 change above also un-hid the drawer's Overview tab for mix floats
-and made it the landing tab. That part was reverted: Overview is hidden again
-for mix-n-match candidates (`{singleType && (...)}` guards the tab button;
-the drawer opens on the first bundled type's own tab instead, same as before
-2026-09-18). Single-type candidates are unaffected — they still land on and
-can select Overview. `CandidateReportDrawer.tsx`'s two hunks only; the
-`/report/full` data-source fix for `CumulativeOverview` itself was untouched.
+**2026-09-22 — Overview tab hidden again for Mix & Match (DEV + UAT), same day
+reversed back.** The 2026-09-18 change above also un-hid the drawer's Overview
+tab for mix floats and made it the landing tab. That part was reverted earlier
+today, then reverted again the same day — Overview is **shown** for
+mix-n-match again (unconditional tab button, lands there on open), matching
+2026-09-18's behavior. Single-type candidates were never affected either way.
+
+Also same day: `CumulativeOverview`'s spotlight card (the float-wide score
+card the Overview tab shows) was simplified — it now shows only the label and
+score number. The level band + "Across N assessment types" line
+(`overall.level`, `.sl-schedule`) is removed entirely, not just the level.
+Label renamed **"Overall Performance" → "Average Score"**. The per-type
+breakdown on the card's right side, including Behaviour's own level marked
+"not in the score", is unchanged. The `/report/full` data-source fix for
+`CumulativeOverview` itself was untouched throughout both reversals.
 
 ### Recorded answers play in place (DEV + UAT, 2026-09-17)
 
