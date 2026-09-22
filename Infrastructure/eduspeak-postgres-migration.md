@@ -1340,3 +1340,86 @@ both `/usr/local/bin/system-cleanup.sh` (root cron 03:00: `docker image prune -a
 **not** survive the night unless a container is running from them; keep the DB dump + `.env` +
 functions snapshot as the real rollback, and treat any "stopped, restore later" plan as a same-day
 plan.
+
+## 2026-09-22 — redeployed to `25027487` (19 commits, 2 migrations)
+
+Upstream `main` had drifted into a genuinely messy state since 09-19: the same
+`prakash.chinnadurai@pluginlive.com` workspace that shipped Banking's broken `super_admin` enum
+rewrite (see `banking-job-readiness.md` 2026-09-21) committed the identical migration here too
+(`6086f326` "Fix has_role function, add super_admin to enum...") and then **self-reverted it**
+two commits later (`e2d84635`) before it reached this deploy — confirmed clean by diffing
+`6086f326~1..e2d84635` for any surviving trace and `git grep`-ing origin/main for
+`temp_app_role`/`DROP TYPE.*app_role`: none found. Also present at repo root (harmless, not
+pulled into the working state we build from): eight dangling gitlink entries to sibling apps
+(`bankingjobreadiness`, `corporatejobs`, `neobank-digital-india`, etc., no `.gitmodules` so git
+doesn't try to resolve them) and dozens of committed scratch/debug files
+(`check_braces6.cjs`, `convex-export.zip`, `test-results.txt`, ...). Worth flagging upstream;
+did not touch any of it — `src/`, `supabase/`, `frontend/` are still real files at the root and
+build correctly regardless.
+
+**Migration `20260916150000_comprehensive_repair_v2.sql` grew again** (+517 lines: `mock_tests`,
+a broken `assessments` stub, 3D-video-infra tables, billing/plan tables, `school_events`,
+`institutes`/`institute_users`). Same root cause as every prior entry in this file — written
+against a fresh/hosted schema assumption, not this UAT database — but this time at much larger
+scale. Full dry-run against a rollback transaction surfaced **eleven** places where a
+`CREATE TABLE IF NOT EXISTS` was silently skipped (table already existed with a different real
+schema) and the following `CREATE POLICY` then failed or would have widened access. Fixed in
+`~/eduspeak-pg-migration/fixups/20260916150000_comprehensive_repair_v2.sql`:
+
+| Table | What broke | Fix |
+|---|---|---|
+| `pg_cron`/`pg_net` extensions | Neither is installed on this OCI Postgres cluster (not in `pg_available_extensions`); nothing in the file actually calls `cron.*`/`net.*` | Dropped both `CREATE EXTENSION` lines (same class of issue as every prior deploy on this cluster) |
+| `public.assessments` | Real table (`teacher_profile_id`, `question_ids`, `proctoring_config`, ...) is an actively-used proctored-assessment table, not the file's `board/class_level/is_public` stub; policy also had a genuine syntax bug (extra `)` on `EXISTS(...)))`) | Whole `CREATE TABLE`+3 policies block removed; `mock_tests` (the one genuinely new table in this section) applied as-is |
+| `curriculum_delivery_settings`, `curriculum_topics`, `video_provider_connections`, `video_generation_jobs`, `ai_video_assets` | New `is_public`/`validation_status` columns don't exist on the real tables; the paired "Staff can manage" policies used a bare `has_role(admin/teacher)` with no school scoping, which would have **widened** access past the real, already-scoped policies (`can_access_sprint_school`, `can_access_curriculum_school`, `can_manage_curriculum_governance`) to any teacher/admin regardless of school | Broken/widening policies skipped entirely; existing scoped policies left untouched |
+| `institutes`, `plan_menu_catalog`, `plan_pricing`, `payment_receipts`, `school_events` | Same missing-column pattern (`is_public`/`is_active`/`student_profile_id`) | Skipped just the broken policy; kept any accompanying policy that was a pure **addition** with no tenancy regression (e.g. `payment_receipts`/`school_events` "staff can manage" adds admin coverage alongside an existing teacher-only policy — additive, not a widening) |
+| `institute_users` | New "read own membership" policy's predicate was `EXISTS(caller has *a* student profile) OR EXISTS(caller has *a* teacher profile)` — no check that the row is theirs at all; would let any student/teacher read every institute's `contact_no`/`email`/`address` | Skipped; kept the admin-only manage policy (table had zero policies before, 0 rows today, so this is a net tightening) |
+
+The rule applied throughout, per the standing guidance in this doc and
+`[[project_pilvidya_uat_restore_recipe]]`: **never let a mechanical replay widen access beyond
+what already exists** — skip predicates like "caller has a teacher profile" with no school/self
+scoping, keep anything that only narrows or adds a role this table's real policies were missing.
+1215 of the file's 1307 lines survived; the removed 92 are entirely policy/table blocks that
+either duplicated a real column-mismatch or would have crossed a tenancy boundary. Dry-run clean
+end to end before applying for real (`BEGIN; ...; SELECT 'END_MARKER_OK'; ROLLBACK;`).
+
+**`20260922110000_school_operations_timetable_safety.sql`** applied verbatim, dry-run clean on
+the first pass — well-written, additive (`timetable_slots.school_id`/`class_id`, backfilled from
+`classes`), and properly scoped through the existing `current_teacher_school_id()` /
+`current_teacher_profile_id()` / `can_access_student()` functions. Adds
+`teacher_replace_timetable_slots(class_id, slots)` (SECURITY DEFINER, validates day/period/time
+bounds, ≤100 slots, class belongs to caller's school) as the only write path, replacing four
+looser `"Anyone can ..."` policies with a single school/class-scoped `timetable_school_read`.
+
+**Three new edge functions**, synced via the usual `rsync --exclude=main/` into
+`~/eduspeak-sb/functions/` (live-mounted, no rebuild needed — `docker restart
+eduspeak-sb-functions` only to clear the module cache): `assessment-manage` and
+`mock-test-generate` are both **inert stubs** — neither touches the database at all, they
+validate input and echo back a constructed response ("In a real implementation, this would
+update the assessment_assignments table" is a literal comment in the source). `threed-video-generate`
+is real (writes `ai_video_assets`/`video_generation_jobs`/`topic_media`, reads
+`curriculum_delivery_settings`) and is gated by `requireStaff()` from `_shared/staff-guard.ts`
+— confirmed present and enforced before any DB call.
+
+**Local patches previously tracked in this doc** (`vite.config.ts` `allowedHosts`, `TrendingUp`
+import in `TeacherPortal.tsx`, `roleBadge` fallback in `DashboardHub.tsx`) are now **native
+upstream** — no `git stash` needed for this pull, plain `git merge --ff-only origin/main` worked.
+
+**Deploy mechanics note for next time:** the running container was `-p 3008:80` on the default
+bridge network, *not* `--network container:eduspeak-sb-gateway` — I guessed wrong on the first
+`docker run` (started the new container sharing the gateway's network namespace, no port bound),
+caught it immediately via `docker inspect --format '{{.HostConfig.NetworkMode}}'` on the old
+container before anything was routed to it, and corrected. Always inspect the running
+container's actual `PortBindings`/`NetworkMode` before recreating it — don't infer from other
+services on the box.
+
+Build: `eduspeakreact:25027487`, `--build-arg` from `frontend/.env.uat`, route bundle audited
+(`grep` for `*.dev.pluginlive.com` and `*.supabase.co` → only the inert `project.supabase.co`
+placeholder string in an admin form field, matches every prior deploy). Old container kept
+stopped as `eduspeakreact-old-20260922` (not deleted) for same-day rollback; DB dump
+`~/eduspeak-pg-migration/backups/eduspeak_uat_predeploy_20260922T035227Z.dump`. Verification:
+`mock_tests` and the new `timetable_school_read`-gated `timetable_slots` reachable through
+PostgREST (200); headless Chromium on `/`, `/login`, `/login/teacher` — 0 `pageerror`, 0 failed
+requests, non-empty `#root` on `/`.
+
+Remember the nightly-prune caveat from the 09-19 entry above: this rollback image/container will
+not survive past `03:00` UTC unless something is actively running from it.

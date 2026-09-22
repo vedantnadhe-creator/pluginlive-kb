@@ -43,6 +43,7 @@ nvm use 20 && npm install && npm run build
 | 2026-08-28 | `6f87c4c` | none | 1 commit; **module topics now auto-link real YouTube videos** — see *Module videos: search queries vs. playable URLs*. Also the day the UAT **YouTube Data API key was finally configured**. Unit suite 370/371 (same stale `LLM_PROVIDER_TIMEOUT_MS` literal). |
 | 2026-08-28 | `9ab7c00` | `20260828083515_llm_settings_tts_columns_and_audit_actor_text` (applied) | Schema-only; **no rebuild** (the commit touches no `src/`). Fixes both Admin → LLM Config save failures — see *Admin → LLM Config could not save*. |
 | 2026-09-21 | `b505d58` | `20260919100000_institute_city_management` (verbatim), `20260919110000` (verbatim, no-op), `20260919110001_fix_super_admin_enum` (**fixup** — verbatim would CASCADE-drop `has_role`) | 19 commits; **RBAC role filter gains Trainer**; institute/city masters on registration; hallucination-risk badge in AI coach. See *2026-09-21* section. |
+| 2026-09-22 | `d0ebf23` | none | 5 commits; `.env.local` finally removed upstream; types.ts regenerated for yesterday's cities/institute_city tables |
 
 `20260810100000` needed **no fixup** — it is `ALTER COLUMN … SET DEFAULT` plus a distinct-union
 `UPDATE`, so it is naturally idempotent. Effect on UAT: per-admin `allowed_tabs` went 56 → 58 and
@@ -1952,3 +1953,15 @@ option compiled), then atomically swapped into `dist/`. Snapshot
 `~/banking-predeploy-20260921T075713Z/` (dist + env) and
 `~/banking-sb/banking_uat_predeploy_20260921T075713Z.dump`. Local UAT-only diffs (`.env`,
 `supabase/functions/mcp/index.ts`) carried across the rebase via stash, still present.
+
+## 2026-09-22 — redeployed to `d0ebf23` (5 commits, no migration/functions)
+
+Trivial follow-on to the 09-21 deploy: `.env.local` finally deleted upstream (the tracked-file
+landmine flagged since 08-04 is gone from `main` now — still worth diffing after every pull in
+case it comes back), and `src/integrations/supabase/types.ts` regenerated to match yesterday's
+`cities`/`institute_city` tables. No `supabase/migrations` or `supabase/functions` changed, so
+this was a pure frontend rebuild: snapshot (`~/banking-predeploy-20260922T040437Z/`, dist+env
+only, no DB dump needed since nothing DB-side changed) → `npm run build`, audited (`api.supabase.co`
+vendor hit only, self-hosted `/sb` URL present) → swapped into `dist/`. 7/7 containers up, site
++ auth 200, headless check on `/`, `/login/admin`, `/login/trainer`, `/login/candidate`: 0
+page errors, 0 API errors.
