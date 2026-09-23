@@ -102,6 +102,13 @@ still just `jwt.verify` the access token and needed no change.
   <5 min left, and once more on a 401 before retrying the request. Invite-scoped
   candidate JWTs are deliberately left alone. `auth-react` needed
   `withCredentials: true` or the browser discards the sign-in `Set-Cookie`.
+  The refresh POST must carry an **object** body (`{}`), never `null`: axios
+  0.27 labels a null body `application/x-www-form-urlencoded`, which Fastify has
+  no parser for, so the endpoint answered **415 before the handler ran** and the
+  portal — which treats any refresh failure as "session over" — cleared the
+  session and bounced the user to sign-in. Every v1 portal was affected until
+  the first renewal after the 2026-09-23 fix; the v2 BFF routes never were,
+  because `fetch` with no body sends no Content-Type at all.
 - v2 Next apps (corporate/admin/institute/assessment-react-v2): the browser
   cannot reach `api-auth` with credentials, so a BFF route
   `POST <basePath>/api/auth/refresh` forwards the cookie server-side and relays
@@ -132,6 +139,11 @@ Verify after a deploy:
 ```bash
 curl -s -o /dev/null -w '%{http_code}\n' -X POST \
   https://api-auth.uat.pluginlive.com/user/token/refresh    # 401 = route is live
+# 415 instead of 401 means the caller sent a Content-Type the service cannot
+# parse (urlencoded); the route only accepts application/json or no body:
+curl -s -o /dev/null -w '%{http_code}\n' -X POST \
+  -H 'Content-Type: application/x-www-form-urlencoded' \
+  https://api-auth.uat.pluginlive.com/user/token/refresh    # 415 by design
 # sign in, then check the token really lasts 2 days:
 #   the redirectLink's ?token= payload should have exp - iat == 172800
 ```
