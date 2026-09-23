@@ -5,6 +5,7 @@ This directory contains domain documentation for the PluginLive platform.
 When working on a feature, check the relevant file here **before asking the user for context**:
 
 - `pluginlive.md` — company overview (SaaS hiring platform, Assessment + ATS products)
+- `ATS/auth-react-login-app.md` — the shared sign-in app and the platform **session model**: 2-day access token + 30-day rotating refresh cookie, and the per-env `LOGIN_TOKEN_EXPIRES_IN=2d` requirement
 - `Assessment/README.md` — assessment system overview
 - `Assessment/candidate-frontend-v2.md` — **the candidate app is `assessment-react-v2`; `Assessment-React` is legacy/maintenance-only** — read this before editing either frontend
 - `Assessment/aptitude.md` — aptitude test scoring, flow, proctoring

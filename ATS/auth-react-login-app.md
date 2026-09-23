@@ -60,3 +60,78 @@ write only `password`, so the **old temporary password kept working after a
 reset** — the candidate could log in with both. Both handlers now also null
 `temp_password`. Covered by `test/handlers/passwordReset.spec.js` (reset → old
 temp password refused, new password accepted).
+
+## Session lifetime: 2-day access token + 30-day refresh cookie (2026-09-22 DEV, 2026-09-23 UAT)
+
+Portal access tokens used to last **12 hours** with no way to renew — everyone
+was signed out mid-day. (`LOGIN_TOKEN_EXPIRES_IN=43200000` reads as a *string*,
+which `jsonwebtoken` parses as **milliseconds**, not the ~500 days a bare number
+would mean.) Access tokens are now **2 days** and renew silently from a
+**30-day refresh token**.
+
+`user-management-node` is the only issuer; corporate/institute/student/admin-node
+still just `jwt.verify` the access token and needed no change.
+
+**Server** (`user-management-node`)
+
+- `app/services/refreshToken.js` — 48 random bytes, stored only as a **SHA-256
+  hash** in `user_management.refresh_tokens`, 30-day expiry.
+- `POST /user/token/refresh` — authenticated *by the cookie only*. Rotates:
+  the presented token is revoked and a replacement issued, and a new access
+  token is returned in `data.token`.
+- **Rotation safety.** A replay within 60s is treated as the two-tabs race and
+  allowed (both tabs refreshed at once). A replay *after* that window means the
+  token leaked, so **every session for that user is revoked**. Explicit
+  revocation also back-dates `expires_at`, so a revoked token can never slip
+  through the grace window.
+- Revoked on sign-out (`POST /users/signout`, cookie forwarded), password reset
+  and password change.
+- The cookie `pl_refresh_token` is **httpOnly, Secure, SameSite=Lax**, scoped to
+  the parent domain (`.uat.pluginlive.com`, `.pluginlive.com`) so every portal
+  sub-domain sends it. `REFRESH_COOKIE_DOMAIN` defaults to the parent of
+  `AUTH_FE_BASE_URL`.
+- CORS changed from a blanket `origin: '*'` to a delegator: our own sub-domains
+  (and localhost) get `credentials: true`; every other origin keeps the old
+  wildcard, credential-less access.
+
+**Clients**
+
+- v1 webpack apps (`auth-react`, corporate/admin/institute/student-react,
+  `Assessment-React`): `src/utils/sessionRefresh.js`, installed on every axios
+  instance by `initApiServices.js`. It refreshes proactively when the token has
+  <5 min left, and once more on a 401 before retrying the request. Invite-scoped
+  candidate JWTs are deliberately left alone. `auth-react` needed
+  `withCredentials: true` or the browser discards the sign-in `Set-Cookie`.
+- v2 Next apps (corporate/admin/institute/assessment-react-v2): the browser
+  cannot reach `api-auth` with credentials, so a BFF route
+  `POST <basePath>/api/auth/refresh` forwards the cookie server-side and relays
+  the rotated `Set-Cookie` back. `lib/sessionRefresh.ts` runs it on mount, on tab
+  focus and every 5 minutes; the new token is written to **both**
+  `localStorage.token` and the redux-persist `auth` slice, because v1 reads the
+  latter.
+- **Admin check-out** (`/api/checkout`) relays `portalSignin`'s `Set-Cookie`.
+  Without that, the refresh cookie still belongs to the corporate/institute
+  session and the next refresh silently resurrects the identity the admin just
+  left.
+
+**Operational notes**
+
+- Schema: `DB-Scripts/Auth Refresh Tokens/20260922T093156Z__auth_refresh_tokens.sql`
+  (DEV + UAT applied; PROD pending).
+- Each env's UMS env file must carry `LOGIN_TOKEN_EXPIRES_IN=2d` — the code only
+  falls back to `2d` when the variable is **absent**, so an env still holding
+  `43200000` keeps 12-hour tokens even with the new build. PROD's value lives in
+  the `auth-api-config` ConfigMap and is still 12h.
+- `@fastify/cookie` was added, so the UMS image must be rebuilt, not restarted.
+- On the deploy itself, everyone signed in beforehand has no refresh cookie:
+  their current token runs out its clock, the first refresh 401s and they get one
+  clean redirect to the login page. This happens once per rollout.
+
+Verify after a deploy:
+
+```bash
+curl -s -o /dev/null -w '%{http_code}\n' -X POST \
+  https://api-auth.uat.pluginlive.com/user/token/refresh    # 401 = route is live
+# sign in, then check the token really lasts 2 days:
+#   the redirectLink's ?token= payload should have exp - iat == 172800
+```
