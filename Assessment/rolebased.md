@@ -26,7 +26,7 @@
 | **Section A: MCQ** | 10–12 | 18 min | Auto-graded (correct option) |
 | **Section B: Written Responses** | 2 | 8 min (4 min each) | AI-scored (0–5 scale per skill) |
 | **Section C: Video Response** | 1 | 4 min | AI-scored (Deepgram STT + Gemini/Groq) |
-| **Section D: Coding** | optional | ~10 min/question | Test-case pass rate |
+| **Section D: Coding** | optional | ~10 min/question | Test-case pass rate. Each question is either a **program** (Python/JS/TS/Java/C++/C) or a **SQL query** (PostgreSQL or SQLite) — see [SQL questions](#sql-questions-2026-09-23-dev--uat) |
 
 The per-section times above are the indicative split of a 30-minute paper. The exam runs on **one whole-assessment countdown**, not per-section timers — see below.
 
@@ -426,6 +426,77 @@ and the old container is left running. Build from a clean clone of the branch,
 or commit first.
 
 ---
+
+### SQL questions (2026-09-23, DEV + UAT)
+
+A Coding question can now be a **SQL question**: the candidate writes one `SELECT` against
+the question's tables and picks **PostgreSQL or SQLite**. There is **no separate count** —
+the admin sets only "Coding questions" (`codingCount`); fastapi decides how many of them are SQL.
+
+**How many are SQL.** `sql_question_generator.decide_sql_count` makes one model call with the
+role, skills, seniority and JD and returns 0..`codingCount` (fresher, 3 coding questions: Data
+Analyst 3, Full Stack / Backend with SQL 1, Frontend / Android / Sales 0). Any failure → 0 (all
+programs, the pre-SQL behaviour). An explicit `questionConfig.sqlCount` overrides it — admin-node
+sends it when regenerating one question, so a SQL question is replaced by SQL and a program by a
+program (`AssessmentSetGroupService`, `isSqlQuestion`).
+
+**Generation and verification** (`fastapi-ai-engine`, `QuestionGeneration/Role_Specific/sql_question_generator.py`):
+the model writes 2–3 `CREATE TABLE`s, **4 datasets** (2 visible, 2 hidden carrying the traps —
+NULLs, zero matches for LEFT vs INNER JOIN, ties, boundary values) and a reference query, in
+portable SQL only. The reference is **executed on both engines through code-runner** and the
+question is kept only if both agree on every dataset, dataset 1 returns rows and the datasets do
+not all give the same result. **Expected results come from that run, never from the model; the
+reference query is not stored.** Up to 3 attempts, asking only for the missing questions. Needs
+`CODE_RUNNER_URL` in fastapi's `.env` (DEV and UAT: `http://172.17.0.1:9090`).
+
+**Storage** — a normal Coding Question (no schema change): `coding_metadata.languages =
+["postgresql","sqlite"]`, `coding_metadata.sql = {schema, order_matters, result_columns}`,
+`test_cases[].input` = that dataset's INSERTs, `expected_output` = result JSON
+(`admin-node/app/helpers/codingMetadata.js`). SQL questions count in the Coding section.
+
+**Grading** (`student-node`, `RoleBasedCalculations.runCodingTests` → `runSqlTests`): each case
+loads schema + that case's rows and runs the answer on the chosen engine. Compared by **values
+and column order**; column names ignored; row order only when `order_matters`; `"2.5000"`=`2.5`,
+`true`=`1`, numbers to 4 dp (`app/helpers/sqlResults.js`, mirrored in fastapi `sql_results.py` —
+keep them in step). **SQL answers are always re-run on the server** (browser-reported verdicts
+are ignored), **hidden SQL cases are blanked before reaching the browser**
+(`helpers/codingQuestionView.js`), and the Run endpoint returns only the verdict for hidden
+cases (their output would print the hidden rows). A program answer to a SQL question (or the
+reverse) is refused with a message.
+
+**Execution — code-runner** (`student-node/code-runner`, no CI, hand-built on each box):
+- `sqlite`: in-memory, `python3 sql_sqlite.py`; authorizer allows only read/select/function/recursive
+  (no writes, `ATTACH`, `PRAGMA`), one statement, 3 s deadline, 1000-row cap.
+- `postgresql`: separate container **`sql-sandbox`** (`postgres:16-alpine`, tmpfs data, 512 MB,
+  network `code-runner-net`, no published port, init `code-runner/sql-sandbox/init-sandbox.sh`,
+  secrets `~/api/credentials/sql-sandbox.env` per box). Each run: `BEGIN` → own schema → load
+  tables → `SET ROLE sandbox` (SELECT-only) + read-only transaction + 3 s statement timeout →
+  one statement via the extended protocol → **always `ROLLBACK`**. code-runner gets
+  `SQL_SANDBOX_URL` and joins `code-runner-net` while keeping `-p 9090`. It is **not** the
+  platform database and holds no data. PROD plan: sidecar in the code-runner pod
+  (`code-runner/k8s-sidecar.yaml`). Rollback image on DEV `code-runner:pre-sql`, UAT `pl-code-runner:pre-sql`.
+
+**Candidate UI** (`assessment-react-v2`): picker labelled *Database* (PostgreSQL / SQLite) with
+each engine's syntax highlighting (`@codemirror/lang-sql`); a tables panel with columns, the
+columns to return and the row-order rule, and each visible example's rows (folded); results as
+text tables. Switching engine keeps the query; table/column names and sample rows may be pasted
+(`pasteGuard` reference text); Run on a comment-only query asks for a query; an answer saved in a
+language the question no longer offers opens and submits in the question's first language.
+
+**Not supported by the legacy v1 candidate app** (`Assessment-React`): it runs code through the raw
+`/execute` route without the tables, so Run fails there for SQL; scoring is still correct because
+it re-runs on the server.
+
+**Known gap, program questions only:** they still ship hidden test cases to the browser and
+scoring accepts browser-reported verdicts that match the visible expected outputs, because v1
+grades in the browser. SQL questions are not affected.
+
+### Java was dropped from every coding question (fixed 2026-09-23, DEV + UAT)
+
+`_is_placeholder_starter_code` looked for exactly one `{ … }` body, but a Java stub is a method
+inside `class Solution { … }`, so every Java template read as filled in and Java was removed
+from the language list (0 of 23 DEV questions offered it). The class wrapper (and imports) is now
+unwrapped before the check; bare methods still pass (`tests/test_role_coding_starter_code.py`).
 
 ### Coding starter code must not solve the question (2026-08-07, promoted to UAT 2026-08-10)
 
