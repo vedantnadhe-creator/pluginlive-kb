@@ -44,6 +44,7 @@ nvm use 20 && npm install && npm run build
 | 2026-08-28 | `9ab7c00` | `20260828083515_llm_settings_tts_columns_and_audit_actor_text` (applied) | Schema-only; **no rebuild** (the commit touches no `src/`). Fixes both Admin → LLM Config save failures — see *Admin → LLM Config could not save*. |
 | 2026-09-21 | `b505d58` | `20260919100000_institute_city_management` (verbatim), `20260919110000` (verbatim, no-op), `20260919110001_fix_super_admin_enum` (**fixup** — verbatim would CASCADE-drop `has_role`) | 19 commits; **RBAC role filter gains Trainer**; institute/city masters on registration; hallucination-risk badge in AI coach. See *2026-09-21* section. |
 | 2026-09-22 | `d0ebf23` | none | 5 commits; `.env.local` finally removed upstream; types.ts regenerated for yesterday's cities/institute_city tables |
+| 2026-09-23 | `420de1d` | 3 applied (remediation via fixup), 1 skipped (PilVidya file), UAT delta file | 30 commits; RLS lockdown on 27 tables; trainers see only mapped students; refresh logs out without Remember me. See *2026-09-23*. |
 
 `20260810100000` needed **no fixup** — it is `ALTER COLUMN … SET DEFAULT` plus a distinct-union
 `UPDATE`, so it is naturally idempotent. Effect on UAT: per-admin `allowed_tabs` went 56 → 58 and
@@ -1965,3 +1966,47 @@ only, no DB dump needed since nothing DB-side changed) → `npm run build`, audi
 vendor hit only, self-hosted `/sb` URL present) → swapped into `dist/`. 7/7 containers up, site
 + auth 200, headless check on `/`, `/login/admin`, `/login/trainer`, `/login/candidate`: 0
 page errors, 0 API errors.
+
+## 2026-09-23 — redeployed to `420de1d` (30 commits, security remediation + 3 fixups)
+
+30 commits: role-based home/login revamp, gamification (XP/streak/daily quests), trainer
+journey completion, idempotent coding-challenge saves, admin journey hardening, 11 edge
+functions changed, `vite.config.ts` manual chunks. Snapshot `~/banking-predeploy-20260923T145521Z/`
+(dist, env, functions tarball) + `~/banking-sb/banking_uat_predeploy_20260923T145521Z.dump`.
+
+**Behaviour users will see**
+- Candidates land on the new `/onboarding/diagnostic` after OTP login; admins land directly on
+  `/admin/dashboard` (the old bounce-to-`/` described in the demo-logins note no longer happens).
+- **Session no longer survives a browser refresh unless "Remember me" is ticked** (e3a5f08
+  session hardening). Verified both ways headlessly. Intended, but expect "refresh logged me out".
+- **Trainers now see only their own profile + profiles of students mapped to them in
+  `trainer_students` — which has 0 rows on UAT.** Before this deploy every signed-in user
+  (not only trainers) could read all 72 profiles via `USING (true)` policies. Trainer screens
+  that list student profiles will be empty until mappings exist (Admin → Trainer Assignments).
+
+**Migrations**
+
+| File | UAT | Why |
+|---|---|---|
+| `20260922160000_student_gamification` | verbatim | new `student_gamification`, `daily_quests`, XP trigger |
+| `20260923000000_repair_missing_modules` | **skipped** | invalid SQL (`DO BEGIN … END` with no `$$`) and it is a PilVidya file: FKs to `student_profiles`, touches `live_classes`/`school_events`/`curriculum_content`, none of which exist in Banking. Same cross-repo workspace leak as 09-21/09-22 |
+| `20260923032440_…` | verbatim | `coding_challenges` +4 cols; its "any trainer reads every profile" policy is dropped by the next file |
+| `20260923100000_security_audit_remediation` | **fixup** (2 changes) | drops *every* policy on 27 sensitive tables and rebuilds owner / admin / mapped-trainer policies; private buckets + signed-URL paths for `attachments`. Fix 1: its `has_role` service-role bypass read `request.jwt.claim.role`, which PostgREST 12 no longer sets (probed live: `null`; only `request.jwt.claims` is set) — as shipped, every service-role `has_role` check (`mcq-admin-action`, `tech-modules-bulk-import`) returns false → admin actions 403. Fixup also reads `request.jwt.claims->>'role'`. Fix 2: `practice_plan_tasks` has no `student_id` here; owner check goes through `plan_id → practice_plans.student_id` |
+| `20260923100001_uat_deltas_from_edited_migrations` | UAT-only | upstream **edited five already-applied migrations** (never re-run on an existing DB). All superseded by the remediation except: student `my-learning` menu row (inserted `DO NOTHING` — re-running that seed would `DO UPDATE` over admin-customised menus) and `admin_list_ai_coach_audit` — SECURITY DEFINER and **anon-executable**, i.e. the whole AI-coach audit log was anonymously readable. Upstream's fix declares it `plpgsql` with a bare SELECT (won't compile); applied as `language sql` + in-body admin check + revoke anon |
+
+`video-lessons` stays public: the old-file edit made it private, but the remediation (the later,
+deliberate file) leaves it out; followed the remediation.
+
+**`~/banking-sb/sql/03_grants.sql` now ends with REVOKEs** (backup `.bak-20260923`): its blanket
+`GRANT EXECUTE ON ALL FUNCTIONS … TO anon` silently re-opened `admin_list_ai_coach_audit` and
+`has_role` on every run. Re-run it any time; the revokes now stick.
+
+**Verification.** Dry-run of all files in one rolled-back transaction with impersonation:
+admin 72 profiles / is_admin true; pure trainer 1 profile; candidate 1 profile, cannot probe
+another user's admin role; `service_role` (claims-only, as PostgREST 12 sets it) `has_role` true;
+anon 0. Live: 7/7 containers, 87 functions synced (3 fixup overlays) with 0 runtime errors,
+bundle has no hosted/DEV URLs, headless candidate + trainer OTP login and admin login all 0 page
+errors / 0 `/sb` ≥400, admin Roles & Access lists 72 users and the Trainer filter returns 12.
+`reconcile.py` now reports 143 "missing": the known 12, the skipped PilVidya file, a
+parser false-positive on the gamification columns (verified present), and **the old policies
+the remediation deliberately dropped**. Expected; don't "restore" them.
