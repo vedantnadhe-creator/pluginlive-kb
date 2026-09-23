@@ -1759,6 +1759,23 @@ still-expired end shows “Choose an end date and time in the future.” The BFF
 enforces the future-end rule again against the current IST wall clock before it
 calls admin-node, so a crafted request cannot reopen onto an expired window.
 
+### Reopen after a cancel in the same visit updates the page (DEV + UAT, 2026-09-23; PROD pending)
+
+Cancelling and then reopening on the same visit used to leave the detail page
+showing **Cancelled**: the chip, the "This assessment is cancelled" banner, and
+the Reopen-only header, with Manage and Share hidden. This happened even though
+the server had reopened it. Only a page refresh showed the real state.
+
+`useCancelFlow` keeps a local `cancelled` flag so the header flips the moment the
+cancel succeeds, before the refetch lands. `AssessmentDetailView` ORs that flag
+into `finished`, `showCancelled` and the status chip. Nothing ever cleared it, so
+it outvoted the refetched status. The hook now exposes `clearCancelled()`, and
+the Reopen dialog's success path calls it before `retry()`. The server's answer
+(Upcoming or Live) then decides the header.
+
+corporate-react-v2 `fc92767` (Development), `7fe97c7` (UAT merge). This is
+front-end only: no API or data change.
+
 ### No mail leaves a closed window (DEV + UAT, 2026-09-08)
 
 `helpers/assessmentInviteEmail.js` refuses **every** candidate-facing send once
