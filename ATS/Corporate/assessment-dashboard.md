@@ -286,7 +286,7 @@ candidate gets the icon. PDF parts go through `/api/assessments/[id]/candidates/
 (`…/candidates/export?selectedEmails=[…]`) inside the same menu. Regression:
 `tests/candidate-report-download.test.cjs`. PROD unchanged.
 
-### Detail page reads in ms, not seconds (DEV + UAT, 2026-09-18)
+### Detail page reads in ms, not seconds (backend DEV+UAT+PROD; frontend DEV+UAT 2026-09-23)
 
 The L2 assessment detail page (`/v2/assessments/:id`) sat on its skeleton for
 ~7s on UAT (148 candidates) — three upstream causes, all in `corporate-node`:
@@ -308,12 +308,45 @@ The L2 assessment detail page (`/v2/assessments/:id`) sat on its skeleton for
   URL for every session this service opens (code-level, not an env var — no
   `.env.*` change needed).
 - The roster row's `addedAt` gained admin-node's own fallback
-  (`invite_sent_at` → `created_at` → the map's `start_time`), so the frontend
-  no longer makes a second, ~2.7s `/candidates/added-at` round-trip to
-  admin-node's full `/assessment/details` just to sort by it.
+  (`invite_sent_at` → `created_at` → the map's `start_time`) — the value the
+  frontend used to fetch separately.
 
 Roster query 720ms → 9ms, overview 649ms → 5ms (UAT, `EXPLAIN ANALYZE`).
-Deployed DEV `82463576`, UAT `2edf4de4`; PROD pending.
+corporate-node deployed DEV `82463576`, UAT `2edf4de4`, **PROD**
+`release-v1.39-hotfix-13` (2026-09-21).
+
+**The frontend half shipped five days later, and until it did the page was
+still ~7s.** `corporate-react-v2`'s detail hook kept fetching the BFF route
+`/api/assessments/[id]/candidates/added-at`, which pulls admin-node's *entire*
+`/assessment/details` payload for the whole roster and reduces it to one date
+per email — 7.0s of a 7.1s page load on PROD, measured 2026-09-23 on a
+141-candidate float. It also **gated first paint**: the hook awaited
+`Promise.all([overview, settings, added-at])` and only then fetched
+`candidates?page=1`, so the 101ms roster call queued behind the 7s one. Its
+only consumer was the roster's sort tie-break (`lib/assessments/rosterOrder.ts`)
+— `addedAt` is not a column — and it *overwrote* the `addedAt` corporate-node
+already puts on every row.
+
+`useAssessmentDetail.ts` now fetches overview + settings + roster page 1 in
+**one** round and the `added-at` BFF route is deleted; first paint is bounded by
+the slowest of the three (settings, ~1s) instead of two serial rounds. Guarded
+by `tests/assessment-detail-first-paint.test.ts`, which fails if the read creeps
+back. Deployed DEV `771457e`, UAT `72b8c99` (2026-09-23); **PROD pending — the
+frontend fix is NOT on PROD**, so `corporate.pluginlive.com` still pays the 7s.
+
+Not a UI/bundle problem: the page already renders a skeleton, so `next/dynamic`
+lazy-loading moves none of this — the wait was a blocking network round-trip
+before any data existed.
+
+Still client-side on this page, and still requiring the WHOLE roster to be
+loaded (`ROSTER_MAX_PAGES` = 50 pages × 100): search, sort, the filter panel's
+faceted counts, the levels doughnut and the KPI cards (avg/max/min time,
+dropped-off, per-type bar) are all derived from the fully-loaded rows. Moving
+the table to server-side paging therefore cannot be done alone — every one of
+those derivations has to move server-side in the same change, or they silently
+become statistics of the first page. The Roles screen
+(`roles/_hooks/useRoles.ts` + a server-side `useInfiniteScroll`, backend
+`facets` surfaced as-is) is the in-repo pattern for that shape.
 
 ### Active Assessments are listed newest-created first (DEV + UAT, 2026-09-18)
 
