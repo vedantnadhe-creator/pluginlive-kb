@@ -505,6 +505,63 @@ now has its own `client_max_body_size` on both DEV (100M) and UAT (150M),
 matching the v1 `/students/assessments/upload{Audio,Video}` locations next to
 it. Without it those routes inherit `location /`'s **1M** default.
 
+### Recordings go straight to object storage, compressed at record time (DEV + UAT 2026-09-24, PROD pending)
+
+**Size.** Scoring a Video Response uses only the transcript: Deepgram nova-3
+turns the speech into text and Gemini grades it (`video_calculation.py`).
+Nothing reads the picture except admins playing it back. Chrome's recorder
+defaults (full camera resolution, about 2.5 Mbps) made a 2-minute take 15–40 MB.
+On a phone uplink that upload often never finished: the knack rcm candidates on
+2026-09-23 got a string of 499s and a Speaking score of 0. The Video Response
+recorder (`RecordingAnswer.tsx`, `src/lib/sharedMedia.ts`) now:
+
+- **clones** the shared proctoring camera track and calls `applyConstraints` on
+  the **copy** to set 640×360 at 15 fps. Proctoring keeps the full stream. When
+  there is no shared stream, the same limits go straight to `getUserMedia`.
+- passes `videoBitsPerSecond: 400_000` to `MediaRecorder`. Audio stays at the
+  browser default, so transcription is unchanged. A 2-minute take is now about
+  7 MB at most.
+- stops the copy when the recording ends (on stop, error, a failed start,
+  leaving the question and unmount). The copy belongs to the recorder, and a
+  copy left running keeps the camera light on.
+- falls back quietly: a camera that refuses to scale down records at full
+  resolution, and the bitrate cap still limits the size.
+
+Read-aloud (Paragraph Reading) is audio only and is unchanged. Commits:
+v2 `6152339` (DEV), merged to UAT as `44f9718`.
+
+**Transport.** `uploadQueue.ts` `send()` tries the direct path first, then falls
+back to the multipart route:
+
+1. `POST /students/mix-match/assessment/:id/recording-upload/init` with
+   `{ questionId, kind, filename, contentType }`. student-node checks that the
+   candidate is a member of the Mix & Match group and that the question belongs
+   to the assignment. It creates the `student_answers` row, or clears its
+   `object_key` when the candidate re-records, then returns a presigned OCI
+   `putObject` URL that expires in 15 minutes.
+2. The browser `PUT`s the blob straight to Oracle storage. The bytes never pass
+   through student-node.
+3. `POST …/recording-upload/complete`. student-node `HEAD`s the object, sets
+   `object_key`, then either triggers a rescore (if the attempt was already
+   scored) or wakes the pending calculation.
+
+If `init` returns 404 or 5xx (an older or broken student-node), the queue falls
+back to the multipart `upload-audio|upload-video` route. AI Interview
+session audio (it has chapters) and answer clips (`persistAnswer: false`)
+always use multipart. Every retry calls `init` again, so the URL never goes
+stale.
+
+**Scoring waits for the recording.** Because `init` creates the row before any
+bytes are sent, the calculation worker skips an attempt whose Paragraph
+Reading or Video Response row still has a NULL `object_key`. The sweeper
+re-queues it later. A recording that is still uploading no longer scores
+"Video not attempted". Commits: student-node `8ed55eb1`, v2 `1231d64` (DEV +
+UAT 2026-09-22).
+
+**Still open:** there is one `PUT` for the whole file, so a dropped connection
+restarts the upload from zero, and the fetch has no timeout. OCI multipart
+upload (resumable parts) is the next step if compression alone is not enough.
+
 ### A recorded answer keeps the container it was recorded in (2026-08-20)
 
 Safari — which is every browser on iOS — records **MP4**, not WebM. Three

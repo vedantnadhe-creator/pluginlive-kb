@@ -52,6 +52,8 @@ allowance, not an estimate:
 | Paragraph Reading | Reading | 150 read-aloud cap + 90 silent read + 90 for its 3 MCQs | 330s | 6 |
 | Audio Question | Listening | 150 for its 6 MCQs + ~90 for the clip that plays first | 240s | 4 |
 | Video Response | Speaking | 120 recording cap (60 min) | 120s | 2 |
+
+> Video Response is recorded at 640×360 / 15 fps / 400 kbps (about 7 MB per 2 min) and uploaded straight to OCI — see *mix-match-candidate-journey.md → Recordings go straight to object storage*.
 | Question Based Response | Writing | 240 | 240s | 4 |
 | Email Writing | Writing | 300 | 300s | 5 |
 | Dictation | Writing | 25 × 5 sentences + ~50 for the clips | 175s | 3 |
