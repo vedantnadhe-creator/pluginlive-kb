@@ -152,7 +152,27 @@ Other types record time on the same column but do not surface it here; only Apti
 | `getSubscribedCorporateStates()` | States for subscribed corporates |
 | `getSubscribedCorporateCities({ state })` | Cities for subscribed corporates |
 | `getSubscribedCorporateCompaniesByCity({ city })` | Corporate companies by city |
-| `assignSubscription(entityId, assessmentTypes, entityType, subscriptionType, tokenLimit, durationDays, accessLevel, practiceDegreeSets, roleBasedTokenLimit, tokenLimits, whatsappNotificationEnabled, options)` | Creates or updates a subscription record. Sets per-type `tokenLimit` (via a `tokenLimits` map), `durationDays`, `subscriptionType` (trial/subscribed), `accessLevel`, `practiceDegreeSets`. Trailing `options = { contractStartDate, contractEndDate, unlimitedTypes }` writes the entity's contract window (upsert on the partial unique index) and the per-type `is_unlimited` flags. **Skips the update for any type whose limit/tier/unlimited flag is unchanged**, so editing one type's quota no longer rewrites `start_date`/`end_date` for every other subscribed type — *unless* an explicit contract window was supplied, which always refreshes every row's mirrored dates. |
+| `assignSubscription(entityId, assessmentTypes, entityType, subscriptionType, tokenLimit, durationDays, accessLevel, practiceDegreeSets, roleBasedTokenLimit, tokenLimits, whatsappNotificationEnabled, options)` | Creates or updates a subscription record. Sets per-type `tokenLimit` (via a `tokenLimits` map), `durationDays`, `subscriptionType` (trial/subscribed), `accessLevel`, `practiceDegreeSets`. Trailing `options = { contractStartDate, contractEndDate, unlimitedTypes }` writes the entity's contract window (upsert on the partial unique index) and the per-type `is_unlimited` flags. **Skips the update for any type whose limit/tier/unlimited flag is unchanged**, so editing one type's quota no longer rewrites `start_date`/`end_date` for every other subscribed type — *unless* an explicit contract window was supplied, which always refreshes every row's mirrored dates. `options.removedTypes` deletes the subscription rows for the types named in it (see below). |
+
+### Removing a type from a subscription (DEV + UAT 2026-09-24; PROD pending)
+
+`subscribed_institutes` / `subscribed_corporates` have no `is_active` flag, and the corporate create wizard
+(`getSubscribedAssessmentByCorporate`) offers **every type that has a row**, ignoring `end_date` and `token_limit`.
+Until this change `assignSubscription` only ever created or updated the ticked types, so unticking a type and saving
+left its row behind and the type stayed selectable (Meesho on PROD, 2026-09-23: Communication, row deleted by hand).
+
+- The Assign Subscription form (admin-react) remembers the types that were ticked when the saved subscription loaded
+  and sends any the admin unticked as **`removedTypes`**. admin-node deletes exactly those rows in the same
+  transaction as the upserts (`app/helpers/subscriptionRemoval.js`), records them — including `tokens_used` — in an
+  assessment audit entry (`DELETE`), and returns them as `removed`.
+- **Removal is never inferred from what the payload leaves out.** The form pre-ticks from the denormalised
+  `corporate.corporates."subscriptionType"` list, which drifts from the real rows (one DEV corporate: 8 rows, 2 in the
+  list), so "delete whatever was not sent" would wipe subscriptions the admin never saw. A type listed in both
+  `assessmentTypes` and `removedTypes` is kept. Rows missing from the form's list still cannot be removed from the UI.
+- A removed type behaves like one never bought: the create wizard hides it, and the assign/attempt quota gates treat
+  a missing row as unlimited (pre-existing behaviour).
+
+admin-node `37f4fa0` / UAT `5aebe8f`; admin-react `5f0d3305` / UAT `586766eb`.
 
 ---
 
