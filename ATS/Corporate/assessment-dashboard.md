@@ -1070,7 +1070,7 @@ Verified on UAT float `457f6e33…` (62 candidates, 35 takers): the rendered tab
 now leads with the 4 Sept 11:10 attempt instead of the top scorer, all 62 rows
 in the DOM, timestamps strictly non-increasing, non-starters last.
 
-## Last Activity, Avg. and "results found" (DEV + UAT, 2026-09-21)
+## Last Activity, Average and "results found" (DEV + UAT, 2026-09-21)
 
 corporate-react-v2 `cd7fb31` (Development) / merge `9d4abad` (UAT). No
 backend change — every figure below reads a value corporate-node already
@@ -1084,14 +1084,20 @@ instant (`sortKey: "lastActivity"`). Because `takenAt` is
 shows time since they *started*, not since their last answer — those are the
 only activity stamps `assessment_assigned_students` holds.
 
-**Avg.** column, Mix & Match floats only: `Math.ceil(mean(byType[].score))`
-over the types the candidate actually attempted (`byType` only carries scored
-parts), so someone who sat 2 of 3 parts is averaged over 2, not dragged down by
-the part they skipped. A tooltip flags the average as partial when
-`byType.length < types.length`. Note this is NOT the same number as the row's
-`score` (corporate-node's `AVG(...) FILTER (WHERE attempted)`, `Math.round`ed):
-the column rounds up per spec while the Score filter and Fit banding still use
-the server figure, so the two can differ by 1.
+**Average** column (header was "Avg." until 2026-09-24), Mix & Match floats
+only: `Math.ceil(sum(byType[].score) / types.length)`, and **only when the
+candidate attempted every type the float bundles** (`byType.length ===
+types.length`; `byType` only carries scored parts). Anyone who skipped even one
+part shows "—" rather than an average over the parts they did sit, because
+that would read as a full score for an incomplete float. There is no
+partial-average tooltip any more. Sorting on the column uses the same
+all-or-nothing value: incomplete candidates sort as −1, below everyone
+with an average. (corporate-react-v2 `667b606` Development / merge `07192f1`
+UAT, 2026-09-24.) Note this is NOT the same number as the row's `score`
+(corporate-node's `AVG(...) FILTER (WHERE attempted)`, `Math.round`ed): the
+Score filter and Fit banding still use the server figure, which averages
+attempted parts only. A partial candidate can therefore have a Score but a "—"
+Average, and a complete one can differ by 1 because of the rounding.
 
 **"NN results found"** now leads the applied-filters bar on all three screens
 (assessments list, detail roster, roles), before the "Applied" chips. Where the
