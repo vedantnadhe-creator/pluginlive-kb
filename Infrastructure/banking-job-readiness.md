@@ -45,6 +45,7 @@ nvm use 20 && npm install && npm run build
 | 2026-09-21 | `b505d58` | `20260919100000_institute_city_management` (verbatim), `20260919110000` (verbatim, no-op), `20260919110001_fix_super_admin_enum` (**fixup** — verbatim would CASCADE-drop `has_role`) | 19 commits; **RBAC role filter gains Trainer**; institute/city masters on registration; hallucination-risk badge in AI coach. See *2026-09-21* section. |
 | 2026-09-22 | `d0ebf23` | none | 5 commits; `.env.local` finally removed upstream; types.ts regenerated for yesterday's cities/institute_city tables |
 | 2026-09-23 | `420de1d` | 3 applied (remediation via fixup), 1 skipped (PilVidya file), UAT delta file | 30 commits; RLS lockdown on 27 tables; trainers see only mapped students; refresh logs out without Remember me. See *2026-09-23*. |
+| 2026-09-24 | `b8008e6` | 7 applied verbatim, repair_missing_modules still skipped | 14 commits + admin-login race fix (AuthContext); trainers RLS lockdown; role_master. See *2026-09-24*. |
 
 `20260810100000` needed **no fixup** — it is `ALTER COLUMN … SET DEFAULT` plus a distinct-union
 `UPDATE`, so it is naturally idempotent. Effect on UAT: per-admin `allowed_tabs` went 56 → 58 and
@@ -2010,3 +2011,28 @@ errors / 0 `/sb` ≥400, admin Roles & Access lists 72 users and the Trainer fil
 `reconcile.py` now reports 143 "missing": the known 12, the skipped PilVidya file, a
 parser false-positive on the gamification columns (verified present), and **the old policies
 the remediation deliberately dropped**. Expected; don't "restore" them.
+
+## 2026-09-24 — redeployed to `b8008e6` (14 upstream commits + 1 auth fix, 7 migrations)
+
+Snapshot `~/banking-predeploy-20260924T015735Z/` + `~/banking-sb/banking_uat_predeploy_20260924T015735Z.dump`.
+All 7 new migrations applied verbatim after a rolled-back dry-run with admin / pure-trainer /
+candidate impersonation: `student_diagnostics` (onboarding diagnostic, owner/admin RLS),
+trainers journey-track columns, `app_role` values (all already present), `role_master` catalog
+(admin-read; drives the Roles & Access filter, which now lists all 9 roles), role→menu permission
+backfill + trigger on `user_roles` insert (admin_tab_permissions 5→15, candidate_menu_permissions
+3→71; existing rows never overwritten), **trainers RLS rebuilt** — before this, every signed-in user
+had `ALL USING (true)` on `trainers` (could edit any trainer); now self/admin/onboarded-student only,
+and `user_roles` self-read. `20260923000000_repair_missing_modules` was edited upstream (FKs now
+point at `profiles`) but is **still invalid SQL** (`DO BEGIN … END` without `$$`) and its four
+tables are used nowhere in Banking — still skipped.
+
+**Admin login regression found and fixed (`b8008e6`, pushed to main).** After this release every
+admin login bounced `/admin/dashboard → /login/candidate → /candidate/home` (8/8 fresh sessions).
+Cause: `AuthContext` sets `user` on sign-in but `isLoading` was already false from the first load and
+roles arrive later; `Login.tsx` read that window as "signed-in non-admin" and redirected. Upstream
+`1d13084` (login forms follow the URL) made the race lose every time. Fix: expose `isLoading` until
+roles are loaded **for the current user id** (not on every auth event — token refreshes would blank
+admin pages). After fix: 8/8 admin logins reach the console; tsc error set identical to upstream (6).
+
+Verification: 7/7 containers, site/auth 200, bundle has no hosted/DEV URLs, headless candidate +
+trainer OTP and admin login all 0 page errors / 0 `/sb` ≥400, Roles & Access Trainer filter → 12.

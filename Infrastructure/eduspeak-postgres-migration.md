@@ -1423,3 +1423,51 @@ requests, non-empty `#root` on `/`.
 
 Remember the nightly-prune caveat from the 09-19 entry above: this rollback image/container will
 not survive past `03:00` UTC unless something is actively running from it.
+
+## 2026-09-24 — redeployed to `48900940` (21 commits, 8 of 9 migrations, deny-by-default RLS)
+
+Snapshot `~/eduspeak-pg-migration/backups/eduspeak_uat_predeploy_20260924T021240Z.dump` (DEV box),
+`~/pilvidya-predeploy-20260924T021240Z/` (functions + container config) on UAT; previous container
+kept stopped as `eduspeakreact-old-20260924` (same-day only — nightly prune). Image
+`eduspeakreact:48900940`, `-p 3008:80` bridge. Edge functions `admin-create-teacher`,
+`student-360`, `teacher-register`, `_shared` synced. `backend/` changes in this repo are NOT on this
+deploy path (`eduspeaknode` builds from `~/api/eduspeak-india-node`).
+
+**The big one: `20260923170000_security_followup_scoped_access` makes the database deny-by-default.**
+It drops every public-schema policy whose condition is literally `true` (688 → 588 policies),
+enables RLS on every table, and `REVOKE ALL ON ALL TABLES/SEQUENCES FROM anon`. Measured in a
+rolled-back dry-run against the 210 tables the frontend reads:
+- signed-in users lose read on 12 tables whose only read policy was `USING (true)`:
+  `accreditation_frameworks, ai_voice_settings, announcement_reads, classes, club_members,
+  club_post_comments, club_posts, forum_replies, forum_threads, item_statistics,
+  status_annotations, wellbeing_journey_questions` — screens built on them will be empty until
+  upstream adds scoped policies;
+- anonymous visitors lose 50 tables (status-page tables, `schools`, `mock_tests`, `education_boards`,
+  plan menus, …). Anonymous flows that go through SECURITY DEFINER RPCs (`student_authenticate`,
+  `registration_school_directory`, …) are unaffected. Live E2E still shows 2 anon 401s by design:
+  `teacher_profiles?select=school_name,location` and `plan_menu_access`.
+It also closes holes that were open on UAT: `"Anyone can upsert/update plan pricing"`, anonymous
+read/write on `assessment_assignments` / `student_test_history` / `teacher_subscriptions`,
+teacher-wide GPS reads, public assessment-submission storage.
+
+| File | UAT | Why |
+|---|---|---|
+| `20260922150000_foreign_language_gamification` | verbatim | empty file |
+| `20260923090000_seed_default_board_class_subject_tests` | **skipped — needs a team decision** | publishes ~7,560 placeholder MCQs ("Foundational concept 1 / Misconception 1", option 1 always correct) + 7,560 mock tests + 7,560 "published" assessments to every student. The assessments half cannot apply here at all (real `assessments` has no `is_public/total_marks/duration_minutes/published_at/metadata`); the mock-test half could. Hard to call this a mechanical replay — say the word and I'll apply the mock-test half |
+| `20260923120000_repair_institute_management` | **fixup** | real `institute_users` has no `user_id`; file ALTERs it and uses it in its own policy → add it (nullable) first |
+| `20260923123000_repair_notification_dispatch_log` | verbatim | same policies as today; its `WITH CHECK (true)` insert is dropped by the sweep anyway |
+| `20260923130000_security_deny_by_default` | **fixup** | `security_user_roles_self_insert` allowed self-insert of **any** role — verified: a plain student could grant themselves `admin` and `is_admin_user()` became true. Today that is blocked (only `role='student'` self-insert). Fixup keeps exactly today's rule |
+| `20260923140000_teacher_student_scope_and_quiz_submissions` | verbatim | teachers now see only students in `teacher_student_profiles`; new `student_quiz_submissions`; `school_directory` view |
+| `20260923150000_fix_student_progress_rls_recursion` / `_teacher_content_menu_access` | verbatim | |
+| `20260923170000_security_followup_scoped_access` | verbatim | see above |
+| `20260923170001_uat_regrant_school_directory` | UAT-only | the sweep's `REVOKE … ON ALL TABLES FROM anon` includes views, undoing 140000's explicit anon grant on `school_directory` (registration fallback). Restored that one grant. (Returns `[]` because UAT `schools` has 0 rows.) |
+
+Fixups in `~/eduspeak-pg-migration/fixups/` (DEV box). **Grant baseline changed:**
+`sql/03_grants.sql` no longer grants anon SELECT on all tables and `sql/05_sensitive_columns.sql`
+no longer re-grants anon column SELECT (backups `.bak-20260924`) — both would have silently
+reopened what the sweep closed. Neither was re-run for this deploy; `password_hash` stays hidden
+from `authenticated` (verified).
+
+Verification: bundle clean (only the `project.supabase.co` admin-form placeholder), container
+healthy, `/`, `/login`, `/status`, auth 200; `~/pilvidya-data-import/e2e.cjs`: 5 anon routes, admin
+login, `/admin`, `/teacher`, `/student` all render, 0 page errors, 0 failed requests.
