@@ -558,6 +558,25 @@ re-queues it later. A recording that is still uploading no longer scores
 "Video not attempted". Commits: student-node `8ed55eb1`, v2 `1231d64` (DEV +
 UAT 2026-09-22).
 
+**Uploads never score an attempt that is still in progress** (student-node
+`51de9942`, DEV + UAT 2026-09-24, PROD pending). All three upload paths
+(`recording-upload/complete`, `upload-video`, `upload-audio`) go through
+`rescoreIfAlreadyScored` (`helpers/lateRecordingRescore.js`). It returns
+`in_progress` for an attempt that is unsubmitted and still `PENDING` or
+`INPROGRESS`, and then nothing is enqueued and nothing is reset. The calc that
+submit enqueues picks up the stored recording.
+
+This guard was missing before. The read-aloud clip landing mid-sitting woke
+the calc queue, and the worker scores unsubmitted attempts (the dropout path).
+The next recording then reset the attempt and scored it again, and the submit
+calc found those scores. It stored its result as a second set of
+`communication_scores` rows with `is_retake=true`: 16 rows for 8 sections,
+three AI scoring runs per sitting. Attempts scored before the fix keep their
+duplicate rows (not cleaned up).
+
+A submitted attempt or a `DROPOUT` whose recording lands after scoring is
+still reset and rescored.
+
 **Still open:** there is one `PUT` for the whole file, so a dropped connection
 restarts the upload from zero, and the fetch has no timeout. OCI multipart
 upload (resumable parts) is the next step if compression alone is not enough.
