@@ -211,6 +211,7 @@ Students table and **21** on the assessment they had actually sat.
 | Assessment detail (all tabs) | `AssessmentDetailV2` | curved NPS |
 | Schedule/diagnosis roster → Score hover | `AssessmentDetailV2.getStudents` | curved section progress for Communication/Aptitude; raw percentages for every other type |
 | Assessment detail → **student report drawer** | `AssessmentDetailV2.getStudentReport` | curved NPS — headline, every schedule row, the trend line and its cohort line |
+| Student-wise → **series PDF** (`Aptitude-<name>-series-report.pdf`) | `getStudentReport` → `institute-react-v2/src/lib/reports/recurringStudentPdf.ts` | headline = `headline.nps` captioned "Overall Performance Score" (no `%`); skill cards, trend and schedule table stay raw % |
 
 The legacy institute/admin Diagnosis roster also uses the paired result's
 curved NPS as `SCORE` (`TpoDashBoard.npsScore`) as of 2026-09-15 on DEV + UAT.
@@ -246,6 +247,16 @@ drawer. The two were not even the same underlying score: the drawer's percentage
 is `AVG(communication_scores.score)` over ~43 raw section rows, while NPS anchors
 on `progression_history.final_score` (Video 40 / Reading 20 / Audio 10 / Writing
 30). On a DEV row those are **20.84 vs 33.88**.
+
+**The series PDF was a second percentage holdout, closed 24 Sep 2026** (`76f103c`
+institute-react-v2, UAT merge `3edceb4` — DEV + UAT; PROD pending). The recurring
+Aptitude/Communication PDF is rendered in the Next BFF (pdfkit), not student-node,
+and its headline printed `headline.avgScore` as "Overall Assessment Score" — e.g.
+ANULIPI SARKAR read **98.11** in the roster Performance column and **55.77%** on
+the PDF. It now prints `headline.nps` when `assessment.supportsNps`, falling back
+to the raw percent only when `nps` is null (ladder never placed the student). The
+skill cards were already consistent: they print the same raw per-skill % as the
+roster's Quantitative / Logical / Critical columns.
 
 Averaging raw percentages across a series is meaningless in the first place: the
 papers adapt to the student's level, so 60% on an A1 paper and 60% on a B2 one
