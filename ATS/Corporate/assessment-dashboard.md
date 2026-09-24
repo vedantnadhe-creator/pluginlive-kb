@@ -1386,6 +1386,12 @@ keep total render concurrency below what student-node can absorb.
 - **Custom and never-attempted candidates** are named with a reason in
   `skipped-candidates.csv` inside the zip, so a short bundle explains itself
   rather than leaving a recruiter to count 7 PDFs against 10 ticked rows.
+  The Name column is filled for never-attempted candidates too:
+  `ReportBundle.getBulkReportTargets` returns every assigned row with an
+  `attempted` flag (it used to filter to attempted rows, so their Name was
+  blank), and `planTargets` keeps the name but never renders those rows. The
+  name follows the roster: profile full name → first + last name → email.
+  DEV+UAT 2026-09-24 (admin-node `6d85776` / UAT `6eeecdb`); PROD pending.
 - **admin-node UAT has its own Redis** (`172.17.0.1:6379`) while DEV points at
   `129.154.231.72:6377`, so the unnamespaced `report-bundle` queue name cannot
   collide across environments the way corporate-node's queues would (those use
