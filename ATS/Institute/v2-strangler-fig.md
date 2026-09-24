@@ -1125,7 +1125,13 @@ while it is null, and explains why in its tooltip.
 Before 2026-08-11 the button was always live and fell back to
 `history.at(-1)`, so a TPO could download a PDF for a student who never sat the
 assessment (it rendered "not attempted") or for one whose scores had not been
-calculated yet. `.iconbtn` also had no `:disabled` style, so a dead action
+calculated yet.
+
+Since 2026-09-24 the button only falls back to a **PDF** for a recurring series
+(which has no report-v2 equivalent); every one-time type opens its
+`/reports/<slug>` document instead. That matters most for Custom_Assessment,
+which student-node cannot render a PDF for at all — see "The `/reports/*`
+documents render real attempts". `.iconbtn` also had no `:disabled` style, so a dead action
 looked identical to a live one.
 
 Related: `headline.submitted` used to count *scored* attempts rather than
@@ -1524,6 +1530,127 @@ The legacy v1 institute surfaces still carry the UTC form — `Reports.js:185`,
 `iReports.js` (584/695/763/998) — and `StudentListInfo.js` filters by a raw
 epoch range instead of a year expression, so v1 reports can disagree with v2 by
 a year for the same student.
+
+## The `/reports/*` documents render real attempts (2026-09-24)
+
+`cce9add` institute-node + `38c0970` institute-react-v2, deployed to **UAT from
+the branch `feat/institute-v2-report-api-wiring`** (NOT merged into
+`Development` or `UAT` — both checkouts on the UAT box sit on that branch).
+DEV and PROD pending.
+
+**What was wrong.** All five standalone report documents under
+`institute-react-v2/src/app/reports/*` rendered their `_data/mockReport.ts`.
+Only the student's name and the assessment title were real, pulled by a
+`useReportIdentity` hook and merged over the mock. The drawer's download button
+has always opened those pages with `?assessmentId=&email=`, so a TPO reading a
+report saw **mock scores under a real candidate's name**. The same was true of
+the schedule-detail dialog, where every schedule row showed one identical
+breakdown.
+
+Also removed: `src/app/api/assessments/[id]/students/communication-report/`
+and its hook proxied
+`/institutes/assessments/v2/:id/students/communication-report`, which **never
+existed in institute-node** — the call 404'd on every invocation.
+
+**Where the data actually lives.** Neither service has a whole report:
+
+| Half | Owns |
+|---|---|
+| institute-node `/students/report` | identity (roll, degree, department), headline, progression history/timeline, proctoring band + webcam snapshots |
+| student-node `POST /students/assessments/reportV2` | the per-section / per-question document, recommendations, signed media — and **no institute concepts at all** |
+
+So institute-node now fetches the document and returns both together.
+
+### Two new endpoints, both institute-scoped
+
+```
+GET /institutes/assessments/v2/:id/students/report/full?instituteId=&email=
+GET /institutes/assessments/v2/:id/students/report/attempt?instituteId=&email=&attemptId=
+```
+
+- **`/report/full`** returns everything `/students/report` does, plus
+  `detail: { type, status, report | reason }` — the document for the attempt
+  the report hangs off (`headline.reportAttemptId`). One call, because both
+  halves need the same heavy group-scoped resolve.
+- **`/report/attempt`** returns `detail` for **one named occurrence**, for the
+  schedule dialog. `/report/full` always describes the LATEST scored attempt,
+  so it cannot answer "what did Assessment #2 look like".
+
+**`detail.status: "unavailable"` is not an error** — it carries a `reason`
+written to be printed to a TPO ("No attempt has been scored yet…"). The
+identity, headline and proctoring above it still render.
+
+### The scope check is the point
+
+`student-node`'s `/reportV2` has **no auth** (`routes/assessment.js` registers
+it without `isPrivate`) and takes an `assessment_assigned_id` on trust. The
+tenant guard therefore lives entirely in the caller — same arrangement as
+corporate-node:
+
+- `/report/full` resolves its ids through `getStudentReport`, which only reads
+  maps belonging to `instituteId`.
+- `/report/attempt` takes the attempt id **from the browser**, so it goes
+  through `AssessmentDetailV2.getStudentAttemptTarget`, which matches only
+  attempts on this institute's group carrying this student's email.
+
+Verified on UAT: another institute's attempt → **404**, the right attempt with
+the wrong student's email → **404**, a non-uuid `attemptId` → **400** (checked
+before it reaches a `::uuid` cast, which would otherwise be a 500).
+
+### Type mapping, and the two surprises
+
+`detail.type` is student-node's display name. Two are not one-to-one:
+
+| Assessment type | `detail.type` | `/reports/<slug>` |
+|---|---|---|
+| Communication | `Communication` | `communication-report` |
+| **Hinglish** | **`Communication`** | `communication-report` |
+| Aptitude | `Aptitude` | `aptitude-report` |
+| Role_Based | `Role Based` | `role-based-report` |
+| Behavior | `Behavior` | `behavioural-report` |
+| AI_Interview | `AI Interview` | `ai-interview-report` |
+| **Custom_Assessment** | `Custom Assessment` | **`custom-report` (new)** |
+
+**Hinglish has no document of its own** — student-node builds it with the
+Communication builder and it reports as `Communication`. It is now mapped to
+that page in `reportRouteFor`.
+
+**Custom_Assessment had no page and that was a live bug.** It fell through to
+the PDF download, and student-node's `generatePDFReport` **rejects** custom
+outright ("Unsupported assessment type") — so the download simply failed. The
+new page is the only report a custom assessment has; "Download PDF" on it is
+the browser's own print. It is marks-based (`gainedMarks`/`totalMarks` per
+section, not a percentage alone), and questions carrying images render as
+blocks instead of table rows.
+
+### What is deliberately NOT shown
+
+Three figures exist in the mocks and in no service, so the UI omits them rather
+than printing something nothing computed:
+
+- **Normalised score** — no service computes one.
+- **Per-section baseline deltas** — only the overall score has history
+  (`timeline[].score`); there is no per-occurrence section score to diff.
+- **Snapshot face-match %** — the platform stores a face **count** per frame,
+  which is what the caption already says ("1 face", "No face").
+
+"Progress till date" and its section chart are now gated on
+`schedule.recurring`: on a one-time attempt they drew a flat zero "first
+assessment" line, inventing a history that never existed.
+
+### Verify
+
+```bash
+curl "http://localhost:8081/institutes/assessments/v2/<akey>/students/report/full?instituteId=<id>&email=<e>"
+```
+→ `detail.status: "ready"` with `detail.type` matching the table above. Checked
+on UAT for Role_Based, Aptitude, Communication, Behavior and Custom_Assessment.
+
+Frontend tests: `npm test` in `institute-react-v2` (27 tests) — it runs the
+repo's `node:test` files through `scripts/test-resolve-hooks.mjs`, which adds
+the `@/` alias and extensionless resolution Node's ESM loader lacks. **No test
+runner dependency**; needs Node ≥ 22.6 for type stripping (`nvm use 25`), while
+the app still BUILDS on Node 20.
 
 ## The student report drawer is type-aware, because the assessments are
 
