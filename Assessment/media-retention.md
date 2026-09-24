@@ -2,11 +2,17 @@
 
 Policy for proctoring snapshots, video/audio answers and AI-interview responses:
 **Infrequent Access at 90 days, delete at 365 days**, uniform across all attempt media.
+Pre-assessment **verification recordings** (`verification/`) are on a separate, shorter
+track: **deleted at 14 days** — see [Verification recordings](#verification-recordings--14-days).
 
-> **Current state (2026-08-27): the application side is deployed to DEV and UAT but the
-> sweep is DISABLED, and no OCI bucket lifecycle rule exists yet.** Nothing is being
-> tiered or deleted in any environment. `RETENTION_ENABLED` is unset everywhere, which
-> evaluates false. PROD has neither the schema nor the code.
+> **Current state (2026-09-24):**
+> - **Attempt media:** the application side is deployed to DEV and UAT but the sweep is
+>   DISABLED (`RETENTION_ENABLED` unset everywhere), and no `proctor/`/`videos/`/`audio/`
+>   bucket rule exists. Nothing attempt-related is tiered or deleted anywhere. PROD has
+>   neither the schema nor the code.
+> - **Verification recordings:** LIVE on DEV and UAT — bucket rule deletes `verification/`
+>   at 14 days, and a daily job clears the DB pointer. **PROD pending** (no IAM statement,
+>   no bucket rule, no code).
 
 ## The split: who deletes what
 
@@ -19,7 +25,7 @@ delete credentials over ~1.13M irreplaceable proctoring images is the failure mo
 designing out — the worst a bug in the sweep can do is hide rows, which is one `UPDATE`
 to undo.
 
-Planned lifecycle rules (**not yet created on any bucket**):
+Planned attempt-media lifecycle rules (**not yet created on any bucket**):
 
 ```
 proctor/  → INFREQUENT ACCESS at 90 days, DELETE at 365 days
@@ -187,10 +193,51 @@ mirrored there or its Prisma client cannot see the column.
   Infrequent Access is immediately readable, so the existing presigned-URL path works
   with zero code change.
 
+## Verification recordings — 14 days
+
+`verification/<studentId>.webm` is the face+voice clip from the pre-assessment device
+check (one file with both tracks; see the device verification gate in
+[Proctoring](proctoring.md)). Only the v1 app (Assessment-React) uploads it; v2 runs the
+same checks but stores nothing. It is **student-scoped** and overwritten on every
+re-verification, with its time on `student.students.verification_video_at`. Nothing in
+admin-, corporate- or institute-node reads it.
+
+| Piece | Where | What |
+|---|---|---|
+| Bucket rule | `verification-delete-14d`, defined in `student-node/script/ociLifecycleRules.json` | `DELETE` objects under `verification/` 14 days after last write. No IA step — IA's 31-day minimum would cost more than Standard. |
+| DB pointer clean-up | `clearVerificationPointers()` in `purgeExpiredAssetsCron.js`, cron **02:50 daily** | Nulls `verification_video_key` where `verification_video_at` is older than 14 days. Keeps `verification_video_at`. Batch `RETENTION_BATCH_SIZE`, honours `RETENTION_DRY_RUN`, audits as `asset_type='verification_video'`, `phase='sunset'`. |
+
+- **Not behind `RETENTION_ENABLED`** — that flag gates the attempt-media rollout only. The
+  verification job runs whenever the scheduler runs.
+- The 14 is **read from the JSON rule**, so the DB clean-up cannot drift from the bucket.
+- Both clocks start at upload (file overwrite + `verification_video_at` restamp), so
+  "14 days" means 14 days since the **latest** verification.
+- No mark/grace phase: nothing serves these files and the bucket rule deletes by prefix
+  + age regardless of the DB, so clearing the pointer first cannot orphan bytes.
+- A lifecycle `PUT` **replaces the bucket's whole policy** — when the attempt-media rules
+  go live, add them to the same `ociLifecycleRules.json`, never a separate PUT.
+
+**OCI IAM prerequisite.** Lifecycle rules only run if the Object Storage *service* may
+manage objects in the bucket. Tenancy-root policy `assessment-media-lifecycle`:
+
+```
+Allow service objectstorage-ap-mumbai-1 to manage object-family in compartment PluginLiveDEV where target.bucket.name='pl_dev_poc'
+Allow service objectstorage-ap-mumbai-1 to manage object-family in compartment PluginLiveUAT where target.bucket.name='pl-uat-assessment'
+```
+
+Without it the PUT fails with `InsufficientServicePermissions`.
+
+| Env | Bucket (compartment) | IAM | Rule | Code | State 2026-09-24 |
+|---|---|---|---|---|---|
+| DEV | `pl_dev_poc` (PluginLiveDEV) | yes | yes | yes | 4 objects all >14d; 3 pointers cleared |
+| UAT | `pl-uat-assessment` (PluginLiveUAT) | yes | yes | yes | 18 objects all >14d; 103 pointers cleared (DB had keys for files the bucket never held) |
+| PROD | `pl-prod-assessment` (PluginLivePROD) | **no** | **no** | **no** | 148 objects / 141 DB keys; first run deletes 140+ |
+
+PROD go-live: add the third IAM statement, deploy the code, then
+`oci os object-lifecycle-policy put --bucket-name pl-prod-assessment --items file://script/ociLifecycleRules.json --force`.
+
+Check a bucket: `oci os object list --bucket-name <bucket> --prefix verification/ --all --query 'length(data)'`.
+
 ## Related
 
-- [Proctoring](proctoring.md) — what generates the snapshots
-- The `verification/<studentId>.webm` recording is **out of scope** and tracked
-  separately: it is student-scoped rather than attempt-scoped, only 3 students of 21,255
-  have one on DEV, and no reader was found in admin-, corporate- or institute-node. See
-  the device verification gate section in [Proctoring](proctoring.md).
+- [Proctoring](proctoring.md) — what generates the snapshots and the verification clip

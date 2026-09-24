@@ -216,7 +216,9 @@ parallel**, letting them through only if **both** pass:
 | Audio | `POST /proctoring/detect-audio` | `{ student_id, audio_data }` — bare base64 Opus/webm | `success && audio_detected` |
 
 The clip is then uploaded fire-and-forget to `students/assessments/uploadVerificationVideo`,
-which stores it at `verification/<studentId>.webm` in the assessment bucket.
+which stores it at `verification/<studentId>.webm` in the assessment bucket. That file
+is **deleted after 14 days** (live on DEV+UAT, PROD pending) — see
+[Media retention](media-retention.md#verification-recordings--14-days).
 
 **Both endpoints return HTTP 200 with `success:false` on internal errors** — status
 code alone is not a health signal; read the body.
