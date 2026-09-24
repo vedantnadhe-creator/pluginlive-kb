@@ -1533,10 +1533,14 @@ a year for the same student.
 
 ## The `/reports/*` documents render real attempts (2026-09-24)
 
-`cce9add` institute-node + `38c0970` institute-react-v2, deployed to **UAT from
-the branch `feat/institute-v2-report-api-wiring`** (NOT merged into
-`Development` or `UAT` — both checkouts on the UAT box sit on that branch).
-DEV and PROD pending.
+`cce9add` institute-node + `38c0970` institute-react-v2, on the branch
+`feat/institute-v2-report-api-wiring` (NOT merged into `Development` or `UAT`).
+**Not live anywhere** as of 2026-09-24: it was deployed to UAT from the branch
+and verified there, then UAT was redeployed from its own `UAT` branch the same
+day (institute-node `2bb1d14`, institute-react-v2 `3edceb4`), so UAT still
+serves the mock report pages. To bring it back:
+`./auto_deploy.sh institute-node feat/institute-v2-report-api-wiring`, then the
+same for `institute-react-v2` — backend first, the pages call its new routes.
 
 **What was wrong.** All five standalone report documents under
 `institute-react-v2/src/app/reports/*` rendered their `_data/mockReport.ts`.
