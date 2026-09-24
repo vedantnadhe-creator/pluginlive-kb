@@ -165,6 +165,19 @@ not be invited. Rosters are returned in full for the same reason: silently
 sampling a cohort the admin was told held N students would float to fewer people
 than promised.
 
+**Mobile numbers are normalised at parse time** (2026-09-24, admin-node
+`app/helpers/candidateSheetRows.js` → `normaliseMobile`). The wizard accepts a
+mobile only as exactly 10 digits (`/^\d{10}$/` in the shared
+`assessment-creation` package), so a sheet row like `91 9786514765` used to
+land red with *"Mobile number must contain exactly 10 digits"* and block Save
+(reported by Jershini on corporate v2 Float → Upload a sheet). The parser now
+reduces an Indian number written with a country code or trunk zero — `+91`,
+`91`, `0091`, `0`, with any spaces/dashes — to its 10 digits. Anything else
+(`+971…`, too short) is **returned untouched** so the wizard still flags it
+instead of silently truncating a foreign number. Applies to both corporate and
+admin wizards (same endpoint). Numbers typed manually or edited inline in the
+wizard still must be exactly 10 digits — only India is supported by design.
+
 **A recipient row must be complete before it is floated** (2026-08-20).
 `parseCandidateSheet` answers with `{name, email, mobile}` — a sheet has no
 institute column, so admin-node never sends one — while the wizard's
