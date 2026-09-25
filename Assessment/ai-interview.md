@@ -689,6 +689,29 @@ pin both constants, assert 1-of-8 scores on a drop-off but not on an early exit,
   - `submitAnswer` now rejects `ABANDONED` as well as `COMPLETED`, so a client that wakes up
     after the cron finalized a session cannot append a turn to an already-graded transcript.
   - Live **DEV + UAT 2026-08-04**; PROD pending.
+  - **One score per drop-off, not one per pod (fixed 2026-09-25, DEV + UAT).** Every
+    student-node pod runs the dropout cron on the same `*/2` tick (no leader election), and
+    both guards were check-then-act. So each pod finalized and scored the same drop-off.
+    On PROD 2026-09-25, 5 pods wrote 5 `ai_interview_scores` rows for one session within
+    4 s; PROD had 15 sessions with duplicates (29 extra rows) going back to 2026-08-05,
+    all of them drop-offs. Completed interviews were never affected: the calculation worker
+    already takes an atomic `isProcessing` claim. Now:
+    - `finalizeAbandonedSession` finalizes the session with a conditional UPDATE
+      (`… AND session_metadata->>'completionReason' IS NULL`). Only one caller wins; the
+      others re-read and take the `alreadyFinalized` branch. It **no longer resets
+      `is_processing`**, because that column is the scoring claim.
+    - Before scoring, the cron claims the row with `updateMany({ id, isProcessing:false,
+      scoresCalculated:false } → isProcessing:true, processingStartedAt)`, the same claim the
+      calc worker takes. A pod that loses the claim skips the row. The claim is released on
+      failure, and the score cron's `resetStaleLocks` clears it if a pod dies mid-scoring.
+    - DB backstop: unique index `ux_ai_interview_scores_session_id` (DB-Scripts
+      `AI Interview dropout duplicate scores/`). The insert treats a P2002 as `alreadyScored`.
+      The index is not mirrored in Prisma, because a unique FK would force the
+      session↔scores relation to 1:1 and break the `scores` list reads.
+    - Readers were already tolerant of duplicates: corporate-node takes the AVG,
+      corporate-node-v2 keys a Map, and admin-node takes the latest row.
+    - student-node DEV `84791b72`, UAT `7d225b4d`. **PROD pending.** Run the DB-Scripts
+      migration after the code ships; its DELETE keeps the earliest row per session.
 
 - **Recruiter report: partial-interview marker + attempted questions (2026-08-04).** The
   "Interview Not Completed" banner used to **replace** the score card entirely, so an
