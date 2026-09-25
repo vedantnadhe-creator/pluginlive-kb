@@ -2083,3 +2083,26 @@ policies equivalent to the existing trainer/admin ones, and lets any signed-in u
 
 Verification: 7/7 containers, site/auth 200, bundle clean, admin login 5/5 to `/admin/dashboard`,
 candidate + trainer OTP 0 page errors / 0 `/sb` ≥400.
+
+## 2026-09-25 — "Persistence Disabled" on Admin → Coding Challenges (UAT env flags, fixed)
+
+Symptom: Coding Challenges listed only the bundled catalogue (`bundled-tech-catalog`, 200 rows) and
+saving showed "Persistence Disabled — apply the coding challenges migration". Not a migration gap:
+`coding_challenges` exists on UAT with every column the page uses and 365 rows. The bundle gates DB
+use on **build-time** flags (`src/lib/optionalDatabaseFeatures.ts`):
+`VITE_OPTIONAL_DATABASE_SCHEMA_READY=true` (master gate, enables nothing alone) **and**
+`VITE_CODING_CHALLENGE_PERSISTENCE_ENABLED=true` **and**
+`VITE_CODING_CHALLENGE_SCHEMA_VERSION=20260811103000`. UAT `.env` had none. Added all three
+(backup `.env.bak-*`), rebuilt, swapped. Verified: page loads 365 from DB (GET 200, 0 bundled), no
+toast, admin insert+delete through PostgREST works.
+
+**Still off on UAT — same mechanism, each needs its own flag (+ schema version) in `.env` and a rebuild:**
+admin modules (`20260812021000`), admin section content, AI coach history (`20260813163337`),
+AI practice settings (`20260812010000`) / sessions, LLM usage (`20260811234500`), practice plans
+(`20260811235500`), proctoring analytics, projects (`20260811200000`), RAG documents, student
+assessment scores (`20260811233000`), student learning (`20260812010000`), video lessons. The
+required values are the literals in `optionalDatabaseFeatures.ts`; `.env.example` ships them all
+`false`/empty. Enable per feature only after confirming its tables/columns exist.
+
+Also noticed (not changed): `coding_challenges` carries a legacy `"coding_challenges authenticated
+write" FOR ALL USING (true)` policy — any signed-in user can edit or delete any challenge.
