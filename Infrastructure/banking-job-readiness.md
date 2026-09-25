@@ -47,6 +47,7 @@ nvm use 20 && npm install && npm run build
 | 2026-09-23 | `420de1d` | 3 applied (remediation via fixup), 1 skipped (PilVidya file), UAT delta file | 30 commits; RLS lockdown on 27 tables; trainers see only mapped students; refresh logs out without Remember me. See *2026-09-23*. |
 | 2026-09-24 | `b8008e6` | 7 applied verbatim, repair_missing_modules still skipped | 14 commits + admin-login race fix (AuthContext); trainers RLS lockdown; role_master. See *2026-09-24*. |
 | 2026-09-25 | `1205677` | 11 applied verbatim; restore_module_topic_catalog skipped | 36 commits: video studio, simulations, curriculum setup workflow. See *2026-09-25*. |
+| 2026-09-25 | `0538e22` | 2 applied verbatim | 8 commits: module save fixes; **all published modules now DB-readable by any signed-in user** (entitlement gate frontend-only). See *2026-09-25 (later)*. |
 
 `20260810100000` needed **no fixup** — it is `ALTER COLUMN … SET DEFAULT` plus a distinct-union
 `UPDATE`, so it is naturally idempotent. Effect on UAT: per-admin `allowed_tabs` went 56 → 58 and
@@ -2061,3 +2062,24 @@ on a live catalogue.
 Verification: 7/7 containers, 90 functions synced (3 fixup overlays) 0 runtime errors, bundle clean,
 headless admin login 5/5 to `/admin/dashboard`, candidate + trainer OTP 0 errors, and Jev goal
 runs (PC/Chromium) PASS for admin login.
+
+## 2026-09-25 (later) — redeployed to `0538e22` (8 commits, 2 migrations)
+
+Module save/pipe fixes, canonical module creation, legacy quiz writes. No function or dependency
+changes. Snapshot `~/banking-predeploy-20260925T074938Z/` + `banking_uat_predeploy_20260925T074938Z.dump`.
+Both migrations applied verbatim after a rolled-back dry-run.
+
+**Behaviour change — module entitlement is no longer enforced by the database.**
+`20260925073204` (Lovable edit `22d2b89` "Added modules read access") adds
+`"Authenticated users can view published modules" USING (is_published OR admin modules tab)`
+alongside the existing `"Users can view accessible modules"` (published AND granted via
+`user_module_access` / module group). RLS OR-combines, so every signed-in user now reads **all**
+published modules: the demo candidate went 9 → 75. Applied because it is an explicit, named team
+change and module rows are catalogue content, not PII — but if per-user/plan module gating is meant
+to hold, the gate now lives only in the frontend. `20260925073402` adds topic columns
+(`learning_minutes`, `description`, `metadata`), admin update on `topic_attachments`, module-question
+policies equivalent to the existing trainer/admin ones, and lets any signed-in user read the
+`attachments` storage bucket (1 admin-uploaded file on UAT).
+
+Verification: 7/7 containers, site/auth 200, bundle clean, admin login 5/5 to `/admin/dashboard`,
+candidate + trainer OTP 0 page errors / 0 `/sb` ≥400.
