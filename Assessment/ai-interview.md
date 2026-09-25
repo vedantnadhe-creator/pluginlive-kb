@@ -40,12 +40,22 @@
 **Stored transcript (student-node `aiInterviewFinalTranscript.js`, run inside `runScoringForAssignment`)**
 - Each answered turn's uploaded clip is re-transcribed by Scribe batch (`POST /ai-interview/transcribe-answer`, pre-signed Object Storage URLs only) with the question's keyterms; the result replaces `candidate_response`, and the live text is kept in `ai_evaluation.liveTranscript` (`ai_evaluation.finalTranscript` records provider / kept). A Scribe text under half the live word count (clip cut short) is not trusted. Writes merge into `ai_evaluation` in SQL (`jsonb ||`) — the proctoring finalizer writes the same rows concurrently and used to erase these keys.
 
-**Communication = listening, not telemetry**
-- `POST /ai-interview/listen-communication`: Gemini 2.5 Pro (via the LiteLLM gateway; registered on DEV and UAT) listens to all answer clips joined, twice, averaged → fluency, pronunciation, grammar (0–100) + one-line evidence. Judge repeatability r ≈ 0.93.
-- Communication score (`listener_weighted_v1`) = 0.35 fluency + 0.20 pronunciation + 0.20 grammar + 0.25 mean(language proficiency, clarity from the transcript scorer). No listener result (no clips / too little audio / engine down) → the old telemetry formula. The listener is told not to penalise the choice of language, accent or code-mixing.
-- The overall off-language cap (49) is unchanged and still applied separately.
+**Communication & Language = listening, per required language (`listener_rubric_v2`, DEV + UAT 2026-09-25; PROD pending)**
+- `POST /ai-interview/listen-communication` takes `clips: [{url, language}]` (language = the language the question was asked in). Clips are grouped by language and Gemini 2.5 Pro (LiteLLM gateway) listens twice, averaged → pronunciation, fluency, and **proficiency per required language** (null if the candidate never spoke it), plus an overall grammar score and one-line evidence. Bare `audio_urls` (older callers) still work.
+- Communication & Language = **0.40 Language Proficiency + 0.25 Pronunciation & Intelligibility + 0.20 Fluency & Pace + 0.15 Clarity & Conciseness** (clarity from the transcript scorer; missing measures renormalised). These are the four sub-competencies of Meesho's report sheet.
+- **Language Proficiency** per language = proficiency heard × share of that language's questions answered in it (from each turn's `off_language_percent`), then weighted by each language's share of the questions. A candidate who answers the English questions in Kannada gets little English credit however good their Kannada is. Stored as `sub_parameters.languageBreakdown` on the Communication parameter.
+- **Below working level:** a required language scoring < 40 is flagged (`sub_parameters.belowWorkingLevel`, `section_scores.languageBelowWorkingLevel`, one sentence appended to `detailed_feedback`). **Flag only — it never changes the score or verdict.**
+- **The outer 49 cap is gone** whenever Communication carries weight (any unconfigured Communication blends in at its 20% default, so in practice always). It still applies only if Communication's weight is 0.
+- No listener result (no clips / too little audio / engine down) → the old telemetry formula.
+- **Azure pronunciation is switched off** (`AZURE_PRONUNCIATION_LOCALES = {}` in fastapi); per-answer delivery telemetry falls back to Deepgram word confidence. Restore the locale map to re-enable.
+- Dry run on 60 PROD Meesho interviews (24–25 Sep): mean Communication 63.9 → 57.4 (mostly the listener hearing hesitant English as less fluent than the telemetry did), overall 54.9 → 53.2, 3 verdict changes (two capped Borderlines → Fit, one Fit → Borderline), 26 flagged below working level.
 
-**Cost (rate card, per 15-min interview):** English + regional ≈ ₹55, English only ≈ ₹59, Hinglish ≈ ₹66 (vs ≈ ₹36–52 before). Azure pronunciation (~$1.32/hr of audio) is the largest single line.
+**Cost (rate card, per 15-min interview):** English + regional ≈ ₹55, English only ≈ ₹59, Hinglish ≈ ₹66 (vs ≈ ₹36–52 before), less ≈13% now that Azure pronunciation is off.
+
+**PDF report attention bands (`public/aiInterviewReport.html`, DEV + UAT 2026-09-25)** — yellow bands above the Hiring Verdict, in this order:
+1. **Interview not completed** — fewer questions answered than planned; headline follows the completion reason.
+2. **Language below working level** — plain explanation, e.g. "The candidate answered only 1 of the 8 English questions in English; the rest were answered in Kannada, which they speak well. Please review." (`languageWorkingLevelNote`).
+3. **Switched to {language} mid-interview** — replaces the old grey "Language barrier: X → Y" card: "The interview started in Hinglish, but partway through the candidate asked to continue in Hindi, so every remaining question was asked in Hindi. They said: "…" Please review." (no longer claims it changed the score). admin-react still shows the old "Language barrier … did not affect their score" wording — pending.
 
 **Recruiter questions & language split (same release)**
 - Recruiter lines ending in "." that address the candidate ("Please explain your answer in Malayalam.", "Tell me about…") are now recruiter questions (`isQuestionLine`, identical in student-node and admin-node); interviewer guidance ("Ask about targets.", "Please ask the candidate…") is not. UAT configs remapped (`--remap`, 44 configs) 2026-09-25.
@@ -85,6 +95,8 @@ Verdict stored in `ai_interview_scores.ai_recommendation` as one of four labels
 | `Fit` | 50–79 |
 | `Borderline` | 40–49 |
 | `Not Fit` | < 40 |
+
+**Bands apply to the rounded score** (student-node `deriveVerdictFromScore`, admin-node export `resolveVerdict`; DEV + UAT 2026-09-25, PROD pending): 49.5 → "50" → Fit, 39.5 → Borderline, 79.5 → Strong Fit, so the verdict always matches the number shown. admin-react's report page still carries its own raw-score copy (35 floor) — pending.
 
 Exception: a **non-engagement** transcript (see below) always forces `Not Fit`
 regardless of the numeric band. See the "score-final" section further down for
