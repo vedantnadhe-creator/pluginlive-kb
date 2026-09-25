@@ -263,11 +263,8 @@ says "Expired" while the files stay in the bucket.
 - [ ] **Corporate sign-off.** The bucket rule cannot tell institute from corporate, so
       corporate media is deleted at 365d too. Confirm this is acceptable, and use
       `RETENTION_SEGMENTS=both` so corporate reports show "Expired" instead of broken images.
-- [ ] **IAM (tenancy admin).** Add to tenancy-root policy `assessment-media-lifecycle`:
-      ```
-      Allow service objectstorage-ap-mumbai-1 to manage object-family in compartment PluginLivePROD where target.bucket.name='pl-prod-assessment'
-      ```
-      Without it the lifecycle `PUT` fails with `InsufficientServicePermissions`.
+- [ ] **IAM** — run by the deployer (step 2 under *During the deploy*); no tenancy admin needed,
+      the DEV box's OCI CLI user can update policy `assessment-media-lifecycle`.
 - [ ] **DB migrations** — both `Asset Retention and Purge/` scripts are already applied on PROD
       (verified 2026-09-24: `purged_at` ×3, `asset_purge_audit`, `snapshot_key` nullable).
       Flip their headers from `PROD — pending` to `applied` in DB-Scripts.
@@ -276,6 +273,24 @@ says "Expired" while the files stay in the bucket.
       (was 2,646), and `SELECT count(*) FROM assessment.asset_purge_audit` (was 0).
 
 ### During the deploy
+
+> **The deploying session runs the OCI commands itself** (authorised by Kushal 2026-09-25):
+> the IAM policy update and the bucket lifecycle `PUT` below are part of the PROD deploy, run
+> from the DEV box's OCI CLI (`~/.oci/config`), not handed off to someone else.
+
+- [ ] **OCI IAM** — add the PROD statement. `policy update` **replaces** the statement list,
+      so pass all three:
+      ```
+      oci iam policy update --force \
+        --policy-id ocid1.policy.oc1..aaaaaaaaxy5m6oyhmidrwfeoifdagyefvxns3bnxkea3wct27tf5enjqrrfq \
+        --version-date "" --statements '[
+        "Allow service objectstorage-ap-mumbai-1 to manage object-family in compartment PluginLiveDEV where target.bucket.name='"'"'pl_dev_poc'"'"'",
+        "Allow service objectstorage-ap-mumbai-1 to manage object-family in compartment PluginLiveUAT where target.bucket.name='"'"'pl-uat-assessment'"'"'",
+        "Allow service objectstorage-ap-mumbai-1 to manage object-family in compartment PluginLivePROD where target.bucket.name='"'"'pl-prod-assessment'"'"'"]'
+      ```
+      Check first that the list still has exactly the DEV + UAT lines
+      (`oci iam policy get --policy-id <id> --query 'data.statements'`); if anyone has added one,
+      keep it.
 
 - [ ] **Env vars** — add to the student-node ConfigMap (`std-api-config`, one `.env` blob):
       ```
@@ -292,7 +307,7 @@ says "Expired" while the files stay in the bucket.
 - [ ] Confirm in a pod: `kubectl -n api exec deploy/student-node -- sh -c 'env | grep RETENTION; ls script/ociLifecycleRules.json'`.
 - [ ] Optional sizing: dry-run in a pod with `RETENTION_DRY_RUN=true` and check the
       `dry_run` rows in `asset_purge_audit` match the baseline.
-- [ ] **Apply the bucket rules the same day** (the `PUT` replaces the whole policy — always
+- [ ] **OCI bucket rules** — apply right after the rollout, same session (the `PUT` replaces the whole policy — always
       use the full JSON file):
       ```
       oci os object-lifecycle-policy put --bucket-name pl-prod-assessment \
