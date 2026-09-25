@@ -283,7 +283,7 @@ says "Expired" while the files stay in the bucket.
       ```
       oci iam policy update --force \
         --policy-id ocid1.policy.oc1..aaaaaaaaxy5m6oyhmidrwfeoifdagyefvxns3bnxkea3wct27tf5enjqrrfq \
-        --version-date "" --statements '[
+        --statements '[
         "Allow service objectstorage-ap-mumbai-1 to manage object-family in compartment PluginLiveDEV where target.bucket.name='"'"'pl_dev_poc'"'"'",
         "Allow service objectstorage-ap-mumbai-1 to manage object-family in compartment PluginLiveUAT where target.bucket.name='"'"'pl-uat-assessment'"'"'",
         "Allow service objectstorage-ap-mumbai-1 to manage object-family in compartment PluginLivePROD where target.bucket.name='"'"'pl-prod-assessment'"'"'"]'
