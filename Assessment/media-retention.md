@@ -6,10 +6,10 @@ Pre-assessment **verification recordings** (`verification/`) are on a separate, 
 track: **deleted at 14 days** — see [Verification recordings](#verification-recordings--14-days).
 
 > **Current state (2026-09-24):**
-> - **Attempt media:** the application side is deployed to DEV and UAT but the sweep is
->   DISABLED (`RETENTION_ENABLED` unset everywhere), and no `proctor/`/`videos/`/`audio/`
->   bucket rule exists. Nothing attempt-related is tiered or deleted anywhere. PROD has
->   neither the schema nor the code.
+> - **Attempt media:** bucket rules LIVE on DEV and UAT since 2026-09-25 (IA at 90d,
+>   DELETE at 365d for `proctor/`, `videos/`, `audio/`). The sweep is still DISABLED
+>   (`RETENTION_ENABLED` unset everywhere). PROD has the schema and the sweep code
+>   (image `release-v1.39-hotfix-14`) but **no bucket lifecycle policy at all**.
 > - **Verification recordings:** LIVE on DEV and UAT — bucket rule deletes `verification/`
 >   at 14 days, and a daily job clears the DB pointer. **PROD pending** (no IAM statement,
 >   no bucket rule, no code).
@@ -25,7 +25,7 @@ delete credentials over ~1.13M irreplaceable proctoring images is the failure mo
 designing out — the worst a bug in the sweep can do is hide rows, which is one `UPDATE`
 to undo.
 
-Planned attempt-media lifecycle rules (**not yet created on any bucket**):
+Attempt-media lifecycle rules (in `student-node/script/ociLifecycleRules.json`; applied to DEV + UAT 2026-09-25, **PROD pending**):
 
 ```
 proctor/  → INFREQUENT ACCESS at 90 days, DELETE at 365 days
@@ -187,7 +187,13 @@ mirrored there or its Prisma client cannot see the column.
   150–200 GB, about $5/month at Standard rates; tiering saves a couple of dollars. The
   case is privacy exposure and unbounded growth. A cost-based justification will not
   survive scrutiny.
-- **Archive tier was rejected deliberately.** Restore takes up to an hour with no
+- **Before the DEV/UAT rules went on (2026-09-25), every >365d object was an orphan** —
+  DEV 7,672 proctor + 4,023 video/audio, UAT 5,937 + 7,997, **0** referenced by any
+  `snapshot_key` / `object_key` / `response_object_key`. PROD is different: 3,021 snapshot
+  rows are >365d but only 2,646 proctor objects are, so enable the sweep with the rule there.
+- **Archive tier was rejected deliberately** (re-verified 2026-09-24 on DEV: an IA object
+  signs and reads 200 through `generatePreSignedURLImage`; an Archive object returns 403
+  `InvalidObjectState`, PAR 409 `NotRestored`). Restore takes up to an hour with no
   expedited option, so it would require building a restore-request flow; and its 90-day
   minimum retention makes archive-then-delete cost *more* than staying in Standard.
   Infrequent Access is immediately readable, so the existing presigned-URL path works
