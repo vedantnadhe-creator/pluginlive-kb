@@ -820,9 +820,9 @@ The device check used to mark Camera and Microphone "ok" the moment `getUserMedi
 | Check | Upstream | Passes on |
 | --- | --- | --- |
 | Camera | `POST /proctoring/verify-frame` | `success && face_detected` |
-| Microphone | `POST /api/assessment/ai-interview/stt` (batch STT) | transcript has any recognized word |
+| Microphone | `POST /proctoring/detect-audio` + `POST /api/assessment/ai-interview/stt` | `audio_detected` AND transcript has any recognized word |
 
-Since 2026-09-24 the mic row no longer calls `detect-audio` (it needs seconds of speech and failed short clips). It records from the moment "Say a few words…" shows, stops ~600 ms after the candidate goes quiet (6 s hard cap), and passes if STT returns any word. See `candidate-frontend-v2.md` → voice readiness.
+Since 2026-09-25 (DEV+UAT) the mic row records from the moment "Say a few words…" shows, for at least 3 s, then until ~600 ms after the candidate goes quiet (6 s cap). PROD still records a fixed 6 s after a 1.2 s lead. See `candidate-frontend-v2.md` → voice readiness.
 
 **The rows wait for the verdict** (fixed 2026-08-20). They used to flip to
 "Ready" the moment permission was granted and only *then* ask the engine, so the
@@ -1439,9 +1439,9 @@ Finish is always available. It used to be disabled until every part was complete
 The device check used to confirm only that camera and microphone permission had been granted. It now asks the same FastAPI engine v1's `BiometricCheck` uses:
 
 - **Face** — `POST /proctoring/verify-frame` with `{student_id, frame_number, image_data, min_confidence}` → `face_detected`. Uses MediaPipe (`detect_face_fast`), not RetinaFace: this is the gate every candidate hits, so it needs liveness, not landmarks.
-- **Voice** — *(superseded 2026-09-24)* formerly `POST /proctoring/detect-audio`; the mic row now passes on batch STT returning any word, with no minimum clip length.
+- **Voice** — `POST /proctoring/detect-audio` with `{student_id, audio_data}` → `audio_detected`, on a clip of at least 3 s (verified equivalent to 6 s), combined with batch STT returning any word.
 
-Face is proxied through `/api/assessment/verify/face` so `FASTAPI_URL` stays server-side, and both return a flat `{ ok }`.
+Both are proxied through `/api/assessment/verify/{face,audio}` so `FASTAPI_URL` stays server-side, and both return a flat `{ ok }`.
 
 **An engine that cannot answer leaves the permission result standing.** A timeout, a 502 or a missing token resolves to `unchecked`, never `failed` — a service blip must not become a locked door in front of a candidate. Only a positive "no face" / "no voice" downgrades the check.
 
