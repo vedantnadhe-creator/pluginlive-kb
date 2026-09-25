@@ -1471,3 +1471,21 @@ from `authenticated` (verified).
 Verification: bundle clean (only the `project.supabase.co` admin-form placeholder), container
 healthy, `/`, `/login`, `/status`, auth 200; `~/pilvidya-data-import/e2e.cjs`: 5 anon routes, admin
 login, `/admin`, `/teacher`, `/student` all render, 0 page errors, 0 failed requests.
+
+## 2026-09-25 — redeployed to `520b2e65` (29 commits, 5 migrations, 14 functions)
+
+Runway video provider + admin-controlled fallback, unified topic-media catalogue with
+teacher-content grounding, student/tutor session fixes, teacher login across legacy profile rows.
+Snapshot `eduspeak_uat_predeploy_20260925T054341Z.dump` (DEV box), `~/pilvidya-predeploy-20260925T054341Z/`
+on UAT; old container kept stopped as `eduspeakreact-old-20260925`. Image `eduspeakreact:520b2e65`.
+
+All 5 migrations are additive/tightening (scoped policies on digilocker/substitutions/whatsapp
+outbox/PTM bookings/question history, provider CHECK values incl. `runway`, fallback + provenance
+columns). One **fixup**: `20260924061613_…` references `ptm_bookings.ptm_slot_id`; the real column
+is `slot_id` → renamed in `~/eduspeak-pg-migration/fixups/`. UAT's existing parent/teacher PTM
+policies stay; the new ones only add self / owned-slot / staff access.
+
+Verification: dry-run clean; bundle clean; e2e.cjs 5 anon routes + admin + `/admin` `/teacher`
+`/student` render, 0 page errors, 0 failed requests; the only `/sb` ≥400 left is the intended anon
+`teacher_profiles` 401 (upstream fixed the `plan_menu_access` one). Jev goal run (PC/Chromium) PASS
+for admin login.

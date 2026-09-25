@@ -46,6 +46,7 @@ nvm use 20 && npm install && npm run build
 | 2026-09-22 | `d0ebf23` | none | 5 commits; `.env.local` finally removed upstream; types.ts regenerated for yesterday's cities/institute_city tables |
 | 2026-09-23 | `420de1d` | 3 applied (remediation via fixup), 1 skipped (PilVidya file), UAT delta file | 30 commits; RLS lockdown on 27 tables; trainers see only mapped students; refresh logs out without Remember me. See *2026-09-23*. |
 | 2026-09-24 | `b8008e6` | 7 applied verbatim, repair_missing_modules still skipped | 14 commits + admin-login race fix (AuthContext); trainers RLS lockdown; role_master. See *2026-09-24*. |
+| 2026-09-25 | `1205677` | 11 applied verbatim; restore_module_topic_catalog skipped | 36 commits: video studio, simulations, curriculum setup workflow. See *2026-09-25*. |
 
 `20260810100000` needed **no fixup** — it is `ALTER COLUMN … SET DEFAULT` plus a distinct-union
 `UPDATE`, so it is naturally idempotent. Effect on UAT: per-admin `allowed_tabs` went 56 → 58 and
@@ -2036,3 +2037,27 @@ admin pages). After fix: 8/8 admin logins reach the console; tsc error set ident
 
 Verification: 7/7 containers, site/auth 200, bundle has no hosted/DEV URLs, headless candidate +
 trainer OTP and admin login all 0 page errors / 0 `/sb` ≥400, Roles & Access Trainer filter → 12.
+
+## 2026-09-25 — redeployed to `1205677` (36 commits, 11 of 12 migrations, 13 functions)
+
+Curriculum video studio, topic learning simulations (+ AI generation), guided curriculum setup
+workflow, unified module/video quiz contract, module child menus. Snapshot
+`~/banking-predeploy-20260925T054018Z/` + `~/banking-sb/banking_uat_predeploy_20260925T054018Z.dump`.
+`package.json` gained a script only (`npm ci` run anyway). Our `AuthContext` admin-login fix
+(`b8008e6`) is still in upstream.
+
+Dry-run in one rolled-back transaction with a before/after diff of `modules`, `topics`,
+`module_groups`, `menu_access_controls`: the 11 applied files change **no existing rows** —
++15 `modules` (admin-created modules not yet in the learner catalogue; published only if the admin
+published them), +16 child menus (new keys only, existing access flags untouched).
+
+**Skipped `20260925090000_restore_module_topic_catalog`.** Its header targets deployments that
+*lost* the seeded catalogue; UAT's is intact (it fails on `admin_modules_source_module_unique`
+because the seed rows already exist). It also `UPDATE`s every module/group whose title matches a
+seed row: forces `is_published = true`, rewrites `sort_order`, and stamps `track = tech` — i.e. it
+would re-publish modules an admin unpublished and relabel domain modules as tech. Not a safe replay
+on a live catalogue.
+
+Verification: 7/7 containers, 90 functions synced (3 fixup overlays) 0 runtime errors, bundle clean,
+headless admin login 5/5 to `/admin/dashboard`, candidate + trainer OTP 0 errors, and Jev goal
+runs (PC/Chromium) PASS for admin login.
