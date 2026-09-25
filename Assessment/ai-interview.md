@@ -19,10 +19,40 @@
 | **Follow-ups** | AI generates probing follow-up questions when responses need deeper exploration |
 | **Modality** | **Voice conversation** — AI speaks each question (TTS), candidate replies by voice (STT). Text transcripts are stored alongside. |
 | **TTS (interviewer voice)** | **Provider chosen from the interview's configured language set** (rewritten 2026-09-22, DEV + UAT; PROD pending). All of {English, Hindi, Hinglish, Tamil} → **ElevenLabs Flash v2.5** (`eleven_flash_v2_5`), voice **Payal** (default) or **Anika** — both professional *Hindi* voices — then Sarvam as fallback, and Deepgram Aura-2 only when the interview is all-English. Anything else (Telugu, Kannada, Malayalam, Bengali, Gujarati, Marathi, Punjabi, Odia, Urdu, Assamese) → **Sarvam Bulbul v3** (`bulbul:v3`, speaker `ritu`, mp3) first, falling back to **`eleven_v3`** — never to Flash, never to Deepgram. The decision is per **interview**, not per line, so a bilingual English+Kannada interview keeps one voice throughout. Measured quality (Flash / Bulbul, round-trip through Sarvam saaras:v3): English 100/100, Hindi 100/100, Tamil 100/99, Marathi 100/100, Telugu 97/100, Kannada 93/100, Bengali 92/100, Gujarati 91/100, Punjabi 90/100, Odia 80/100, **Malayalam 51/100**. Latency at the 200-char PROD median question: Flash ~0.6 s (English) / ~1.0 s (Kannada) vs Bulbul ~2.0 s / ~3.0 s — Flash is faster *and* perfect on the four languages it declares, and wrong on the rest. `eleven_v3` is accurate on everything except Odia but runs 4–5 s per line, so it is a fallback only. `language_code` is now sent for every language the chosen model declares (previously Hindi only). An ElevenLabs step is **skipped** when the model does not declare the language, and when no provider can speak it the endpoint returns **503** — the candidate app then shows the question text on screen, which is recoverable, unlike audio in the wrong language. An ElevenLabs 401/402/429 still stands it down for 10 min (`ELEVENLABS_COOLDOWN_SECONDS`). Overridable via `ELEVENLABS_VOICE_ID` / `ELEVENLABS_MODEL_ID` / `SARVAM_TTS_SPEAKER`. Sarvam TTS meters as `sarvam_tts` (Rs 15/10K chars ≈ $0.18) vs ElevenLabs $0.50/10K. |
-| **STT (candidate voice)** | Provider-routed through FastAPI: English uses **Deepgram `nova-3`**; Hinglish and regional Indic languages use **Sarvam Saaras v3**. Hinglish is sent as a distinct mode using Hindi–English detection plus Roman transliteration. The WebSocket supplies live captions; `POST /ai-interview/stt` performs full-recording transcription when recovery is required. |
+| **STT (candidate voice)** | **ElevenLabs Scribe** since 2026-09-25 (DEV + UAT; PROD still Deepgram/Sarvam). **Live** (`/ai-interview/stt-stream`): one **Scribe v2 Realtime** session pinned to the interview's regional language (English for English-only; Hindi for Hinglish), with question proper nouns sent as keyterms; on single-regional interviews a **Sarvam saaras:v3** live session runs alongside as fallback. **Stored/scored**: every answer clip is re-transcribed by **Scribe v2 batch** at scoring time. Hinglish captions and transcripts are romanised. Kill switch `STT_PRIMARY=legacy` restores the old Deepgram/Sarvam routing. See *Transcription & Communication scoring* below. |
 | **VAD** | Browser-side voice-activity detection auto-submits the answer after ~1.8 s of silence (`Assessment-React/.../AIInterview/interview.js`). |
 
 ---
+
+## Transcription & Communication scoring (DEV + UAT 2026-09-25; PROD pending)
+
+**Why:** blind listening tests graded Sarvam's stored transcripts 4.5/10 against 7.6–9.4 for Scribe batch; the live text also drives the next question, follow-ups and refusal/confusion detection, so misheard answers steered the conversation.
+
+**Live transcript (fastapi `_bridge_scribe`)**
+- One Scribe v2 Realtime session, **pinned to the regional language** (en for English-only, hi for Hinglish). Measured on 36 PROD answers (ta/ml/te/kn): the regional pin transcribes English speech as well as an English pin (26/26 English answers), while an English pin returned nothing, a translation, or another script on regional speech. An earlier dual English+regional selection was removed for that reason.
+- **Sarvam fallback:** on single-regional interviews a Sarvam saaras:v3 live session (same regional pin) runs alongside; captions and the text sent to the question generator switch to Sarvam only when Scribe has under 60% of Sarvam's words (Scribe's failure mode is dropping speech). Listening-graded on 19 answers: Scribe live 83, Sarvam live 85, combined 92, Scribe batch 98.
+- **Two regional languages** (e.g. Hindi + Bengali) have no single right pin → legacy Sarvam route.
+- **Too-short live text:** fewer than 1 word per second of *voiced* audio (RMS above the recording's noise floor; normal speech is 2–4) ends the turn in `upstream_dropped`, so the app re-reads the recording via `/stt` (Scribe batch) before the next question.
+- **Keyterms:** proper nouns from the question (e.g. "Bajaj Electricals", "Hindware") are passed to Scribe (≤20 chars each, ≤50 — Scribe rejects the whole session otherwise). The v2 app sends the question on the socket URL (`?question=`).
+- **Audio pacing gotcha:** the browser posts ~375 tiny PCM frames/s plus a connect-time burst; Scribe terminates such a session (`queue_overflow`), so the bridge pools audio and forwards every 100 ms.
+- **Hinglish:** captions (partials too) and batch transcripts are romanised by a Gemini Flash pass (Devanagari kept on failure). The app still batch-re-reads every Hinglish answer at submit.
+
+**Stored transcript (student-node `aiInterviewFinalTranscript.js`, run inside `runScoringForAssignment`)**
+- Each answered turn's uploaded clip is re-transcribed by Scribe batch (`POST /ai-interview/transcribe-answer`, pre-signed Object Storage URLs only) with the question's keyterms; the result replaces `candidate_response`, and the live text is kept in `ai_evaluation.liveTranscript` (`ai_evaluation.finalTranscript` records provider / kept). A Scribe text under half the live word count (clip cut short) is not trusted. Writes merge into `ai_evaluation` in SQL (`jsonb ||`) — the proctoring finalizer writes the same rows concurrently and used to erase these keys.
+
+**Communication = listening, not telemetry**
+- `POST /ai-interview/listen-communication`: Gemini 2.5 Pro (via the LiteLLM gateway; registered on DEV and UAT) listens to all answer clips joined, twice, averaged → fluency, pronunciation, grammar (0–100) + one-line evidence. Judge repeatability r ≈ 0.93.
+- Communication score (`listener_weighted_v1`) = 0.35 fluency + 0.20 pronunciation + 0.20 grammar + 0.25 mean(language proficiency, clarity from the transcript scorer). No listener result (no clips / too little audio / engine down) → the old telemetry formula. The listener is told not to penalise the choice of language, accent or code-mixing.
+- The overall off-language cap (49) is unchanged and still applied separately.
+
+**Cost (rate card, per 15-min interview):** English + regional ≈ ₹55, English only ≈ ₹59, Hinglish ≈ ₹66 (vs ≈ ₹36–52 before). Azure pronunciation (~$1.32/hr of audio) is the largest single line.
+
+**Recruiter questions & language split (same release)**
+- Recruiter lines ending in "." that address the candidate ("Please explain your answer in Malayalam.", "Tell me about…") are now recruiter questions (`isQuestionLine`, identical in student-node and admin-node); interviewer guidance ("Ask about targets.", "Please ask the candidate…") is not. UAT configs remapped (`--remap`, 44 configs) 2026-09-25.
+- A recruiter question that names the language did not count as a language instruction before — it silenced the 70/30 default and an English+Malayalam interview asked 12/12 in English. Only interviewer guidance lines can hand the split to the model now.
+- A pending recruiter question that asks for the secondary language waits for that language's block (it opens the block) instead of being served in document order in the primary.
+
+**Deployed:** UAT fastapi `d27ca4f`, student-node `da4bfcd3`, admin-node `ac67828`, v2 `89a24a9` (merges of Development). PROD pending — PROD also needs the `question_parameter_map` SQL first.
 
 ## Assessment Structure
 
