@@ -723,6 +723,12 @@ call; that duplicate path was the source of completed-run update errors.
 
 ## Student Communication
 
+### Send and assignment API authentication (DEV + UAT, 2026-09-25)
+
+The admin-node routes that create, schedule, assign, or send assessment communication now require a valid JWT (`isPrivate: true`): `sendReminders`, `resendInvites`, `assignSubscription`, the create/update schedule routes, `schedule/assessment-enddate`, `assignRoleBasedAssessment`, `initiateRoleBasedGeneration`, `setGroup/:groupId/assignStudents`, and `assignCustomAssessment`. The token middleware accepts both the legacy raw JWT and standard `Bearer <token>` authorization header formats.
+
+Corporate v2 reminder requests still validate corporate ownership locally, then forward the caller's `Authorization` header when proxying admin-node's `sendReminders`. `assign-practice-assessment` remains intentionally public because Assessment-React invokes it without an authenticated admin session.
+
 | Function | Purpose |
 |----------|--------|
 | `sendRemindersToStudents(assessmentInstituteMapID, entityType, selectedStudents, bulkUploadData, instituteId)` | Sends reminder emails to unattempted students. Accepts specific student emails or bulk data. Normalizes emails before sending |
