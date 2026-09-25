@@ -1489,3 +1489,32 @@ Verification: dry-run clean; bundle clean; e2e.cjs 5 anon routes + admin + `/adm
 `/student` render, 0 page errors, 0 failed requests; the only `/sb` ≥400 left is the intended anon
 `teacher_profiles` 401 (upstream fixed the `plan_menu_access` one). Jev goal run (PC/Chromium) PASS
 for admin login.
+
+## 2026-09-25 (later) — Foreign Languages menu missing for students: lockdown side effect, fixed
+
+Reported: Foreign Language menus missing. **Not a missed release or migration** — UAT = `origin/main`
+(`520b2e65`), every FL migration's objects exist (catalogue 8 languages, skill attempts,
+`record_skill_attempt`, `resolve_learning_pack`, `auto_map_foreign_languages`).
+
+Cause: `usePlanAccess.resolveSchoolPlan()` gives a student the best plan among their school's
+teachers by reading `teacher_profiles` + `teacher_subscriptions`. The 09-24 deny-by-default sweep
+left those self/admin-only, so every student read 0 teachers → fell back to **free** → plan-gated
+menus hidden (`student.foreign-languages` is `false` on free). Demo student `9100000001`
+(Pilvidya Demo School, 2 teachers on `school`) was resolving to free. Same sweep also left
+`plan_menu_catalog` readable by teachers only (admin Menu Catalog screen empty). My 09-24 impact
+diff missed both: it counted a teacher-only `FOR ALL` policy as "authenticated can read".
+
+Fix (UAT-only, `~/eduspeak-pg-migration/fixups/20260925T063000_uat_student_plan_resolution_and_admin_menu_catalog.sql`):
+SECURITY DEFINER helpers `current_student_school_name()` / `is_teacher_in_my_school(uuid)`
+(row_security off, no RLS recursion) + SELECT policies letting a student read teacher profiles and
+subscriptions **of their own school only**, and `plan_menu_catalog` read for platform admins.
+Verified by impersonation: student sees 2/2 own-school teachers, 0 of 9 other-school teachers,
+resolves to `school`; admin sees 46 catalogue rows. Browser: demo student login → sidebar shows
+Foreign Languages (and the other plan-gated menus), 0 page errors. **Upstream follow-up:** resolve
+the student plan server-side (RPC) so students need no teacher-table reads at all.
+
+Separate, still open: the FL page's content tables are **empty on UAT** (`language_learning_units`,
+`learning_content`, `teacher_content`, `subject_offerings` = 0; offerings are created per school by
+`auto_map_foreign_languages`, and UAT `schools` has 0 rows) — authored content, not a migration gap.
+The student dashboard's default-assessments card 400s (`assessments.is_public/total_questions`
+don't exist) — tied to the held `20260923090000` default catalogue decision.
