@@ -6,6 +6,8 @@ Pre-assessment **verification recordings** (`verification/`) are on a separate, 
 track: **deleted at 14 days** — see [Verification recordings](#verification-recordings--14-days).
 
 > **Current state (2026-09-24):**
+> - **PROD: see [PROD deployment checklist](#prod-deployment-checklist--next-release)** —
+>   `RETENTION_ENABLED` / `RETENTION_SEGMENTS` are switched on in the next PROD deploy.
 > - **Attempt media:** bucket rules LIVE on DEV and UAT since 2026-09-25 (IA at 90d,
 >   DELETE at 365d for `proctor/`, `videos/`, `audio/`). The sweep is still DISABLED
 >   (`RETENTION_ENABLED` unset everywhere). PROD has the schema and the sweep code
@@ -239,10 +241,87 @@ Without it the PUT fails with `InsufficientServicePermissions`.
 | UAT | `pl-uat-assessment` (PluginLiveUAT) | yes | yes | yes | 18 objects all >14d; 103 pointers cleared (DB had keys for files the bucket never held) |
 | PROD | `pl-prod-assessment` (PluginLivePROD) | **no** | **no** | **no** | 148 objects / 141 DB keys; first run deletes 140+ |
 
-PROD go-live: add the third IAM statement, deploy the code, then
-`oci os object-lifecycle-policy put --bucket-name pl-prod-assessment --items file://script/ociLifecycleRules.json --force`.
+PROD go-live: follow the [PROD deployment checklist](#prod-deployment-checklist--next-release) below.
 
 Check a bucket: `oci os object list --bucket-name <bucket> --prefix verification/ --all --query 'length(data)'`.
+
+## PROD deployment checklist — next release
+
+**Status: PENDING — do this on the next PROD deploy of student-node.** DEV and UAT already
+run the bucket rules (applied 2026-09-25). On PROD the schema and sweep code are in place
+(`release-v1.39-hotfix-14`), but the sweep is off and the bucket has **no lifecycle policy**.
+Retention must be **switched on as part of that deploy**, not afterwards: bucket rule
+alone = files vanish while the Admin report shows broken images; sweep alone = the report
+says "Expired" while the files stay in the bucket.
+
+### Before the deploy
+
+- [ ] **Commit `student-node/script/ociLifecycleRules.json`** (7 rules: `verification-delete-14d`
+      + IA-90d / DELETE-365d for `proctor/`, `videos/`, `audio/`) to `Development` and make
+      sure it is in the release branch. The PROD image built from it must contain the file —
+      `purgeExpiredAssetsCron.js` reads the verification window from it at start-up.
+- [ ] **Corporate sign-off.** The bucket rule cannot tell institute from corporate, so
+      corporate media is deleted at 365d too. Confirm this is acceptable, and use
+      `RETENTION_SEGMENTS=both` so corporate reports show "Expired" instead of broken images.
+- [ ] **IAM (tenancy admin).** Add to tenancy-root policy `assessment-media-lifecycle`:
+      ```
+      Allow service objectstorage-ap-mumbai-1 to manage object-family in compartment PluginLivePROD where target.bucket.name='pl-prod-assessment'
+      ```
+      Without it the lifecycle `PUT` fails with `InsufficientServicePermissions`.
+- [ ] **DB migrations** — both `Asset Retention and Purge/` scripts are already applied on PROD
+      (verified 2026-09-24: `purged_at` ×3, `asset_purge_audit`, `snapshot_key` nullable).
+      Flip their headers from `PROD — pending` to `applied` in DB-Scripts.
+- [ ] **Baseline numbers** (read-only) so the result can be checked:
+      snapshot rows >365d (was 3,021), answer media >365d (was 860), proctor objects >365d
+      (was 2,646), and `SELECT count(*) FROM assessment.asset_purge_audit` (was 0).
+
+### During the deploy
+
+- [ ] **Env vars** — add to the student-node ConfigMap (`std-api-config`, one `.env` blob):
+      ```
+      RETENTION_ENABLED=true
+      RETENTION_SEGMENTS=both
+      RETENTION_DELETE_DAYS=365
+      RETENTION_GRACE_DAYS=14
+      RETENTION_BATCH_SIZE=5000
+      ```
+      `RETENTION_BATCH_SIZE=5000` clears the whole backlog in the first nightly run
+      (500/day would take ~7 days, with broken images in between). Drop it back to `500`
+      after the first run.
+- [ ] Deploy the new student-node image and `kubectl -n api rollout restart deploy/student-node`.
+- [ ] Confirm in a pod: `kubectl -n api exec deploy/student-node -- sh -c 'env | grep RETENTION; ls script/ociLifecycleRules.json'`.
+- [ ] Optional sizing: dry-run in a pod with `RETENTION_DRY_RUN=true` and check the
+      `dry_run` rows in `asset_purge_audit` match the baseline.
+- [ ] **Apply the bucket rules the same day** (the `PUT` replaces the whole policy — always
+      use the full JSON file):
+      ```
+      oci os object-lifecycle-policy put --bucket-name pl-prod-assessment \
+        --items file://script/ociLifecycleRules.json --force
+      oci os object-lifecycle-policy get --bucket-name pl-prod-assessment   # expect 7 rules
+      ```
+      Must go on **within 14 days** of the first mark run, or sunset clears keys for objects
+      OCI has not deleted yet.
+
+### After the deploy (next day)
+
+- [ ] `asset_purge_audit` has `mark` rows for `proctor_snapshot` and `answer_media`
+      (institute + corporate) and `sunset` rows for `verification_video` (~140 on first run).
+- [ ] Snapshot/answer rows >365d all have `purged_at` set.
+- [ ] Object storage: `proctor/` objects moving to `InfrequentAccess`, >365d objects gone,
+      `verification/` objects >14d gone:
+      `oci os object list -bn pl-prod-assessment --prefix proctor/ --all --fields storageTier --query 'data[]."storage-tier"' | sort | uniq -c`
+- [ ] Open an old (>365d) session in the Admin proctoring report: images show
+      "Expired — retention policy"; violation counts, timeline, verdict and IP addresses
+      still show. Open a recent session: images load (IA objects read normally).
+- [ ] Set `RETENTION_BATCH_SIZE` back to `500`.
+- [ ] Update this doc's *Current state* block and the verification table above to PROD = LIVE.
+
+### Not covered by these rules (decide separately)
+
+- `ai-interview-call-recordings/` — phone AI Interview recordings (DEV-only feature today).
+  Add an IA-90d / DELETE-365d rule to the JSON **before** that feature reaches PROD.
+- `pre-assessment/` (candidate file answers) and `report-bundles/` (generated PDF bundles)
+  — outside the 90/365 policy; no retention period agreed yet.
 
 ## Related
 
