@@ -2151,3 +2151,25 @@ data. Verified headless as admin: dashboard + Modules page 0 `/sb` ≥400; edit 
 Still-off gates on UAT: admin section content, AI coach history, AI practice settings/sessions, LLM
 usage, practice plans, proctoring analytics, projects, RAG documents, student assessment scores,
 student learning, video lessons.
+
+## 2026-09-26 — "Generate Topics with AI" produced banking topics for non-banking modules (fixed, `d84b6d9`)
+
+Report: Mechanical Engineering → Generate Topics with AI → "Digital Banking and FinTech". That topic
+was created 2026-09-25 10:59, before the 09-26 deploy added the curriculum quality gate
+(`_shared/curriculum-quality.ts` + an LLM checker in `ai-content`). With the gate live, the module
+got the fixed fallback list every time — never real AI topics — because of two gate bugs:
+
+1. **Substring stop-list.** `containsAnchor` used `text.includes(term)`; the banking stop-list for
+   mechanical modules includes `rbi` and `aml`, which match inside tu**rbi**ne and strea**ml**ine.
+   Two hits → "unrelated rbi, aml terminology" → rejected. Fix: stop-list terms match whole words
+   (`containsWholeTerm`); coverage anchors keep prefix matching (thermodynamic → thermodynamics).
+2. **Checker score scale.** The LLM checker tool schema declared `score: number` with no range;
+   Gemini answers 0–1 (1 = perfect) while the code required `>= 80` → every approved review was
+   rejected ("align directly … no domain drift", score 1). Fix: schema describes 0–100 and a 0–1
+   answer is normalised ×100.
+
+Verified via direct `ai-content` calls as admin (empty moduleId, nothing persisted): Mechanical
+Engineering, Retail Banking and Data Science all return AI topics in their own discipline
+(`checker: llm`, `fallbackApplied: false`). Pushed to Banking `main` as `d84b6d9`; functions synced.
+The stale "Digital Banking and FinTech" topic on admin module `7dbd389b` (Mechanical Engineering)
+was left in place — delete it from the module card.
