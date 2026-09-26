@@ -2134,3 +2134,20 @@ working-copy patch was discarded before the pull (backed up in the snapshot) —
 Verification: dry-run clean (0 menu access changes); 90 functions synced, 0 runtime errors; bundle
 clean; admin login 5/5, candidate + trainer 0 errors; Coding Challenges 365 from DB; as admin
 `admin_list_payment_requests` 200 (0 rows — table empty) and `list_trainer_candidates` 200 (12).
+
+## 2026-09-26 — "Module catalog migration required" on Save Module (UAT env flag, fixed)
+
+Same class as the Coding Challenges fix: `src/pages/Admin.tsx` refuses to save/delete canonical
+modules and topics unless `ADMIN_MODULES_PERSISTENCE_ENABLED`
+(`VITE_OPTIONAL_DATABASE_SCHEMA_READY` + `VITE_ADMIN_MODULES_PERSISTENCE_ENABLED=true` +
+`VITE_ADMIN_MODULES_SCHEMA_VERSION=20260812021000`). The migrations
+(`20260812020000`/`20260812021000`) were already applied (reconcile: no missing objects; 68
+`admin_modules`, 557 `admin_module_topics`); every column the insert/update payloads write exists.
+Added the two flags to UAT `.env` (backup `.env.bak-*`), rebuilt, swapped. The flag also moves the
+admin dashboard, domains, module analytics, assessments and institute dashboards off their fallback
+data. Verified headless as admin: dashboard + Modules page 0 `/sb` ≥400; edit module → Save Module →
+"Module saved" (`PATCH admin_modules 204`), no migration toast, 0 page errors.
+
+Still-off gates on UAT: admin section content, AI coach history, AI practice settings/sessions, LLM
+usage, practice plans, proctoring analytics, projects, RAG documents, student assessment scores,
+student learning, video lessons.
