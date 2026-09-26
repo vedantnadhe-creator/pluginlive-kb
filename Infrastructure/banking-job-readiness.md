@@ -48,6 +48,7 @@ nvm use 20 && npm install && npm run build
 | 2026-09-24 | `b8008e6` | 7 applied verbatim, repair_missing_modules still skipped | 14 commits + admin-login race fix (AuthContext); trainers RLS lockdown; role_master. See *2026-09-24*. |
 | 2026-09-25 | `1205677` | 11 applied verbatim; restore_module_topic_catalog skipped | 36 commits: video studio, simulations, curriculum setup workflow. See *2026-09-25*. |
 | 2026-09-25 | `0538e22` | 2 applied verbatim | 8 commits: module save fixes; **all published modules now DB-readable by any signed-in user** (entitlement gate frontend-only). See *2026-09-25 (later)*. |
+| 2026-09-26 | `1322956` | 3 verbatim, 2 fixups (menu upsert → DO NOTHING; drop+recreate payment RPC) | 23 commits: AI registry/grounding/quality; 4 new VITE gates set true. See *2026-09-26*. |
 
 `20260810100000` needed **no fixup** — it is `ALTER COLUMN … SET DEFAULT` plus a distinct-union
 `UPDATE`, so it is naturally idempotent. Effect on UAT: per-admin `allowed_tabs` went 56 → 58 and
@@ -2106,3 +2107,30 @@ required values are the literals in `optionalDatabaseFeatures.ts`; `.env.example
 
 Also noticed (not changed): `coding_challenges` carries a legacy `"coding_challenges authenticated
 write" FOR ALL USING (true)` policy — any signed-in user can edit or delete any challenge.
+
+## 2026-09-26 — redeployed to `1322956` (23 commits, 5 migrations, 29 functions)
+
+AI model registry + generation audit, source grounding & review workflow, AI quality/entitlement
+contract, video-MCQ cancellation, admin preview-resource reconciliation, bulk simulation studio.
+Snapshot `~/banking-predeploy-20260926T050353Z/` (dist, env, functions, and the old local mcp
+working-copy patch) + `banking_uat_predeploy_20260926T050353Z.dump`.
+
+| Migration | UAT | Why |
+|---|---|---|
+| `20260925143000`, `…160000`, `…190000` | verbatim | additive |
+| `20260925173000_ai_quality_and_entitlement_contract` | **fixup** | its `menu_access_controls` seed was `ON CONFLICT DO UPDATE` on 6 existing menus; UAT admins had them open to all plans (set 08-28 / 09-21). Verbatim, 51 free candidates lose Assessments / Video Quiz / Proctoring Analytics and 3 free trainers lose Content Studio / Create Assessment. Fixup = `DO NOTHING`; apply the tiering via Plan Menu Access if the team wants it |
+| `20260925210000_reconcile_admin_preview_resources` | **fixup** | UAT's `admin_list_payment_requests()` returned extra `student_name/student_email` + integer `amount_inr`; `CREATE OR REPLACE` can't change a return type → `drop function if exists` first. Frontend (`PaymentVerification.tsx`) reads only `students{}` + `amount_inr` |
+
+**New build-time gates** in `optionalDatabaseFeatures.ts`: `VITE_SIMULATION_PERSISTENCE_ENABLED`,
+`VITE_PAYMENT_REQUESTS_PERSISTENCE_ENABLED`, `VITE_RBAC_REPORTS_PERSISTENCE_ENABLED`,
+`VITE_TRAINER_CANDIDATES_RPC_ENABLED`. These screens read their tables unconditionally before this
+release, so leaving them unset would have blanked working screens. All tables/RPCs verified on UAT
+and the four set to `true` in UAT `.env`.
+
+`mcp` function: upstream change is cosmetic (`var`→`const`); UAT still deploys the
+`~/banking-sb/function-fixups/mcp` overlay (0.26.3 + self-hosted projectRef). The redundant local
+working-copy patch was discarded before the pull (backed up in the snapshot) — no more stash conflicts.
+
+Verification: dry-run clean (0 menu access changes); 90 functions synced, 0 runtime errors; bundle
+clean; admin login 5/5, candidate + trainer 0 errors; Coding Challenges 365 from DB; as admin
+`admin_list_payment_requests` 200 (0 rows — table empty) and `list_trainer_candidates` 200 (12).
