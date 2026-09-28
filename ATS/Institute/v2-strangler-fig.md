@@ -1662,6 +1662,48 @@ than printing something nothing computed:
 - **Snapshot face-match %** — the platform stores a face **count** per frame,
   which is what the caption already says ("1 face", "No face").
 
+### Proctoring evidence and recordings on the report pages (2026-09-28)
+
+Reported on UAT as "individual proctoring, photos and videos missing". Three
+gaps, all fixed. institute-node `d112304` (UAT merge `9d03cfb`) and
+institute-react-v2 `067a4f7` (UAT merge `870ec0d`) were deployed and verified on
+DEV and UAT on 2026-09-28. PROD pending.
+
+- **Photos.** The Snapshot proof tile used to be a `UserIcon` with the signed
+  URL only behind a link. It now renders the frame (`<img loading="lazy">`) and
+  opens it full size in a new tab. A purged or expired URL falls back to the
+  icon, with the caption kept. Aptitude and Role_Based also get the grid now:
+  they capture frames too (UAT, 60 days: Aptitude 518, Role_Based 559). The
+  earlier "no webcam" assumption in their panels was wrong.
+- **Every flagged event, each with its frame.** The timeline used to come from
+  student-node's report document (`reportV2Mapper` → `integrity.events`). That
+  list keeps only `severity === "high"` events plus a fixed incident list, so
+  medium `no_face` events never reached the page: an attempt with 52 no-face
+  events showed an empty timeline. The page now uses institute-node's
+  `proctoring.timeline`, which is every event from
+  `proctoring_reports.timeline`. The document's list is only a fallback.
+  Server events (no_face / phone / multi_face) store `evidenceObjectKey`. That
+  is the key of a frame that is already in the attempt's signed snapshot set
+  (99.7% match on UAT). `proctoringEvidence.attachEvidence` looks it up by the
+  signed URL's last path segment, so there is no second signing call, and
+  returns each event's `imageUrl` + `durationMs`.
+- **Recordings play in the page.** "Play recording" / "Watch recording" used to
+  be plain links to the bucket file, which navigated the tab away. Corporate
+  v2's `AudioPlayer` (seekable; handles MediaRecorder webm with no duration
+  header) and `RecordingModal` (video) were ported into
+  `communication-report/_components`. The AI Interview transcript uses the
+  player, and Role_Based Video response answers now get "Watch recording"
+  (they had no control at all).
+- **One panel.** A single `communication-report/_components/ProctoringPanel.tsx`
+  plus `communication-report/media.css` (imported by the components, not the
+  pages) replaces three divergent copies. Every report type therefore gets the
+  same styles.
+
+Still open, and not part of this fix: server `no_face` events are recorded
+with zero length, so the stats row can read "No face 0ms / Clean" next to 52
+no-face frames. The hardening fix is on DEV (student-node `9dae4466`), and
+UAT/PROD are pending.
+
 "Progress till date" and its section chart are now gated on
 `schedule.recurring`: on a one-time attempt they drew a flat zero "first
 assessment" line, inventing a history that never existed.
@@ -1674,7 +1716,7 @@ curl "http://localhost:8081/institutes/assessments/v2/<akey>/students/report/ful
 → `detail.status: "ready"` with `detail.type` matching the table above. Checked
 on UAT for Role_Based, Aptitude, Communication, Behavior and Custom_Assessment.
 
-Frontend tests: `npm test` in `institute-react-v2` (27 tests) — it runs the
+Frontend tests: `npm test` in `institute-react-v2` (29 tests) — it runs the
 repo's `node:test` files through `scripts/test-resolve-hooks.mjs`, which adds
 the `@/` alias and extensionless resolution Node's ESM loader lacks. **No test
 runner dependency**; needs Node ≥ 22.6 for type stripping (`nvm use 25`), while
