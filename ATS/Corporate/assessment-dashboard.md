@@ -286,6 +286,26 @@ candidate gets the icon. PDF parts go through `/api/assessments/[id]/candidates/
 (`…/candidates/export?selectedEmails=[…]`) inside the same menu. Regression:
 `tests/candidate-report-download.test.cjs`. PROD unchanged.
 
+### Assessments list reads in ms (corporate-node DEV+UAT 2026-09-28, PROD pending)
+
+`GET /corporates/:corporateId/assessments/v2/list` took ~800ms on PROD (2.4s for
+the largest UAT corporate, 292 floats). Its `per_candidate` CTE joined
+assignments with `aas.assessment_corporate_map_id::text = ANY(f.map_ids)`: the
+text cast defeats `idx_aas_corporate_map_status`, so **every float seq-scanned
+the whole `assessment_assigned_students` table** (292 × 61k rows on UAT; cost
+grows with the table, not with the corporate's size).
+
+- `float_rows` now also aggregates `map_uuids` (native `uuid[]`) and the join is
+  `aas.assessment_corporate_map_id = ANY(f.map_uuids)`. `map_ids` (text) is still
+  what the response/`getPartMetadata` key on — output shape unchanged.
+- `getPartMetadata` params cast `= ANY($1::uuid[])` (same rule as the detail page).
+- `ORDER BY COALESCE(created_at, starts_at) DESC, float_id` — the tiebreaker makes
+  same-minute floats order deterministically (previously plan-dependent).
+
+UAT, three largest corporates: 2428→130ms, 928→49ms, 769→34ms; every row
+identical to the old query. corporate-node DEV `7e0ae4e9`, UAT `d237b832`.
+institute-node's `/v2/list` copy still has the `::text = ANY` join.
+
 ### Detail page reads in ms, not seconds (backend DEV+UAT+PROD; frontend DEV+UAT 2026-09-23)
 
 The L2 assessment detail page (`/v2/assessments/:id`) sat on its skeleton for
