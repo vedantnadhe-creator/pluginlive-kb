@@ -1604,8 +1604,11 @@ corporate-node:
   attempts on this institute's group carrying this student's email.
 
 Verified on UAT: another institute's attempt → **404**, the right attempt with
-the wrong student's email → **404**, a non-uuid `attemptId` → **400** (checked
-before it reaches a `::uuid` cast, which would otherwise be a 500).
+the wrong student's email → **404**, a non-uuid `attemptId` → **400** from
+institute-node (checked before it reaches a `::uuid` cast, which would otherwise
+be a 500). The browser sees **502** "Failed to load attempt report" for that
+case: the BFF maps every non-404 upstream error to 502. The UI never sends a
+non-uuid id, so this only shows up in hand-crafted requests.
 
 ### Type mapping, and the two surprises
 
@@ -1624,6 +1627,21 @@ before it reaches a `::uuid` cast, which would otherwise be a 500).
 **Hinglish has no document of its own** — student-node builds it with the
 Communication builder and it reports as `Communication`. It is now mapped to
 that page in `reportRouteFor`.
+
+**AI_Interview is scored from `ai_interview_scores` (fixed 2026-09-28).**
+`assessmentScoreSql.js` `RAW_SCORE` / `SCORE_JOINS` used to read only the
+Aptitude, Communication, Custom and Role_Based tables. An AI Interview attempt
+therefore never had a score: the roster showed "Not yet scored",
+`headline.reportAttemptId` was null, and the report page said "No attempt has
+been scored yet" for interviews that were fully graded (UAT: 78 / 60 / 76 on
+"Assessment Dashboard College"). The join now takes the **newest**
+`ai_interview_scores` row per assignment (`DISTINCT ON … ORDER BY created_at
+DESC`, about 0.5 ms). This matches student-node `indexAiInterviewScores`, which
+feeds the TPO PDF / Excel exports. It deliberately differs from corporate-node,
+which averages sessions. AI Interview scores now also feed every numeric v2
+widget built on `SCORE_EXPR`.
+institute-node `c8297d8` (Development) → UAT merge `81193e9`. Deployed and
+verified on DEV and UAT on 2026-09-28. PROD pending.
 
 **Custom_Assessment had no page and that was a live bug.** It fell through to
 the PDF download, and student-node's `generatePDFReport` **rejects** custom
