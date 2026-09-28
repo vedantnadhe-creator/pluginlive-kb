@@ -286,6 +286,16 @@ candidate gets the icon. PDF parts go through `/api/assessments/[id]/candidates/
 (`…/candidates/export?selectedEmails=[…]`) inside the same menu. Regression:
 `tests/candidate-report-download.test.cjs`. PROD unchanged.
 
+**PDF filename = candidate name** (corporate-node `594c32eb` DEV, UAT `58e8b1f4`,
+2026-09-28; PROD pending). The download is saved as `<Candidate Name>-<Type>-report.pdf`
+(was `assessment-report-<Type>.pdf`, which QA flagged). corporate-node's
+`downloadCandidateReport` sets it in `Content-Disposition`; `getReportTargets` returns
+`candidate_name` via `CANDIDATE_NAME_SQL` (full name → first+last → email, same as the
+roster). The header carries an ASCII-slug `filename="…"` plus RFC 5987 `filename*` so
+non-latin names can't `ERR_INVALID_CHAR` 500. Gotcha: the drawer's `ReportDownloadMenu`
+reads only `filename="…"` and prefers it over its own fallback, so the server header
+is the single source of the saved name (accented letters become `-`).
+
 ### Assessments list reads in ms (corporate-node DEV+UAT 2026-09-28, PROD pending)
 
 `GET /corporates/:corporateId/assessments/v2/list` took ~800ms on PROD (2.4s for
