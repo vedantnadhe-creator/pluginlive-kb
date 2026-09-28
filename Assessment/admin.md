@@ -547,6 +547,18 @@ Adds new students to an **already-live** assessment. Accepts `assessmentInstitut
 3. **Student list update** — appends new students to `student_lists.students_data` JSON
 4. **Active map assignment** — calls `assignStudentsToActiveScheduleAssessments()` to assign students to previously triggered assessment maps with >24 hours remaining before expiry. This step is non-critical (failures logged, don't roll back student list update)
 
+#### Existing students are linked to the institute's campus (2026-09-28; DEV + UAT, PROD pending)
+
+The **last step of both flows (college only)** is `linkUnlinkedStudentsToCampus` (`app/helpers/linkStudentCampus.js`). A student whose email already exists is assigned as an "existing student". Before this fix their profile was never touched, so a student first created by a corporate or manual send kept `students.institute_campus_id` NULL/`''` and no `current_course.ended_on`. Admin's passing-year views (`getschedulesInfo`, which joins the student's campus) therefore never counted them, while institute v2 did. PROD Swadha had two such students, Irfan and Lakshmi; their data was fixed by hand the same day.
+
+What the step does now:
+- **Campus:** set to the institute's campus, and `institute_campus_name` to that campus's name, only when the campus is empty. Students already on another campus are never moved. `source = 'TALLY_FORM'` students are never linked; student-node keeps those unlinked on purpose.
+- **End date:** `current_course.ended_on` is filled from the add's `passingYear`, using the same encoding as the create path (`moment(year,'YYYY').format('x')`), only when it is empty. This also applies to a student who is already on this campus.
+- **Why it runs last:** for an account still marked corporate in user-management, the reminder (`sendAssessmentReminder`) converts it to a student through student-node `updateStudent`. That call rewrites `current_course` without an end date. When the link step ran first, the passing year was wiped (seen on UAT). The conversion also sets the campus id but not `institute_campus_name`.
+- **Failure handling:** errors are logged and don't block the add, the same as the invite send.
+- **Still open:** `getAssessmentAssignedParticipants`, used by create and by the scheduler cron, has the same gap. Its existing-participant lookup only matches `ss.institute_campus_id = campusId`.
+- **Commits:** admin-node `9282ec1` + `77d2394` (Development), `31c1bfd` + `5d05361` (UAT).
+
 ### `assignStudentsToActiveScheduleAssessments({ scheduleId, newStudentsData, assessmentTypeRecord })`
 
 Assigns newly added students to **already-triggered** assessment maps for a schedule. Called automatically after adding students to a scheduled assessment.
