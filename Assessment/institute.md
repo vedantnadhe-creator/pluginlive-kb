@@ -199,6 +199,20 @@ This dropdown had **three independent "No data" bugs**, all fixed 2026-06-12. Th
 
 ### Status computation (Ongoing / Expired / Upcoming)
 
+#### V2 counts exclude soft-removed roster students (2026-09-28; DEV + UAT, PROD pending)
+
+Every v2 screen (assessments list `assigned`/`done`/units/audience, the dashboard, and the detail page's overview, student roster and Diagnosis row) now uses the same rule as admin's CANDIDATES column: **a student whose entry in the schedule's `students_data` has `is_active === false` (with no other active entry for the same email) is not a member of that schedule.** All of that student's attempts on the schedule are left out, including their diagnosis, which no longer folds onto the schedule.
+
+- **Where the rule lives:**
+  - A `removed` CTE inside `MEMBER_CTE` (`institute-node/app/helpers/assessmentGrouping.js`).
+  - `ACTIVE_ROSTER_COUNT` for schedules that have not run yet.
+  - `loadRemovedEmails` + `notRemoved()` in `AssessmentDetailV2.js`.
+- **Performance:** only lists whose text contains `"is_active":false` (or `": false"`) are parsed as jsonb. Casting every roster cost about 160 ms per query on a 57-schedule institute.
+- **Before the fix:** v2 counted everyone ever assigned, so PROD Swadha read 72 vs admin 65 (Aptitude 2027) and 90 vs 81 (Communication 2027). After the fix, UAT (Swadha replica) reads 65 and 81, and the list and detail page agree.
+- **Side effect:** removed students' past attempts no longer count toward v2 completion or average-progress figures for that schedule. Admin still counts them in its sent/taken totals.
+- **Admin still reads lower in one case:** students whose `institute_campus_id` is blank or NULL, or who have no `current_course`, never match admin's passing-year filter, but v2 counts them. That is a data fix: link them to the right campus.
+- **Commits:** institute-node `931ccf4` (Development), `f6825d6` (UAT).
+
 #### V2 assessment list expiry (fixed 2026-09-15; UAT)
 
 The v2 list (`GET /institutes/assessments/v2/list`, consumed by
