@@ -49,6 +49,7 @@ nvm use 20 && npm install && npm run build
 | 2026-09-25 | `1205677` | 11 applied verbatim; restore_module_topic_catalog skipped | 36 commits: video studio, simulations, curriculum setup workflow. See *2026-09-25*. |
 | 2026-09-25 | `0538e22` | 2 applied verbatim | 8 commits: module save fixes; **all published modules now DB-readable by any signed-in user** (entitlement gate frontend-only). See *2026-09-25 (later)*. |
 | 2026-09-26 | `1322956` | 3 verbatim, 2 fixups (menu upsert → DO NOTHING; drop+recreate payment RPC) | 23 commits: AI registry/grounding/quality; 4 new VITE gates set true. See *2026-09-26*. |
+| 2026-09-28 | `6bf8a7f` (new line after force-push) | 2 new, via fixup (broken role/column refs) | upstream main force-pushed (112 commits discarded, backup bundle kept); ai-content isTechTrack crash + banking persona fixed. See *2026-09-28*. |
 
 `20260810100000` needed **no fixup** — it is `ALTER COLUMN … SET DEFAULT` plus a distinct-union
 `UPDATE`, so it is naturally idempotent. Effect on UAT: per-admin `allowed_tabs` went 56 → 58 and
@@ -2173,3 +2174,36 @@ Engineering, Retail Banking and Data Science all return AI topics in their own d
 (`checker: llm`, `fallbackApplied: false`). Pushed to Banking `main` as `d84b6d9`; functions synced.
 The stale "Digital Banking and FinTech" topic on admin module `7dbd389b` (Mechanical Engineering)
 was left in place — delete it from the module card.
+
+## 2026-09-28 — upstream `main` FORCE-PUSHED; UAT moved to the new line (`fd03135` + fix `6bf8a7f`)
+
+Between 09-26 07:47 and 09-28 06:16 UTC `main` was force-pushed to a line forked from `8a257b2`
+(09-22) plus new commits, discarding **112 commits** (09-22→09-26: video studio, simulations,
+curriculum setup workflow, AI registry/grounding/quality contract, RLS security remediation, and our
+fixes `b8008e6` AuthContext race + `d84b6d9` topic quality gate). No remote branch holds them.
+**Backups:** branch `backup/pre-force-push-20260928T061627Z` in `~/bankingjobreadiness` (UAT) and
+`~/banking-main-pre-force-push-20260928T061627Z.bundle` on UAT + DEV (verified full history).
+
+On explicit request, UAT was moved to the new line (checkout `reset --hard origin/main`, `.env` kept).
+The DB was **not** rolled back: every migration from the discarded line stays applied (tables,
+RLS lockdown, menus), the new code simply no longer references some of them. Snapshot
+`~/banking-predeploy-20260928T074647Z/` + `banking_uat_predeploy_20260928T074647Z.dump`.
+
+- New migrations `202609XX_llm_config.sql` / `202609XX_video_projects.sql` fail as written (policies
+  `TO admin`/`TO trainer` name DB roles that don't exist; reference a `created_by` column never
+  defined). Applied as fixup `~/banking-sb/fixups/202609XX_llm_config_and_video_projects.sql`: adds
+  `created_by DEFAULT auth.uid()`, admin-all / trainer-own policies via `private.has_role`,
+  "ready videos" readable by signed-in users (not anon). `llm_config.api_key` is stored in plaintext.
+- Functions: `ai-audit-curriculum`, `evaluate-learning-simulation`, `generate-learning-simulation`
+  gone; `compose-video`, `generate-simulation`, `generate-video` added.
+- **Topic generation regression fixed (`6bf8a7f`, pushed to main):** `ai-content` declared
+  `isTechTrack` only inside `topic_content`, so `module_topics` threw `isTechTrack is not defined`
+  on every call → generic fallback topics; and every non-tech module got the "Indian banking
+  educator" persona. Persona now per module: tech → tech, banking/finance keywords → banking, else
+  discipline-neutral. Mechanical Engineering → 5 AI mechanical topics with 0 banking terms.
+- VITE flags in `.env` still apply (new `optionalDatabaseFeatures.ts` reads the same names minus
+  the 4 gates added on the discarded line, whose screens now read unconditionally).
+
+Verification: build clean in an isolated worktree first; admin login 5/5, candidate
+(`/onboarding/diagnostic`) + trainer 0 errors; Coding Challenges 365 from DB; Save Module "Module
+saved"; 90 functions, 0 runtime errors; bundle clean.
