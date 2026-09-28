@@ -55,6 +55,12 @@ Admin-picked times may be outside calling hours; automatic plans, retries and ca
   bot is ignored (the line echoes the bot's own voice back).
 - **Before an answer:** 6 s of silence → *"Take your time. Please go ahead whenever you are ready."* → 6 s more → next question.
 - **After an answer:** 3 s of silence ends it (4.5 s if it trails off on and/so/but/aur/toh or has no full stop).
+- **Confirm before moving on (interview questions only, not consent / callback time):** once the answer settles the bot
+  asks *"Are you done with your answer, or would you like to add more?"*. A done reply ("yes", "I'm done", "no, I'm
+  done", "next question", "ho gaya", "bas") hands the answer on (1.5 s settle); "not yet / wait / one more / no" →
+  *"Sure, please go ahead."* and keeps listening; anything else is more answer — appended, then confirmed again;
+  6 s of silence after the prompt keeps the answer as is. Done/not-done **phrases** win over single words
+  (`turn_taking._reply`): whole-sentence replies were first read as "more answer" and landed in the transcript.
 - No filler between questions. Latency from last word to next question ≈ pause + ~2 s question generation + ~0.7 s TTS
   (student-node no longer waits on per-turn scoring before generating the next question).
 
