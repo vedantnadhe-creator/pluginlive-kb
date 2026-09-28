@@ -1533,14 +1533,20 @@ a year for the same student.
 
 ## The `/reports/*` documents render real attempts (2026-09-24)
 
-`cce9add` institute-node + `38c0970` institute-react-v2, on the branch
-`feat/institute-v2-report-api-wiring` (NOT merged into `Development` or `UAT`).
-**Not live anywhere** as of 2026-09-24: it was deployed to UAT from the branch
-and verified there, then UAT was redeployed from its own `UAT` branch the same
-day (institute-node `2bb1d14`, institute-react-v2 `3edceb4`), so UAT still
-serves the mock report pages. To bring it back:
-`./auto_deploy.sh institute-node feat/institute-v2-report-api-wiring`, then the
-same for `institute-react-v2` — backend first, the pages call its new routes.
+`cce9add` institute-node + `38c0970` institute-react-v2 (branch
+`feat/institute-v2-report-api-wiring`). **LIVE DEV + UAT 2026-09-28; PROD
+pending.** Merged into `Development` (institute-node `81bace4`,
+institute-react-v2 `68cfc29`), then `Development` merged into `UAT`
+(institute-node `54576a7`, institute-react-v2 `f7823df`).
+
+The institute-node UAT promotion also carried two commits that were sitting on
+`Development`: `4f8d6d4` (proctoring event timeline + webcam snapshots in the
+v2 report — a prerequisite, the new handler builds on it) and `931ccf4`
+(Ravi: soft-removed roster students excluded from v2 counts). UAT already had
+an identical copy of the latter as `f6825d6`; they merged without conflict.
+That filter applies to `getOverview`/`getStudents` only, **not**
+`getStudentReport` — and the new `getStudentAttemptTarget` follows the same
+rule, so a removed student's report still opens from both endpoints.
 
 **What was wrong.** All five standalone report documents under
 `institute-react-v2/src/app/reports/*` rendered their `_data/mockReport.ts`.
