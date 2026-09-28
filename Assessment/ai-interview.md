@@ -6,6 +6,8 @@
 
 ## Overview
 
+> **Phone delivery:** an AI Interview can be delivered by an outbound call instead of an emailed link — see [ai-interview-on-call.md](ai-interview-on-call.md) (DEV + UAT; PROD pending).
+
 | Property | Value |
 |---|---|
 | **Assessment Type** | `AI_Interview` |
