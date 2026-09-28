@@ -832,7 +832,24 @@ Total   = Reading*0.20 + Listening*0.10 + Speaking*0.40 + Writing*0.30
 - `student-node/app/helpers/communicationDashboardScore.js` is the shared
   implementation for the PDF and TPO workbook exports.
 - `institute-node/app/helpers/assessmentScoreSql.js` implements the identical
-  stored-section aggregation for UI APIs. Never restore the old flat
+  stored-section aggregation for UI APIs. **Including the enabled-section
+  rescale (fixed 2026-09-28):**
+  - **Rule:** only sections that are scored AND listed in the map's
+    `enabled_sections` count, with Writing as one 0.3 component. When the map
+    has a list, the weights are rescaled over the components present, then
+    rounded to 2 dp and capped at 100.
+  - **Bug it fixed:** before this, institute-node always weighted out of 1.0.
+    A Listening+Speaking-only paper read **5** in the v2 roster/drawer but
+    **10** on the report page and PDF.
+  - **Parity:** checked against the helper on 400 real UAT attempts, 397
+    identical. The rest are test attempts with duplicate score rows for one
+    section (the SQL takes MAX, the helper the last row); they were unchanged
+    by the fix.
+  - **Cost:** about +30-50 ms per score query on the largest PROD institute.
+  - **Deploys:** institute-node `7ffaf4e` (Development), UAT merge `3f04bed`,
+    DEV+UAT 2026-09-28, PROD pending.
+  - **Not updated:** the legacy v1 `StudentListInfo.js` still has its own
+    un-rescaled copy. Never restore the old flat
   `AVG(communication_scores.score)`: it overweights Writing because Writing
   owns several exercise rows.
 - Historical data needs no backfill; the final exercise scores were already
