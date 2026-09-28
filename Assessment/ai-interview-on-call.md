@@ -55,12 +55,20 @@ Admin-picked times may be outside calling hours; automatic plans, retries and ca
   bot is ignored (the line echoes the bot's own voice back).
 - **Before an answer:** 6 s of silence → *"Take your time. Please go ahead whenever you are ready."* → 6 s more → next question.
 - **After an answer:** 3 s of silence ends it (4.5 s if it trails off on and/so/but/aur/toh or has no full stop).
-- **Confirm before moving on (interview questions only, not consent / callback time):** once the answer settles the bot
-  asks *"Are you done with your answer, or would you like to add more?"*. A done reply ("yes", "I'm done", "no, I'm
-  done", "next question", "ho gaya", "bas") hands the answer on (1.5 s settle); "not yet / wait / one more / no" →
-  *"Sure, please go ahead."* and keeps listening; anything else is more answer — appended, then confirmed again;
-  6 s of silence after the prompt keeps the answer as is. Done/not-done **phrases** win over single words
-  (`turn_taking._reply`): whole-sentence replies were first read as "more answer" and landed in the transcript.
+- **Jev decides each turn** (TypeSafe System One, hosted classifier, ~0.3 s, `call_interview/jev.py`; key
+  `TYPESAFE_API_KEY` in the worker `.env`). Once an interview answer settles, Jev reads it with the question:
+  **complete** → next question straight away · **incomplete** (stopped mid-thought, trailing off, "umm let me think")
+  → *"Are you done with your answer, or would you like to add more?"* · **repeat** ("can you repeat the question",
+  "sawal dobara bolna") → *"Sure. <question>"*, nothing said so far counts as the answer.
+  Replies to "are you done?": done → next question; not yet / wait → *"Sure, please go ahead."*; more content →
+  appended and re-judged; repeat → question re-read; 6 s silence → the answer stands.
+- **Consent** (yes/no) is Jev too: yes / no / repeat (re-asks the question) / unclear; only a reply naming another
+  time still goes to the LLM intent call (`/ai-interview/call-intent`) to read the callback time.
+- **Without Jev** (no key, >1.5 s, error) the call falls back: every answer gets "are you done?", replies go through
+  phrase rules (`turn_taking._reply`), consent through the LLM intent call.
+- **Cost:** ~480 input tokens per decision at $0.042/M → ≈ $0.0002 (₹0.02) per interview, ≈ ₹18 per 1,000 interviews.
+  Open-source alternatives were benchmarked on 21 real replies (2026-09-28): Laya 12–13/21 at 1.3–2.4 s,
+  Llama 3.2 1B 7/21, mDeBERTa too slow on the 4-core boxes; Jev 21/21.
 - No filler between questions. Latency from last word to next question ≈ pause + ~2 s question generation + ~0.7 s TTS
   (student-node no longer waits on per-turn scoring before generating the next question).
 
