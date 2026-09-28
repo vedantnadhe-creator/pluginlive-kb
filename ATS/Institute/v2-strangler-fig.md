@@ -1704,6 +1704,51 @@ with zero length, so the stats row can read "No face 0ms / Clean" next to 52
 no-face frames. The hardening fix is on DEV (student-node `9dae4466`), and
 UAT/PROD are pending.
 
+### QA round, 2026-09-28: per-run proctoring, real PDF, AI Interview Overview
+
+Deployed and verified on DEV and UAT on 2026-09-28. institute-node `47b9d2e` +
+`f952701` (UAT merge `355e48f`); institute-react-v2 `081301e`, `78814b2`,
+`f3ffee3`, `5d31923` (UAT merge `74512f2`). PROD pending.
+
+- **Proctoring for each run of a schedule.** `GET …/students/report/attempt`
+  now also returns `proctoring` for THAT attempt: its `proctoring_reports`
+  verdict (`AssessmentDetailV2.getAttemptProctoring`), every event with its
+  evidence frame, and its webcam snapshots (`withProctoringEvidence`, pointed
+  at the attempt). `ScheduleDetailDialog` gets a **Proctoring** nav entry that
+  renders it with the shared `ProctoringPanel`. Before this, the drawer only
+  showed one attempt's evidence, and the per-run dialog showed none. A run the
+  student never sat has no Proctoring entry. An unscored sitting (e.g. a
+  drop-off) still gets one, built from institute-node's band and signals.
+- **"Download PDF" downloads the PDF.** On every `/reports/*` page the button
+  used to call `window.print()`. It now fetches student-node's rendered PDF
+  through `POST /api/assessments/report/download` (`src/lib/reports/reportPdf.ts`,
+  via `ReportPdfContext` → `usePrintAllPanels`). **Custom_Assessment has no
+  server PDF**, so it keeps print → "Save as PDF", and any failed fetch falls
+  back to print too. The blob URL is revoked a tick after the click; revoking
+  synchronously can cut the download short in Chromium.
+- **AI Interview drawer Overview was blank.** `loadBreakdown` returned `[]`
+  for AI_Interview. It now returns the newest `ai_interview_scores.parameter_scores`
+  as level rows (`"3/5 · Adequate"`, no `score`), like Behavior. The drawer's
+  level card is titled **Interview parameters** for AI Interview, and its
+  **Achieved Level** cell stays: AI Interview does award an overall level.
+  Behavior still hides that cell. A recurring AI Interview reports its latest
+  profile, because ordinal ratings don't average.
+- **`media.css` is scoped** to `:is(main.doc, .stu-rep-doc)`. Its `.snap*`,
+  `.media-link` and `.rep-head-row` rules had been global, and the assessment
+  detail page (which loads them through the schedule dialog) has its own rules
+  with those names. `report.embed.css` was regenerated after the snapshot rules
+  moved.
+- **Diagnosis download** was reported as "only one assessment" and was **not
+  reproduced**. Every diagnosis PDF checked on UAT (Communication and Aptitude:
+  drawer, per-run dialog, and the Diagnosis list xlsx) contains both attempts.
+  Note that the Aptitude diagnosis PDF shows both attempts side by side in one
+  table, while Communication has a separate detailed section per attempt.
+
+Browser checks for all of this live in `~/jev-qa/checks/`
+(`report-media.mjs`, `schedule-proctoring-and-pdf.mjs`, `admin-checkin.mjs`).
+The Chromium on the box is a snap with a private `/tmp`, so Playwright
+downloads need a `downloadsPath` outside `/tmp`.
+
 "Progress till date" and its section chart are now gated on
 `schedule.recurring`: on a one-time attempt they drew a flat zero "first
 assessment" line, inventing a history that never existed.
@@ -1716,7 +1761,7 @@ curl "http://localhost:8081/institutes/assessments/v2/<akey>/students/report/ful
 → `detail.status: "ready"` with `detail.type` matching the table above. Checked
 on UAT for Role_Based, Aptitude, Communication, Behavior and Custom_Assessment.
 
-Frontend tests: `npm test` in `institute-react-v2` (29 tests) — it runs the
+Frontend tests: `npm test` in `institute-react-v2` (32 tests) — it runs the
 repo's `node:test` files through `scripts/test-resolve-hooks.mjs`, which adds
 the `@/` alias and extensionless resolution Node's ESM loader lacks. **No test
 runner dependency**; needs Node ≥ 22.6 for type stripping (`nvm use 25`), while
