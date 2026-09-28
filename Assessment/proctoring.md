@@ -352,3 +352,15 @@ simulates 1–200 students against DEV/UAT/PROD. Fixtures are real production
 recordings pulled from `oci://pl-prod-assessment/verification/` and split into a
 JPEG frame + Opus clip with ffmpeg. See
 `load-test-dashboard/VERIFICATION-LOAD-TEST.md` on the DEV box.
+
+## Old "No face 0ms" data — repair (UAT done 2026-09-28, PROD pending)
+
+Before student-node `9dae4466` (2026-09-18) the snapshot cron wrote one **zero-length** server `no_face` event per no-face frame. The rule is timed, so those events never scored: reports read "No face 0ms / Clean" beside dozens of empty-seat frames. The fix coalesces frames into timed absences, but **only for new sessions**. Old data needs a re-emit + re-finalise.
+
+- **Do not run the stock `script/refinalizeProctoringNoFace.js` for this.** It re-finalises *every* finished session since `--since` under the current penalty rules, which also moves verdicts that have nothing to do with `no_face` (UAT: 4,922 sessions vs 383 actually affected).
+- Use the **scoped runner** instead: same two calls, only for attempts that still hold zero-length server `no_face` rows. The script, the verification queries and the procedure are in DB-Scripts `Aptitude Proctoring Report/20260928T162908Z__proctoring_no_face_zero_length_repair_verification.sql`.
+- **UAT, 2026-09-28:** backup of every affected report and event row taken first. 383 re-finalised, 0 failed.
+  - Transitions: 183 clean→review, 134 clean→clean, 57 review→review, 9 high_concern→review. The code now has only two bands.
+  - Example `108260fe…`: 52×0 ms / clean 100 became one 12 min 42 s absence, review 55.
+  - 153 attempts keep 0 ms rows by design: their session was never closed (102 are AI_Interview), or it closed with no report.
+- **PROD** (read-only estimate): 13,514 affected attempts, about 6,940 "Clean" likely to flip. This needs a product decision and customer comms before it runs.
