@@ -1518,3 +1518,37 @@ Separate, still open: the FL page's content tables are **empty on UAT** (`langua
 `auto_map_foreign_languages`, and UAT `schools` has 0 rows) — authored content, not a migration gap.
 The student dashboard's default-assessments card 400s (`assessments.is_public/total_questions`
 don't exist) — tied to the held `20260923090000` default catalogue decision.
+
+## 2026-09-29 — redeployed to `af28b8ef` (127 commits, 6 new migrations, 16 functions)
+
+Normal fast-forward (no history rewrite). AI governance (feature policies, provider-attempt log),
+content quality / question provenance, subscription approval audit fields, OTP table hardening,
+scoped read policies that restore signed-in access lost in the 09-24 deny-by-default sweep
+(announcements, wellbeing questions, plan menus/pricing, curriculum sources/artifacts, PTM slots,
+school-scoped storage reads). Snapshot `eduspeak_uat_predeploy_20260929T044358Z.dump` (DEV box),
+`~/pilvidya-predeploy-20260929T044358Z/` on UAT; old container kept as `eduspeakreact-old-20260929`.
+
+- All 6 new migrations applied verbatim after a rolled-back dry run. `20260925150000_teacher_content_menu_access`
+  is a 100% rename of the already-applied `20260923150000` → skipped.
+- `20260927134935` sets `student_authenticate` `search_path = ''`: safe (every reference is
+  schema-qualified); verified the demo student still authenticates. Our 09-25 same-school
+  `teacher_profiles`/`teacher_subscriptions` fixup policies survive (student still resolves the
+  school plan; Foreign Languages menu visible).
+- **Build changes — use `~/eduspeak-sb/Dockerfile.uat-build`, not the repo Dockerfile.** Upstream's
+  `npm run build` hardcodes `node --max-old-space-size=384` (Lovable-sized) → OOM on the full
+  production build; and `vite.config.ts` now writes to `../dist` while the repo Dockerfile still
+  `COPY`s `/app/dist` (the upstream Dockerfile cannot build as committed). The UAT copy runs vite with
+  a 3 GB heap + `check-route-manifest.mjs`, and copies `/dist`. New build arg `VITE_APP_VERSION`
+  (pass the commit); the health check now also requires `/chunk-manifest.json`.
+  `docker build -f ~/eduspeak-sb/Dockerfile.uat-build --build-arg VITE_SUPABASE_URL=… --build-arg
+  VITE_SUPABASE_PUBLISHABLE_KEY=… --build-arg VITE_SUPABASE_PROJECT_ID=… --build-arg VITE_APP_VERSION=<sha> .`
+  (from `frontend/`).
+- Bundle audit: new `xyzcompany/example/realtime.supabase.co` hits are JSDoc comments in the vendor
+  supabase-js chunk (inert); real endpoint `pilvidya.uat.pluginlive.com/sb`.
+
+Verification: container healthy; `/`, `/student-entry`, `/status`, auth, `chunk-manifest.json` 200;
+e2e.cjs all routes render, admin/teacher/student sign in, 0 page errors, 0 failed requests. Remaining
+`/sb` ≥400: anon `teacher_profiles` 401 (intended), anon `schools?status=eq.active` 401 (new
+registration code reads `schools` directly; blocked by the 09-24 lockdown; UAT has 0 schools so no
+visible effect — upstream should use `registration_school_directory`), `assessments` 400 (held
+default-catalogue decision).
