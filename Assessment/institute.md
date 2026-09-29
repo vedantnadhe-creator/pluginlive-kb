@@ -47,6 +47,17 @@ the following presentation rules for schedule and one-time student lists:
   report drawer omits the schedule-wise performance card because one-time
   assessments have no schedules.
 - The schedule completion bar tooltip is bound to its real `data-tip` value.
+- **One-time student report drawer (2026-09-29, UAT):** tabs are Overview /
+  **Detailed analysis** / Proctoring. Detailed analysis renders the same per-type
+  panel as the standalone `/reports/*` page (via `useFullReport`), fetched only
+  when the tab is opened; a student with nothing scored sees the API's reason.
+  The head's **download icon downloads the student-node PDF** (BFF
+  `POST /api/assessments/report/download`, latest submitted attempt) for every
+  type — it no longer opens `/reports/*` in a new tab. **Exception: Custom
+  Assessment** still opens `/reports/custom-report` in a new tab, because
+  student-node cannot render a Custom PDF; that page's Download PDF prints it.
+  Recurring drawers are unchanged. irv2 commits `71938f7` + `26eaf9b`, UAT merge
+  `3875c8c`; PROD pending.
 
 UAT frontend commits: `8666336` (student-wise score presentation) and
 `39d0fb3` (`+10 pts` delta visibility threshold).
