@@ -38,6 +38,11 @@ state.
 
 ### Diagnosis retry rule
 
+> **2026-09-29 (DEV+UAT):** an abandoned diagnosis is reset to **PENDING** by the dropout cron
+> once its `expires_at` passes (it is never marked DROPOUT any more), and while it is still
+> INPROGRESS every entry gets `409 ALREADY_IN_PROGRESS` with `retryAt` — the v2 overview shows
+> "Already in progress … start again after <time>". See [attempt-expiry.md](attempt-expiry.md).
+
 **Changed 2026-09-15.** Diagnosis attempts may re-enter only after the row has
 been classified as `DROPOUT`. A diagnosis still marked `INPROGRESS` is refused,
 including through the Mix & Match scoped route, so two live sittings cannot run

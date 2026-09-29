@@ -1369,6 +1369,10 @@ took the whole screen down on resume.
 
 ### Drop-off is a property of the sitting, not of a part (2026-08-20)
 
+> **2026-09-29:** still true, now implemented as one stamped `expires_at` shared by the
+> sitting's unfinished parts (`helpers/attemptExpiry.js`); `mixMatchDropout.js` /
+> `splitMixMatchParts` are deleted. See [attempt-expiry.md](attempt-expiry.md).
+
 Opening a float claims **every** part at once: `fetchLiveTest` (`lib/liveExam.ts`)
 runs one `Promise.all` over the whole float, and fetching a part's questions is
 what marks it started. So every non-AI part is `INPROGRESS` from the first

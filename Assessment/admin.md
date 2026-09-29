@@ -350,12 +350,13 @@ into `droppedOffDateTime`. Every dropped-off candidate on an assessment therefor
 - `app/handlers/assessmentHandler.js` — reload of a live non-diagnosis attempt.
 - `app/handlers/aiInterviewHandler.js` — restart of an already-started AI Interview
   (raw SQL: `SET status = 'DROPOUT', dropped_at = NOW()`).
-- `script/updateDropoutStatusCron.js` — the timeout sweep (60 min aptitude / AI Interview,
-  22 min everything else). Here it is **detection time**, not the last keystroke.
+- `script/updateDropoutStatusCron.js` — the per-minute sweep of attempts past their own
+  `expires_at` (sitting duration + 5 min grace, see [attempt-expiry.md](attempt-expiry.md);
+  was a flat 60 / 22 min until 2026-09-29). Here it is **detection time**, not the last keystroke.
   **A Mix & Match part is exempt from those per-part timers** and is swept as part of one
   sitting instead — see [Drop-off is a property of the sitting](mix-match-candidate-journey.md#drop-off-is-a-property-of-the-sitting-not-of-a-part-2026-08-20).
 
-**Who clears it:** the cron's Assessment #1/#2 reset branch and admin-node's resend-invites
+**Who clears it:** the cron's diagnosis reset (`is_diagnosis`, expired → PENDING) and admin-node's resend-invites
 reset (`droppedAt: null` alongside `status: 'PENDING'`), so the timestamp never outlives the
 status it describes.
 

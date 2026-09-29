@@ -667,6 +667,9 @@ pin both constants, assert 1-of-8 scores on a drop-off but not on an early exit,
   `totalDuration`, `interviewIncomplete`, `partialInterview`, `totalAnswered`,
   `totalExpected`, `completionReason:'dropout'`), so **a drop-off and an early exit render
   identically**. Idempotent — a session already carrying a `completionReason` is left alone.
+  - **Superseded 2026-09-29 (DEV+UAT):** the timeout is now the stamped `expires_at`
+    (interview length + 5 min, shared across a float) and the cron runs every minute — see
+    [attempt-expiry.md](attempt-expiry.md). History below.
   - **When the flip happens (2026-09-16, DEV+UAT):** `updateDropoutStatusCron` runs every 2
     minutes (`script/scheduler.js`) and times an abandoned interview out at the set's own
     `ai_interview_config.interview_duration` (seconds; 900 on most sets) **+ 5 min grace**
