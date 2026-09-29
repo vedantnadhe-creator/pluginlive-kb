@@ -2207,3 +2207,24 @@ RLS lockdown, menus), the new code simply no longer references some of them. Sna
 Verification: build clean in an isolated worktree first; admin login 5/5, candidate
 (`/onboarding/diagnostic`) + trainer 0 errors; Coding Challenges 365 from DB; Save Module "Module
 saved"; 90 functions, 0 runtime errors; bundle clean.
+
+## 2026-09-29 — redeployed to `4556bda` (28 commits, 7 migrations: 5 applied, 2 skipped)
+
+Fast-forward from `6bf8a7f`, no force-push this time. No dependency or `.env` changes. Changed edge
+functions: analyze-proctoring, chat, compose-video, generate-simulation, generate-video (the `mcp`
+function-fixup overlay still applies).
+
+| Migration | UAT action |
+|---|---|
+| `20260923000000_repair_missing_modules` | **Skipped**: invalid `DO BEGIN…END` syntax; references PilVidya's `student_profiles` |
+| `20260928120000_daily_mission_institute_backfill` | Applied as shipped (fills null `profiles.institute_id` by institute name; matched 0 rows on UAT) |
+| `20260928130000_video_projects` | **Fixup**: the table already existed on UAT, so `CREATE TABLE IF NOT EXISTS` would have skipped the new `provider_key` column. The fixup adds it, then runs the file |
+| `20260928140000_candidate_diagnostic_results` | **Fixup**: upstream allowed any signed-in user to read and insert anyone's diagnostic results. On UAT: read = own row (`candidate_id = auth.uid()`) or admin/trainer; insert = own only. `candidate_id` is the auth uid (DiagnosticAssessmentDialog/StudentOverview) |
+| `20260928150000_fix_profiles_rls_recursion` | **Skipped**: UAT has no recursion. The file adds `USING (true)` reads on `profiles` + `user_roles` (every candidate would see every email/mobile; `Leaderboard.tsx` does `profiles.select("*")`) and drops `profiles_owner_or_scoped_trainer_read`. Needs a team decision (e.g. a names-only leaderboard view) |
+| `20260928150000_student_diagnostics` | Applied as shipped (the table already exists; the file only adds owner policies and an index) |
+| `20260928160000_add_my_learning_menu_access` | Applied as shipped (`my-learning` menu, DO NOTHING insert) |
+
+Fixups live in `~/banking-sb/fixups/`. Snapshot: `~/banking-sb/snapshots/20260929T0552*Z` (dist, functions, DB dump).
+**Build gotcha:** a non-interactive ssh shell resolves `/usr/local/bin/node` = **v16**, and Vite fails with
+`TransformStream is not defined`. Build with `PATH=~/.nvm/versions/node/v20.20.2/bin:$PATH`, into a temp outDir, then swap.
+Verified: admin login 5/5, candidate/trainer/admin e2e, Coding Challenges (370, no persistence toast), Save Module.
