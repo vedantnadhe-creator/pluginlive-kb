@@ -48,9 +48,15 @@ the following presentation rules for schedule and one-time student lists:
   assessments have no schedules.
 - The schedule completion bar tooltip is bound to its real `data-tip` value.
 - **One-time student report drawer (2026-09-29, UAT):** tabs are Overview /
-  **Detailed analysis** / Proctoring. Detailed analysis renders the same per-type
-  panel as the standalone `/reports/*` page (via `useFullReport`), fetched only
-  when the tab is opened; a student with nothing scored sees the API's reason.
+  **Detailed analysis** / Proctoring. Both Overview and Detailed analysis render
+  the type's own report-v2 panels (Aptitude, Communication, Role-based,
+  Behaviour, AI Interview, Custom) — the same pattern as corporate-react-v2's
+  candidate drawer; the old AI Interview parameter tiles are gone. The report
+  document is fetched once per student and shared by both tabs
+  (`_components/ReportPanels.tsx`, which replaced `DetailedAnalysis.tsx`);
+  nested report-v2 cards/callouts are flattened inside the drawer. A student
+  with nothing scored sees the API's reason. The schedule-wise detail dialog is
+  a fixed 60vw × 60vh (irv2 `f6c8dc8`, UAT merge `1d61984`; PROD pending).
   The head's **download icon downloads the student-node PDF** (BFF
   `POST /api/assessments/report/download`, latest submitted attempt) for every
   type — it no longer opens `/reports/*` in a new tab. **Exception: Custom
