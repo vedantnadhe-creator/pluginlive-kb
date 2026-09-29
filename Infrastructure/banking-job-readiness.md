@@ -2236,3 +2236,21 @@ nullable (UAT: 10/63 no name, 39 no email, 15 no college: imported or unlinked s
 threw a TypeError and React unmounted the page. The match is now null-safe, and empty cells render "—". Deployed to UAT
 (bundle `index-C-ORsuHc.js`) and verified headlessly: searches `s`/`prabha`/`IIT`/`zzzz` give 0 page errors.
 The blank rows are real data gaps, not an RLS problem.
+
+## 2026-09-29 (pm) — redeployed to `4aaaa32` + auth fix `d4cdc6b` (2 migrations, 4 bootstrap functions)
+
+Upstream: separate `/login/candidate|trainer|admin` pages (`lockedTab`), AI-upskilling sections on Home,
+`project_assignments` migration, trainer/student `institute_id` link, and the admin bootstrap functions now
+require an `x-bootstrap-token` header (`BOOTSTRAP_ADMIN_TOKEN`) and `BOOTSTRAP_ADMIN_PASSWORD` from env.
+
+| Migration | UAT action |
+|---|---|
+| `20260928160000_project_assignments` | **Fixup** (`~/banking-sb/fixups/`). The table already existed with all app columns. Upstream's four `USING (true)` policies would let any candidate read, edit or delete every assignment. UAT: **read** = the student (auth uid *or* own `students.id`), the assigning trainer (`trainers.id` = `assigner_id` or `trainer_id`), admin; **write** = the assigning trainer or admin only. Dry-run verified: trainer insert ok, trainer spoofing another assigner blocked, candidate sees 0 and cannot write or delete |
+| `20260928170000_trainer_student_institute_link` | Applied as shipped. The backfill matched **0/68 students, 0/15 trainers**: free-text `college` never equals an `institutes.name` on UAT. The column stays null until mapped |
+
+- **Bootstrap functions:** `BOOTSTRAP_ADMIN_TOKEN` is deliberately **not** set on UAT, so all four functions reject requests (fail closed). The frontend never calls them.
+- **Known app gap:** trainers write `project_assignments.student_id = students.id`, but the candidate view reads `.eq("student_id", <auth uid>)`. On UAT those never match (0/63 students have `id = user_id`), so a candidate won't see trainer-assigned projects until upstream fixes the ID form. RLS already allows both forms.
+- **Admin login regression, fixed in `d4cdc6b`:** the role-loading race from 09-21 (`b8008e6`, lost in the force-push) resurfaced. `AdminRoute` redirected before `user_roles` loaded, and the new candidate-locked page sent admins to `/candidate/home` (1 of 5 logins succeeded). `AuthContext` now reports `isLoading` until the roles belong to the current user. Result: 5/5.
+
+Verified: admin 5/5, candidate/trainer/admin e2e, Coding Challenges 370, Save Module, Student Tier search (0 page errors).
+Snapshot `~/banking-sb/snapshots/20260929T102719Z`.
