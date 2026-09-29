@@ -2228,3 +2228,11 @@ Fixups live in `~/banking-sb/fixups/`. Snapshot: `~/banking-sb/snapshots/2026092
 **Build gotcha:** a non-interactive ssh shell resolves `/usr/local/bin/node` = **v16**, and Vite fails with
 `TransformStream is not defined`. Build with `PATH=~/.nvm/versions/node/v20.20.2/bin:$PATH`, into a temp outDir, then swap.
 Verified: admin login 5/5, candidate/trainer/admin e2e, Coding Challenges (370, no persistence toast), Save Module.
+
+## 2026-09-29 — Admin → Plan Menu Access → Student Tier Management: search blanked the page (fixed, `3d3d072`)
+
+`StudentTierManager.tsx` filtered with `s.name/email/college.toLowerCase()`, but those `students` columns are
+nullable (UAT: 10/63 no name, 39 no email, 15 no college: imported or unlinked students). The first keystroke
+threw a TypeError and React unmounted the page. The match is now null-safe, and empty cells render "—". Deployed to UAT
+(bundle `index-C-ORsuHc.js`) and verified headlessly: searches `s`/`prabha`/`IIT`/`zzzz` give 0 page errors.
+The blank rows are real data gaps, not an RLS problem.
