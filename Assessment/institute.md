@@ -58,6 +58,21 @@ the following presentation rules for schedule and one-time student lists:
   student-node cannot render a Custom PDF; that page's Download PDF prints it.
   Recurring drawers are unchanged. irv2 commits `71938f7` + `26eaf9b`, UAT merge
   `3875c8c`; PROD pending.
+- **Recurring vs one-time in the student drawer (2026-09-29, DEV + UAT):**
+  institute-node `getStudentReport` marks the group recurring when ANY of its
+  rows has a `schedule_id` **or is a diagnosis map**. A series whose own runs
+  have not fired yet has only folded diagnosis maps (`schedule_id` NULL), which
+  used to report `one_time` — the drawer then showed Detailed analysis instead
+  of Schedule-wise performance and listed the two diagnosis papers as runs
+  #1/#2. Now: Overview / Schedule-wise performance (one Diagnosis row) /
+  Proctoring, and the head download is the series PDF. institute-node `7c1bfe8`
+  (UAT `515b406`); PROD pending.
+- **Sidebar college name (2026-09-29, DEV + UAT):** the account card shows the
+  college under the user's role (as corporate-react-v2 shows the company).
+  BFF `/api/me` returns `instituteName`, resolved from the token's
+  `institute_id` via institute-node `GET /institutes/:id` (`data.name`), in
+  parallel with the profile fetch; null → line hidden. For an admin check-in it
+  is the college being viewed. irv2 `b8edb9a` (UAT `59ad53e`); PROD pending.
 
 UAT frontend commits: `8666336` (student-wise score presentation) and
 `39d0fb3` (`+10 pts` delta visibility threshold).
