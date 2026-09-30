@@ -2254,3 +2254,29 @@ require an `x-bootstrap-token` header (`BOOTSTRAP_ADMIN_TOKEN`) and `BOOTSTRAP_A
 
 Verified: admin 5/5, candidate/trainer/admin e2e, Coding Challenges 370, Save Module, Student Tier search (0 page errors).
 Snapshot `~/banking-sb/snapshots/20260929T102719Z`.
+
+## 2026-09-30 — redeployed to `9be7373` (14 commits, 8 migrations: 4 as shipped, 4 with UAT fixups)
+
+Upstream sprints 1–3: admin Institutes master and trainer↔institute mapping, trainer plan mapping,
+institute-UUID scoping for assessments, module groups and learning paths (text columns kept one more release),
+R2 mapping-gated content, R9 candidate/student identity unification, R5 multi-institute curricula, any-format
+curriculum uploads, AI quizzes (10 questions), AI 3D video per topic (Veo→Runway fallback). No new function secrets;
+the vite CSP header is dev-server only.
+
+| Migration | UAT action |
+|---|---|
+| `…180000_institute_data_reconciliation` | **Fixup**: step 1 syncs `institutes.institute_name`, which UAT never had. Dropped; the rest applied. Matched 0 rows (report: unmapped profiles 80, trainers 15, students 68) |
+| `…180000_r9_unify_candidate_student_identity` | **Fixup**: (1a) a mobile match also requires non-conflicting emails. Upstream bound student `prabha+priya12@` to **jershini.y@**'s account via the placeholder mobile `1234567890`. (3) The `student` role is not added to admin/trainer accounts (upstream added it to 4). Result: 1 student linked (yash.manjrekar, same mobile and email) |
+| `…181000_r2_mapping_gated_content_visibility` | As shipped. It **drops every SELECT policy** on modules/topics/assessments/assessment_questions, including the existing `USING (true)` ones, so this narrows access. Measured before→after: mapped candidate 82→**6** modules, 659→75 topics, 30→24 assessments; **unmapped candidate 82→0 modules**; trainer 82 modules (topics 659→644, unpublished hidden); admin unchanged (85). Candidates now see only modules granted via `user_module_access`/module groups. UAT has 18 `candidate` + 13 `student` role users with no mapping |
+| `…190000_assessments_institute_ids` | As shipped |
+| `…190000_r5_curriculum_institute_map` | **Fixup**: manage is **admin-only**. Upstream let any trainer rewrite any curriculum's institute map; only the admin path in `TrainerCurriculumBuilder` writes it. Read stays authenticated-wide (id pairs only) |
+| `…192000_module_group_assignments_institute_id` | As shipped (the `save_module_group_mapping` body is identical to UAT's apart from the new `institute_id`) |
+| `…193000_learning_path_assignments_institute_id` | As shipped |
+| `…194000_trainer_students_trainer_read` | **Fixup**: upstream's predicate had no row link (`exists trainer where user_id = auth.uid()`), so every trainer could read all assignments. Added `t.id = trainer_students.trainer_id` |
+
+**Pre-existing, not changed by this deploy:** `trainer_students` still carries `authenticated read USING (true)` and
+`authenticated write FOR ALL USING (true)`. Any signed-in user can rewrite trainer↔student links. Needs a team decision.
+
+Verified: admin 5/5 (`d4cdc6b` role-race fix still upstream), candidate/trainer/admin e2e, Coding Challenges 370,
+Save Module, Student Tier search, and all 25 admin sidebar pages with 0 page errors and 0 API ≥400.
+Snapshot `~/banking-sb/snapshots/20260930T054733Z`.
