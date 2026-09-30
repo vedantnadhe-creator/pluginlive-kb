@@ -4,7 +4,7 @@
 > an email (reply goes straight to the candidate) and a PLBOT post in Slack
 > **#platform-activity** (`C09TA5PNZC5`).
 >
-> **Status:** LIVE on **DEV** and **UAT** (2026-09-30). **PROD pending.**
+> **Status:** LIVE on **DEV** and **UAT** (2026-09-30; delivery-recovery + atomic throttle fix DEV `54d713f` / UAT `f3299e7`). **PROD pending.**
 > Frontends: only **assessment-react-v2** has the button today. The backend already
 > accepts every portal's login, so institute-react-v2 / corporate-react-v2 / etc.
 > only need a button + a `/api/support` route (deferred).
@@ -20,7 +20,7 @@ assessment-react-v2  ⋯ menu → Support → SupportDialog (name, read-only ema
                    to every active row in assessment.quota_alert_recipients,
                    Reply-To = the sender
        2. Slack  → #platform-activity via SLACK_ACTIVITY_WEBHOOK_URL
-       3. row status = sent
+       3. row status = sent — only once BOTH channels are stamped
 ```
 
 The candidate never waits on the mail relay or Slack: the row is written and the job
@@ -57,9 +57,9 @@ DB-Scripts: `Support Queries/20260930T082149Z__support_queries.sql`.
 | `source` | frontend, e.g. `assessment-v2` |
 | `page_url` | path only (query strings can hold invite tokens) |
 | `name`, `email`, `message` | message ≤ 4000 chars |
-| `status` | `queued` → `sent` / `failed` |
-| `email_sent_at`, `slack_sent_at` | stamped per channel — a retry never re-sends a channel that already went |
-| `last_error` | set when all retries are exhausted |
+| `status` | `queued` → `sent` (email **and** Slack stamped) / `failed` (retries exhausted). Slack unconfigured → stays `queued` with `last_error`, retried later |
+| `email_sent_at`, `slack_sent_at` | stamped per channel — a retry skips stamped channels. Delivery is **at-least-once**: a worker crash between a send and its stamp re-sends that one channel (neither the mail relay nor Slack takes an idempotency key) |
+| `last_error` | set when all retries are exhausted, or when Slack was skipped (not configured) |
 
 **Recipients** = `assessment.quota_alert_recipients WHERE is_active` (shared with
 the scheduler's quota alerts). Edit that table to change who gets support email —
@@ -68,10 +68,16 @@ no deploy.
 ## Reliability and abuse
 
 - Queue: 5 attempts, exponential backoff from 10 s. Job id `support__<id>`.
-- Reconciler: rows still `queued` after 5 min (lost enqueue, worker down) are
-  re-enqueued by the central recovery sweep; same job id, so never doubled.
+- Reconciler (central recovery sweep), rows created in the last **3 days**:
+  - `queued` with no `last_error`, untouched 5 min → lost enqueue, re-enqueued;
+  - `failed`, or `queued` with `last_error` (Slack skipped) → retried every 30 min.
+  Same job id `support__<id>`: a live job is left alone; a finished (completed/failed)
+  BullMQ job is removed first, since `add()` ignores a jobId BullMQ still retains.
+  Rows older than 3 days stay `failed`/`queued` for manual follow-up.
 - Throttle: 5 messages per sender email per 10 min → 429 with a readable message,
-  which the dialog shows verbatim.
+  which the dialog shows verbatim. Count + insert run in one transaction under a
+  per-email `pg_advisory_xact_lock`, so a parallel burst cannot exceed 5
+  (verified on DEV: 10 parallel submits → 5 stored, 5 refused).
 - Slack's `chat.postMessage` answers HTTP 200 with `ok:false` on failure; that is
   turned into a thrown error so the job retries.
 
