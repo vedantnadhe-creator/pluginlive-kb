@@ -409,7 +409,8 @@ runtime switch — changing the container's env and restarting does nothing.
 Everything inside `.exam-wrap`: the question panel, the **AI Interview** prompt
 and transcript, the section rail and the assessment track. The only portalled
 nodes are `ExamMenu`'s support and end dialogs (`createPortal` to
-`document.body`), which carry no question text.
+`document.body`), which carry no question text. The support dialog sends a real
+message (email + #platform-activity) — see [support-queries.md](support-queries.md).
 
 ### Verifying it, not assuming it
 
@@ -581,8 +582,9 @@ All in `src/app/assessment/take/page.tsx` + `src/app/_components/exam.css`
     the display title. The submitted payload (`choicePayload`) is question id →
     option text, so the rename never reaches the backend.
 - Commits: `fd7f955`, `68edb3e`, `5ef3778`, `6b62f9f`. UAT merge `8173bb1` promotes
-  Development **only up to `54bedf0`** (PR #9) — `7cdb3f7` (Help & support
-  message) was held back because its admin-node `/support/query` is not on UAT.
+  Development **only up to `54bedf0`** (PR #9). `7cdb3f7` (Help & support
+  message) followed separately on 2026-09-30 as UAT `95c7290`, after admin-node
+  `/support/query` reached UAT — see [support-queries.md](support-queries.md).
 - **Known stale test:** `ModuleFinishDialog.test.ts` "offers review only for
   non-linear, non-timeout modules" regex-matches the `onCancel` condition that
   `68edb3e` extended with `type !== "Behaviour"`; it fails on Development and UAT

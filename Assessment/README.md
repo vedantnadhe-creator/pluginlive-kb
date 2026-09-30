@@ -102,6 +102,8 @@ All assessment types share these core features, implemented in **`student-node/a
 
 ### Other Utilities
 
+- **Support button** — in-exam Help & support message → email to the stakeholder list + Slack #platform-activity. See [support-queries.md](support-queries.md).
+
 | Function | Purpose |
 |----------|--------|
 | `getPrimaryEmail(studentId)` | Resolves student ID -> email |
