@@ -758,31 +758,67 @@ Assessment**, **Manage Assessment**. Manage stays gated by `canManage`,
 same as the old gear icon was; Share Link drops out of the menu once the
 assessment is closed (a closed float can't be shared), same as before.
 
-**Duplicate Assessment** is new: confirms via a dialog, then redirects to
-`/assessments/new?duplicateTitle=&duplicateTypes=`, carrying the source
-assessment's title and type selection as search params
-(`mapSubscribedTypeNames` maps the admin-node wire type names to wizard
-type keys). No backend call happens on Confirm and no draft record is
-created — the wizard's own existing publish flow is what creates the new
-assessment for real, once the user finishes configuring it there.
-Candidates are never carried over.
+### Duplicate Assessment opens the wizard pre-filled (DEV code + UAT live, 2026-09-30)
 
-**Known gap, not a bug:** those search params are currently read by
-nothing. This app's create wizard is the shared
-`@pluginlive-technologies/assessment-creation` package (also used by
-admin-react-v2) — its `useAssessmentWizard()` hook takes no arguments and
-the `AssessmentHost` type has no seed field, so there is no way for
-corporate-react-v2 alone to make the wizard land pre-filled. Duplicate
-Assessment today just opens a **blank** wizard; the confirmation dialog's
-copy is written to not claim otherwise ("go to the setup wizard to create
-a new assessment based on **X**", not "already filled in"). Fixing this
-for real needs a seed param added to the shared package's hook + host — a
-change reviewed against every consumer of that package, not scoped to
-this repo. Once that lands, wiring `duplicateTitle`/`duplicateTypes` into
-it is the only remaining step on this side; only title + type should be
-seeded even then (not per-type deep config — `GET /api/assessments/[id]`
-returns generic backend-shaped `label/value` pairs with no field keys
-defined anywhere in this repo, so guessing at them risks wrong values).
+Confirm in the Duplicate dialog navigates to
+`/assessments/new?duplicateFrom=<float id>`. Nothing is written on Confirm:
+the wizard opens with the source's settings filled in, the recruiter adds
+candidates and dates (Step 3) and floats, and the normal float
+(`POST /api/assessments/mix-match` → admin-node `assignMixMatchAssessment`)
+creates the new assessment with its own freshly generated papers. Candidates
+and the window are never copied. The name is kept as-is (spec), editable.
+
+**Read path**
+
+1. Corp BFF `GET /api/assessments/[id]/duplicate` — ownership via
+   corporate-node's `/corporates/{id}/assessments/v2/{id}/overview` (same gate
+   as Share/Reopen/Cancel), then
+2. admin-node `GET /assessment/duplicate-source?id=&entityId=` (private route;
+   `entityId` is always the JWT's own corporate id). It 404s unless
+   `mix_match_groups.entity_id` (or, for a legacy single map,
+   `assessment_corporate_map.corporate_id`) matches. Read-only. Returns each
+   part in **assignMixMatchAssessment's own payload shape** plus title,
+   instructions, proctoring, validity days, the registration form, and
+   `skippedTypes` for types the corporate wizard cannot float.
+3. The BFF maps that to the wizard's `InitialDraft` in
+   `src/lib/assessmentWizard/duplicateDraft.ts` — the inverse of `partFor()`
+   in the mix-match route. Keep the two in step.
+
+**Where each setting is read back from** (`DuplicateSourceService`, reusing
+`AssessmentConfigService`'s readers on the most-assigned set):
+
+| Type | Source |
+|---|---|
+| Behaviour stream | set's `assessment_domain` |
+| Aptitude | `selected_sub_section_ids` → section + sub-topic names (paper breakdown for older sets); **duration from paper length** 25/30/40 Qs → 30/45/60 min; difficulty from the set; negative marking from `assessment_assigned_students.is_minus_system` |
+| Communication / Hinglish | set CEFR + accent code (en-US → "US", en-IN → "Indian"), map `response_language`, map `enabled_sections` (`[]` = all four skills), domain → topics |
+| Role Based | set role/seniority + `assessment_config` (JD, skills, industry, region, duration, question counts) |
+| AI Interview | `ai_interview_config` (brief, parameters, resume policy, duration, max questions, voice, `stage_config` languages/probing/curve) |
+| Custom | `custom_config_set_map` → bank sections with their questions/options |
+
+**Custom sections are reused, not copied.** Each pre-filled section carries
+`sourceSectionId` + `sourceFingerprint`. At float time an unedited section
+(fingerprint still matches) is referenced by its original bank id — so sheet
+images survive — provided `getCustomSections?entityId=<own corporate>` lists
+it (client input is never trusted). Edited sections are validated and saved
+as new, as before. Image questions show their text only in the wizard.
+
+**Wizard package** `@pluginlive-technologies/assessment-creation`
+**0.1.2-bugfix.3** (design-system `feat/duplicate-prefill-0.1.2`, local only —
+no write access to that repo; the vendored tgz in corporate-react-v2 is the
+artifact): optional `AssessmentHost.loadInitialDraft`; loading state until it
+settles; on failure a warning and a blank wizard; seeded types the
+subscription no longer covers are unticked and named; unedited bank sections
+pass Step 2 validation. admin-react-v2 is on its own lineage and unaffected.
+
+**Gotchas**
+- Duplicate lives in the kebab, which is hidden on closed floats unless
+  `showManageWhenClosed` — so a Finished assessment can't be duplicated yet.
+- Floats from before the canonical Communication & Language parameter open
+  with AI weights totalling 120%; the wizard blocks Continue until 100.
+- Commits: admin-node `2f90eb3` (Development) / `d9d9b36` (UAT);
+  corporate-react-v2 `2284fc7` (Development) / `9847bd4` (UAT). DEV has the
+  code but was **not deployed** (per request); UAT is deployed. PROD pending.
 
 ### Mix & Match final score is the server figure (DEV + UAT, 2026-09-18)
 
