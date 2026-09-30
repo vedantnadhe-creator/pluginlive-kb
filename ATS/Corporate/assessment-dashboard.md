@@ -90,6 +90,27 @@ to v1 too. Flip one without the other and the two sidebars point at each other.
   (`student-node/app/helpers/assessmentWindow.js` falls back to the map end
   when `validityDays` is not a positive integer). Per-candidate rule DEV + UAT
   2026-09-09; optional validity DEV + UAT 2026-09-18; PROD pending both.
+- **Validity may not outlive the assessment end (DEV + UAT 2026-09-30, PROD
+  pending).** Rule: with a validity set, an invite sent at time T needs
+  `T + validity <= end`. Enforced in the UI AND in the corporate-react-v2 BFF
+  (both call `src/lib/assessments/validityGuard.ts`, so they can't drift):
+  - *Add candidates* (Live/Upcoming only): the drawer holds the add behind a
+    warning dialog listing the affected names (max 5, "+N more") and the
+    earliest end date that works. The dialog shows start (read-only) → end
+    (editable); "Extend assessment end date" is enabled only once the end
+    moves and saves via `PATCH /api/assessments/[id]` → admin-node
+    `PUT /assessment/details` (end only). Users without Manage permission see
+    it read-only with Dismiss. Server side: `POST /api/assessments/[id]/candidates`
+    answers **409** using `validityDays/endsAt/status` from the ownership
+    overview read it already makes.
+  - *Create* (wizard 0.1.2-bugfix.5): validity counted from
+    `max(start, now)`; the Schedule step shows "Use N days or fewer, or extend
+    the end date" and blocks Save. Server side: `POST /api/assessments/mix-match`
+    answers **400**.
+  - No admin-node change: admin-node still clamps the per-candidate deadline to
+    the end, so older callers are unaffected.
+  - Releases: corporate-react-v2 DEV `df6f74f`, UAT `14b944c` (cherry-picks of
+    `0d682d7 742c1c3 d0e4eef eba04ce f0156db df6f74f`).
 - **A float is one row per type**, tied by `mix_match_group_id`. Identity is
   `COALESCE(mix_match_group_id, assessment_corporate_map_id)`; a one-part group
   keeps its own map id and type. `:id` resolves either form.

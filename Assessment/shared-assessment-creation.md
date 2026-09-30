@@ -118,3 +118,14 @@ end date" when blank. Entered values must still be > 0.
 - admin-react-v2 DEV `37ef14c`, UAT `6243fc7`; corporate-react-v2 DEV `3e834ea`, UAT `82fcc78`.
   Backend: admin-node DEV `db31cb3`, UAT `4a92654`. PROD unchanged.
 - Corp is still on the 0.1.2 lineage, so the biometric gap above is unchanged by this bump.
+
+### 2026-09-30 — corp 0.1.2-bugfix.4 and bugfix.5 (DEV + UAT, PROD pending)
+
+- **bugfix.4** (design-system `fix/aptitude-sections-default-0.1.2` `a624c78`): Aptitude opens with
+  every section and its sub-topics selected; "Select at least one section." only shows after the user
+  changes a section.
+- **bugfix.5** (`fix/wizard-validity-window-0.1.2` `7d5195c`): Schedule & settings rejects a candidate
+  validity that runs past the end date, counted from the later of the start and now. Blank validity is
+  still allowed. The corporate BFF (`/api/assessments/mix-match`) enforces the same rule on the server
+  — see ATS/Corporate/assessment-dashboard.md → Data model traps.
+- corporate-react-v2 DEV `df6f74f`, UAT `14b944c`. Admin lineage unchanged.
