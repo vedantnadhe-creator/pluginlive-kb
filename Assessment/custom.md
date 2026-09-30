@@ -280,7 +280,7 @@ behaves like v1 (`admin-react` `AssessmentSelect.js`):
 - **Saved question banks = the entity's own `custom_sections`** (v1's
   `fetchCustomSections`), replacing hardcoded demo banks. BFF routes in both apps:
   `GET /api/assessments/custom-banks`, `GET /api/assessments/custom-banks/[id]/questions`
-  (404 unless the entity owns the section — admin-node's own read has no owner check),
+  (404 unless the entity owns the section),
   `POST /api/assessments/custom-banks` (save without floating). Corporate scopes to
   the JWT's corporate; admin requires `entityId`.
 - **Picking a bank reuses the section by id** (`sourceSectionId` + fingerprint);
@@ -292,5 +292,15 @@ behaves like v1 (`admin-react` `AssessmentSelect.js`):
   Image-only options are allowed. **Needs `STUDENT_API_URL` in each app's
   `.env.local`** (set on DEV + UAT); unset → floats with images fail with a clear message.
 - `GET /assessment/getCustomSections` now answers 500 on error (it used to hang).
+- **Bank routes are authenticated (DEV + UAT 2026-09-30, PROD pending):**
+  `createSectionquestions`, `getCustomSections`, `getQuestionsForCustomSection` and
+  `addQuestionToCustomSection` are `isPrivate` (401 without a valid JWT; they were
+  public). `CustomBankAccessService` scopes callers by token claim: no entity claim
+  (platform admin / `system`) → any bank; `corporate_id` → only its own `entity_id`
+  and sections it owns (403 otherwise, same for unknown ids); `institute_id` /
+  `student_id` → 403. This is what makes the corporate v2 BFF safe: it reads
+  `corporate_id` from the JWT *without verifying it*, and admin-node now verifies.
+  Any new caller must forward the user's token. `getQuestionsForCustomSection`
+  now answers errors (it used to rethrow).
 - Instructions: v2 has one optional "Additional Instructions" field; v1's per-type
   default instruction text for Custom is not carried over.
