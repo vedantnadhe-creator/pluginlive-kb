@@ -395,9 +395,19 @@ set** onto every added candidate — Knack RCM floated 1–5 candidates, topped 
 150–168 and everyone sat one paper. Both now call
 `app/service/AddedCandidateSetService.js`:
 1. Reads the float's prepare spec from
-   `assessment_assignment_jobs.config_snapshot.prepare.specs` (job whose
-   `maps->>'main'` is the map; key `batch` for Communication, `mainBatch` for
-   Aptitude, `main` for pre-batch floats).
+   `assessment_assignment_jobs.config_snapshot.prepare.specs` — the job whose
+   `maps->>'main'`, `maps->>'diagnosis1'` or `maps->>'diagnosis2'` is the map.
+   Main map: key `main` (pre-batch), `mainBatch` (Aptitude) or `batch`
+   (Communication). Diagnosis map: `diag` (pre-batch), `diagnosisBatch`
+   (Aptitude) or `batch`; Aptitude diagnosis top-ups are selected in
+   `diagnostic` mode, not the main paper's configured mix.
+   **No job (pre-queue float):** the spec is rebuilt from the map and its busiest
+   configured-level set — Communication: set's domain, CEFR, accent + map's
+   `enabled_sections` (no top-up if the set has no CEFR level; a pre-queue
+   free-text topic tops up with Universal pool papers); Aptitude: set's
+   `selected_sub_section_ids` (else the paper's own sub-topics), difficulty, and the
+   difficulty mix for the paper length (no top-up if difficulty is unknown); maps
+   named `Assessment #1/#2` use `diagnostic` mode.
 2. Keeps only the map's sets at the **configured level** (CEFR / difficulty). Schedule
    maps also hold sets student-node swapped in at start time for each student's own
    level; newcomers are assigned at the configured level and the same start-time swap

@@ -256,7 +256,9 @@ flowchart TD
   after the batch prepare-set job completes; no schema change was needed.
 - Candidates added to an already-floated Aptitude assessment (one-time add or the
   scheduled back-assign) are spread the same way since 2026-09-30 (DEV + UAT; PROD
-  pending): missing papers are generated from the float's saved prepare spec and each
+  pending): missing papers are generated from the float's saved prepare spec (or, for
+  pre-queue floats, one rebuilt from the existing paper; diagnosis maps use
+  diagnostic selection) and each
   added candidate goes to the least-used paper at the configured difficulty. See
   *Communication → Queued accent/topic set generation* for the shared
   `AddedCandidateSetService` details.
