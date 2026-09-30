@@ -535,6 +535,27 @@ Delivery Status, Delivery Issue, Overall Score, Verdict (plus a % column per
 type on a Mix & Match float). It replaced a CSV the browser built from whatever
 the table happened to be showing.
 
+**Custom exports v1's Custom sheet (DEV + UAT, 2026-09-30).** Every corporate v2
+float is a Mix & Match group, and exporting by group id gave the float summary
+(Final Score % / "Custom Assessment %"), not v1's Custom columns. admin-node
+(`app/helpers/customExportTarget.js`) now exports the Custom part's own map id when
+the group's only part is Custom, or when `assessmentType=Custom_Assessment` is sent
+(the drawer's Custom download sends it; corporate-node and the BFF whitelist only
+that value). Columns = v1: Name, Email, Phone, Sent/Start/End Date, Status, Delivery
+Status, Delivery Issue, Overall %, Total Marks, Gained Marks, Total Questions,
+Attempted Questions, Correct Answers, Wrong Answers, `<section> %` per section,
+Proctoring Status.
+
+## Delivery column (DEV + UAT, 2026-09-30)
+
+The roster shows each candidate's invite delivery with admin's exact rules
+(Opened > **Sent = provider-confirmed delivery** > Processing = handed over,
+unconfirmed > Failed = every channel failed; `-` = nothing recorded). corporate-node
+`app/helpers/deliveryStatus.js` mirrors admin-node `DeliveryFunnelService` (one
+query per page across all float parts; a lookup failure leaves the fields null and
+the roster still loads). Hover shows per-channel detail. See
+[email-delivery-tracking](../../Assessment/email-delivery-tracking.md).
+
 **Proxied, never called from the browser** — that admin route's `isPrivate` is
 commented out, so it is unauthenticated and would export any assessment it was
 asked for. `resolveParts` proves the float belongs to the caller first; another

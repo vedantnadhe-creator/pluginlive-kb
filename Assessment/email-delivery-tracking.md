@@ -533,3 +533,32 @@ callbacks and ignores the ids it does not own.
   emails link straight to the student FE with no `/s/<code>` redirect, so they
   produce `email_events` but never `invite_link_clicked`.
 - Campaigns predating 2026-07-31 have no rows and correctly render `—`.
+
+## Corporate v2 roster mirror (2026-09-30)
+
+corporate-node `app/helpers/deliveryStatus.js` copies this service's corporate SQL
+and precedence so recruiters see the same answer as admins (ponytail: upgrade path
+is a batched admin-node delivery-status endpoint). **Sent still means
+provider-confirmed** — "handed over but unconfirmed" stays Processing (confirmed
+with the product owner 2026-09-30).
+
+## Incident: DEV rejected every OCI push (fixed 2026-09-30)
+
+`~/api/admin-node/.env` on the DEV box had lost `OCI_LOG_WEBHOOK_SECRET`, so every
+Connector Hub push got 401 and DEV email rows sat at `accepted` (Processing).
+Fixed by restoring it (value = the `token` in the ONS subscription URL; CI copies
+`.env` → `.env.dev` at build). Check: `docker logs admin | grep "is not set; rejecting"`
+must be empty. Note the secret is read from the app's `.env` file, not the
+container's process environment — `printenv` will not show it.
+
+Because Connector Hub never redelivers, lost events were **replayed once** from the
+30-day OCI logs: select `accepted` email `message_id`s, `oci logging-search
+search-logs` over the `Default_Group` log group (PROD compartment) with
+`where data.messageId = '…' or …` (40 per query, ≤13-day windows), then POST the
+results as `{records:[…]}` to `/delivery-feedback/email/oci?token=…` so the normal
+handler applies them. DEV result: 406 delivered, 20 bounced of 426. UAT was healthy
+(2,162 delivered / 4 unconfirmed in 14 days).
+
+**Open:** UAT WhatsApp has 29 `accepted`, 0 `delivered` in 14 days and no
+`/delivery-feedback/whatsapp` calls reach UAT — the MSG91 status-callback URL does
+not point at UAT (provider-side setting).

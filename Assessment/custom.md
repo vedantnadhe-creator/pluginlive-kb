@@ -259,3 +259,38 @@ Report logic in `getCustomAssessmentReport()` in `admin-node/app/models/customAs
 - **Image Support** — questions and options can have images stored in OCI Object Storage, delivered via presigned URLs.
 - **Auto-Registration** — students are automatically created if they don't exist when assigned via `createStudentsIfNeeded()`.
 - **Simple Scoring** — no difficulty weighting, no negative marking, no levels, no progression tracking.
+
+## v2 creation wizard parity with v1 (DEV + UAT, 2026-09-30)
+
+admin-react-v2 and corporate-react-v2 create Custom assessments through the shared
+wizard (`@pluginlive-technologies/assessment-creation`, vendored tgz: admin UAT
+`0.1.12-custom.1`, admin DEV `0.1.16-custom.1`, corporate `0.1.2-bugfix.6`). It now
+behaves like v1 (`admin-react` `AssessmentSelect.js`):
+
+- **Bulk-upload template = v1's hosted XLSX**
+  (`pl-uat-public-docs/templates/custom-assessment-bulk-upload-template.xlsx`,
+  headers `Question_text, Image, option1, option1_image … option5, option5_image,
+  correct_opt`). It used to be a browser-built CSV with other headers, which the
+  section uploader (xlsx-only) rejected and which could never carry images.
+  The uploader accepts **`.xlsx` only** — admin-node's ExcelJS parser cannot read `.xls`.
+- **Sheet images:** admin-node extracts embedded images and uploads each to
+  student-node. Names are now `custom-<uuid>-q-r<row>.png` / `…-opt-r<row>-c<col>.png`;
+  the old row-only names (`question_r2.png`) made every later sheet overwrite
+  earlier sheets' images (student-node stores under the given name).
+- **Saved question banks = the entity's own `custom_sections`** (v1's
+  `fetchCustomSections`), replacing hardcoded demo banks. BFF routes in both apps:
+  `GET /api/assessments/custom-banks`, `GET /api/assessments/custom-banks/[id]/questions`
+  (404 unless the entity owns the section — admin-node's own read has no owner check),
+  `POST /api/assessments/custom-banks` (save without floating). Corporate scopes to
+  the JWT's corporate; admin requires `entityId`.
+- **Picking a bank reuses the section by id** (`sourceSectionId` + fingerprint);
+  an edited section is saved as a new one.
+- **Manual-builder images are uploaded** (they were silently dropped): the BFF
+  checks png/jpeg by content, ≤ 2 MB, uploads to student-node
+  `POST /students/assessments/uploadGeneratedImage` and sends
+  `question_image_key` / `option_image_key` to `createSectionquestions`, as v1 did.
+  Image-only options are allowed. **Needs `STUDENT_API_URL` in each app's
+  `.env.local`** (set on DEV + UAT); unset → floats with images fail with a clear message.
+- `GET /assessment/getCustomSections` now answers 500 on error (it used to hang).
+- Instructions: v2 has one optional "Additional Instructions" field; v1's per-type
+  default instruction text for Custom is not carried over.
