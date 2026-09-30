@@ -386,6 +386,33 @@ all pool misses generate the required distinct sets through the same prepare-set
 batch. Diagnosis creates two distinct papers per cohort batch so Assessment #2 is
 not a repeat of Assessment #1.
 
+Candidates **added after the float** follow the same rule (2026-09-30, DEV + UAT;
+PROD pending). The one-time add (`addStudentsToAssessment` →
+`_addStudentsToOneTimeAssessment`, corporate + institute one-time + each Mix & Match
+part) and the scheduled back-assign to live schedule maps
+(`assignStudentsToActiveScheduleAssessments`) used to copy the **first existing row's
+set** onto every added candidate — Knack RCM floated 1–5 candidates, topped up to
+150–168 and everyone sat one paper. Both now call
+`app/service/AddedCandidateSetService.js`:
+1. Reads the float's prepare spec from
+   `assessment_assignment_jobs.config_snapshot.prepare.specs` (job whose
+   `maps->>'main'` is the map; key `batch` for Communication, `mainBatch` for
+   Aptitude, `main` for pre-batch floats).
+2. Keeps only the map's sets at the **configured level** (CEFR / difficulty). Schedule
+   maps also hold sets student-node swapped in at start time for each student's own
+   level; newcomers are assigned at the configured level and the same start-time swap
+   re-pitches them.
+3. Adds sets until the grown cohort (existing + added) meets
+   `max(5, ceil(20% × cohort))` (≤ 5 sets): Communication = distinct complete pooled
+   set only (no LLM/TTS inline — free-text topics and pool misses keep existing sets);
+   Aptitude = a freshly selected paper.
+4. Routes each added candidate to the least-used set.
+
+Any failure logs `[AddedCandidateSets]` / `[AddStudents] Set routing failed` and falls
+back to the old single-set behaviour; adding candidates never fails because of it.
+Other assessment types are unchanged. Candidates already on a shared paper are not
+moved.
+
 That generation used to run **inline inside the admin's assign HTTP request**, before the job row existed: an LLM call plus Google TTS for the whole set. The request blocked for the entire generation, no progress was visible anywhere, and any failure became a bare 500 with nothing to retry.
 
 It now runs on the **existing `assessment-prepare-set` stage** of the assignment queue, the same machinery role-based set generation uses:
