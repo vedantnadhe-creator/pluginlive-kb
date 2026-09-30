@@ -837,13 +837,23 @@ settles; on failure a warning and a blank wizard; seeded types the
 subscription no longer covers are unticked and named; unedited bank sections
 pass Step 2 validation. admin-react-v2 is on its own lineage and unaffected.
 
+**Who sees it.** Duplicate Assessment is offered only when the corporate has
+`ASSESSMENT_CREATION` feature access (`useAssessmentFeatureAccess().canCreate`,
+the same flag behind the Create button and the wizard page); hidden while
+access is loading or unknown. The kebab is dropped entirely when it would be
+empty (closed float, no create and no manage access). This is UI visibility
+only, like the rest of that flag — the float route does not enforce it
+server-side (see `lib/api/assessmentCreationAccess.ts`). Opening
+`/assessments/new?duplicateFrom=…` directly still lands on the wizard page's
+"Assessment creation is disabled" state.
+
 **Gotchas**
 - Duplicate lives in the kebab, which is hidden on closed floats unless
   `showManageWhenClosed` — so a Finished assessment can't be duplicated yet.
 - Floats from before the canonical Communication & Language parameter open
   with AI weights totalling 120%; the wizard blocks Continue until 100.
 - Commits: admin-node `2f90eb3` + `62b320e` (Development) / `d9d9b36` + `6c1cb4b` (UAT);
-  corporate-react-v2 `2284fc7` (Development) / `9847bd4` (UAT). DEV has the
+  corporate-react-v2 `2284fc7` + `a722fe0` (Development) / `9847bd4` + `dd8311b` (UAT). DEV has the
   code but was **not deployed** (per request); UAT is deployed. PROD pending.
 
 ### Mix & Match final score is the server figure (DEV + UAT, 2026-09-18)
