@@ -556,6 +556,38 @@ Verified on UAT 2026-08-31 by opening the app with a bogus `inviteToken`:
 `$opt_in`, `PostHog initialized` and **`invite_link_invalid`** (props
 `reason: "Invalid invite link."`, `environment: "uat"`) all POSTed to `/e/`.
 
+## Exam header and Behavioural layout — DEV + UAT 2026-09-30, PROD pending
+
+All in `src/app/assessment/take/page.tsx` + `src/app/_components/exam.css`
+(Behavioural card: `QuestionPanel.tsx`). Frontend only — no API or payload change.
+
+- **Header progress, every type (web):** module name, progress bar and answered
+  count sit centered in the top bar (test name left); the module row under the
+  header is gone. Phones keep the module drawer.
+- **Mix & Match (web):** the header lists every module in the old module-row
+  style — active one highlighted with its count, the rest locked. Blocks are
+  58–92px wide; the test name hides between 641 and 1000px.
+- **Behavioural:**
+  - No question palette anywhere (desktop rail and mobile drawer legend removed) —
+    it is a straight run with no going back.
+  - Question card top-aligned like other types, no breadcrumb.
+  - The last answer submits straight away: no Finish button, no confirmation,
+    "Submitting your assessment…" held ≥ 600 ms (`HAND_IN_BEAT_MS`), then the
+    completion screen. It calls the same `finish()` → `submitPart` as before;
+    only a failed submit opens the final-submit dialog (the retry path).
+  - Shown as **"Behavioural"** to candidates (`mixMatch.ts` renames the title,
+    `examShapes.ts` the section). The API type/title value stays **"Behaviour"** —
+    it is the student-node contract, and every code branch keys on `type`, never
+    the display title. The submitted payload (`choicePayload`) is question id →
+    option text, so the rename never reaches the backend.
+- Commits: `fd7f955`, `68edb3e`, `5ef3778`, `6b62f9f`. UAT merge `8173bb1` promotes
+  Development **only up to `54bedf0`** (PR #9) — `7cdb3f7` (Help & support
+  message) was held back because its admin-node `/support/query` is not on UAT.
+- **Known stale test:** `ModuleFinishDialog.test.ts` "offers review only for
+  non-linear, non-timeout modules" regex-matches the `onCancel` condition that
+  `68edb3e` extended with `type !== "Behaviour"`; it fails on Development and UAT
+  until the regex is updated. Behaviour is intended.
+
 ## Still v1's job
 
 Nothing in this doc moves the **backend**. Both apps talk to the same
