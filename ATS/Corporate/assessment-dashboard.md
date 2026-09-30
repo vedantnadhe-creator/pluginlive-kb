@@ -953,16 +953,28 @@ the candidate has not finished, instead of one mail per part.
 (was a stub toast). The BFF (`POST /api/assessments/:id/candidates/resend`)
 proxies it the same way Nudge is proxied, behind `assertOwnsAssessment`.
 
-**`selectedStudents` is a FILTER over admin-node's own `droppedOff` list, not
-the set of people to mail.** `resendInvitesToStudents` only ever resends to
-candidates it already classifies as dropped off (attempted, then abandoned —
-`Assessment.js` `droppedOff` builder). Selecting someone who has not started
-yet intersects to nothing and the call answers `successCount: 0` with "No
-dropped candidates found to resend invites to" — 200 OK, zero mail sent. The
-BFF passes admin-node's real `successCount` through rather than echoing the
-size of the selection, and the UI says so explicitly when it is 0, pointing at
-Nudge instead. **Resend and Nudge are not interchangeable**: Nudge reaches
-anyone still pending, Resend only reaches candidates who dropped mid-attempt.
+**Resend reaches a candidate in ANY status (DEV + UAT 2026-09-30, PROD pending).**
+`resendInvitesToStudents` matches an explicit `selectedStudents` list against the
+**whole roster** — `sent`, `pending`, `inProgress`, `droppedOff`, `completed`,
+de-duped by `assessmentAssignedId` — and resets + re-invites every match.
+Before 2026-09-30 it matched only the `droppedOff` bucket, so selecting a
+completed or not-started candidate answered `successCount: 0` and mailed nobody.
+
+- **Resending a COMPLETED candidate wipes their scores.** The reset is the same
+  as for a drop-off: answers, `*_scores`, proctoring logs and AI Interview
+  sessions are deleted, status → `PENDING`, and question-bank types get a fresh
+  set. The v2 confirm dialog turns destructive (`.btn-danger`) and states how
+  many of the selection have completed and that their scores will be cleared.
+- **No selection = drop-offs only (unchanged).** A call with an empty/absent
+  `selectedStudents` still resends to the `droppedOff` bucket only, so a blanket
+  "resend to everyone" can never reset every completed candidate.
+- An explicit selection that matches nobody on the assessment returns
+  `count: 0` ("None of the selected candidates are on this assessment").
+- The BFF still passes admin-node's real `successCount` through; a 0 now means
+  nobody could be mailed (e.g. the window closed), not that the selection was
+  the wrong status.
+- Mix & Match: every part resets the selected candidates to `PENDING`, and
+  `sendFloatInvites(statuses: ["PENDING"])` then mails them once for the float.
 
 ## Year-on-year panel: an empty series blanked the whole dashboard
 
@@ -989,9 +1001,10 @@ panel, never a dead screen.
 
 The detail roster carries `attemptStatus` — `pending` | `inProgress` |
 `dropped` | `completed` — rendered as a **Status** column and used to gate both
-bulk actions. Send Reminder targets `pending` only, Resend Assessment `dropped`
-only; each disables at zero and carries its count in the label, so a recruiter
-sees what a click will reach instead of reading "sent to 0" afterwards.
+bulk actions. Send Reminder targets `pending` only and disables at zero; Resend
+Assessment reaches **every** selected candidate whatever their status (since
+2026-09-30 — it used to be `dropped` only). Both carry their count in the label
+and disable once the assessment's window has closed.
 
 It is counted off `assessment_assigned_students.status`, **the same enum
 admin-node switches on** (`Assessment.js` categorises DROPOUT/INPROGRESS/
