@@ -780,6 +780,11 @@ and the window are never copied. The name is kept as-is (spec), editable.
    part in **assignMixMatchAssessment's own payload shape** plus title,
    instructions, proctoring, validity days, the registration form, and
    `skippedTypes` for types the corporate wizard cannot float.
+   **The detail page can address a float by one of its part map ids** — a
+   part id resolves to its whole float, so the name is the float's own title
+   exactly as the recruiter typed it (never the generated
+   `"<title> - <Type>"` part name) and every part is copied. The name is not
+   altered in any way; the recruiter edits it in Step 1 if they want.
 3. The BFF maps that to the wizard's `InitialDraft` in
    `src/lib/assessmentWizard/duplicateDraft.ts` — the inverse of `partFor()`
    in the mix-match route. Keep the two in step.
@@ -816,7 +821,7 @@ pass Step 2 validation. admin-react-v2 is on its own lineage and unaffected.
   `showManageWhenClosed` — so a Finished assessment can't be duplicated yet.
 - Floats from before the canonical Communication & Language parameter open
   with AI weights totalling 120%; the wizard blocks Continue until 100.
-- Commits: admin-node `2f90eb3` (Development) / `d9d9b36` (UAT);
+- Commits: admin-node `2f90eb3` + `62b320e` (Development) / `d9d9b36` + `6c1cb4b` (UAT);
   corporate-react-v2 `2284fc7` (Development) / `9847bd4` (UAT). DEV has the
   code but was **not deployed** (per request); UAT is deployed. PROD pending.
 
