@@ -831,7 +831,22 @@ and the window are never copied. The name is kept as-is (spec), editable.
    `src/lib/assessmentWizard/duplicateDraft.ts` — the inverse of `partFor()`
    in the mix-match route. Keep the two in step.
 
-**Where each setting is read back from** (`DuplicateSourceService`, reusing
+**Read from the float's assignment jobs first.** Role Based and Communication
+papers are AI-generated after the float is created, and a candidate is only
+linked to a set once that finishes — so a read keyed on assignments returned
+defaults for a float duplicated too early (UAT, 2026-10-01). Each part now
+reads its `assessment_assignment_jobs.config_snapshot` (one query per float,
+`config_snapshot->>'mixMatchGroupId'`, unindexed): `prepare.specs` holds what
+the recruiter entered — Role Based `payload` (role, skills, seniority, JD,
+industry, region, `durationMinutes`, `questionConfig`), Communication `topic`
+/ `cefrLevel` / `accent` / `enabledSections`, Aptitude `aptitudeTypes` /
+`aptitudeSubtopics` / `difficultyValue` / `difficultySettings` (+
+`isMinusSystem`) — and `setId` / `sets` give the set when no candidate is
+linked yet (Behaviour, AI Interview, Custom). **Communication's topic exists
+only on the job**: a generated set's domain reads "Universal". Floats whose
+jobs predate those specs fall back to the set (table below).
+
+**Where each setting is read back from** (fallback) (`DuplicateSourceService`, reusing
 `AssessmentConfigService`'s readers on the most-assigned set):
 
 | Type | Source |
@@ -873,7 +888,7 @@ server-side (see `lib/api/assessmentCreationAccess.ts`). Opening
   `showManageWhenClosed` — so a Finished assessment can't be duplicated yet.
 - Floats from before the canonical Communication & Language parameter open
   with AI weights totalling 120%; the wizard blocks Continue until 100.
-- Commits: admin-node `2f90eb3` + `62b320e` (Development) / `d9d9b36` + `6c1cb4b` (UAT);
+- Commits: admin-node `2f90eb3` + `62b320e` + `a9179f3` (Development) / `d9d9b36` + `6c1cb4b` + `56be6fa` (UAT);
   corporate-react-v2 `2284fc7` + `a722fe0` (Development) / `9847bd4` + `dd8311b` (UAT). DEV has the
   code but was **not deployed** (per request); UAT is deployed. PROD pending.
 
