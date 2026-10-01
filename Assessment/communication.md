@@ -587,6 +587,22 @@ corporateMap.response_language  →  instituteMap.response_language  →  Englis
 | `calculate_email_writing_score` | AI evaluation of email — phrasing, voice/tone, format, grammar, spelling |
 | `calculate_dictation_score_endpoint` | Compares user text vs reference — word accuracy, character accuracy, punctuation, capitalization |
 
+### Dictation word matching: numbers ("six" = "6") (2026-10-01)
+
+`analyze_dictation_accuracy` (`CommunicationScoreCalculation/score_calculation.py`)
+compares the candidate's words to the reference with `difflib`, ignoring case and
+punctuation. Numbers are canonicalized on **both** sides before comparing
+(`canonicalize_number_tokens`): spelled-out numbers and digits fold to one digit
+string — `six`→`6`, `twenty three` / `twenty-three`→`23`, `one hundred and five`→`105`,
+`two thousand nineteen`→`2019`. So audio "...at six" typed as "...at 6" is a full match;
+a wrong number ("seven") is still a miss.
+
+Before this, every numeric token was **dropped** (`word.isalpha()` filter), so typing
+`6` counted the reference word `six` as missing (e.g. 6/7 words = 85.7% instead of 100%).
+Not handled: ordinals (`sixth` ≠ `6th`) and decimals (`six point five`).
+Existing scores were **not** recalculated — only attempts scored after the deploy
+benefit. Status: DEV + UAT 2026-10-01 (Development 602978f, UAT 9ca4770); PROD pending.
+
 ### Dictation audio-key collisions and historical repair (2026-09-21)
 
 Dictation TTS filenames used to be built as
