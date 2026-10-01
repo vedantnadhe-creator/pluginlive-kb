@@ -38,6 +38,7 @@ This folder contains module-wise documentation for the PluginLive Student Portal
 - **API Layers:** Multiple Axios instances — `studentRequest`, `corporateRequest`, `instituteRequest`, `authRequest`, `searchRequest`, `elasticSearchSyncRequest`, `adminRequest`, `authRequested`
 - **UI Framework:** Ant Design (antd) + styled-components
 - **Routing:** React Router (`anonymous` + `authenticated` route groups)
+- **Student creation `POST /students` (student-node `createPublicStudent`) is server-to-server only** — `privateByKey: true` since 2026-10-01 (DEV `ce998bfd`, UAT `6648b8a7`, PROD pending); missing/wrong `auth-key` → 401. The only caller is admin-node `StudentService.createPublicStudent` (invites, broadcasts, custom assessments), which sends `auth-key: AUTH_KEY`. admin-node and student-node `AUTH_KEY` must be identical per env; `verifyAuthKey` compares with `==`, so an **unset** key on both sides fails *open*. The old CRA public sign-up forms (`Static-website`, `New-Static-Webiste` `/Student_Registration`) also posted here from the browser — they are not served by the live pluginlive.com (Next.js) and would get 401 now.
 
 ## Documentation Structure
 
