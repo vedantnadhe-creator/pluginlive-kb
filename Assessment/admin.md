@@ -808,6 +808,17 @@ practice returns HTTP 403 with `PRACTICE_NOT_ENABLED`; closed contracts return
 the corresponding contract error. Legacy `practiceDegreeSets` settings do
 not control this flow. No schema migration is required.
 
+student-node rechecks access when a saved **PENDING** practice attempt starts,
+inside the start transaction. Practice maps use the synthetic corporate owner
+`PRACTICE`, so this check resolves the assigned student's current institute
+from their email instead of checking that synthetic owner. The institute must
+still have the attempt's Communication/Aptitude type marked Unlimited and its
+contract window must be open. Removing Unlimited, removing the subscription,
+or closing the contract therefore blocks previously assigned attempts too.
+The subscription row is locked until the start claim commits. Practice starts
+consume no credits; attempts already INPROGRESS may resume and finish after
+access is revoked or the contract expires.
+
 
 | Function | Purpose |
 |----------|--------|
