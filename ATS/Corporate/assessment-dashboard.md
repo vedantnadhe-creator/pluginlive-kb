@@ -2022,6 +2022,18 @@ for corporates. Entered values must still be positive whole days — `0`, `-1`,
 admin-node `test/editAssessmentDetails.spec.js` ("clears group validity…") and
 `test/mixMatchVerification.test.js`.
 
+**A blank validity no longer blocks Manage on non-Mix & Match assessments
+(DEV `f192ea7`, UAT `98eac6c`, 2026-10-01; PROD pending).** The Manage drawer
+shows the optional validity field and sends `assessmentValidityDays` for
+**every** assessment type — `null` when it is left blank. The guard in admin-node
+`updateEditableAssessmentDetails` (`app/models/Assessment.js`) checked
+`assessmentValidityDays !== undefined`, so any save on a single-type assessment
+(e.g. just renaming an AI Interview) was rejected with *"Candidate validity is
+available only for corporate Mix & Match assessments"*. It now checks
+`!= null`: a blank value is a no-op on single-type assessments, and only an
+actual number is rejected there. Mix & Match behaviour (set or clear the group
+value) is unchanged. Reported for Jershini's "Customer Support Level 4".
+
 The editable-details backend resolves validity through the group for **both ID
 forms** used by the assessment dashboard. Multi-type rows open with a Mix &
 Match group ID, while a single-type micro-frontend float opens with its part's
