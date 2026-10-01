@@ -1560,7 +1560,7 @@ build memory reductions (production loads **jsPDF from a CDN**; SWC is dev-only;
 
 | Migration | UAT action |
 |---|---|
-| `20260930120000_student_confirmed_device_sessions` | As shipped. `student_verify_device_session` now enforces a **24 h absolute lifetime** (`session_updated_at`), and a new `student_revoke_device_session` was added. Anon has no EXECUTE on any of the three. `_shared/student-auth.ts` calls verify with the service role: it relies on `auth.role()`, which on UAT falls back to `request.jwt.claims` (PostgREST 12 safe, checked) |
+| `20260930120000_student_confirmed_device_sessions` | As shipped. `student_verify_device_session` now enforces a **24 h absolute lifetime** (`session_updated_at`), and a new `student_revoke_device_session` was added. Anon has no EXECUTE on any of the three (after step 06 below; `03_grants` had re-granted it). `_shared/student-auth.ts` calls verify with the service role: it relies on `auth.role()`, which on UAT falls back to `request.jwt.claims` (PostgREST 12 safe, checked) |
 | `20260930171345_…` (`live_classes.room_name`) | As shipped. Upstream sets NOT NULL *before* the backfill UPDATE (would fail on null rows), but UAT already had the column NOT NULL with 0 rows. Added unique index `idx_live_classes_room_name` |
 
 Build: `~/eduspeak-sb/Dockerfile.uat-build` is still valid (context `frontend/`, outDir `../dist` → `/dist`). Image `eduspeakreact:faaf3608`,
@@ -1574,3 +1574,12 @@ Credentials sheet refreshed: `pl-uat-public-docs/pilvidya-uat-credentials.html`.
 - `StudentDashboard.tsx` selects `assessments.total_questions` (and filters `is_public`). Neither column exists on UAT `assessments` → 400, so the public-assessments list is empty.
 - `usePlanAccess.ts` reads `parent_profiles` / `parent_student_links` from the browser, but parents have no GoTrue session, so these run as **anon** → 42501 since the 09-24 deny-by-default. The parent plan falls back to the default. The fix belongs upstream (an edge function keyed on the parent session token), **not** an anon grant.
 - Registration reads `schools` / `teacher_profiles` anonymously → 401 (flagged since 09-24).
+
+**New deploy step `06_upstream_anon_revokes` (2026-10-01).** `03_grants.sql` line 44 (`GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO anon`)
+was undoing **every** upstream `REVOKE … FUNCTION … FROM anon`. 41 SECURITY DEFINER functions were callable without login, incl.
+`record_skill_attempt` (writes scores), `teacher_replace_timetable_slots`, `security_regression_audit`, `scan_tenant_isolation`, and the
+`has_role`/`can_access_*` helpers. Fix: `~/eduspeak-pg-migration/sql/gen_06_upstream_anon_revokes.sh` regenerates
+`06_upstream_anon_revokes.sql` from the repo migrations (any function whose *last* anon statement is a REVOKE). Run **after 03/05 on every
+deploy**: `gen_06_upstream_anon_revokes.sh && PSQL_EXTRA="-d eduspeak_uat -1" ~/scripts/rw-query.sh uat -f …/06_upstream_anon_revokes.sql`.
+Result: anon on 0/41, authenticated still on 41/41. Every demo login, all anon routes and `/status` (which calls `get_probe_aggregates`)
+behave as before.
