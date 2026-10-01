@@ -6,6 +6,7 @@ Pre-assessment **verification recordings** (`verification/`) are on a separate, 
 track: **deleted at 14 days** — see [Verification recordings](#verification-recordings--14-days).
 
 > **Current state (2026-09-24):**
+> - **PROD bucket rules LIVE since 2026-10-01** (IAM + 7-rule policy); sweep env vars still pending.
 > - **PROD: see [PROD deployment checklist](#prod-deployment-checklist--next-release)** —
 >   `RETENTION_ENABLED` / `RETENTION_SEGMENTS` are switched on in the next PROD deploy.
 > - **Attempt media:** bucket rules LIVE on DEV and UAT since 2026-09-25 (IA at 90d,
@@ -239,7 +240,7 @@ Without it the PUT fails with `InsufficientServicePermissions`.
 |---|---|---|---|---|---|
 | DEV | `pl_dev_poc` (PluginLiveDEV) | yes | yes | yes | 4 objects all >14d; 3 pointers cleared |
 | UAT | `pl-uat-assessment` (PluginLiveUAT) | yes | yes | yes | 18 objects all >14d; 103 pointers cleared (DB had keys for files the bucket never held) |
-| PROD | `pl-prod-assessment` (PluginLivePROD) | **no** | **no** | **no** | 148 objects / 141 DB keys; first run deletes 140+ |
+| PROD | `pl-prod-assessment` (PluginLivePROD) | yes (10-01) | yes (10-01) | yes (hotfix-17) | 148 objects / 141 DB keys; first run deletes 140+ |
 
 PROD go-live: follow the [PROD deployment checklist](#prod-deployment-checklist--next-release) below.
 
@@ -247,7 +248,13 @@ Check a bucket: `oci os object list --bucket-name <bucket> --prefix verification
 
 ## PROD deployment checklist — next release
 
-**Status: PENDING — do this on the next PROD deploy of student-node.** DEV and UAT already
+**Status: PARTLY DONE.** On **2026-10-01** the OCI IAM statement for `pl-prod-assessment` was
+added and the 7-rule lifecycle policy was applied to the PROD bucket (IA 90d / DELETE 365d for
+`proctor/`, `videos/`, `audio/` + `verification-delete-14d`). **Still pending, for the next PROD
+deploy of student-node:** commit `ociLifecycleRules.json` (7 rules) and enable
+`RETENTION_ENABLED=true` / `RETENTION_SEGMENTS=both`. Until then, PROD sessions older than 365
+days (~3,021 snapshot rows, ~860 answer media) show broken images instead of "Expired".
+The original plan was **do this on the next PROD deploy of student-node.** DEV and UAT already
 run the bucket rules (applied 2026-09-25). On PROD the schema and sweep code are in place
 (`release-v1.39-hotfix-14`), but the sweep is off and the bucket has **no lifecycle policy**.
 Retention must be **switched on as part of that deploy**, not afterwards: bucket rule
@@ -278,12 +285,12 @@ says "Expired" while the files stay in the bucket.
 > the IAM policy update and the bucket lifecycle `PUT` below are part of the PROD deploy, run
 > from the DEV box's OCI CLI (`~/.oci/config`), not handed off to someone else.
 
-- [ ] **OCI IAM** — add the PROD statement. `policy update` **replaces** the statement list,
+- [x] **OCI IAM** — DONE 2026-10-01. Add the PROD statement. `policy update` **replaces** the statement list,
       so pass all three:
       ```
       oci iam policy update --force \
         --policy-id ocid1.policy.oc1..aaaaaaaaxy5m6oyhmidrwfeoifdagyefvxns3bnxkea3wct27tf5enjqrrfq \
-        --statements '[
+        --version-date "" --statements '[
         "Allow service objectstorage-ap-mumbai-1 to manage object-family in compartment PluginLiveDEV where target.bucket.name='"'"'pl_dev_poc'"'"'",
         "Allow service objectstorage-ap-mumbai-1 to manage object-family in compartment PluginLiveUAT where target.bucket.name='"'"'pl-uat-assessment'"'"'",
         "Allow service objectstorage-ap-mumbai-1 to manage object-family in compartment PluginLivePROD where target.bucket.name='"'"'pl-prod-assessment'"'"'"]'
@@ -307,7 +314,7 @@ says "Expired" while the files stay in the bucket.
 - [ ] Confirm in a pod: `kubectl -n api exec deploy/student-node -- sh -c 'env | grep RETENTION; ls script/ociLifecycleRules.json'`.
 - [ ] Optional sizing: dry-run in a pod with `RETENTION_DRY_RUN=true` and check the
       `dry_run` rows in `asset_purge_audit` match the baseline.
-- [ ] **OCI bucket rules** — apply right after the rollout, same session (the `PUT` replaces the whole policy — always
+- [x] **OCI bucket rules** — DONE 2026-10-01 (applied before the code deploy). Apply right after the rollout, same session (the `PUT` replaces the whole policy — always
       use the full JSON file):
       ```
       oci os object-lifecycle-policy put --bucket-name pl-prod-assessment \
