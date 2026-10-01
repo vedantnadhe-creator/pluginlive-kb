@@ -787,6 +787,28 @@ Notes / gotchas:
 
 ## Practice Assessment Management
 
+### Institute practice access (DEV + UAT, 2026-10-01)
+
+Feature Access grants practice automatically for Communication and Aptitude
+when that type is marked **Unlimited** for the institute. The separate practice
+switches and qualification pickers have been removed. Access applies to all
+students of that institute regardless of degree; limited-credit types and
+missing subscription rows stay locked. Completing two regular assessments
+no longer unlocks practice.
+
+Assessment-React reads per-type access from student-node
+`GET /students/practice-access/:studentId`, using
+`assessment.subscribed_institutes.is_unlimited` and the institute contract
+window. A closed contract still blocks practice. The locked page directs
+students to their placement office.
+
+admin-node also checks institute ownership, the Unlimited flag, and the
+contract before `assign-practice-assessment` creates an attempt. Disabled
+practice returns HTTP 403 with `PRACTICE_NOT_ENABLED`; closed contracts return
+the corresponding contract error. Legacy `practiceDegreeSets` settings do
+not control this flow. No schema migration is required.
+
+
 | Function | Purpose |
 |----------|--------|
 | `savePracticeAccess(practiceData)` | Grants a student practice access (sets allowed assessment types and degree sets) |
