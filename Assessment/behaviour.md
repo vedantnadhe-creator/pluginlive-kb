@@ -170,6 +170,17 @@ for Behavior. Data source unchanged: student-node `/reportV2` `mapBehaviour`
 `behaviors[].range/report`, `strengths`, `weaknesses`. Then corporate-node
 `…/candidates/report/full`, then the BFF. No backend change was needed.
 
+**Drawer said "not attempted" for completed Behavior candidates (fixed DEV + UAT
+2026-10-01; PROD pending).** corporate-node's roster (`CorporateAssessmentDetailV2`)
+builds `byType` only from rows with a numeric score (`if (b.score === null) continue`).
+Behavior has levels, never a score, so a completed Behavior candidate always gets
+`byType: []`, and the drawer gated the report on `byType.length > 0`.
+corporate-react-v2 `18d5680` (Development) / `2921963` (UAT): `attempted` is now
+`byType.length > 0 || attemptStatus === "completed"`, and the download menu falls back
+to `assessment.types` when `byType` is empty. corporate-node is deliberately unchanged,
+because screens sum `byType[].score`. The "Average Score — No attempts yet" KPI on a
+Behavior-only float has the same cause and is still shown.
+
 Corporate Excel export of Behavior: see `ATS/Corporate/assessment-dashboard.md`
 → Export Sheet (fixed 2026-10-01).
 
