@@ -258,6 +258,19 @@ to the raw percent only when `nps` is null (ladder never placed the student). Th
 skill cards were already consistent: they print the same raw per-skill % as the
 roster's Quantitative / Logical / Critical columns.
 
+**One-time Communication/Aptitude drawers are NOT on the progress scale (fixed
+1 Oct 2026, institute-node `f530c27`, UAT merge `2489699` — DEV + UAT; PROD
+pending).** `getStudentReport` used to set `npsType` for every Comm/Aptitude
+assessment and gate the headline on a `progression_history` grade. One-time maps
+never get one, so a fully scored attempt read "Progress score — No progress score
+yet" and "Achieved Level — Level pending". The drawer now gates on
+`progressType = isRecurring ? npsType : null` (`isRecurring` includes diagnosis
+maps), the same rule as the roster's `reportsNps`. A one-time attempt returns
+`supportsNps: false`, the plain `Score` %, and the Achieved Level from the stored
+grade if any, else the score band ("A2 (Beginner)", "30–45% band"; Aptitude
+"Beginner", "0–40% band"). `npsType` still drives the SQL columns. A recurring or
+diagnosis drawer with every paper in but no grade still reads "Level pending".
+
 Averaging raw percentages across a series is meaningless in the first place: the
 papers adapt to the student's level, so 60% on an A1 paper and 60% on a B2 one
 are not the same result.
