@@ -1064,7 +1064,7 @@ an attempt is never deleted without its copy.
 | `assessment_type`, `entity_type`, `reason` (`resend`), `previous_status` | what was reset and from which state |
 | `archived_by_id` (+ `_email`, `_role` when the token has them), `archived_at` | who/when — login JWTs carry only `_id` (+ role/institute/corporate id for some users), never an email; join `user_management.users` for it |
 | `assignment` | `to_jsonb` of the full `assessment_assigned_students` row before the reset |
-| `data` | object keyed by source table → array of `to_jsonb(row)`: `student_answers`, `question_student_map`, `communication_scores`, `aptitude_scores`, `role_based_scores`, `custom_assessment_scores`, `behavior_scores`, `behavior_competency_scores`, `behavior_proficiency_scores`, `behavior_student_report`, `behaviour_student_t_score_range`, `proctoring_logs`, `ai_interview_sessions`, `ai_interview_interactions`, `ai_interview_scores` |
+| `data` | object keyed by source table → array of `to_jsonb(row)`. **Archived and deleted by the reset:** `student_answers`, `question_student_map`, `communication_scores`, `aptitude_scores`, `role_based_scores`, `custom_assessment_scores`, `behavior_scores`, `behavior_competency_scores`, `behavior_proficiency_scores`, `behavior_student_report`, `behaviour_student_t_score_range`, `proctoring_logs`, `proctoring_reports`, `proctoring_events`, `candidate_journey_events`, `ai_interview_sessions`, `ai_interview_interactions`, `ai_interview_scores`. **Archived but kept:** `email_events` (mail log — the new invite lands here), `pre_assessment_responses` (a re-submit upserts over it), `calc_jobs` (audit only), `progression_history` (cross-attempt history) |
 
 - Copied by Postgres (`INSERT … SELECT to_jsonb`), so new columns on those
   tables are captured without a code change. Code: `app/helpers/attemptArchive.js`
@@ -1080,3 +1080,18 @@ an attempt is never deleted without its copy.
 - Verified on UAT 2026-10-01 with a real resend of the Jev QA float "QA SQL
   Submit 2026-09-24": archive row held status COMPLETED, the original
   submitted_at and the Role_Based score row; the live attempt reset to PENDING.
+
+**Reset now clears the old proctoring verdict and invite click (DEV + UAT 2026-10-01, PROD pending).**
+Before admin-node `2eb8c7e` (UAT) / `638e4c4` (Development) the reset deleted
+`proctoring_logs` but NOT `proctoring_reports` / `proctoring_events`, and never
+touched `candidate_journey_events`. A resent candidate therefore kept the wiped
+attempt's Proctoring verdict ("Good") and Delivery "Opened" (corporate-node
+`deliveryStatus.js` reads `invite_link_clicked`), and stale `proctoring_events`
+could swallow the retake's events via `uq_proc_events_dedup`. All three are now
+archived then deleted; Delivery falls back to the new invite's state (Sent).
+Open: candidates resent BEFORE this fix still carry the stale rows (UAT dry
+run 2026-10-01: 2 archived resends + 26 older not-started assignments with a
+`proctoring_reports` row) — not cleaned up. `progression_history` keeps the
+wiped attempt's point by design (deleting a middle point shifts later deltas).
+College float resends mail via the portal reminder, which does not write
+`email_events` (pre-existing); corporate invites do.
