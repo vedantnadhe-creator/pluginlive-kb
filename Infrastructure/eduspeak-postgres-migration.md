@@ -1552,3 +1552,25 @@ e2e.cjs all routes render, admin/teacher/student sign in, 0 page errors, 0 faile
 registration code reads `schools` directly; blocked by the 09-24 lockdown; UAT has 0 schools so no
 visible effect — upstream should use `registration_school_directory`), `assessments` 400 (held
 default-catalogue decision).
+
+## 2026-10-01 — PilVidya UAT redeployed to `faaf3608` (56 commits, 2 migrations as shipped)
+
+Upstream: server-confirmed student device sessions, PDF/live-class fixes (`live_classes.room_name` required),
+build memory reductions (production loads **jsPDF from a CDN**; SWC is dev-only; `@vitejs/plugin-react-swc` dropped from deps).
+
+| Migration | UAT action |
+|---|---|
+| `20260930120000_student_confirmed_device_sessions` | As shipped. `student_verify_device_session` now enforces a **24 h absolute lifetime** (`session_updated_at`), and a new `student_revoke_device_session` was added. Anon has no EXECUTE on any of the three. `_shared/student-auth.ts` calls verify with the service role: it relies on `auth.role()`, which on UAT falls back to `request.jwt.claims` (PostgREST 12 safe, checked) |
+| `20260930171345_…` (`live_classes.room_name`) | As shipped. Upstream sets NOT NULL *before* the backfill UPDATE (would fail on null rows), but UAT already had the column NOT NULL with 0 rows. Added unique index `idx_live_classes_room_name` |
+
+Build: `~/eduspeak-sb/Dockerfile.uat-build` is still valid (context `frontend/`, outDir `../dist` → `/dist`). Image `eduspeakreact:faaf3608`,
+`-p 3008:80` bridge. Functions rsynced (`--exclude=main/`), backup `~/eduspeak-sb/functions.bak-20261001*`.
+
+**Verified headlessly (every demo login):** admin ×2 → `/admin`; teacher ×2, principal, HOD → `/teacher`; students `9100000001/2` → `/student`
+(claim + verify device-session RPCs 200; the session survives a reload); parents `9100000009/10` → `/parent`.
+Credentials sheet refreshed: `pl-uat-public-docs/pilvidya-uat-credentials.html`.
+
+**Pre-existing gaps (same code in `af28b8ef`, not regressions):**
+- `StudentDashboard.tsx` selects `assessments.total_questions` (and filters `is_public`). Neither column exists on UAT `assessments` → 400, so the public-assessments list is empty.
+- `usePlanAccess.ts` reads `parent_profiles` / `parent_student_links` from the browser, but parents have no GoTrue session, so these run as **anon** → 42501 since the 09-24 deny-by-default. The parent plan falls back to the default. The fix belongs upstream (an edge function keyed on the parent session token), **not** an anon grant.
+- Registration reads `schools` / `teacher_profiles` anonymously → 401 (flagged since 09-24).
