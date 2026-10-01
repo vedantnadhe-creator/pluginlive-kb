@@ -2830,3 +2830,32 @@ main PID was the post-restart one (DEV :3011, UAT :3012 — see
 and confirmed to contain `label:"Status"`. `tsc --noEmit` clean; the single
 ESLint error in the file is pre-existing (`setState` in the fetch effect),
 confirmed by stashing and re-running. PROD pending.
+
+## Student-wise Resend + refresh after every action (DEV + UAT branches 2026-10-01, not yet deployed; PROD pending)
+
+The Student-wise tab's bulk bar now has **Resend (N)** beside Nudge and Export,
+matching corporate v2 (see `ATS/Corporate/assessment-dashboard.md` → "Resend
+reaches a candidate in ANY status").
+
+- **Any attempt status.** Every selected student is re-invited and their attempt
+  RESET (answers/scores deleted, status → Not started) via admin-node
+  `POST /assessment/resendInvites` (`entityType: "college"`). A completed
+  student loses their scores; the confirm (`ResendDialog.tsx`) turns
+  destructive and says how many completed students are selected.
+- **One-time only.** The button is hidden on recurring series — a series is many
+  occurrences and "reset this student" is not one well-defined action there.
+  The BFF also rejects recurring with 400.
+- **Disabled once closed** (`meta.status` `expired`/`cancelled`): the mailer
+  refuses sends past the deadline, and the reset would already have run.
+- **Ownership lives in the BFF.** admin-node's `resendInvites` is `isPrivate`
+  (any valid token) and reads the map id from the body without checking the
+  institute. `POST /api/assessments/:id/resend` therefore re-reads the roster
+  from institute-node scoped to the caller's institute (foreign id → 404),
+  takes `meta.notifyMapId` from THAT payload (never from the client), and
+  forwards only emails that are on the roster.
+- **Refresh after every action.** `useAssessmentStudents` exposes `reload()`
+  (silent: the table stays up; a failed reload keeps the old roster instead of
+  showing the error panel). Resend and Nudge both call it, so statuses update
+  without a page reload. Every other POST on the detail page is a download
+  (Excel / PDF), which changes no data. The dashboard's Needs Attention remind
+  does not refetch — a reminder does not change who needs attention.
