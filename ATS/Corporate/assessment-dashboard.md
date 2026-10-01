@@ -1032,10 +1032,12 @@ de-duped by `assessmentAssignedId` — and resets + re-invites every match.
 Before 2026-09-30 it matched only the `droppedOff` bucket, so selecting a
 completed or not-started candidate answered `successCount: 0` and mailed nobody.
 
-- **Resending a COMPLETED candidate wipes their scores.** The reset is the same
-  as for a drop-off: answers, `*_scores`, proctoring logs and AI Interview
-  sessions are deleted, status → `PENDING`, and question-bank types get a fresh
-  set. The v2 confirm dialog turns destructive (`.btn-danger`) and states how
+- **Resending a COMPLETED candidate wipes their scores from the live report** —
+  but since 2026-10-01 (DEV + UAT, PROD pending) the ENTIRE previous attempt is
+  first copied to `assessment.assessment_attempt_archive` (see
+  `Assessment/admin.md` → "Attempt archive"). The reset itself is unchanged:
+  answers, `*_scores`, proctoring logs and AI Interview sessions are deleted,
+  status → `PENDING`, and question-bank types get a fresh set. The v2 confirm dialog turns destructive (`.btn-danger`) and states how
   many of the selection have completed and that their scores will be cleared.
 - **No selection = drop-offs only (unchanged).** A call with an empty/absent
   `selectedStudents` still resends to the `droppedOff` bucket only, so a blanket

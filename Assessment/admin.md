@@ -1048,3 +1048,35 @@ The shift now lives in one place, `admin-node/app/helpers/candidateDeadline.js` 
 `institute-node/app/models/DashboardV2.js` had the SQL version of the same bug: `window_closed` used `aim.end_time < NOW()` while `StudentListInfo.js` already used `NOW() + INTERVAL '5 hours 30 minutes'` — the two disagreed for 5.5h a day, and since only a *closed* window can be "missed", a missed attempt landed in the wrong at-risk band. Now uses the shifted `NOW()` in both places.
 
 DEV + UAT 2026-08-31; **PROD pending**.
+
+
+## Attempt archive — the entire attempt is kept before a resend reset (DEV + UAT 2026-10-01, PROD pending)
+
+`resendInvitesToStudents` resets an attempt by deleting its data. Since
+2026-10-01 it first writes one row per attempt to
+**`assessment.assessment_attempt_archive`**, inside the same transaction and
+before any delete. If the archive insert fails, the whole reset rolls back:
+an attempt is never deleted without its copy.
+
+| Column | Holds |
+|---|---|
+| `assessment_assigned_id`, `assessment_institute_map_id` / `assessment_corporate_map_id`, `primary_email` | which attempt (no FK — the archive outlives a removed assignment) |
+| `assessment_type`, `entity_type`, `reason` (`resend`), `previous_status` | what was reset and from which state |
+| `archived_by_id` (+ `_email`, `_role` when the token has them), `archived_at` | who/when — login JWTs carry only `_id` (+ role/institute/corporate id for some users), never an email; join `user_management.users` for it |
+| `assignment` | `to_jsonb` of the full `assessment_assigned_students` row before the reset |
+| `data` | object keyed by source table → array of `to_jsonb(row)`: `student_answers`, `question_student_map`, `communication_scores`, `aptitude_scores`, `role_based_scores`, `custom_assessment_scores`, `behavior_scores`, `behavior_competency_scores`, `behavior_proficiency_scores`, `behavior_student_report`, `behaviour_student_t_score_range`, `proctoring_logs`, `ai_interview_sessions`, `ai_interview_interactions`, `ai_interview_scores` |
+
+- Copied by Postgres (`INSERT … SELECT to_jsonb`), so new columns on those
+  tables are captured without a code change. Code: `app/helpers/attemptArchive.js`
+  (`ARCHIVED_TABLES` must match the deletes — the spec asserts it).
+- **Append-only:** a trigger blocks `UPDATE`; `DELETE` stays possible for
+  retention/erasure. Every resend adds a new row, so repeated resends keep the
+  full history.
+- **DB only** — no UI reads it yet. Lookup:
+  `SELECT archived_at, previous_status, archived_by_id, data FROM assessment.assessment_attempt_archive WHERE lower(primary_email)=lower('<email>') ORDER BY archived_at DESC;`
+- Migration: DB-Scripts `Assessment Resend Attempt Archive/20261001T072416Z__assessment_attempt_archive.sql`
+  (DEV + UAT applied; **apply on PROD BEFORE deploying the admin-node change**,
+  or every resend there rolls back).
+- Verified on UAT 2026-10-01 with a real resend of the Jev QA float "QA SQL
+  Submit 2026-09-24": archive row held status COMPLETED, the original
+  submitted_at and the Role_Based score row; the live attempt reset to PENDING.
