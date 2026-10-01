@@ -597,11 +597,21 @@ string — `six`→`6`, `twenty three` / `twenty-three`→`23`, `one hundred and
 `two thousand nineteen`→`2019`. So audio "...at six" typed as "...at 6" is a full match;
 a wrong number ("seven") is still a miss.
 
+Only **grammatical** compounds merge: `one two` stays `1 2` (so it can't pass for
+`three`), `twenty twenty` stays `20 20`, and `zero` never combines (`zero five` = `0 5`).
+`and` is swallowed only between `hundred`/`thousand` and a following number —
+`one and only one` keeps the word, so dropping it is still a miss. Digit tokens must be
+decimal (`isdecimal`); superscripts like `²` are ignored instead of raising a 500, and
+long digit runs no longer hit Python's 4300-digit `int()` limit.
+Regression check: `python3 tests/test_dictation_numbers.py`.
+
 Before this, every numeric token was **dropped** (`word.isalpha()` filter), so typing
 `6` counted the reference word `six` as missing (e.g. 6/7 words = 85.7% instead of 100%).
 Not handled: ordinals (`sixth` ≠ `6th`) and decimals (`six point five`).
 Existing scores were **not** recalculated — only attempts scored after the deploy
-benefit. Status: DEV + UAT 2026-10-01 (Development 602978f, UAT 9ca4770); PROD pending.
+benefit. Status: DEV + UAT 2026-10-01 (Development 602978f + 04ddfcd, UAT 9ca4770 + 1b7093a); PROD pending.
+Deployed as a one-file image overlay (fresh fastapi rebuilds pull unpinned torch);
+rollback tags `:api-pre-dictation` / `:api-pre-dictation-grammar` on each box.
 
 ### Dictation audio-key collisions and historical repair (2026-09-21)
 
