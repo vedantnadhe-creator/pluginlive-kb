@@ -178,8 +178,11 @@ Behavior has levels, never a score, so a completed Behavior candidate always get
 corporate-react-v2 `18d5680` (Development) / `2921963` (UAT): `attempted` is now
 `byType.length > 0 || attemptStatus === "completed"`, and the download menu falls back
 to `assessment.types` when `byType` is empty. corporate-node is deliberately unchanged,
-because screens sum `byType[].score`. The "Average Score — No attempts yet" KPI on a
-Behavior-only float has the same cause and is still shown.
+because screens sum `byType[].score`. On a Behavior-only float the detail page also
+drops the Average Score KPI and lays the row out in 3 columns (`.kpis--no-score`).
+Before this it read "No attempts yet" after every candidate had completed. That change is
+corporate-react-v2 `9a71155` (Development) / `62c6fdd` (UAT), 2026-10-01. Mixed floats keep the
+card, averaged over their scored types.
 
 Corporate Excel export of Behavior: see `ATS/Corporate/assessment-dashboard.md`
 → Export Sheet (fixed 2026-10-01).
