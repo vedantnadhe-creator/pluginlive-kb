@@ -182,7 +182,9 @@ because screens sum `byType[].score`. On a Behavior-only float the detail page a
 drops the Average Score KPI and lays the row out in 3 columns (`.kpis--no-score`).
 Before this it read "No attempts yet" after every candidate had completed. That change is
 corporate-react-v2 `9a71155` (Development) / `62c6fdd` (UAT), 2026-10-01. Mixed floats keep the
-card, averaged over their scored types.
+card, averaged over their scored types. Behavior also hides the levels donut. The roster then
+takes the full width with no left divider or padding (`.aa-split.no-dist .aa-floated`):
+`01ce8f2` (Development) / `eae4cde` (UAT), 2026-10-01.
 
 Corporate Excel export of Behavior: see `ATS/Corporate/assessment-dashboard.md`
 → Export Sheet (fixed 2026-10-01).
