@@ -157,6 +157,22 @@ domain: **Engineering 115, Management 129** (DEV and UAT, 2026-09-15).
 `pl-uat-public-docs` bucket: UAT attempt `3726bdad`, 21 full-match roles
 including 3 Engineering roles reached cross-domain.
 
+## Corporate v2 candidate drawer report (UAT 2026-10-01)
+
+corporate-react-v2 `9cb7451` (Development) / `957f12c` (UAT): the drawer's
+Behaviour report shows each competency's level **by name** (Beginner, Apprentice,
+Practitioner, Master, Expert; 0 = "Unknown") instead of an average or /5, plus
+strengths and areas of improvement on Overview. Detailed Analysis follows the PDF
+report: proficiency column chart, competency table with each behaviour's
+Low/Medium/High range, behaviour chart and insights. Recommendations are hidden
+for Behavior. Data source unchanged: student-node `/reportV2` `mapBehaviour`
+(`app/helpers/reportV2Mapper.js`), which sends `level`, `level_label`,
+`behaviors[].range/report`, `strengths`, `weaknesses`. Then corporate-node
+`…/candidates/report/full`, then the BFF. No backend change was needed.
+
+Corporate Excel export of Behavior: see `ATS/Corporate/assessment-dashboard.md`
+→ Export Sheet (fixed 2026-10-01).
+
 ## Status
 
 Suitable-role matching: live on **DEV + UAT** as of 2026-09-01.

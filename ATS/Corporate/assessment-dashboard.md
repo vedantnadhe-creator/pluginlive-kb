@@ -546,6 +546,18 @@ Status, Delivery Issue, Overall %, Total Marks, Gained Marks, Total Questions,
 Attempted Questions, Correct Answers, Wrong Answers, `<section> %` per section,
 Proctoring Status.
 
+**Behavior exports competency levels (DEV + UAT, 2026-10-01; PROD pending).** A
+corporate Behavior float exported Communication's columns (Assigned CEFR Level, CEFR
+Level, Speaking/Reading/Listening/Written Ability — all blank). `getAssessmentDetails`'
+**corporate** branch never set `isBehavioralAssessment` nor loaded
+`behavior_proficiency_scores` (only the college branch did), so `exportStudentData`
+fell through its per-type chain to Communication. admin-node `7ba2273` (Development) /
+`d97eded` (UAT) mirrors the college branch: the flag is in `assessmentInfo`, and each
+scored candidate carries `behaviorProficiencies` {competency → level name}. Columns
+now: base columns, one column per competency (e.g. Sales Acumen … Customer
+Orientation) holding the level name (Beginner/Apprentice/Practitioner/Master/Expert),
+Proctoring Status. Unfinished candidates' competency cells stay blank.
+
 ## Delivery column (DEV + UAT, 2026-09-30)
 
 The roster shows each candidate's invite delivery with admin's exact rules
