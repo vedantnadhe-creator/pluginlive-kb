@@ -2252,3 +2252,13 @@ combined counts, candidate filters, CEFR input and usage grouping. The deployed
 DEV and UAT containers pass it and the existing dashboard CEFR check; both
 health endpoints return success. Release: corporate-node Development
 `a798a34b`, UAT `9b68bb2f`. **PROD remains pending.**
+
+## Detail page refetches after every action (DEV + UAT branches 2026-10-01, not yet deployed; PROD pending)
+
+Resend and Send Reminder now call `onRosterChanged` (→ `useAssessmentDetail`
+`retry`) on success, like Remove already did, so reset/delivery statuses show
+without a reload. Header actions (Reopen, Cancel, Manage, Add, Extend end date)
+already refetched. Manage's applied draft is now pinned to the overview it was
+saved over (`draft.on === overview`), so it stops overriding the record as soon
+as the refetch lands — previously a stale draft (old end date) kept masking
+every later refetch, e.g. a Reopen.
