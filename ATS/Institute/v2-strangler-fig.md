@@ -2831,7 +2831,7 @@ and confirmed to contain `label:"Status"`. `tsc --noEmit` clean; the single
 ESLint error in the file is pre-existing (`setState` in the fetch effect),
 confirmed by stashing and re-running. PROD pending.
 
-## Student-wise Resend + refresh after every action (DEV + UAT branches 2026-10-01, not yet deployed; PROD pending)
+## Student-wise Resend + refresh after every action (LIVE UAT 2026-10-01 — inst-v2 7c3b31c; DEV branch 3a67ad3 not deployed; PROD pending)
 
 The Student-wise tab's bulk bar now has **Resend (N)** beside Nudge and Export,
 matching corporate v2 (see `ATS/Corporate/assessment-dashboard.md` → "Resend

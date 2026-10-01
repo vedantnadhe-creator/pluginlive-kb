@@ -2253,7 +2253,7 @@ DEV and UAT containers pass it and the existing dashboard CEFR check; both
 health endpoints return success. Release: corporate-node Development
 `a798a34b`, UAT `9b68bb2f`. **PROD remains pending.**
 
-## Detail page refetches after every action (DEV + UAT branches 2026-10-01, not yet deployed; PROD pending)
+## Detail page refetches after every action (LIVE UAT 2026-10-01 — corp-v2 49f21de; DEV branch ed309cd not deployed; PROD pending)
 
 Resend and Send Reminder now call `onRosterChanged` (→ `useAssessmentDetail`
 `retry`) on success, like Remove already did, so reset/delivery statuses show
