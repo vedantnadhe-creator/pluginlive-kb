@@ -7,11 +7,14 @@ track: **deleted at 14 days** — see [Verification recordings](#verification-re
 
 > **Current state (2026-09-24):**
 > - **PROD bucket rules LIVE since 2026-10-01** (IAM + 7-rule policy); sweep env vars still pending.
+> - **Sweep ENABLED on DEV and UAT since 2026-10-01** (`RETENTION_ENABLED=true`, `RETENTION_SEGMENTS=both`,
+>   other values default 365/14/500). Set in the gitignored `.env.dev` / `.env.uat` on each box and in the
+>   running container's `/app/.env`. **PROD still disabled.**
 > - **PROD: see [PROD deployment checklist](#prod-deployment-checklist--next-release)** —
 >   `RETENTION_ENABLED` / `RETENTION_SEGMENTS` are switched on in the next PROD deploy.
 > - **Attempt media:** bucket rules LIVE on DEV and UAT since 2026-09-25 (IA at 90d,
->   DELETE at 365d for `proctor/`, `videos/`, `audio/`). The sweep is still DISABLED
->   (`RETENTION_ENABLED` unset everywhere). PROD has the schema and the sweep code
+>   DELETE at 365d for `proctor/`, `videos/`, `audio/`). The sweep is ENABLED on DEV and UAT
+>   since 2026-10-01, still DISABLED on PROD. PROD has the schema and the sweep code
 >   (image `release-v1.39-hotfix-14`) but **no bucket lifecycle policy at all**.
 > - **Verification recordings:** LIVE on DEV and UAT — bucket rule deletes `verification/`
 >   at 14 days, and a daily job clears the DB pointer. **PROD pending** (no IAM statement,
@@ -78,6 +81,11 @@ RETENTION_BATCH_SIZE=500
 RETENTION_SEGMENTS=institute # institute | corporate | both
 RETENTION_DRY_RUN=false
 ```
+
+**Where the flags live:** DEV/UAT read them from `/app/.env`, which the Dockerfile copies from the
+gitignored `.env.<env>` at build time — so `env | grep RETENTION` in the container shell shows
+nothing even when enabled. Check with `grep RETENTION /app/.env`. PROD reads the `std-api-config`
+ConfigMap.
 
 The IA threshold is deliberately absent — lifecycle rules handle tiering, so the
 application never needs to know about it.
