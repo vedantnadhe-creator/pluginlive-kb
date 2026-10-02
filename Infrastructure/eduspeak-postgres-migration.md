@@ -1583,3 +1583,24 @@ was undoing **every** upstream `REVOKE … FUNCTION … FROM anon`. 41 SECURITY 
 deploy**: `gen_06_upstream_anon_revokes.sh && PSQL_EXTRA="-d eduspeak_uat -1" ~/scripts/rw-query.sh uat -f …/06_upstream_anon_revokes.sql`.
 Result: anon on 0/41, authenticated still on 41/41. Every demo login, all anon routes and `/status` (which calls `get_probe_aggregates`)
 behave as before.
+
+## 2026-10-02 — PilVidya UAT redeployed to `f894293f` (24 commits, 4 migrations: 3 as shipped, 1 UAT fixup)
+
+Upstream: student live classes, sign-in/upgrade fixes, teacher/admin role fixes, admin security and join flow, Sprint 2 lesson
+navigation/progress hardening. **jsPDF is now self-hosted** (`/vendor/jspdf.umd.min.js` and the autotable plugin, from `frontend/public/vendor`),
+replacing the CDN load from 10-01. No new function secrets. Changed functions: `_shared`, admin-create-teacher, live-class-create,
+student-360, teacher-bulk-upload-students.
+
+| Migration | UAT action |
+|---|---|
+| `20261001065628` (live_classes RLS) | As shipped: teacher-own (`teacher_profile_id`), admin, and student same class level (+ same school, or school NULL). It also **drops `schools."Staff can all schools"`** (FOR ALL for every teacher on every school), a narrowing. UAT keeps `live_classes_teacher_write` (school-scoped) |
+| `20261001072453` / `20261001072513` (teacher_profiles) | As shipped: read own (`id = auth.uid() OR user_id = auth.uid()`; on UAT `user_id` is NULL for all 11 teachers, `id` is the key), admin manage; the 2nd file drops the own-update policy again (UAT's `security_teacher_profile*_self_update` remain) |
+| `20261001083530` (school_events + ptm_bookings) | **Fixup**: the school_events half converts the hosted legacy `event_date/ends_at` columns and installs a trigger on `NEW.event_date`. UAT's table already has `start_at/end_at/category/audience text[]` (which the app reads) and **no** event_date, so the backfill errors and the trigger would break every insert. Only the ptm_bookings `ADD COLUMN IF NOT EXISTS` applied (all already present) |
+
+Deploy order held: migrations → 03 → 05 → **06** (regenerated, anon still off upstream-revoked functions). Rehearsal stripped
+inner BEGIN/COMMIT and confirmed rollback (`live_classes` still 0 rows). Probes: teacher creates own live class; another teacher's
+profile id is blocked; demo student sees the class for their class level. The impersonation probe cannot see the teacher's own profile
+(0 before and after), so it was verified via the real UI login instead.
+Verified: admin ×2, teacher ×2, principal, HOD, students 9100000001/2, parents 9100000009/10 (full dashboard, children listed).
+Pre-existing gaps unchanged (parent `plan_override` reads as anon, `assessments.total_questions`, anon `schools` read on sign-up).
+Checks now in `~/pilvidya-checks/` (logins/students/parent + the credentials HTML source). Credentials page bumped to `f894293f`.
