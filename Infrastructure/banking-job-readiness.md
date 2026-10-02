@@ -2348,3 +2348,20 @@ so dropping the two open policies would be the fix. Check trainer onboarding + b
 Verified after the fix: admin 5/5, candidate/trainer/admin e2e ×2, Coding Challenges 370, Save Module, Student Tier search, all 12 admin
 sections with 0 errors; bucket `module-resources` private. Deploy script is now `~/banking-sb/deploy.sh` (source in `~/banking-checks/deploy.sh`).
 Snapshot `~/banking-sb/snapshots/20261002T110924Z`.
+
+## 2026-10-02 (eve) — redeployed to `633efc5` (21 commits, no migrations) + function overlay for video quizzes
+
+Upstream: trainer dashboard, Live Sessions page, restored and de-duplicated menu items, YouTube video quizzes raised to 10 questions.
+No migrations, dependency or `.env` changes.
+
+**New UAT function overlay `~/banking-sb/function-fixups/generate-lesson-video-quiz/index.ts`.** Upstream changed this function to
+call `ai.gateway.lovable.dev` **directly** with `LOVABLE_API_KEY`, to stop the shared helper's deterministic stub from producing
+generic title-only MCQs. UAT has no Lovable key (all LLM traffic goes through LiteLLM via `llm_config`), so on UAT every video quiz
+would have failed with a 401. The overlay calls the shared `chatCompletionWithFallback` (configured providers) and keeps upstream's
+intent: if every provider fails (`X-LLM-Fallback` header), it returns 502 instead of stub questions. It is a **whole-file** overlay of
+upstream as of `633efc5`, so re-derive it if upstream edits this function. Verified live as admin: KYC transcript → 10 topic-specific
+questions in ~11 s (test `video_lessons` row deleted afterwards). `sync-functions.sh` now applies 4 overlays (live-session-rsvp, main, mcp,
+generate-lesson-video-quiz).
+
+Verified: admin 5/5, candidate/trainer/admin e2e ×2, Coding Challenges 370, Save Module, Student Tier search, all 12 admin sections
+with 0 errors. Snapshot `~/banking-sb/snapshots/20261002T120602Z`. Still open: `students` authenticated read/write `USING (true)` (see above).
