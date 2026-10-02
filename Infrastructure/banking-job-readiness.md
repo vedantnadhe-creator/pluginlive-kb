@@ -2280,3 +2280,42 @@ the vite CSP header is dev-server only.
 Verified: admin 5/5 (`d4cdc6b` role-race fix still upstream), candidate/trainer/admin e2e, Coding Challenges 370,
 Save Module, Student Tier search, and all 25 admin sidebar pages with 0 page errors and 0 API ≥400.
 Snapshot `~/banking-sb/snapshots/20260930T054733Z`.
+
+## 2026-10-02 — redeployed to `0b24031` (108 commits, 17 migrations: 9 as shipped, 8 with UAT fixups)
+
+Upstream: Live Sessions (trainer-scheduled + candidate-requested, RSVPs, attendance), module prerequisites,
+AI Coach usage quotas + cost log, video pipeline/topic videos, job roles → role-mapped modules (`students.target_role_id`),
+curriculum resources/quizzes/topic progress mapped to students, trainer→student institute cascade, restructured
+admin sidebar (Module Analytics tab), trainer module creation. New UAT build flags adopted from upstream `.env`:
+`VITE_PROJECT_PERSISTENCE_ENABLED`, `VITE_SIMULATOR_ENGINE_ENABLED`, `VITE_TOPIC_GENERATION_ENABLED`, `VITE_VIDEO_PIPELINE_ENABLED`
+(UAT `.env` kept; upstream's tracked `.env` points at the hosted project, so never take it wholesale).
+
+| Migration | UAT action |
+|---|---|
+| `20260930120000_live_sessions_and_prerequisites` | **Fixup**: UAT's tables predate upstream with **uuid** `trainer_id`/`student_id` plus 6 legacy policies. Legacy policies dropped, both columns converted to text, then upstream applied |
+| `20260930120000_trainer_institute_cascade` | As shipped (0 rows realigned) |
+| `20260930130000_ai_coach_usage_controls` | **Fixup**: `check_ai_coach_rate_limit` was SECURITY DEFINER with no search_path, executable by everyone for **any** `p_student_id`, and trusted caller-supplied limits. UAT: search_path pinned; callers may meter only themselves (auth uid or own `students.id`; service role exempt); limits come from `ai_coach_user_limits` or the 50/10 defaults; the previous request time is read *before* stamping. `log_ai_coach_cost` is service-role only |
+| `20260930150000_video_projects_scope` | As shipped. **Contains its own `begin;…commit;`** (see incident) |
+| `20260930190845` (video_lessons columns), `20261001130000` (admin tab), `20261002031030` (topic_videos write), `20261002033047` (job roles), `20261002034643`, `20261002040325`, `20261002040352`, `20261002040603` (curriculum) | As shipped |
+| `20261002021655` (modules write) | **Fixup**: upstream let any trainer/teacher UPDATE **every** module, including admin catalogue modules. UAT: trainers/teachers update only modules with `metadata.created_by_trainer` = their `trainers.id`; admin + taxonomy_editor update all. Insert/delete as upstream |
+| `20261002022504` (staff read all modules) | **Fixup**: made re-runnable (`DROP POLICY IF EXISTS`) |
+| `20261002023429` (solved challenges + curriculum_videos) | **Fixup**: `student_solved_challenges` already existed (no `user_id`). Upstream let anyone insert/edit `user_id IS NULL` rows under any `student_name`. UAT: `user_id DEFAULT auth.uid()`, writes own rows only (admin all), the existing unique index serves the upsert |
+| `20261002030950` (topic_videos FKs) | **Fixup**: `topic_videos` is in **no** migration (hosted-only), so it never existed on UAT and the video panels 404'd. Created it from `types.ts`, plus read policy and realtime publication |
+| `20261002034610` (live sessions v2) | **Fixup** prefix: the same legacy-policy drops (idempotent) |
+
+**Incident: part of this release was applied to the live DB during the "dry run".** `video_projects_scope.sql` carries its own
+`begin;`/`commit;`. Inside the rolled-back rehearsal transaction that inner `COMMIT` committed everything before it, and
+later statements ran in autocommit. So `…120000` (live sessions fixup) through `…022504` and the first statement of the `…023429` fixup
+landed for real ~20 min before the code deploy. All were the reviewed UAT versions and idempotent, and the old frontend kept working.
+**Rule since:** the rehearsal strips transaction-control lines from each file
+(`sed -E '/^[[:space:]]*(begin|commit|rollback)[[:space:]]*;[[:space:]]*$/Id'`) and confirms a not-yet-created object is still absent afterwards.
+
+Rehearsal probes (all as expected): candidate meters only self (2nd call rate_limited, other id → 42501); solve rows owned by the
+recorder, spoof blocked; trainer edits own module only, cannot create sessions as another trainer; admin edits any module.
+**Open, by upstream design:** `module_live_sessions` reads are open to every signed-in user (meeting URL/password included), and
+`list_session_trainers()` returns all approved trainers' names and emails to candidates when a module has no assigned trainer.
+**Pre-existing, unchanged:** `curriculum_videos` and `video_lessons` carry `authenticated write FOR ALL USING (true)`.
+
+Verified: admin 5/5, candidate/trainer/admin e2e (×4; 1 candidate miss right after the REST/edge restart), Coding Challenges 370,
+Save Module (now at `/admin?tab=modules`), Student Tier search, all 12 admin sidebar sections with 0 errors.
+Checks now live in `~/banking-checks/` (README inside) because `/tmp` is cleaned. Snapshot `~/banking-sb/snapshots/20261002T042723Z`.
