@@ -2319,3 +2319,32 @@ recorder, spoof blocked; trainer edits own module only, cannot create sessions a
 Verified: admin 5/5, candidate/trainer/admin e2e (×4; 1 candidate miss right after the REST/edge restart), Coding Challenges 370,
 Save Module (now at `/admin?tab=modules`), Student Tier search, all 12 admin sidebar sections with 0 errors.
 Checks now live in `~/banking-checks/` (README inside) because `/tmp` is cleaned. Snapshot `~/banking-sb/snapshots/20261002T042723Z`.
+
+## 2026-10-02 (pm) — redeployed to `fb23bac` (50 commits, 8 migrations: 6 as shipped, 2 UAT fixups) — incl. a 500s incident
+
+Upstream: Simulation Studio v2 (`sim_packs`/versions/assignments/attempts/events/score reviews/skill profile, owner- and
+staff-scoped RLS), module resource uploads (curriculum files → `extract-resource`), Student Groups screen, cascading module
+groups, trainer approve/upload fixes. `private.user_can_access_module` gains the module-group cohort path (college/department/degree/
+institute, archived groups excluded). No dependency or `.env` changes.
+
+| Migration | UAT action |
+|---|---|
+| `20261002090828` / `090856` / `094821` (simulation tables + RLS) | As shipped. Rehearsal: trainer creates pack + version; candidate sees 0 packs and cannot create one |
+| `20261002092705` (module_resources FKs/check + storage policies) | **Fixup**: `module_resources` / `module_resource_chunks` are hosted-only (in no migration). Created from `types.ts` (module_id text), plus a **private** `module-resources` storage bucket |
+| `20261002094303` (staff write module_resources), `095038` (`get_user_display_names`, staff-only), `103626` (module access) | As shipped |
+| `20261002103229` (students/institutes policies) | **Fixup after incident**: as shipped it caused infinite RLS recursion (see below). `"Trainers view their students"` now calls SECURITY DEFINER `private.is_my_trainer_row(onboarded_by)` |
+
+**Incident (≈10 min, UAT only):** the new `students` policy `"Trainers view their students"` subqueries `trainers`, whose RLS
+subqueries `students`. Result: `infinite recursion detected in policy` → **HTTP 500 for every role** on `students`, `profiles`,
+`modules` (Save Module), `institute_subscriptions`, Users & Roles / Grading / Reports / Billing pages; the trainer login bounced
+to `/login/trainer`. The rehearsal missed it because no probe read those tables. Fixed live by moving the check into a SECURITY DEFINER
+helper. **Rehearsals now read profiles/students/trainers/modules/institutes as every role** (`~/banking-checks/dryrun_template.sh`).
+
+**Open, needs a team decision (pre-existing, unchanged):** `students` still carries `students authenticated read USING (true)` and
+`students authenticated write FOR ALL USING (true)`. Measured after this deploy, a **candidate reads all 74 student rows** (names/emails/
+mobiles) and could edit any of them. Upstream's new scoped policies (admin manage / own row / trainer's own students) are all in place,
+so dropping the two open policies would be the fix. Check trainer onboarding + bulk import first (they may rely on the open write).
+
+Verified after the fix: admin 5/5, candidate/trainer/admin e2e ×2, Coding Challenges 370, Save Module, Student Tier search, all 12 admin
+sections with 0 errors; bucket `module-resources` private. Deploy script is now `~/banking-sb/deploy.sh` (source in `~/banking-checks/deploy.sh`).
+Snapshot `~/banking-sb/snapshots/20261002T110924Z`.
