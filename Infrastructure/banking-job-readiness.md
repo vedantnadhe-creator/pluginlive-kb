@@ -2365,3 +2365,25 @@ generate-lesson-video-quiz).
 
 Verified: admin 5/5, candidate/trainer/admin e2e ×2, Coding Challenges 370, Save Module, Student Tier search, all 12 admin sections
 with 0 errors. Snapshot `~/banking-sb/snapshots/20261002T120602Z`. Still open: `students` authenticated read/write `USING (true)` (see above).
+
+## 2026-10-03 — redeployed to `9f8a535` (66 commits, 6 migrations: 5 as shipped, 1 UAT fixup)
+
+Upstream: institute onboarding (location master `institute_locations`, programs `institute_programs`, onboarding status/step),
+a strict **domain → module group → module** hierarchy (`modules.module_group_id` + sync triggers between modules, module groups and group items),
+topic completion tracking (students insert their own `student_module_topic_progress`), trainer module builder (trainers manage topics
+of modules they own via SECURITY DEFINER `trainer_owns_module`), unified assignments dashboard, reorganised student nav. No function,
+dependency or `.env` changes; all 4 function overlays still apply.
+
+| Migration | UAT action |
+|---|---|
+| `20261003033829` (institute locations + onboarding) | **Fixup**: UAT `institutes` lacked hosted columns `location`, `pin_code`, `address`, `contact_person`, `email`, `website`, `institute_name`. Without `location`/`pin_code` the backfill fails and the new `sync_institute_location` trigger breaks institute saves; the new institute screens select the others. All added as nullable text (from `types.ts`) before upstream runs |
+| `20261003034954` (programs + assessment_institute_mapping policies), `040341` (module hierarchy), `053524`, `053828`, `053854` | As shipped |
+
+Rehearsal (inner BEGIN/COMMIT stripped, core tables read as every role): admin creates a location, then an institute bound to it (PIN code
+synced by the trigger), then a program. A trainer adds a topic to their own module, is blocked on admin modules and blocked from editing
+locations. A candidate is blocked from writing programs. No RLS recursion. Rollback confirmed. UAT has **0 institutes**, so the location
+backfill had nothing to move.
+
+Verified: admin 5/5, candidate/trainer/admin e2e ×2, Coding Challenges 370, Save Module, Student Tier search, all 12 admin sections
+(new "Access Control") with 0 errors. Snapshot `~/banking-sb/snapshots/20261003T054517Z`.
+Still open: `students` authenticated read/write `USING (true)` (team decision pending).
