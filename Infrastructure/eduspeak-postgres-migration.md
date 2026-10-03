@@ -1604,3 +1604,18 @@ profile id is blocked; demo student sees the class for their class level. The im
 Verified: admin ×2, teacher ×2, principal, HOD, students 9100000001/2, parents 9100000009/10 (full dashboard, children listed).
 Pre-existing gaps unchanged (parent `plan_override` reads as anon, `assessments.total_questions`, anon `schools` read on sign-up).
 Checks now in `~/pilvidya-checks/` (logins/students/parent + the credentials HTML source). Credentials page bumped to `f894293f`.
+
+## 2026-10-03 — PilVidya UAT redeployed to `351a45d2` (25 commits, 1 migration as shipped)
+
+Upstream: Student Dashboard and student progress pages, lesson content + AI Coach with a history panel, video fields and progress
+bar, auth retry in the lesson flow, fixed redirect on expired sign-in. Changed functions: `ai-coach-generate`, `topic-media-catalogue`
+(no new secrets). No build-config changes.
+
+| Migration | UAT action |
+|---|---|
+| `20261002091154` | As shipped. The `student_progress` policy it drops doesn't exist on UAT (no-op); teachers still read via `student_progress_scoped_select` (`can_access_student`). Adds a scoped `topic_practice_progress` read for admin / the student's teacher / their parent |
+
+Grants 03 → 05 → 06 re-run. Frontend+functions deploy is now scripted: `~/eduspeak-sb/deploy-frontend.sh` on the UAT box
+(source `~/pilvidya-checks/deploy-frontend.sh`); DB steps stay on the DEV box via `rw-query.sh`.
+Verified: admins ×2, teachers ×2, principal, HOD, students 9100000001/2 (session survives reload), parents 9100000009/10 (full dashboard).
+Pre-existing gaps unchanged. Credentials page bumped to `351a45d2`.
