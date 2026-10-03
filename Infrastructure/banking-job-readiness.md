@@ -2387,3 +2387,14 @@ backfill had nothing to move.
 Verified: admin 5/5, candidate/trainer/admin e2e ×2, Coding Challenges 370, Save Module, Student Tier search, all 12 admin sections
 (new "Access Control") with 0 errors. Snapshot `~/banking-sb/snapshots/20261003T054517Z`.
 Still open: `students` authenticated read/write `USING (true)` (team decision pending).
+
+## 2026-10-03 (later) — redeployed to `4d8dd6a` (4 commits, no migrations)
+
+Frontend + one function, no schema/dependency/`.env` changes; the 4 function overlays are unaffected.
+- Module AI Coach: replies in the student's selected language (native script; banking terms kept in English) when not `en-IN`.
+- `ttsClient` server-TTS timeout 5 s → 30 s (slow voices no longer drop to the browser fallback mid-request).
+- `ai-video-suggest`: relaxed second YouTube search (topic / topic+module / module, no duration or language filter) when the
+  first pass finds nothing. UAT has an enabled YouTube key in `llm_provider_configs` (provider `youtube`), not in the function secrets.
+
+Verified: admin 5/5, candidate/trainer/admin e2e ×2, Coding Challenges 370, Save Module, Student Tier search, all 12 admin
+sections with 0 errors. Snapshot `~/banking-sb/snapshots/20261003T062528Z`. Still open: `students` read/write `USING (true)`.
