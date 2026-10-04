@@ -2414,3 +2414,28 @@ Rehearsal: admin creates a cohort in institute A; trainer creates a global cohor
 candidate blocked; core tables read cleanly as every role (no recursion); rollback confirmed.
 Verified: admin 5/5, e2e ×2, Coding Challenges 370, Save Module, Student Tier search, all 12 admin sections with 0 errors.
 Snapshot `~/banking-sb/snapshots/20261004T064712Z`. Still open: `students` read/write `USING (true)`.
+
+## 2026-10-04 — fixed: "AI Generated Videos" (Bucket not found) and "AI Simulations" (AI is not configured)
+
+Both were UAT-environment gaps, not app bugs; fixed with UAT overlays/fixups that `deploy.sh` re-applies on every deploy.
+
+1. **AI Generated Videos → `google_veo: Bucket not found | elevenlabs: Bucket not found`.** `generate-video` uploads every render to
+   storage bucket **`videos`** and signs a 1-year URL. That bucket was created by hand on hosted and is in no migration. Fixup
+   `~/banking-sb/fixups/20261004T000000_uat_videos_bucket.sql` creates it **private**.
+   **Second bug found while verifying:** inside the stack `SUPABASE_URL=http://gateway:80`, so every storage signed URL came back as
+   `http://gateway/storage/...`, which browsers can't load. The same bug affected **`trainer-export-download`** (trainer export downloads).
+   Fix: `SUPABASE_PUBLIC_URL=https://banking.uat.pluginlive.com/sb` in `functions-secrets.env` (backup `.bak-20261004T-publicurl`), plus
+   whole-file overlays `function-fixups/generate-video` and `function-fixups/trainer-export-download` that rewrite only the returned
+   URL's origin. 1 already-stored `video_projects.video_url` repaired. Verified: two topics of "Secured Loans & Unsecured loan – Senior
+   Sales Manager – Unity Bank" rendered by Veo (~70 s each); public links return `206 video/mp4`. Those two videos are kept as content.
+2. **AI Simulations → "AI is not configured" (500 from `sim-generate-pack`).** `_shared/sim-ai.ts` calls `ai.gateway.lovable.dev`
+   (Responses API) with `LOVABLE_API_KEY`, which UAT lacks. Overlay `function-fixups/_shared/sim-ai.ts` replaces only `aiJson`: same
+   prompt + JSON schema, routed through `_shared/llm.ts` `callLlmChatCompletion` (feature `simulation`, configured providers,
+   `response_format: json_object`). It throws instead of accepting the deterministic stub. **This also fixes `sim-attempt`** (candidates playing a
+   simulation), which uses the same helper. Verified: API ~22 s, full spec (3 stages, persona); real UI click on "Generate draft"
+   creates a draft with 0 function errors (both test packs deleted).
+
+Overlays now applied by `sync-functions.sh` (7): `_shared` (sim-ai.ts only), generate-lesson-video-quiz, generate-video, live-session-rsvp,
+main, mcp, trainer-export-download. **Each whole-file overlay pins upstream `bb0ac4d`**, so re-derive it if upstream edits that function (check
+`git diff --stat` on those paths at every deploy). Upstream-side improvement worth proposing: fall back to `_shared/llm.ts` when
+`LOVABLE_API_KEY` is unset, and sign storage URLs against a public base URL. Both would retire these UAT overlays.
