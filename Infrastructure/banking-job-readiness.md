@@ -2439,3 +2439,18 @@ Overlays now applied by `sync-functions.sh` (7): `_shared` (sim-ai.ts only), gen
 main, mcp, trainer-export-download. **Each whole-file overlay pins upstream `bb0ac4d`**, so re-derive it if upstream edits that function (check
 `git diff --stat` on those paths at every deploy). Upstream-side improvement worth proposing: fall back to `_shared/llm.ts` when
 `LOVABLE_API_KEY` is unset, and sign storage URLs against a public base URL. Both would retire these UAT overlays.
+
+## 2026-10-04 — the AI-video / AI-simulation / video-quiz fixes are now in Banking `main` (`dc1e418`); 4 UAT overlays retired
+
+Environment-safe versions pushed upstream (hosted behaviour unchanged):
+- `_shared/sim-ai.ts`: with no `LOVABLE_API_KEY`, `aiJson` goes through `_shared/llm.ts` configured providers (JSON-schema prompt,
+  `response_format: json_object`, AIError on stub/failure). Covers `sim-generate-pack` and `sim-attempt`.
+- `generate-lesson-video-quiz`: same fallback, stub still suppressed.
+- `generate-video`, `trainer-export-download`: `toPublicUrl()` rewrites the signed-URL origin to `SUPABASE_PUBLIC_URL` when set.
+- Migration `20261004100000_videos_storage_bucket.sql` (idempotent private `videos` bucket). UAT already had it from the 10-04 fixup.
+
+Overlays moved to `~/banking-sb/function-fixups-retired-20261004/` (`_shared`, generate-video, trainer-export-download,
+generate-lesson-video-quiz). **Remaining overlays: live-session-rsvp, main, mcp.** UAT still needs `SUPABASE_PUBLIC_URL` in
+`functions-secrets.env` (kept). Verified with the overlays removed: simulation draft (3 stages), 10-question video quiz, Veo video for
+"Introduction to Home Loans and Regulatory Landscape" playable from its public link (206 video/mp4); test packs and lessons deleted;
+admin 5/5 + 3-role e2e.
