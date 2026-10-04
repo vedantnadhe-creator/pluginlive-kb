@@ -2398,3 +2398,19 @@ Frontend + one function, no schema/dependency/`.env` changes; the 4 function ove
 
 Verified: admin 5/5, candidate/trainer/admin e2e ×2, Coding Challenges 370, Save Module, Student Tier search, all 12 admin
 sections with 0 errors. Snapshot `~/banking-sb/snapshots/20261003T062528Z`. Still open: `students` read/write `USING (true)`.
+
+## 2026-10-04 — redeployed to `bb0ac4d` (11 commits, 1 migration with UAT fixup)
+
+Upstream: cohorts (`cohorts` table, `profiles.cohort_id` + `last_active`), institute student manager cohort column, completion
+funnel fix, "Fixed OpenAI test error" in `admin-llm-providers` / `manage-llm-providers`, blank-screen crash handling.
+**Not run:** `scripts/release/demo-institute-seed-part1-identities.sql` / `part2-transactions.sql` (manual demo-data seeds outside
+`supabase/migrations`; would create demo identities and transactions — run only if the team asks for demo data on UAT).
+
+| Migration | UAT action |
+|---|---|
+| `20261004034123` (cohorts) | **Fixup**: upstream let any trainer/teacher/institute user insert/update/**delete every institute's** cohorts. UAT: admins manage all; other staff manage global cohorts (no institute) or cohorts of their own institute, resolved by SECURITY DEFINER `private.my_institute_ids()` (no RLS re-entry). Read stays open (names only) |
+
+Rehearsal: admin creates a cohort in institute A; trainer creates a global cohort, deletes 0 of A's and is blocked creating one in A;
+candidate blocked; core tables read cleanly as every role (no recursion); rollback confirmed.
+Verified: admin 5/5, e2e ×2, Coding Challenges 370, Save Module, Student Tier search, all 12 admin sections with 0 errors.
+Snapshot `~/banking-sb/snapshots/20261004T064712Z`. Still open: `students` read/write `USING (true)`.

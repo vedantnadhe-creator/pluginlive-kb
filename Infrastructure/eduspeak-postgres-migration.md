@@ -1619,3 +1619,13 @@ Grants 03 → 05 → 06 re-run. Frontend+functions deploy is now scripted: `~/ed
 (source `~/pilvidya-checks/deploy-frontend.sh`); DB steps stay on the DEV box via `rw-query.sh`.
 Verified: admins ×2, teachers ×2, principal, HOD, students 9100000001/2 (session survives reload), parents 9100000009/10 (full dashboard).
 Pre-existing gaps unchanged. Credentials page bumped to `351a45d2`.
+
+## 2026-10-04 — PilVidya UAT redeployed to `2383a590` (5 commits, no upstream migration; 1 UAT column fixup)
+
+Upstream: teachers can add up to 20 quiz questions to uploaded content (`teacher_content.quiz`), which students see in the lesson
+(`StudentLesson` → `normalizeQuiz`), plus demo data/screens and a `student-360` tweak. **The `quiz` column exists on hosted (types.ts)
+but no migration creates it**, so on UAT the insert silently fell back to the legacy payload and dropped the questions. Fixup
+`~/eduspeak-pg-migration/fixups/20261004T000000_uat_teacher_content_quiz.sql`: `teacher_content.quiz jsonb NOT NULL DEFAULT '[]'`.
+`ai_video_assets.caption_url` (also new in types) already existed on UAT. Grants 03 → 05 → 06 re-run.
+Verified: all 10 demo logins (admins, teachers, principal, HOD, students with session across reload, parents with children).
+Pre-existing gaps unchanged. Credentials page bumped to `2383a590`.
