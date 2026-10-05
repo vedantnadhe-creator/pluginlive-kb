@@ -233,6 +233,22 @@ reports a deliberate app switch as a fullscreen exit and nothing else, so
 exempting it made switching away free). See
 [mix-match-candidate-journey.md](mix-match-candidate-journey.md) for the table.
 
+**Superseded 2026-10-05 (v2 DEV `4efe1d5`, UAT `2397e39`; PROD pending):** the
+mobile visibility exemption is gone for the *warning*. A hidden page now spends a
+warning on every device (previously only desktop + iPhone), because an Android
+phone that was not in full screen could switch tabs/apps for free. An incoming
+call therefore costs a warning too — candidates should use Do Not Disturb. The
+*report* still records a phone's `tab_hidden` as `low` / 0.25. On desktop, a
+`window_focus_lost` blur that stays away 300 ms (`FOCUS_LOST_SETTLE_MS`, focus
+still gone, page still visible) also spends a warning — Alt+Tab, clicking a
+second monitor or a side-by-side app; phones are exempt from this one (the
+notification shade blurs without leaving). All three signals go through one
+`spendWarning()` in `take/page.tsx`; `isRepeatViolation` (`proctoringEvents.ts`)
+drops any signal within 1.5 s (`VIOLATION_DEDUP_MS`) of the last counted one, so
+a phone app switch (hidden + fullscreen exit) or Alt+Tab (blur + fullscreen exit)
+costs one warning, not two. Modal copy: "Leaving the assessment tab, switching to
+another window, app or screen, or exiting full-screen mode is recorded."
+
 One structural advantage when you do port: v1 repeats the violation logic once
 per assessment type (Aptitude, Communication, Hinglish, Custom, Role-Based), so
 a v1 fix is a five-file edit. v2 runs every type through one `take/page.tsx`, so
