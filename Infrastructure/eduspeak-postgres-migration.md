@@ -1629,3 +1629,14 @@ but no migration creates it**, so on UAT the insert silently fell back to the le
 `ai_video_assets.caption_url` (also new in types) already existed on UAT. Grants 03 → 05 → 06 re-run.
 Verified: all 10 demo logins (admins, teachers, principal, HOD, students with session across reload, parents with children).
 Pre-existing gaps unchanged. Credentials page bumped to `2383a590`.
+
+## 2026-10-05 — PilVidya UAT redeployed to `284cae00` (4 commits, no Supabase migrations)
+
+Only regenerated types, a root `package.json` devDependency set (drizzle-kit, drizzle-orm, postgres; the frontend build is unaffected),
+and two files the deploy deliberately **does not run**:
+- `drizzle/migrations/0000_parent_otp_login_support.sql`: `mobile_otps`, `parent_consents`, `parent_profiles.active_session_token/
+  session_updated_at`, `parent_student_links.verified`. No app code or edge function uses them yet. Apply once a release depends on them.
+- `supabase/seeds/demo_tn_state_board_xi_pcm.sql`: customer demo data ("Demo School (State Board)", Tamil Nadu, Class XI PCM: school,
+  class, 10 students 9100000101-110, parent 9100000200, question bank, assessments, progress, competitive-exam mocks). Idempotent
+  (`md5` ids, `ON CONFLICT DO NOTHING`). Run on UAT only on request.
+Grants 03 → 05 → 06 re-run. Verified all 10 demo logins. Credentials page bumped to `284cae00`.

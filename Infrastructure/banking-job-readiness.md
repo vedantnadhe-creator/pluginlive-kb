@@ -2454,3 +2454,20 @@ generate-lesson-video-quiz). **Remaining overlays: live-session-rsvp, main, mcp.
 `functions-secrets.env` (kept). Verified with the overlays removed: simulation draft (3 stages), 10-question video quiz, Veo video for
 "Introduction to Home Loans and Regulatory Landscape" playable from its public link (206 video/mp4); test packs and lessons deleted;
 admin 5/5 + 3-role e2e.
+
+## 2026-10-05 — redeployed to `80fe876` (31 commits, 4 migrations as shipped)
+
+Upstream: videos split into YouTube / AI tabs, Save/Exit on the video panel, multi-select UI, simulation publish-list and student
+journey link fixes, plan-gated student module sections, simulation assignment picker, students' saved videos. No function changes;
+my upstreamed fixes (`dc1e418`) and the admin-login guard are intact; overlays still 3.
+
+| Migration | UAT action |
+|---|---|
+| `20261005012629` (student module-section menus) | As shipped: upserts 5 `module_*` menus on `(audience, menu_key)`; on conflict only label/sort/metadata change, never the per-plan access flags |
+| `20261005013843` (path regeneration settings) | As shipped (table already existed; new policy names don't collide) |
+| `20261005025935` (`list_sim_assignable_students`) | As shipped: admins get all students + self-registered candidates; trainers get only students they onboarded; others get 0 |
+| `20261005030244` (`student_saved_videos`) | As shipped: own rows only |
+
+Rehearsal: admin 81 assignable students, trainer 7, candidate 0; saved-video spoof blocked; core reads clean as every role.
+Verified: admin 5/5, e2e ×2, Coding Challenges 370, Save Module, Student Tier search, 12 admin sections with 0 errors.
+Snapshot `~/banking-sb/snapshots/20261005T034357Z`. Still open: `students` read/write `USING (true)`.
