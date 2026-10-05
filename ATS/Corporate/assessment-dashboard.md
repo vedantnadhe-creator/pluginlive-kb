@@ -896,6 +896,16 @@ server-side (see `lib/api/assessmentCreationAccess.ts`). Opening
 `/assessments/<id>/duplicate` directly still lands on the wizard page's
 "Assessment creation is disabled" state.
 
+**Internal admins bypass the flags (2026-10-05, DEV + UAT, corporate-react-v2
+`46c010d` / UAT `7a21708`).** `GET /v2/api/me/feature-access` first loads the
+signed-in user's profile from the auth service (`GET user/<jwt user._id>`); if
+it has a non-empty `pluginlive_id`, the BFF returns
+`canCreateAssessment: true, canManageAssessment: true` without consulting
+admin-node. user-management only sets `pluginlive_id` for the `internal`
+journey, so this is PluginLive staff only — an `@pluginlive.com` email alone
+does not qualify. Every other user still follows the corporate's
+`ASSESSMENT_CREATION` / `ASSESSMENT_MANAGEMENT` flags. PROD pending.
+
 **Gotchas**
 - **The host must pass a stable `loadInitialDraft`.** The wizard re-runs it
   (and re-applies the seed — title, types, settings) whenever the function's
