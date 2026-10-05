@@ -268,7 +268,20 @@ clicked Float again, and:
 
 Current behaviour:
 
-- **Dedupe → adopt.** When the first part's job names another group
+- **Resume by fingerprint, at any time within 24h.** The 60 s per-part window alone
+  was not enough: a retry a minute later opened a new group and re-created (and
+  re-invited) parts that had already saved. Each float is now fingerprinted
+  (`floatResumeKey` in AssignmentJobService: sha256 of the whole request minus Custom
+  `section_id`s, which the BFF re-saves on every attempt). Every part job stores
+  `config_snapshot.mixMatchFloatFingerprint` + `mixMatchFloatKey`; inside a float,
+  `buildManualIdempotencyKey` uses `mixMatchFloatKey` instead of the time bucket. A
+  retry whose fingerprint matches a job from the last 24h resumes that job's group
+  under the same key: saved parts dedupe, missing ones are created. A fresh float's
+  key is `<fingerprint>:<60 s bucket>`, so a double-click still collapses. A
+  *changed* request (other parts, candidates, dates) is a new float. `force: true`
+  skips resume. Ponytail: an identical re-float inside 24h resumes rather than
+  re-sending — use `force` (or the resend flow) for that.
+- **Dedupe → adopt (concurrent double-click).** When the first part's job names another group
   (`config_snapshot.mixMatchGroupId`), the retry carries on in that group, deletes
   the empty group it just opened, and re-writes the pre-assessment form onto the
   adopted one. The response returns the original `mixMatchGroupId`.
@@ -283,7 +296,7 @@ Current behaviour:
   (`src/lib/api/adminNodeErrors.ts`, same file in corporate-react-v2); the wizard never
   shows a bare "Float responded 500".
 
-Tests: `test/mixMatchVerification.test.js` (retry adoption, failed float cleanup).
+Tests: `test/mixMatchVerification.test.js` (retry adoption, late-retry resume, `force`, failed float cleanup). admin-node `e0aefeb` DEV / `38598bd` UAT.
 
 ## A signed-in student enters from the v1 dashboard (2026-08-20)
 

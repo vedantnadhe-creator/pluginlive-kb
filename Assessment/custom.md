@@ -298,6 +298,12 @@ behaves like v1 (`admin-react` `AssessmentSelect.js`):
   corporate v2 DEV + UAT `0.1.2-bugfix.7` (same patch — each app vendors its own
   tgz lineage, so a wizard fix has to be packed and bumped per app). Corporate's
   route saves to the JWT's `corporate_id`; any `entityId` sent is ignored.
+- **A section with no questions is refused (2026-10-05, DEV + UAT; PROD pending).**
+  `createSectionquestions` returns **400** `No questions could be read for "<name>"…`
+  (`assertSectionsHaveQuestions`) before writing anything, so an unreadable or
+  header-only sheet no longer leaves an empty `custom_sections` bank behind. A missing
+  sheet or a file that is not a valid `.xlsx` takes the same 400 (it used to be a
+  silent skip or a 500).
 - **Option text must be unique per question.** `question_options` has a partial unique
   index on `(questions_id, option_text) WHERE option_text <> ''` (DB-Scripts
   `20260916T105707Z`, DEV + UAT + PROD) — image-only (blank-text) options may repeat.
