@@ -555,6 +555,18 @@ The admin picks one of five seniorities — `fresher`, `junior`, `mid`, `senior`
 
 **Measured** (35 papers per side, 3 roles): Fresher MCQ mix 5.4/3.9/0.7 → 7/3/0, Fresher question length 26.6 → 14.6 words, Fresher video skills 3.1 → 1.3 with 0/7 system-design prompts, Junior 5.0/3.9/1.1 → 3/7/0. Jev E2E (float → sit → score) PASS on DEV for all five levels with the stored split exactly as in the table; UAT float verified from the DB.
 
+**Coding and SQL per seniority (2026-10-05, DEV + UAT).** The program-coding prompt and `sql_question_generator.build_sql_prompt` still had the old three-level ladder (`fresher=easy/medium, intermediate=medium/hard, senior=hard`), so Junior got Fresher problems (route matchers, an identical "High-Volume Customer Order Summary" SQL) and Mid sometimes did too. Each profile now also carries `coding_difficulty`, `coding` and `sql`; `generate_coding_prompt` inserts only the active level, and `generate_sql_prompt` passes it to `build_sql_prompt(level_guidance=…)` (without it the generic ladder is kept, so other callers are unchanged).
+
+| Level | Program question (difficulty) | SQL question |
+|---|---|---|
+| Fresher | easy — single-pass parse / count / filter / validate (e.g. count 2xx status codes) | SELECT/WHERE/INNER JOIN/GROUP BY + HAVING; no CTEs, no window functions |
+| Junior | medium — two inputs, tie-breaks, running state, cursor pages, date buckets (e.g. reconcile client vs server records) | LEFT JOIN with zero-fill, CASE aggregation, subqueries; ≤1 CTE, no windows |
+| Mid | medium — sliding windows, rate limiting, intervals/scheduling, dependency order, cache eviction | CTEs, window functions, top-N per group |
+| Senior | hard — several interacting rules: precedence, interval merging, graph traversal, reconciliation | layered CTEs, window frames, anti-joins, gaps-and-islands |
+| Lead | hard — at least as hard as Senior (a short single-pass state machine is too easy) | as Senior |
+
+Levels above fresher are told not to reuse fresher themes (string parsing, URL/route matching, simple counting). "System design coding problems" was dropped from the technical-role line. Before/after (Full Stack, 2 coding questions): Junior went from route matcher + the Fresher SQL to "Reconcile Client and Server Records" + merchant LEFT JOIN summaries; Mid's stray route-extractor disappeared; Lead's rate limiter became saga/reconciliation problems. Jev E2E with coding PASS on DEV for Fresher/Junior/Mid (both coding questions 4/4 on Run, Coding section stored 100). Commits `fastapi-ai-engine` `5f17924` (Development), `d2b3e0a` (UAT). Overlay rollback tags `fastapi:api-pre-rb-coding` (DEV) / `fastapi-ai-engine:api-pre-rb-coding` (UAT). **PROD pending.**
+
 **Not fixed yet (phase 2 candidates):** the correct MCQ option is still the longest in ~8–9 of 10 on Mid/Senior/Lead (options are shuffled in admin-node, so this is a length, not position, tell); no post-generation check enforces the mix if the model ignores it; Lead MCQs are not reserved for leadership topics; topic repeats across levels (Idempotency-Key, stream backpressure, composite index).
 
 Commits: `fastapi-ai-engine` `9e46b93` (Development), `a3abfd4` (UAT, cherry-picked alone). Tests: `tests/test_role_seniority_profiles.py`. **Deployed as a one-file image overlay** on both boxes (a full fastapi rebuild pulls unpinned torch/CUDA 13 and runs out of disk): rollback tags DEV `fastapi:api-pre-rb-seniority`, UAT `fastapi-ai-engine:api-pre-rb-seniority`. **PROD pending.** Existing sets are unchanged — only newly generated papers follow the new rules.
