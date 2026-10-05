@@ -2486,3 +2486,16 @@ ones, 99 attempts), and the quiz-score lock is removed (access is now plan/RBAC-
 Rehearsal: admin 67 invitees, trainer 0, candidate 0; trainer RSVP for a non-invitee blocked; the policy→function call causes no recursion.
 Verified: admin 5/5, e2e ×2, Coding Challenges 370, Save Module, Student Tier search, 12 admin sections 0 errors, and `sim-generate-pack`
 still generates through the configured-providers fallback (test pack deleted). Snapshot `~/banking-sb/snapshots/20261005T061511Z`.
+
+## 2026-10-05 (eve) — redeployed to `ab1e75c` (15 commits, 1 migration as shipped)
+
+Upstream: new admin **Masters** menu section, independent role buttons, simulations mapped to modules, Vite `resolve.dedupe` for
+react/react-dom/jsx-runtime/react-query (fixes duplicate React copies). `sim-attempt`: open "unlocked" packs are now shown only for modules the
+student can access (`user_can_access_module`), and starting an unassigned pack's module is refused with a 403. This tightens the 10-05 unlocked mode.
+
+| Migration | UAT action |
+|---|---|
+| `20261005084733` (`sync_institute_name` trigger) | As shipped. Relies on `institutes.institute_name`, which UAT has since the 10-03 fixup. Rehearsal: name-only and legacy-name-only inserts both fill both columns (trimmed); rollback confirmed |
+
+Verified: admin 5/5, e2e ×2, Coding Challenges 370, Save Module, Student Tier search, 13 admin sections (new "Masters") with 0 errors.
+Snapshot `~/banking-sb/snapshots/20261005T085409Z`. Still open: `students` read/write `USING (true)`.
