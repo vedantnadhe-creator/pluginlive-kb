@@ -529,6 +529,46 @@ The `*Count` suffixes are load-bearing: they are written straight to
 `assessment_config.question_config`, which drives both generation and which score
 columns the admin tables show.
 
+### QA fixes from Jershini's Role-Based run (2026-10-05, DEV + UAT, PROD pending)
+
+- **Coding report language.** A coding answer saved without a `language` (a SQL question
+  never typed into saves nothing) was reported and re-run as `python`. It now defaults to the
+  question's first language — `coding_metadata.languages[0]`, else `postgresql` for a SQL
+  question (`RoleBasedCalculations.defaultCodingLanguage`).
+- **Coding skills resolve onto the assessment's skills.** A coding question's
+  `skills_assessed` tags (SQL questions are generated with e.g. `SQL, LEFT JOIN, COALESCE,
+  Aggregation`) used to become extra rows in the PDF's *Skill-wise Score Distribution*, with
+  `SQL` next to the configured `sql`. `mapToAssessmentSkills` now matches tags to
+  `assessment_config.skills` case-insensitively and credits a SQL question's concept tags to
+  the configured skill(s) containing "sql". Tags are kept as-is only when none match (or no
+  skills are configured), so a question never credits nothing. Applies on (re)calculation —
+  older reports change only when the attempt is re-scored.
+- **Off-topic video answers score 0.** The prompt already zeroes every dimension for an
+  irrelevant answer, but half of the communication blend is Deepgram delivery fluency, so
+  reels/music audio still scored ~9. When the LLM returns 0 for content relevance, technical
+  knowledge, job fit and communication (`is_off_topic_evaluation`), fluency and the 2.5
+  skill default no longer add marks (fastapi `routers/rolespecific.py`).
+- **No speech ≠ "System error".** Deepgram rejects some clips outright (no audio track,
+  unreadable silent audio), which used to 500 before the 0-words path. On a Deepgram error
+  `_confirms_no_speech` checks the clip — no audio stream (ffprobe) or Gemini hears nothing →
+  scored as "No speech detected"; anything it cannot confirm still raises, so an outage is not
+  silently zeroed. When FastAPI does fail, student-node now writes "This recording could not be
+  analysed, so it was scored 0." instead of "System error occurred during video analysis" and
+  the raw FastAPI error (the cause stays in the log).
+- **Coding case labels.** The candidate app labels every case "Test case N" (visible ones read
+  "Example N" before). Hidden cases stay hidden by design.
+- **Attached JD is read, not invented.** In the v2 wizard (corporate-react-v2, assessment-creation
+  `0.1.2-bugfix.8`) the JD attach button used to type a canned JD built from role + skills; the
+  file was never read. It now posts the file to `/api/jd/parse` (corporate-node-v2 JD parser,
+  PDF/TXT/RTF) and fills the box with the returned `jdText`, or shows why the file couldn't be
+  read. **admin-react-v2's wizard (0.1.16 lineage) still has the canned attach** — admin has no
+  JD-parse route.
+
+Commits: student-node `b23f5959`, `6a3e0d69` (UAT `94f410c0`); fastapi `01b28ab`, `c8b2568`
+(UAT `9319711`, shipped DEV + UAT as a one-file image overlay, rollback tags `:api-pre-rbqa`);
+assessment-react-v2 `cd5dc56` (UAT `8a4ecb1`); corporate-react-v2 `523ef00` (UAT `5828a4f`),
+design-system `fix/rb-jd-attach-0.1.2` `7b4e44d`.
+
 ## Seniority levels (2026-10-05, DEV + UAT)
 
 The admin picks one of five seniorities — `fresher`, `junior`, `mid`, `senior`, `lead` — stored as-is on `assessment_sets.seniority`. The generator pitches the **whole paper** (MCQ, written, video) at that level.
@@ -842,6 +882,9 @@ In a transaction:
       LLM's own judgement — e.g. a correct 22-word correlation-vs-causation answer
       now scores ~20–40 instead of 0. Until then the 50-word cap (`min_words`) zeroed
       every metric; `min_words` survives only as the `meets_minimum_length` flag.
+    - **Deepgram rejects / off-topic** (2026-10-05): a clip Deepgram rejects that is provably
+      silent scores as "No speech detected"; an answer the LLM zeroes on every dimension scores
+      0 overall (see *QA fixes from Jershini's Role-Based run*).
     - AI analysis via Gemini/Groq with scoring weights:
       - Content Relevance: 30%
       - Communication Skills: 25%
