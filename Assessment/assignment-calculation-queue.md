@@ -158,6 +158,47 @@ proctoring report. Jobs use stable assignment-based IDs, and successful scoring 
 re-enqueues finalization, so a missed completion-side enqueue does not permanently
 leave the PDF without a report.
 
+**Reading recovery: the finalizer starts reading itself (2026-10-05, DEV + UAT; PROD pending).**
+Only a session-audio upload used to enqueue reading analysis, and the reading job
+*skips* a session that is not yet `COMPLETED`. Every 60s periodic flush also hits that
+upload route. So when the **last** upload landed before `completeSession`, its job
+skipped, nothing ever re-ran it, `proctoringReadingStatus` stayed `pending`, and the
+finalizer ran out of retries. **The proctoring report was never built.** This happened
+when the clock ran out (the v2 time-up path drains the queue before calling complete)
+or the tab closed during "Submitting…".
+PROD: 13 attempts from 2026-09-03 to 2026-10-05, 11 of them `time_up`
+(e.g. Meesho `sachinwaghamare69`, 2026-09-24).
+
+Now, on every attempt, the finalizer (`calculationWorker.ensureReadingQueued`) checks
+whether reading is `pending` while no reading job is waiting, delayed or active (absent,
+or `completed` / `failed`, which is the skipped pre-completion job). If so, it removes
+the stale job and queues `analyze` with only `{ assessment_assigned_id }`, delayed to
+**60 s after `completedAt`** (`READING_UPLOAD_GRACE_MS`). The normal final upload still
+wins: its handler removes the delayed job and adds its own with the fresh `audioUrl`.
+
+A job without a URL makes `ProctoringReportService.analyzeAiInterviewReadingBatch` read
+the stored recording itself: the `student_answers` row for question `a55c5db4…`
+(`object_key` presigned, `answer_text` = chapters). Per-answer raw clips are used as
+usual, and the session recording is only the fallback. If no recording was ever
+stored, reading is closed as `failed` (`error: "Session audio was never stored"`), so
+the report is still built, and a late upload can still re-run it.
+
+Pure rules are in `helpers/aiInterviewFinalization.js` (`needsReadingRecovery`,
+`readingRecoveryDelay`, `parseSessionAudioChapters`); tests are in
+`test/aiInterviewReadingRecovery.spec.js`.
+**Verified on DEV** against a real stuck attempt (`12dbf95b…`: audio stored 7 min before
+completion, reading job `completed`/skipped, finalize job `failed`). Re-queueing its
+finalize job analysed 8 answers and built the report (`clean`, 60).
+**UAT caveat:** UAT's `fastapiai` container has no `OCI_NAMESPACE` (DEV and PROD do), so
+`verify-reading-batch` rejects **every** UAT audio URL with 400 "audio_url must be an
+approved object-storage URL". This affects the normal upload path too, so on UAT, reading
+always ends `failed` and the report is built without reading verdicts (confirmed
+2026-10-05 on `df494cf0…`).
+**Recovering an already-stuck attempt** needs no SQL: re-add its
+`ai_finalize__<id>` job. Remove the old failed one first, because a finished jobId
+swallows the add. In a one-off script, `require("/app/app/config")` first, or the
+queue falls back to a dead default Redis address.
+
 ### Abandoned attempts are scored too (2026-09-02, DEV + UAT; PROD pending)
 
 Scoring used to be gated on `submitted = true` in **both** paths that feed the
