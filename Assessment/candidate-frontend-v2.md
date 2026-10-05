@@ -243,10 +243,17 @@ call therefore costs a warning too — candidates should use Do Not Disturb. The
 still gone, page still visible) also spends a warning — Alt+Tab, clicking a
 second monitor or a side-by-side app; phones are exempt from this one (the
 notification shade blurs without leaving). All three signals go through one
-`spendWarning()` in `take/page.tsx`; `isRepeatViolation` (`proctoringEvents.ts`)
-drops any signal within 1.5 s (`VIOLATION_DEDUP_MS`) of the last counted one, so
-a phone app switch (hidden + fullscreen exit) or Alt+Tab (blur + fullscreen exit)
-costs one warning, not two. Modal copy: "Leaving the assessment tab, switching to
+`spendWarning()` in `take/page.tsx`, deduplicated **per interruption, not by
+time** (v2 DEV `d4bba89` / UAT `062281d`, 2026-10-05): `createInterruptionCounter`
+(`proctoringEvents.ts`) lets the first signal spend the warning and open the
+interruption; every later signal (hidden, fullscreen exit, settled blur) is
+absorbed until the candidate clicks **Return to assessment** on the warning
+dialog, which covers the exam. So a phone app switch (hidden + fullscreen exit)
+or Alt+Tab (blur + fullscreen exit) costs one warning, not two. The first cut
+used a 1.5 s window (`VIOLATION_DEDUP_MS`, removed): phones suspend JS while
+hidden and deliver `fullscreenchange` seconds later on return, so one app switch
+spent two warnings (two switches → auto-submit), and two quick separate
+interruptions were merged. Modal copy: "Leaving the assessment tab, switching to
 another window, app or screen, or exiting full-screen mode is recorded."
 
 One structural advantage when you do port: v1 repeats the violation logic once

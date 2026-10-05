@@ -32,7 +32,7 @@ Apply the behavior consistently anywhere the existing tab-switch/fullscreen viol
 - AI Interview
 - The v2 candidate assessment runner
 
-The v1 and v2 candidate applications do not share this logic, so each must be changed and tested independently. Only events counted as punitive violations contribute to the four-violation threshold. In v2 (from 2026-10-05, DEV + UAT) that is tab/app switch on every device including phones, desktop window focus loss, and fullscreen exit, deduplicated to one warning per action — see `candidate-frontend-v2.md`.
+The v1 and v2 candidate applications do not share this logic, so each must be changed and tested independently. Only events counted as punitive violations contribute to the four-violation threshold. In v2 (from 2026-10-05, DEV + UAT) that is tab/app switch on every device including phones, desktop window focus loss, and fullscreen exit, deduplicated to one warning per interruption (closed when the candidate acknowledges the warning dialog) — see `candidate-frontend-v2.md`.
 
 ## Acceptance Criteria
 
