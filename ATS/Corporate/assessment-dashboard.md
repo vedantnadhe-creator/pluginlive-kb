@@ -896,6 +896,13 @@ server-side (see `lib/api/assessmentCreationAccess.ts`). Opening
 "Assessment creation is disabled" state.
 
 **Gotchas**
+- **The host must pass a stable `loadInitialDraft`.** The wizard re-runs it
+  (and re-applies the seed — title, types, settings) whenever the function's
+  identity changes. It used to be built inside the host `useMemo` keyed on
+  `quota`, so every usage refresh (first load, and every tab refocus) reset
+  the recruiter's edited name to the source title. Since 2026-10-05
+  (`AssessmentWizard.tsx`, DEV + UAT) the loader is memoised on
+  `duplicateFrom` alone.
 - Duplicate lives in the kebab, which is hidden on closed floats unless
   `showManageWhenClosed` — so a Finished assessment can't be duplicated yet.
 - Floats from before the canonical Communication & Language parameter open
