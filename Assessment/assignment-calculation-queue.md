@@ -189,11 +189,18 @@ Pure rules are in `helpers/aiInterviewFinalization.js` (`needsReadingRecovery`,
 **Verified on DEV** against a real stuck attempt (`12dbf95b…`: audio stored 7 min before
 completion, reading job `completed`/skipped, finalize job `failed`). Re-queueing its
 finalize job analysed 8 answers and built the report (`clean`, 60).
-**UAT caveat:** UAT's `fastapiai` container has no `OCI_NAMESPACE` (DEV and PROD do), so
-`verify-reading-batch` rejects **every** UAT audio URL with 400 "audio_url must be an
-approved object-storage URL". This affects the normal upload path too, so on UAT, reading
-always ends `failed` and the report is built without reading verdicts (confirmed
-2026-10-05 on `df494cf0…`).
+**UAT FastAPI needs `OCI_NAMESPACE` (fixed 2026-10-05).** `verify-reading-batch` only
+accepts audio URLs on `<OCI_NAMESPACE>.compat.objectstorage.<OCI_REGION>.oraclecloud.com`.
+Until 2026-10-05 UAT's `fastapiai` container had no `OCI_NAMESPACE`, so **every** UAT
+reading analysis got a 400 ("audio_url must be an approved object-storage URL") and
+ended `failed`. It is now set to `bmv2bqg5gpcd`, the same as DEV and PROD, in two places:
+- the UAT box's untracked `~/api/fastapi-ai-engine/.env.uat`, so future deploys keep it;
+- on the running container, recreated from the same image with `-e`. This avoided a full
+  rebuild, which is risky until torch is pinned.
+
+The rollback image is tagged `fastapi-ai-engine:api-pre-ocins`. Verified with two stuck
+UAT attempts (`cbeb6429…`, 8 answers analysed; `df494cf0…`, 7 answers analysed); both
+now end with reading `complete`.
 **Recovering an already-stuck attempt** needs no SQL: re-add its
 `ai_finalize__<id>` job. Remove the old failed one first, because a finished jobId
 swallows the add. In a one-off script, `require("/app/app/config")` first, or the
