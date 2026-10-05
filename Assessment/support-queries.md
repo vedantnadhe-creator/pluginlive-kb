@@ -4,7 +4,7 @@
 > an email (reply goes straight to the candidate) and a PLBOT post in Slack
 > **#platform-activity** (`C09TA5PNZC5`).
 >
-> **Status:** LIVE on **DEV** and **UAT** (2026-09-30; delivery-recovery + atomic throttle fix DEV `54d713f` / UAT `f3299e7`). **PROD pending.**
+> **Status:** LIVE on **DEV** and **UAT** (2026-09-30; delivery-recovery + atomic throttle fix DEV `54d713f` / UAT `f3299e7`; owner name DEV `34e19d6` / UAT `ddd6322`, 2026-10-05). **PROD pending.**
 > Frontends: only **assessment-react-v2** has the button today. The backend already
 > accepts every portal's login, so institute-react-v2 / corporate-react-v2 / etc.
 > only need a button + a `/api/support` route (deferred).
@@ -25,6 +25,20 @@ assessment-react-v2  ⋯ menu → Support → SupportDialog (name, read-only ema
 
 The candidate never waits on the mail relay or Slack: the row is written and the job
 queued, then the dialog shows "Your message has been sent to the team."
+
+## What the team sees
+
+Both the email and the Slack post name the **college or company that owns the
+assessment** — `institute.institutes.name` (via `assessment_institute_map.institute_id`)
+or `corporate.corporates.name` (via `assessment_corporate_map.corporate_id`), resolved
+from the in-exam token's assignment. If no name is on file it falls back to
+"Institute" / "Corporate".
+
+| | Shows |
+|---|---|
+| Email subject | `Support query from <name> · <owner> (<source>)` |
+| Email body | From, Role, Raised from, Page, Assessment, **Assessment owner** (the name), Attempt status, Assignment ID, Query ID, then the message |
+| Slack | `[ENV] 🆘 Support query · <name> (<email>)`, then `*<owner>* · <assessment> · <source>`, the quoted message, and query/assignment ids |
 
 ## Who is asking (auth)
 
@@ -100,8 +114,8 @@ admin-node — the UAT/PROD build must not carry the DEV URL.
 - admin-node: `app/routes/support.js`, `app/handlers/supportHandler.js`,
   `app/service/SupportQueryService.js`, `app/models/SupportQuery.js`,
   `app/helpers/slackActivity.js`, `app/queues/supportQueryWorker.js`,
-  `test/supportQuery.spec.js`. Commits `69df231`, `f6aee07`, `d4e3727`
-  (UAT `9d36abb`, `2ceb885`, `8cce780`).
+  `test/supportQuery.spec.js`. Commits `69df231`, `f6aee07`, `d4e3727`, `54d713f`, `34e19d6`
+  (UAT `9d36abb`, `2ceb885`, `8cce780`, `f3299e7`, `ddd6322`).
 - assessment-react-v2: `src/app/api/support/route.ts`, `src/lib/supportRequest.ts`,
   `src/app/_components/exam/SupportDialog.tsx`. PR #10 (`7cdb3f7`), UAT `95c7290`.
 
