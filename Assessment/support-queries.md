@@ -109,6 +109,17 @@ Unset Slack = email only (logged, not an error).
 Frontend: assessment-react-v2 needs `ADMIN_API_URL` pointing at **its own env's**
 admin-node — the UAT/PROD build must not carry the DEV URL.
 
+### PROD config (2026-10-05)
+
+PROD admin-node reads its `.env` from the ConfigMap **`admin-api-config`** (ns `api`,
+mounted with `subPath`, so a ConfigMap edit needs a pod restart). Slack was missing
+there until 2026-10-05 — support emails went out but every post logged "Slack not
+configured … Slack pending". Added `SLACK_ACTIVITY_WEBHOOK_URL` + `SLACK_ACTIVITY_ENV=PROD`;
+the 7 pending queries (2–3 Oct) were then posted by the reconciler without re-sending email.
+The same rollout added a `readinessProbe` (tcp 8080) and a 5 s `preStop` sleep to the
+`admin-node` Deployment so restarts don't route traffic to a pod that isn't listening yet.
+Backups: `~/backups/support-slack-20261005T063222Z/` on the PROD builder.
+
 ## Code
 
 - admin-node: `app/routes/support.js`, `app/handlers/supportHandler.js`,
