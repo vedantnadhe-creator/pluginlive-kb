@@ -136,7 +136,20 @@ grain:
 
 - **Sent** counts non-practice `assessment_assigned_students` rows only after
   their `assessment_institute_map.start_time` has arrived. A NULL start time is
-  treated as already open. Upcoming assignments are excluded.
+  treated as already open. Upcoming assignments are excluded. "Arrived" is
+  judged in the IST wall-clock frame the column is stored in:
+  `start_time <= ${IST_NOW}` where `IST_NOW = (NOW() + INTERVAL '5 hours 30
+  minutes')` (`helpers/assessmentGrouping.js`); the Student-wise JS twin uses
+  `Date.now() + IST_OFFSET_MS`. **Never compare map windows to a bare
+  `NOW()`.** Until 2026-10-05 they were, so a one-time assessment sent for a
+  future time counted 0 students for 5h30m after it opened. The
+  `HAVING assigned > 0` guard then dropped the whole row from the TPO
+  Dashboard and Manage Assessments, even though students had already received
+  it (reported by Jershini on UAT). Fixed in institute-node Development
+  `b9857c3` / UAT `f331479` (DEV + UAT, PROD pending). The live/scheduled
+  status badge (`deriveAssessmentStatus`, `occurrencePhase`) still compares
+  against raw `Date.now()`. That is open: its `end` can be a true UTC instant
+  from `assessmentPlan`, so it needs a per-source fix, not a blanket offset.
 - **Taken** is the subset of those Sent rows whose `attempted` flag is true or
   whose status is `INPROGRESS`, `DROPOUT`, or `COMPLETED`.
 - Rates are always `Taken / Sent`; numerator and denominator therefore use the
