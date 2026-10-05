@@ -251,6 +251,39 @@ reminder is unbuilt.
 
 admin-node `54e1a21` (Development) / `3871fcd` (UAT).
 
+### Retrying a failed Float is safe (2026-10-05, DEV + UAT; PROD pending)
+
+`assignMixMatchAssessment` (admin-node `assessmentHandler.js`) creates the
+`mix_match_groups` row first, then each part saves its map + assignment job in a
+transaction and **then** enqueues the orchestrate job in Redis. On 2026-10-01 the
+UAT disk filled, Redis answered `MISCONF … stop-writes-on-bgsave-error`, and the
+enqueue threw *after* the part had committed. The admin saw the raw Redis error,
+clicked Float again, and:
+
+- the part's manual idempotency key (60 s window) **deduped** to the first job, but
+  the retry had opened a **second group** and re-pointed the map at it;
+- the deduped job was never queued — the retry reported "published" and sent no
+  invite; `assignmentRecovery` re-drove it ~12 min later, claiming the invite on the
+  **first** group while the candidate's map pointed at the second.
+
+Current behaviour:
+
+- **Dedupe → adopt.** When the first part's job names another group
+  (`config_snapshot.mixMatchGroupId`), the retry carries on in that group, deletes
+  the empty group it just opened, and re-writes the pre-assessment form onto the
+  adopted one. The response returns the original `mixMatchGroupId`.
+- **`ensureOrchestratorQueued(job)`** (AssignmentJobService): a deduped job still in
+  state `queued` is re-added under its stable BullMQ id `orch-<jobId>` — a no-op if
+  the first add landed, and no second "assignment started" admin mail.
+- **No empty groups left behind.** A failed Float whose group no job names (count on
+  `config_snapshot->>'mixMatchGroupId'`) deletes that group (form cascades).
+- **Plain error text.** admin-react-v2's BFF keeps admin-node's 4xx validation text but
+  replaces 5xx / unreachable errors (Redis, Prisma internals, nginx HTML pages) with
+  "The server couldn't finish floating this assessment. Please try again in a minute."
+  (`src/lib/api/adminNodeErrors.ts`); the wizard never shows a bare "Float responded 500".
+
+Tests: `test/mixMatchVerification.test.js` (retry adoption, failed float cleanup).
+
 ## A signed-in student enters from the v1 dashboard (2026-08-20)
 
 Corporate candidates arrive by invite and v2 is the whole journey for them.

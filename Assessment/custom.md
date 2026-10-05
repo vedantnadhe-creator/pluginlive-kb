@@ -285,6 +285,24 @@ behaves like v1 (`admin-react` `AssessmentSelect.js`):
   the JWT's corporate; admin requires `entityId`.
 - **Picking a bank reuses the section by id** (`sourceSectionId` + fingerprint);
   an edited section is saved as a new one.
+- **An uploaded sheet can be saved as a bank (2026-10-05, DEV + UAT; PROD pending).**
+  "Save Question Bank" used to stay disabled for an Excel section (the browser holds
+  only the file, so its question count is 0). It is enabled when a section has typed
+  questions **or** a sheet (`canSaveAsBank`). A sheet goes to
+  `POST /api/assessments/custom-banks` as multipart (`entityId`, `name`, `sheet`,
+  `.xlsx` only) → `createSectionquestions?isFileUpload=true`, the same path a float
+  uses (`createBankSectionFromSheet`). The section is then refilled from the saved
+  bank's questions, so the float reuses that row instead of uploading the sheet again.
+  admin-node's sheet path now needs only `entity_id` (`entity_name` was required but
+  only echoed). Wizard: admin DEV `0.1.16-custom.2`, admin UAT `0.1.12-custom.2`.
+  Corporate v2 (`0.1.2-bugfix.6`) still has the old disabled-for-sheets behaviour.
+- **Option text must be unique per question.** `question_options` has a partial unique
+  index on `(questions_id, option_text) WHERE option_text <> ''` (DB-Scripts
+  `20260916T105707Z`, DEV + UAT + PROD) — image-only (blank-text) options may repeat.
+  `createSectionquestions` refuses a repeated option with a **400** naming section,
+  question and option (`assertUniqueOptionTexts`), instead of the raw Prisma unique
+  error. Image-only options are stored as `''` (they used to become the string
+  `"undefined"`).
 - **Manual-builder images are uploaded** (they were silently dropped): the BFF
   checks png/jpeg by content, ≤ 2 MB, uploads to student-node
   `POST /students/assessments/uploadGeneratedImage` and sends
