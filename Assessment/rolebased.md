@@ -529,6 +529,36 @@ The `*Count` suffixes are load-bearing: they are written straight to
 `assessment_config.question_config`, which drives both generation and which score
 columns the admin tables show.
 
+## Seniority levels (2026-10-05, DEV + UAT)
+
+The admin picks one of five seniorities — `fresher`, `junior`, `mid`, `senior`, `lead` — stored as-is on `assessment_sets.seniority`. The generator pitches the **whole paper** (MCQ, written, video) at that level.
+
+**Why this exists.** The prompt used to describe only Entry / Intermediate / Senior and leave the model to map our five values onto them. QA on UAT (23 Sep, Full Stack × 5 levels) and a 70-paper before/after run (Full Stack, Sales Executive, Accountant) showed: Junior papers were Fresher papers again, Lead was Senior again, Fresher MCQs averaged 0.7 hard items with execution-order puzzles and production-scale scenarios, and **every Fresher video was a system-design walk-through** ("explain the end-to-end lifecycle of a request from React to Node to the DB…"). The video section was told to cover every focus area, so the model stitched all four skills into one architecture question.
+
+**How it works** — `fastapi-ai-engine` `QuestionGeneration/Role_Specific/question_generator.py`:
+- `SENIORITY_PROFILES` holds one role-agnostic profile per level (experience band, MCQ style, written style, video style, video skill cap, written/video difficulty). Only the active level is put into the prompt.
+- `resolve_seniority()` maps free-text/legacy values (`Entry Level` → fresher, `Intermediate` → mid, `Senior Manager`/`principal`/`head` → lead; unknown → mid).
+- `mcq_difficulty_counts()` gives an **exact** easy/medium/hard count that the prompt demands:
+
+| Level | MCQ easy / medium / hard (of 10) | Video | Written/video difficulty |
+|---|---|---|---|
+| Fresher | 7 / 3 / 0 | ONE basic concept explained to a non-expert, or a college project/internship; max 2 focus areas; system design, architecture, multi-component flows, scaling, trade-offs and leadership explicitly banned | easy |
+| Junior | 3 / 7 / 0 | one specific task/bug as a stand-up update; max 2 focus areas; no architecture | medium |
+| Mid | 0 / 7 / 3 | explain a trade-off to a non-specialist stakeholder | medium |
+| Senior | 0 / 4 / 6 | persuade stakeholders / handle a crisis or conflict | hard |
+| Lead | 0 / 4 / 6 | vision or major change to leadership and the team, developing its people | hard |
+
+- Fresher MCQs: one concept per question, ≤ 2 short sentences, clearly-wrong distractors; no predict-the-output/execution-order puzzles, API signatures, RFC/standard numbers, version trivia, incident diagnosis or scale tuning. Written and video allow "college project / internship" experience for fresher and junior.
+- The old free-text "Mix difficulty: … standard questions (1.5 min each)" line is gone — it leaked an invalid `standard` difficulty onto Junior MCQs.
+- Written and video questions now return a `difficulty`; admin-node already stored `questionData.difficulty || 'medium'`, so they were always `medium` before.
+- The mixes stay inside admin-node's `ALLOWED_DIFFICULTY` (`script/generateRoleBasedQuestions.js` ~L212). **Gotcha:** that admin-node check only *relabels* an out-of-range difficulty (e.g. a fresher `hard` becomes `easy`) — it never changes the question. It cannot make a paper easier; the prompt has to.
+
+**Measured** (35 papers per side, 3 roles): Fresher MCQ mix 5.4/3.9/0.7 → 7/3/0, Fresher question length 26.6 → 14.6 words, Fresher video skills 3.1 → 1.3 with 0/7 system-design prompts, Junior 5.0/3.9/1.1 → 3/7/0. Jev E2E (float → sit → score) PASS on DEV for all five levels with the stored split exactly as in the table; UAT float verified from the DB.
+
+**Not fixed yet (phase 2 candidates):** the correct MCQ option is still the longest in ~8–9 of 10 on Mid/Senior/Lead (options are shuffled in admin-node, so this is a length, not position, tell); no post-generation check enforces the mix if the model ignores it; Lead MCQs are not reserved for leadership topics; topic repeats across levels (Idempotency-Key, stream backpressure, composite index).
+
+Commits: `fastapi-ai-engine` `9e46b93` (Development), `a3abfd4` (UAT, cherry-picked alone). Tests: `tests/test_role_seniority_profiles.py`. **Deployed as a one-file image overlay** on both boxes (a full fastapi rebuild pulls unpinned torch/CUDA 13 and runs out of disk): rollback tags DEV `fastapi:api-pre-rb-seniority`, UAT `fastapi-ai-engine:api-pre-rb-seniority`. **PROD pending.** Existing sets are unchanged — only newly generated papers follow the new rules.
+
 ## Assigning: two flows, one of them with no human in it
 
 Role_Based has **two** ways a cohort gets assigned, and which one runs is decided
@@ -681,7 +711,7 @@ jobDescription: Optional[str] = ""
   - Specifies the assessment framework: 10–12 MCQs (18 min) + 2 Written (8 min) + 1 Video (4 min)
   - Requires **all provided skills** to be assessed across the 3 response types
   - Skill distribution: Written Q1 covers 40–50% of skills, Written Q2 covers another 40–50%, Video covers remaining + communication
-  - Adapts by **seniority level**: Entry (0–2 yr), Intermediate (2–5 yr), Senior (5+ yr)
+  - Adapts by **seniority level**: one profile per fresher / junior / mid / senior / lead, exact MCQ difficulty counts — see [Seniority levels](#seniority-levels-2026-10-05-dev--uat)
   - Adapts by **role type**: Technical, Creative, Management, Client-facing, Compliance
   - Adapts by **region**: regulatory/compliance context (North America, EU, APAC, Global)
   - Includes job description context when provided
@@ -937,7 +967,7 @@ Gotchas:
 - **AI-Generated Questions** — questions are dynamically generated by Gemini based on role parameters, not from a static question bank.
 - **Selected-section score columns** — the admin score tables (StudentsTable / CandidateList / StudentReport) show a column per section **selected at creation** (`assessment_config.question_config` count > 0), not a hardcoded MCQ/Subjective/Video/Coding set. admin-node resolves this once per assessment (`getRoleBasedSelectedSections`, falling back to sections actually present in the exam) and returns it as `assessmentInfo.roleBasedSections`; each row's `roleBasedScores` always carries a key per selected section (score value, or `null` when not yet scored → rendered `-`). So a 0-question section never appears, and a selected section is visible even before submission/scoring. `overallScore` averages only the sections that have scores (`null` until any section is scored). The **Excel export** (`exportStudentData`) uses the same selected-section columns via `resolveRoleBasedColumns` (shared helper, mirrored in admin-react's `roleBasedColumns.js`) — so the export includes the **Coding** column when selected and matches the on-screen tables (previously it hardcoded Overall/MCQ/Subjective/Video and dropped Coding).
 - **Skill Coverage Guarantee** — the prompt requires ALL provided skills to be assessed across MCQ + Written + Video sections.
-- **Seniority Adaptation** — question difficulty and focus adapts: Entry level (fundamentals), Intermediate (complex problem-solving), Senior (strategic thinking).
+- **Seniority Adaptation** — five levels (fresher/junior/mid/senior/lead), each with its own MCQ mix, written style and video brief; fresher/junior videos are capped at 2 focus areas and may not ask system design. See [Seniority levels](#seniority-levels-2026-10-05-dev--uat).
 - **Multi-Modal Assessment** — combines text-based MCQ, written analysis, and video communication in a single assessment whose length the admin sets (1–240 min in admin-react-v2, default 30).
 - **Admin-Set Duration** — `assessment_config.duration_minutes` is the source of truth for the countdown; when NULL (every pre-feature set) student-node estimates from question counts instead. Enforcement is client-side only. See [Duration](#duration).
 - **AI Scoring** — subjective and video responses are scored by AI (Gemini 2.5 Pro or Groq Llama 3.3 70B) with detailed per-skill feedback.
