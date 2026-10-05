@@ -280,7 +280,8 @@ Current behaviour:
 - **Plain error text.** admin-react-v2's BFF keeps admin-node's 4xx validation text but
   replaces 5xx / unreachable errors (Redis, Prisma internals, nginx HTML pages) with
   "The server couldn't finish floating this assessment. Please try again in a minute."
-  (`src/lib/api/adminNodeErrors.ts`); the wizard never shows a bare "Float responded 500".
+  (`src/lib/api/adminNodeErrors.ts`, same file in corporate-react-v2); the wizard never
+  shows a bare "Float responded 500".
 
 Tests: `test/mixMatchVerification.test.js` (retry adoption, failed float cleanup).
 

@@ -294,8 +294,10 @@ behaves like v1 (`admin-react` `AssessmentSelect.js`):
   uses (`createBankSectionFromSheet`). The section is then refilled from the saved
   bank's questions, so the float reuses that row instead of uploading the sheet again.
   admin-node's sheet path now needs only `entity_id` (`entity_name` was required but
-  only echoed). Wizard: admin DEV `0.1.16-custom.2`, admin UAT `0.1.12-custom.2`.
-  Corporate v2 (`0.1.2-bugfix.6`) still has the old disabled-for-sheets behaviour.
+  only echoed). Wizard: admin DEV `0.1.16-custom.2`, admin UAT `0.1.12-custom.2`,
+  corporate v2 DEV + UAT `0.1.2-bugfix.7` (same patch — each app vendors its own
+  tgz lineage, so a wizard fix has to be packed and bumped per app). Corporate's
+  route saves to the JWT's `corporate_id`; any `entityId` sent is ignored.
 - **Option text must be unique per question.** `question_options` has a partial unique
   index on `(questions_id, option_text) WHERE option_text <> ''` (DB-Scripts
   `20260916T105707Z`, DEV + UAT + PROD) — image-only (blank-text) options may repeat.
