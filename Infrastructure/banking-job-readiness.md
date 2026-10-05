@@ -2471,3 +2471,18 @@ my upstreamed fixes (`dc1e418`) and the admin-login guard are intact; overlays s
 Rehearsal: admin 81 assignable students, trainer 7, candidate 0; saved-video spoof blocked; core reads clean as every role.
 Verified: admin 5/5, e2e ×2, Coding Challenges 370, Save Module, Student Tier search, 12 admin sections with 0 errors.
 Snapshot `~/banking-sb/snapshots/20261005T034357Z`. Still open: `students` read/write `USING (true)`.
+
+## 2026-10-05 (later) — redeployed to `93994b4` (16 commits, 2 migrations as shipped)
+
+Upstream: Live Sessions calendar and invites (trainers invite their own/institute students; students see their mapped trainers),
+**simulation "unlocked mode"**: any signed-in student can practise every *published* simulation pack (open entries next to assigned
+ones, 99 attempts), and the quiz-score lock is removed (access is now plan/RBAC-menu based). Sim notes allow 20k chars (trimmed).
+
+| Migration | UAT action |
+|---|---|
+| `20261005053623` | As shipped: SECURITY DEFINER `list_live_session_invitees()` (admin all; trainer onboarded/junction/institute; institute role own institute) and `list_my_mapped_trainers()`. Live-session insert adds the `institute` role. RSVP insert by a trainer now requires the student to be one of their invitees (**narrower** than before) |
+| `20261005053649` | As shipped (revokes anon on both functions) |
+
+Rehearsal: admin 67 invitees, trainer 0, candidate 0; trainer RSVP for a non-invitee blocked; the policy→function call causes no recursion.
+Verified: admin 5/5, e2e ×2, Coding Challenges 370, Save Module, Student Tier search, 12 admin sections 0 errors, and `sim-generate-pack`
+still generates through the configured-providers fallback (test pack deleted). Snapshot `~/banking-sb/snapshots/20261005T061511Z`.
