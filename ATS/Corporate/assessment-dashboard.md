@@ -815,7 +815,8 @@ assessment is closed (a closed float can't be shared), same as before.
 ### Duplicate Assessment opens the wizard pre-filled (DEV code + UAT live, 2026-09-30)
 
 Confirm in the Duplicate dialog navigates to
-`/assessments/new?duplicateFrom=<float id>`. Nothing is written on Confirm:
+`/assessments/<float id>/duplicate` (the Create wizard with `duplicateFrom`
+passed as a prop). Nothing is written on Confirm:
 the wizard opens with the source's settings filled in, the recruiter adds
 candidates and dates (Step 3) and floats, and the normal float
 (`POST /api/assessments/mix-match` → admin-node `assignMixMatchAssessment`)
@@ -892,7 +893,7 @@ access is loading or unknown. The kebab is dropped entirely when it would be
 empty (closed float, no create and no manage access). This is UI visibility
 only, like the rest of that flag — the float route does not enforce it
 server-side (see `lib/api/assessmentCreationAccess.ts`). Opening
-`/assessments/new?duplicateFrom=…` directly still lands on the wizard page's
+`/assessments/<id>/duplicate` directly still lands on the wizard page's
 "Assessment creation is disabled" state.
 
 **Gotchas**
@@ -903,6 +904,11 @@ server-side (see `lib/api/assessmentCreationAccess.ts`). Opening
   the recruiter's edited name to the source title. Since 2026-10-05
   (`AssessmentWizard.tsx`, DEV + UAT) the loader is memoised on
   `duplicateFrom` alone.
+- **Never put the duplicate source in a query on `/assessments/new`.** It used
+  to be `?duplicateFrom=<id>`; Next 16's client router cache then answered a
+  later plain `router.push("/assessments/new")` (the list's Create button)
+  with the cached `?duplicateFrom=` URL, so Duplicate → Discard → Create
+  reopened the clone. Moved to its own path 2026-10-05 (DEV + UAT).
 - Duplicate lives in the kebab, which is hidden on closed floats unless
   `showManageWhenClosed` — so a Finished assessment can't be duplicated yet.
 - Floats from before the canonical Communication & Language parameter open
