@@ -2499,3 +2499,19 @@ student can access (`user_can_access_module`), and starting an unassigned pack's
 
 Verified: admin 5/5, e2e ×2, Coding Challenges 370, Save Module, Student Tier search, 13 admin sections (new "Masters") with 0 errors.
 Snapshot `~/banking-sb/snapshots/20261005T085409Z`. Still open: `students` read/write `USING (true)`.
+
+## 2026-10-05 (night) — redeployed to `36fb076` (upstream `6f41efd` + 1 fix pushed to main), no migrations
+
+Upstream: trainer/student login wiring, and non-UUID `created_by` / user ids filtered out of the module "Created by" filter and the simulation
+dashboard. **`candidate-otp-login` change:** trainer/institute-onboarded students (`students.onboarded_by` or `institute_id` set, row
+active) may log in even if their *profile* looks inactive, and on login the profile is re-approved, re-activated and given the trainer's or
+institute's plan (`subscription_tier`, else `institutes.default_plan_code`).
+
+**Fix pushed (`36fb076`):** that override also defeated **Admin → RBAC "Revoke ALL access"**, which writes only
+`profiles.is_active=false`. A revoked onboarded student could log in again and be silently re-activated. An explicit
+`profiles.is_active=false` now always blocks; only a stale `approval_status` is overridden. (`admin-user-actions` set_status writes both
+profiles and students, so it was never affected.) Verified live on `7738060032`: normal OTP login issues a session; with
+`is_active=false` the login is refused ("inactive or rejected") and the profile stays revoked; profile restored after the test.
+
+Verified: admin 5/5, e2e ×2, Coding Challenges 370, Save Module, Student Tier search, 13 admin sections 0 errors.
+Snapshot `~/banking-sb/snapshots/20261005T111510Z`. Still open: `students` read/write `USING (true)`.
