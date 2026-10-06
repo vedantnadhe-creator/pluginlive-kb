@@ -2515,3 +2515,22 @@ profiles and students, so it was never affected.) Verified live on `7738060032`:
 
 Verified: admin 5/5, e2e ×2, Coding Challenges 370, Save Module, Student Tier search, 13 admin sections 0 errors.
 Snapshot `~/banking-sb/snapshots/20261005T111510Z`. Still open: `students` read/write `USING (true)`.
+
+## 2026-10-06 — redeployed to `b60f146` (7 commits, 4 migrations as shipped)
+
+Upstream: persisted candidate video discoveries (`save_student_module_videos`, valid YouTube ids only, deduped, max 100/request),
+module-assignment reconciliation and counts, candidate narration (Gemini TTS Indian-English read-aloud prompt; `skipElevenLabs`
+option), console navigation fixes, display-name lookups, coding history queries. **Upstream adopted my 10-05 login fix**: new
+`_shared/login-account-status.ts` (`loginAccountStatus`) keeps `profiles.is_active=false` as a hard block. My other upstream fixes
+(sim-ai fallback, `toPublicUrl`, video-quiz fallback) and the admin-login guard are intact; overlays still 3.
+
+| Migration | UAT action |
+|---|---|
+| `20261005120000` (display names) | As shipped (staff-only gate kept) |
+| `20261006100000` (module hierarchy repair) | As shipped (file has its own BEGIN/COMMIT, stripped in rehearsal). New SECURITY INVOKER RPCs `replace_module_group_members` / `move_module_group_member` (all writes still go through the caller's RLS). **`private.user_can_access_module` tightened:** self-granted `user_module_access` rows (`granted_by = user_id`, 72 on UAT) no longer grant access, and only published/active groups count. Measured: candidate×module visible pairs **1,036 → 932** |
+| `20261006101000` (quiz bank module identity) | As shipped (`quiz_question_bank.source_module_id`) |
+| `20261006120000` (student video retention) | As shipped |
+
+Verified: admin 5/5, e2e ×2, Coding Challenges 370, Save Module, Student Tier search, **all 37 admin pages** (expanded sidebar) with 0 errors.
+Note: the 2 `admin_error_logs` "Network error: Failed to fetch" rows per Save Module check are aborted requests from the test's own navigation (seen before the deploy too).
+Snapshot `~/banking-sb/snapshots/20261006T151721Z`. Still open: `students` read/write `USING (true)`.
