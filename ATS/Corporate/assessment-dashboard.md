@@ -1899,6 +1899,16 @@ saw `cancelledAt: undefined` — the schedule's `statusOf` could never say
 "cancelled" either. Fixed by selecting `f.cancelled_at` (corporate-node
 `4a74c2b8` + `2b34e04e` on Development; UAT `8c5774b0` + `6e838baa`).
 
+### List "Ends in 7 / 30 days" filter excludes ended assessments (DEV + UAT, 2026-10-06; PROD pending)
+
+The assessments list's Validity filter (`Ends in 7 days`, `Ends in 30 days`,
+`Already ended`) is client-side (`useAssessmentFilters.ts → matchesValidity`).
+It used `daysUntil`, which rounds **up** — so an assessment that ended under 24h
+ago read `-0` days, and `-0 >= 0` kept it in "Ends in 7/30 days" (and out of
+"Already ended"). Ended-ness is now decided off the raw end time; the day count
+only bounds the upper limit. corporate-react-v2 `15e7c6e` (Development) /
+`4a0e922` (UAT).
+
 ### Reopen has to CLEAR the cancellation (DEV + UAT, 2026-09-08; PROD pending)
 
 Reopening a cancelled assessment did nothing you could see. The call returned
