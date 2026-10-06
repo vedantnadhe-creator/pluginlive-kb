@@ -190,22 +190,51 @@ The router picks the change up within ~60s (DB poll), no restart needed. Both en
 
 **Gotcha — Gemini 3 Flash spends output budget on thinking.** A scoring call with a tight `max_tokens` can return `content: null` (a 300-token structured-output call came back empty; 800 was fine). The swapped call sites set no `max_output_tokens`, so they are unaffected — but do not add a tight cap to them.
 
-## Cross-provider fallback: OpenAI gpt-5.6-luna (2026-08-12)
+## Cross-provider fallback: Gemini → OpenAI (rewritten 2026-10-06; DEV + UAT, PROD pending)
 
-DEV + UAT now chain every Gemini group out to OpenAI so a full Google outage still serves. The in-provider hop to `gemini-2.5-flash` stays first (cheaper, same account, absorbs single-model blips without crossing providers); `gpt-5.6-luna` is the last resort:
+Every Gemini group falls straight to the OpenAI model that passed the 2026-10-06 quality screen for its tasks. This replaced the 2026-08-12 chains, which ended at `gpt-5.6-luna` and never worked (that key's OpenAI billing is inactive).
 
 ```yaml
-fallbacks:
-  - gemini-3-flash-preview: ["gemini-2.5-flash", "gpt-5.6-luna"]
-  - gemini-2.5-flash: ["gpt-5.6-luna"]
-  - gemini-2.5-pro: ["gemini-2.5-flash", "gpt-5.6-luna"]
-  - gemini-2.5-flash-lite: ["gemini-2.5-flash", "gpt-5.6-luna"]
-  - gemini-2.0-flash: ["gemini-2.5-flash", "gpt-5.6-luna"]
+litellm_settings:
+  callbacks: pl_openai_fallback.proxy_handler_instance
+router_settings:
+  fallbacks:
+    - gemini-3-flash-preview: ["gpt-5.4-mini"]
+    - gemini-3.8-flash: ["gpt-5.4-mini"]
+    - gemini-3.1-flash-lite: ["gpt-6-luna"]
+    - gemini-2.5-flash: ["gpt-6-luna"]
+    - gemini-2.5-flash-lite: ["gpt-6-luna"]
+    - gemini-2.0-flash: ["gpt-6-luna"]
+    - gemini-2.5-pro: ["gemini-2.5-flash"]   # AI Interview listener (audio): no OpenAI hop
 ```
 
-`router_settings` lives in `config.yaml`, so this needs `docker restart litellm` (unlike DB-managed models). Luna was chosen over Terra/Sol because the primary is now a Flash-tier model: Luna is $0.20/$1.20 per 1M tokens vs `gemini-3-flash-preview`, where Terra ($2/$12) and Sol ($5/$30) would be a large cost jump on the failure path.
+- **Models:** `gpt-5.4-mini` and `gpt-6-luna` are DB-managed rows on DEV and UAT, using the funded OpenAI key taken from UAT's `gpt-5-mini` row. `gpt-5.6-luna` is still registered but is no longer in any chain.
+- **Why OpenAI is the first hop:** it covers a single-model blip and a full Google outage the same way. LiteLLM can follow nested chains, so a Gemini hop in between made it unclear which model a task finally landed on.
+- **Per-task overrides in code:** these take precedence over the per-model chain.
+  - Live AI Interview calls: 12 s per attempt, then `gpt-5.4-mini` / `gpt-6-luna` with reasoning `none`.
+  - score-final: `gpt-6-luna` with reasoning `low`. The per-model chain would give `gpt-5.4-mini` with reasoning off, which was lenient and missed the non-engagement cap.
+  - See *Assessment/ai-interview.md*.
 
-**NOT YET FUNCTIONAL — OpenAI billing is inactive.** The only valid OpenAI key on the estate (`api/form-data-normalization/.env`) authenticates and lists all 132 models including `gpt-5.6-luna`, but every completion returns `billing_not_active` ("Your account is not active"). The chain is wired correctly and reaches Luna — verified by forcing the route — it just dies at the provider. Nothing is degraded meanwhile: Gemini serves normally and `gemini-2.5-flash` remains a working intermediate fallback. Activate billing (or swap in a funded key via the dashboard) to make it live. PROD has no OpenAI fallback configured.
+### `pl_openai_fallback.py`: why a plain OpenAI fallback fails
+
+Every service sends Gemini-shaped parameters, and OpenAI 400s on each of them, so the fallback failed a second time. This was verified on DEV:
+- `reasoning_effort: "disable"` and Gemini thinking budgets (`thinking_config` / `thinkingConfig`): unsupported values.
+- `max_tokens`: these models require `max_completion_tokens`.
+- `temperature` while reasoning is on: only the default is accepted.
+- Strict `json_schema` built for Gemini: OpenAI strict mode needs `additionalProperties: false` and every property required.
+
+The hook (`async_pre_call_deployment_hook`) runs only for `gpt-5.4-mini` and `gpt-6-luna` deployments and rewrites those parameters just before the call. Gemini calls are never touched. It handles:
+- **No-thinking requests become `reasoning_effort: "none"`.** It is sent inside `extra_body`. **Gotcha:** if a `temperature` is present, LiteLLM loses a top-level `"none"` for the gpt-5 family, and OpenAI then rejects the temperature.
+- **`max_tokens` becomes `max_completion_tokens`**, raised to at least 4096 when reasoning is on.
+- **Strict schemas become `strict: false`.**
+
+Things that did **not** work:
+- A deployment-level `reasoning_effort` in `litellm_params`: never forwarded.
+- `additional_drop_params`: drops the value we set too.
+
+**Files:** `/home/ubuntu/litellm/pl_openai_fallback.py`, plus `test_pl_openai_fallback.py` (stubbed unit test) and `check_fallbacks.py` (forces each Gemini group to time out via `mock_timeout` and asserts an OpenAI model answered). They are on both the DEV box and the UAT box. **Deploy trap:** the hook is `docker cp`'d into the container at `/app/`. It survives `docker restart`, but **not a container recreate**. After a recreate, copy it again or mount it, otherwise the proxy fails to load the callback.
+
+Verified 2026-10-06 on both environments: all six Gemini groups answered from OpenAI under a forced timeout. Audio input sent to an OpenAI fallback is **rejected** (400), not answered, so a text model can never invent a listener score. Services covered: everything that routes through the gateway (`fastapi-ai-engine`, `form-data-normalization` and its workers, `pg-vector-api-service`, `corporate-node-v2`, `Llama-JD-Parser`, admin Ask Oli). Embeddings are not chained, by decision. PROD still has Gemini → Gemini only; it needs the two models registered, the hook and the chains, and sign-off on sending candidate data to OpenAI (data residency).
 
 ### Joining a cost back to a candidate / corporate / institute
 
