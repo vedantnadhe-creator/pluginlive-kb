@@ -565,6 +565,8 @@ Different sub-questions may legitimately share an answer such as “runs”. Non
 
 Migration: `DB-Scripts/Communication Hinglish Merge/20261006T054722Z__scope_question_option_uniqueness_to_subquestion.sql`. This behavior and migration are deployed to DEV and UAT; **PROD remains pending**.
 
+Release verification: 19 targeted tests passed. Live DEV and UAT checks verified repeated-key persistence, duplicate rejection within an actual question, stored-key scoring without LLM calls, A2 alternative-answer delegation, and English/Hinglish answer-only generation. Synthetic evaluator requests accepted a valid alternative and rejected a wrong answer; database fixtures were rolled back or deleted.
+
 #### Speaking STT — Language Routing (`responseLanguage`)
 
 Spoken sections (chiefly **Video Response**) route to different STT engines based on the assignment's **response language**:
