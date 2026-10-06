@@ -5,7 +5,7 @@ Behavioural / integrity proctoring that runs **silently during an assessment** a
 > **Candidate enforcement (DEV + UAT, 2026-08-27):** auto-submit now occurs on the fourth counted violation, with a blocking five-second acknowledgement modal before submission. See [Auto-submit on the Fourth Proctoring Violation](fourth-violation-auto-submit.md). This does not change report-only signal collection. PROD is pending.
 
 **Live on:** DEV + UAT. PROD pending.
-**Enabled for assessment types:** Aptitude, AI Interview, Communication, Role_Based (the `PROCTORED_TYPES` set in `student-node/app/models/ProctoringReport.js`). Other types are short-circuited.
+**Enabled for assessment types:** Aptitude, AI Interview, Communication, Role_Based, Custom_Assessment (the `PROCTORED_TYPES` set in `student-node/app/models/ProctoringReport.js`, mirrored in `app/queues/proctoringWorker.js`). Other types are short-circuited. Custom was added 2026-10-06 (DEV + UAT, PROD pending): its candidates always uploaded snapshots, but no `proctoring_reports` row was ever written, so the corporate roster column, drawer and Excel export showed a blank Proctoring status. Custom attempts submitted before that deploy still have no report until finalization is re-run for them (`finalizeProctoringReport(id)`).
 
 ## What it detects
 
@@ -77,7 +77,7 @@ timeline (student-node DEV `99cd0f74` / UAT `833fe185`, admin-node DEV `0c268e5`
 **Known double count:** client `no_face` (collector) and server `no_face` (snapshot CV) both add into the same
 timed rule, so an absence reaches the 45 cap at roughly half the real time. Not yet resolved.
 
-The one-minute proctoring cron is now recovery-only. It performs no CV or report calculation itself: it re-enqueues up to 500 `face_detected=-1` snapshots and completed, ended sessions missing validity/report output. Finalization recovery is restricted to the four report-supported types (`Aptitude`, `AI_Interview`, `Communication`, `Role_Based`), preventing unsupported Custom/Hinglish rows from churning forever. Stable job IDs make upload, submit, worker follow-up and sweep recovery safe to repeat. The separate ten-minute task resets orphaned `-2` processing locks after a crashed worker; the next recovery sweep re-enqueues them.
+The one-minute proctoring cron is now recovery-only. It performs no CV or report calculation itself: it re-enqueues up to 500 `face_detected=-1` snapshots and completed, ended sessions missing validity/report output. Finalization recovery is restricted to the report-supported types (`Aptitude`, `AI_Interview`, `Communication`, `Role_Based`, and `Custom_Assessment` since 2026-10-06), preventing unsupported Hinglish rows from churning forever. Stable job IDs make upload, submit, worker follow-up and sweep recovery safe to repeat. The separate ten-minute task resets orphaned `-2` processing locks after a crashed worker; the next recovery sweep re-enqueues them.
 
 ## Database (`assessment` schema)
 - `proctoring_logs`, `proctoring_snapshots` — session + per-frame CV (pre-existing).

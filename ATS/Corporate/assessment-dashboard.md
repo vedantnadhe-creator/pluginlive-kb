@@ -315,7 +315,19 @@ candidate gets the icon. PDF parts go through `/api/assessments/[id]/candidates/
 roster). The header carries an ASCII-slug `filename="…"` plus RFC 5987 `filename*` so
 non-latin names can't `ERR_INVALID_CHAR` 500. Gotcha: the drawer's `ReportDownloadMenu`
 reads only `filename="…"` and prefers it over its own fallback, so the server header
-is the single source of the saved name (accented letters become `-`).
+is the single source of the saved name (accented letters become `-`) — **except the
+Custom Excel sheet**: admin-node names that export after the whole assessment
+(`<Assessment>_<Type>_<date>.xlsx`), so since 2026-10-06 (corporate-react-v2 `534000a`
+DEV, `6891a1d` UAT; PROD pending) the drawer ignores the header for Excel parts and saves
+`<assessment>-<candidate>-report.xlsx` from its own `fallbackName`.
+
+**Custom duration** (corporate-node `72cfd742` DEV, `33987f4f` UAT, 2026-10-06; PROD
+pending). `CorporateAssessmentV2.getPartMetadata` — the one query behind the list, the
+detail/Manage drawer and the dashboard week rail/schedule — now reads a Custom part's
+clock as `SUM(custom_assessment_config.time_in_minutes)` over the served set's
+`custom_config_set_map` rows (the same sum student-node's `MixMatchJourney` gives the
+candidate). Before this, Custom had no stored or derivable duration and every Duration
+cell for a Custom float was blank.
 
 ### Assessments list reads in ms (corporate-node DEV+UAT 2026-09-28, PROD pending)
 

@@ -330,3 +330,16 @@ behaves like v1 (`admin-react` `AssessmentSelect.js`):
   now answers errors (it used to rethrow).
 - Instructions: v2 has one optional "Additional Instructions" field; v1's per-type
   default instruction text for Custom is not carried over.
+
+## Corporate QA fixes (DEV + UAT, 2026-10-06; PROD pending)
+
+- **Proctoring report now built for Custom.** `Custom_Assessment` joined student-node's
+  `PROCTORED_TYPES` (ProctoringReport model + proctoring worker); submit already enqueued
+  finalization, the worker just skipped the type. Roster column, drawer and Excel
+  "Proctoring Status" now fill. Attempts submitted earlier stay blank until
+  `finalizeProctoringReport` is re-run for them. See `Assessment/proctoring.md`.
+- **Duration** = sum of the sections' `time_in_minutes` (corporate-node
+  `getPartMetadata`) — list, Manage drawer and dashboard no longer blank.
+- **Drawer download filename** = `<assessment>-<candidate>-report.xlsx`.
+- Open: "short answers not given shown as 0" on the corp dashboard — not reproduced yet.
+
