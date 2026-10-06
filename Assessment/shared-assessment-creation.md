@@ -129,3 +129,20 @@ end date" when blank. Entered values must still be > 0.
   still allowed. The corporate BFF (`/api/assessments/mix-match`) enforces the same rule on the server
   — see ATS/Corporate/assessment-dashboard.md → Data model traps.
 - corporate-react-v2 DEV `df6f74f`, UAT `14b944c`. Admin lineage unchanged.
+
+### 2026-10-06 — Review step shows "Candidate validity" once (DEV + UAT, PROD pending)
+
+The corporate Review and Float card rendered the Candidate validity row twice: under Corporate
+name ("N days from start or date added") and again under Start → End date ("N days from date
+added"). The second row is removed from `StepReviewAndFloat.tsx`; the one under Corporate name is the
+only one left ("Until assessment end date" when blank).
+
+| App / env | Wizard | design-system commit | App commit |
+|---|---|---|---|
+| corporate-react-v2 DEV / UAT | 0.1.2-bugfix.9 | `fix/rb-jd-attach-0.1.2` `7624c0e` | `fe4d7d9` / `4d8ed9b` |
+| admin-react-v2 DEV | 0.1.16-custom.3 | `fix/custom-parity-0.1.16` `e713fbb` | `e0c3492` |
+| admin-react-v2 UAT | 0.1.12-custom.3 | `fix/custom-parity-0.1.12` `1bc0731` | `4e66dbf` |
+
+The design-system branches are local worktrees on the DEV box (`~/worktrees/ds-rb-jd-attach`,
+`ds-custom-parity-admin`, `ds-custom-parity-admin-uat`). Each compiled bundle contains exactly one
+validity string. The UAT bundles have no DEV URLs.
