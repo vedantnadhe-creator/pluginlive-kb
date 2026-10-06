@@ -1885,6 +1885,20 @@ dashboard) so the status cannot disagree between screens, and the list has a
 **No backfill.** Rows cancelled before the column read NULL and keep saying
 Expired.
 
+### Cancelled assessments stay off the calendar (DEV + UAT, 2026-10-06; PROD pending)
+
+The dashboard's **This week** rail (`dashboard/v2/summary` → `week`) and the
+full schedule (`dashboard/v2/schedule`) now drop any float with `cancelled_at`
+set (for a mix & match float, any cancelled part — `MAX(cancelled_at)`, same as
+the list). Before this, a float cancelled mid-window kept showing on every day of
+its window.
+
+Gotcha behind it: `getPartCandidateGrain` aggregated `cancelled_at` in
+`float_rows` but the **final SELECT never returned it**, so `foldFloats` always
+saw `cancelledAt: undefined` — the schedule's `statusOf` could never say
+"cancelled" either. Fixed by selecting `f.cancelled_at` (corporate-node
+`4a74c2b8` + `2b34e04e` on Development; UAT `8c5774b0` + `6e838baa`).
+
 ### Reopen has to CLEAR the cancellation (DEV + UAT, 2026-09-08; PROD pending)
 
 Reopening a cancelled assessment did nothing you could see. The call returned

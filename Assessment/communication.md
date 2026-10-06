@@ -551,9 +551,19 @@ Scoring happens in two layers: **Node.js orchestration** and **FastAPI AI analys
 | `calculateQuestionBasedResponseScore()` | Sends image + text response to FastAPI for AI evaluation. |
 | `calculateEmailWritingScore()` | Sends email content + prompt to FastAPI for writing quality analysis. |
 | `calculateDictationScore()` | Sends user answer + reference to FastAPI for text comparison scoring. |
-| `calculateSentenceCompletionScore()` | Sends fill-in-the-blank answers to FastAPI for evaluation. |
+| `calculateSentenceCompletionScore()` | Accepts a normalized stored-answer match locally; sends other attempted answers to FastAPI at the set’s CEFR level. |
 | `calculateSentenceBuildScore()` | Local scoring — normalizes and compares word order against correct answer. |
 | `storeCommunicationScores()` | Stores all section scores in `communicationScores` table. Handles retakes (dedup). |
+
+#### Sentence Completion — stored answers and repeated keys (DEV/UAT, 2026-10-06)
+
+Sentence Completion is a typed-answer task. Generation requests only `sentence` and `answer`, without distractors. The API retains a singleton `options: [answer]` for the existing admin preview; both assignment paths and the pool-generation cron persist exactly one correct answer per sub-question. Legacy distractors are ignored when creating new sets.
+
+Evaluation first trims the attempted answer and compares it to the stored correct answer, ignoring case and outer whitespace. A match is correct without an LLM call. A nonmatching answer (or a missing stored key) goes to the existing FastAPI evaluator at the assessment set’s CEFR level, defaulting to B1 when absent. Blank and not-attempted answers skip the LLM. The existing five-question score denominator is unchanged.
+
+Different sub-questions may legitimately share an answer such as “runs”. Non-empty option uniqueness is scoped to `(questions_id, sub_questions_id, option_text)` for sub-questions and `(questions_id, option_text)` for standalone questions. Duplicates within the same actual question remain forbidden; empty image-option text remains exempt. Existing option rows are preserved.
+
+Migration: `DB-Scripts/Communication Hinglish Merge/20261006T054722Z__scope_question_option_uniqueness_to_subquestion.sql`. This behavior and migration are deployed to DEV and UAT; **PROD remains pending**.
 
 #### Speaking STT — Language Routing (`responseLanguage`)
 
