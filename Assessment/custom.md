@@ -341,5 +341,8 @@ behaves like v1 (`admin-react` `AssessmentSelect.js`):
 - **Duration** = sum of the sections' `time_in_minutes` (corporate-node
   `getPartMetadata`) — list, Manage drawer and dashboard no longer blank.
 - **Drawer download filename** = `<assessment>-<candidate>-report.xlsx`.
-- Open: "short answers not given shown as 0" on the corp dashboard — not reproduced yet.
+- **Section subtitle lists only the kinds present** (corporate-react-v2 `4becbbd` DEV,
+  `83c1b84` UAT): the drawer's Detailed Analysis used to read "6 multiple-choice • 0
+  short-answer", which QA took for a zero score; a section with no short answers now
+  reads "6 multiple-choice".
 
