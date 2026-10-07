@@ -521,3 +521,34 @@ raw `score`. The former frontend `_difficulty.ts` stable-hash placeholders were 
 
 Shipped to DEV (`institute-node` `0589a6e`, `institute-react-v2` `201798e`) and UAT
 (`institute-node` merge `e194913`, `institute-react-v2` merge `8528236`).
+
+## TPO v2 assessments refinements + per-type completion (2026-10-07, DEV + UAT; PROD pending)
+
+institute-react-v2 Development `c9aa155` / UAT `5ae5279`; institute-node Development `5fd244d` / UAT `75fbc5c`.
+Both were cherry-picked onto UAT on their own, because UAT and Development have diverged. Three
+Development-only Schedules column layout fixes (`2519f92`, `b6bb95d`, `3d6aa48`) are **not** on UAT.
+
+- **Assessment Schedules list state lives in the URL.** Filters, search, status tab, schedule-wise or
+  student-wise view, sort, scroll position and loaded rows survive a detail round-trip, browser Back and a
+  reload, and can be bookmarked or shared. The bare `/assessments` back links restore the last state from
+  sessionStorage. Implemented in `assessments/_hooks/useListPersistence.ts`, which has a test.
+- **Student-wise table:**
+  - The "Assessments taken / sent" column is renamed **Assessment Completion**.
+  - Hovering the Communication or Aptitude cell shows a list card titled with the type, one row per section with its %.
+  - Score bars have a fixed width and a visible track. Score and delta share one row, with the level below.
+  - The Communication and Aptitude columns are 20% wide, and the Consistency trend is right-aligned.
+- **Assessment Completion hover** lists each assessment type as **Taken**/Sent and is headed "Taken / Sent".
+  It reads the new `attemptsBreakdown: [{ type, sent, taken }]` on each institute-node student-wise row
+  (`app/models/StudentWiseV2.js`). The breakdown is counted under the same Sent/Taken contract as the
+  overall totals (see above), so a type's Taken can never exceed its Sent. The change is additive:
+  `attemptsByType` and the other existing fields are unchanged.
+- **Schedule details drawer (`OccurrenceDrawer`):**
+  - Sort controls match corporate-v2.
+  - Difficulty / Score and Sent / Taken sort independently.
+  - The separate Score column is removed.
+- **Student detail drawer, schedule-wise table:** the Score / Progress column is removed.
+- **Schedule-wise performance modal (`ScheduleDetailDialog`):**
+  - The Progress score KPI is removed.
+  - The "Overall Performance" card is now **Performance** and shows the difficulty-based score, not the progress score.
+- **Analytics drawer:** student names link to the student's report page.
+- **Dashboard Active schedules:** in "Recently sent" mode, recurring rows show "Next Scheduled on: <date>".
