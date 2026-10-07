@@ -190,7 +190,7 @@ The router picks the change up within ~60s (DB poll), no restart needed. Both en
 
 **Gotcha — Gemini 3 Flash spends output budget on thinking.** A scoring call with a tight `max_tokens` can return `content: null` (a 300-token structured-output call came back empty; 800 was fine). The swapped call sites set no `max_output_tokens`, so they are unaffected — but do not add a tight cap to them.
 
-## Cross-provider fallback: Gemini → OpenAI (rewritten 2026-10-06; DEV + UAT, PROD pending)
+## Cross-provider fallback: Gemini → OpenAI (rewritten 2026-10-06; DEV + UAT 2026-10-06, PROD 2026-10-07)
 
 Every Gemini group falls straight to the OpenAI model that passed the 2026-10-06 quality screen for its tasks. This replaced the 2026-08-12 chains, which ended at `gpt-5.6-luna` and never worked (that key's OpenAI billing is inactive).
 
@@ -234,7 +234,14 @@ Things that did **not** work:
 
 **Files:** `/home/ubuntu/litellm/pl_openai_fallback.py`, plus `test_pl_openai_fallback.py` (stubbed unit test) and `check_fallbacks.py` (forces each Gemini group to time out via `mock_timeout` and asserts an OpenAI model answered). They are on both the DEV box and the UAT box. **Recreating the gateway: use `~/litellm/run.sh` on each box (DEV + UAT, since 2026-10-06).** It bind-mounts `config.yaml` **and** `pl_openai_fallback.py` (read-only) into `/app/`, so a recreate can no longer drop the hook; it also keeps the network (`litellm-net`), ports (`127.0.0.1:4000`, `172.17.0.1:4000`), restart policy and log rotation. Env comes from `~/litellm/litellm.env` (chmod 600): the 9 variables captured from the running container, including `DATABASE_URL`, `GEMINI_API_KEY`, `OPENAI_API_KEY` and `GROQ_API_KEY`. The older `secrets.env` holds only the master key and UI login, so **do not recreate from it**. `run.sh` refuses to run if `litellm.env` is missing or the hook unit test fails, and it reuses the image the current container runs, so a recreate never upgrades LiteLLM by accident (`LITELLM_IMAGE=... ./run.sh` to upgrade on purpose). Edit the hook in `~/litellm/`, then `docker restart litellm`. After any recreate, run `python3 ~/litellm/check_fallbacks.py <vkey-file>`: it should report 6 PASS.
 
-Verified 2026-10-06 on both environments: all six Gemini groups answered from OpenAI under a forced timeout. Audio input sent to an OpenAI fallback is **rejected** (400), not answered, so a text model can never invent a listener score. Services covered: everything that routes through the gateway (`fastapi-ai-engine`, `form-data-normalization` and its workers, `pg-vector-api-service`, `corporate-node-v2`, `Llama-JD-Parser`, admin Ask Oli). Embeddings are not chained, by decision. PROD still has Gemini → Gemini only; it needs the two models registered, the hook and the chains, and sign-off on sending candidate data to OpenAI (data residency).
+Verified 2026-10-06 on both environments: all six Gemini groups answered from OpenAI under a forced timeout. Audio input sent to an OpenAI fallback is **rejected** (400), not answered, so a text model can never invent a listener score. Services covered: everything that routes through the gateway (`fastapi-ai-engine`, `form-data-normalization` and its workers, `pg-vector-api-service`, `corporate-node-v2`, `Llama-JD-Parser`, admin Ask Oli). Embeddings are not chained, by decision. **PROD (2026-10-07):**
+- **Models and chains:** the two models are registered as DB rows using the funded key from PROD's `gpt-5-mini` row, and the same chains are in ConfigMap `litellm-config`.
+- **Hook:** it lives in ConfigMap `litellm-fallback-hook` and is mounted with `subPath` at `/app/pl_openai_fallback.py`.
+- **Image pinned:** the deployment image is pinned to digest `litellm@sha256:4d7ced46…` because `imagePullPolicy` is `IfNotPresent`, so a pod on another node would otherwise pull whatever `main-stable` is now.
+- **Manifests:** in `~/pl-oks-cluster/api-ns/litellm/` (`litellm.yaml`, `litellm-configmap.yaml`, `litellm-fallback-hook-configmap.yaml`, plus `pl_openai_fallback.py`, `test_pl_openai_fallback.py`, `check_fallbacks.py`). Pre-change backups: `~/cm-backups/litellm-20261007T053201Z/`.
+- **To change the hook:** edit `pl_openai_fallback.py`, regenerate the ConfigMap (`kubectl create configmap litellm-fallback-hook -n api --from-file=pl_openai_fallback.py --dry-run=client -o yaml > litellm-fallback-hook-configmap.yaml`), apply it, then `kubectl -n api rollout restart deploy/litellm`.
+- **Verified:** 6/6 forced fallbacks inside the pod using fastapi's PROD gateway key; normal traffic still served by Gemini.
+- **Data residency:** candidate data now reaches OpenAI (US) whenever Gemini fails. This was flagged and accepted on 2026-10-07; Gemini via AI Studio is itself a global endpoint.
 
 ### Joining a cost back to a candidate / corporate / institute
 
