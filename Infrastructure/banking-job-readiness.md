@@ -2593,3 +2593,18 @@ Known gap (not fixed): Bulk Assign lists every profile, including staff. Roles c
 
 Verified: admin 5/5; headless: Module Groups shows 1 Draft badge + Publish (Banking Testing); Bulk Assign Draft badge + warning; 0 page errors.
 Snapshot `~/banking-sb/snapshots/20261007T123153Z`.
+
+## 2026-10-07 (night) — redeployed to `937135a` (7 commits)
+
+- **Migration `20261007132257`** (as shipped, no fixup): rewrites `private.user_can_access_module` so cohort/institute group
+  assignments also match a candidate through `profiles` when there is no `students` row (institute_id, `profiles.institute` as
+  college, `profiles.course` as degree) and picks the oldest `students` row deterministically. Rehearsed in BEGIN…ROLLBACK:
+  user×module visible pairs **1,833 → 1,833** (no gains or losses on UAT data); candidate reads modules/topics/assessments clean.
+- Frontend (Lovable): Group Assign surfaces delete/insert errors and fires `lovable:modules-updated` so open journeys refresh;
+  Module Groups revoke surfaces errors; candidate **My Trainer Curricula** also shows curricula returned by the
+  `my_assigned_curricula()` RPC (server rule `student_has_curriculum`). The 4480728 draft-group fix is intact.
+- `scripts/release/paste/probe-*.sql` read-only probes for the hosted project's migration ledger and live
+  `user_can_access_module` body (not run on UAT); QA load-spec tweak.
+
+Verified: admin 5/5; Module Groups Draft badge + Publish and Bulk Assign draft warning still present; 0 page errors; live function has
+the profile fallback; `my_assigned_curricula()` callable as a candidate. Snapshot `~/banking-sb/snapshots/20261007T134509Z`.
