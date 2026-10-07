@@ -2565,3 +2565,31 @@ No migrations, function, dependency or `.env` changes; the frontend bundle is un
 
 Verified: admin 5/5, e2e ×2, Coding Challenges 370, Save Module, Student Tier search, all 44 admin pages 0 errors.
 Snapshot `~/banking-sb/snapshots/20261007T122203Z`. Still open: `students` read/write `USING (true)`.
+
+## 2026-10-07 (eve) — deployed `4480728`: mapped module groups invisible to candidates (draft status)
+
+**Symptom:** a candidate mapped to a Module Group (Group Mapping → Bulk Assign) saw none of its modules in the journey.
+**Cause:** `module_groups.status` defaults to `'draft'`, and **Curriculum Setup → Module Groups** (`AdminModuleGroups.tsx`) created
+groups without a status and had no publish control (the pil-admin `ModuleGroupsManager` sets `published`). Both the journey hook
+(`useAssignedModuleIds`) and RLS (`private.user_can_access_module`, see the 10-06 tightening above) count only published/active
+groups, so the mapping rows existed but granted nothing. On UAT, 10 draft groups held ~92 candidate mappings.
+
+Fix (frontend only, no migration):
+- New groups are created `published`; save errors are now surfaced instead of a false "Group saved".
+- Draft groups show a **"Draft · hidden from candidates"** badge and a **Publish** button on the Module Groups page.
+- Bulk Assign shows a **Draft** badge per group and a red "Draft group selected" warning in Preview.
+- One shared rule `isModuleGroupLive()` (`src/lib/moduleAssignments.ts`, mirrors the RLS check) used by the hook and both admin screens.
+
+Data fix on UAT: 9 draft groups set to `published` (MBA - Finance - 1st Semester, Axis Securities, AQM Technologies, Life Insurance,
+Yes Securities, Industrial Engineering & Management, Orientation & Wealth Sales Foundation, Syrma SGS - Tech Skills, Equity Derivatives
+Certification Examination). "Banking Testing" (0 modules) left draft. Previous statuses in `public._bak_module_groups_status_20261007`.
+Verified as the candidate under RLS: the MBA module became visible (11 → 13 visible modules).
+
+**Hosted/PROD:** the same code defect exists there, and draft groups mapped to candidates will need publishing (via the new Publish
+button once hosted is deployed).
+
+Known gap (not fixed): Bulk Assign lists every profile, including staff. Roles can't separate them because staff accounts also carry
+`candidate`/`student` in `user_roles`.
+
+Verified: admin 5/5; headless: Module Groups shows 1 Draft badge + Publish (Banking Testing); Bulk Assign Draft badge + warning; 0 page errors.
+Snapshot `~/banking-sb/snapshots/20261007T123153Z`.
