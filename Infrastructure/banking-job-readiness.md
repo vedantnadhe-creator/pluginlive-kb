@@ -2620,3 +2620,20 @@ The only new commit for this deploy was a release-probe tweak (`631a9a36`); the 
 Visibility now: candidate×module **986** (was 960; +26 from profile-based matching), candidate×assessment **1,735**.
 Verified: admin 5/5, e2e ×2, Coding Challenges 370, Save Module, Student Tier search, 44 admin pages 0 errors.
 Snapshot `~/banking-sb/snapshots/20261007T155823Z`. Still open: `students` read/write `USING (true)`.
+
+## 2026-10-07 (night) — redeployed to `d35998ab` (16 commits, no Supabase migrations)
+
+Upstream: deadlines section / smart reminders, refined trainer assign panel, curriculum content studio with background build polling
+(`build-curriculum-from-content`), LLM Config provider picks, institute→department change in a form. All my guards and upstreamed fixes intact; overlays 3.
+
+**Not applied on UAT, deliberately:** `drizzle/migrations/0000_assessment_uploads_policies.sql` (commit `c38fb314` "Fixed upload storage
+area"). It grants **every signed-in user read on the whole `assessment-uploads` bucket**, which holds candidates' recorded assessment answers
+(`StudentAssessmentTaker`) and trainer curriculum files. UAT already has scoped `storage_assessment_uploads_scoped_read/_write` (admin,
+own-uid folder, trainer-curricula). Raise with the team before hosted keeps it.
+
+**Deploy script change:** `package.json` gained dev-only drizzle/postgres deps without a regenerated `package-lock.json`; `npm ci` would refuse.
+`deploy.sh` now runs `npm ci` only when `package-lock.json` changes (`~/banking-checks/deploy.sh` → `~/banking-sb/deploy.sh`).
+
+Verified: admin 5/5, e2e ×2, Coding Challenges 370, Save Module (the first listed module is now a new group-less one, so no
+group-items POST, which is expected and was confirmed against the pre-deploy dump), Student Tier search, 44 admin pages 0 errors.
+Snapshot `~/banking-sb/snapshots/20261007T183412Z`. Still open: `students` read/write `USING (true)`.
