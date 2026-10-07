@@ -2553,3 +2553,15 @@ cohorts, and is blocked for another college or a department across all colleges;
 `~/banking-sb/snapshots/20261007T083247Z-premig`; deploy snapshot `20261007T083249Z`.
 Verified: admin 5/5, e2e ×2, Coding Challenges 370, Save Module, Student Tier search, all 44 admin pages 0 errors.
 Still open: `students` read/write `USING (true)`.
+
+## 2026-10-07 (pm) — redeployed to `5978c42` (4 commits: release scripts + e2e tests only)
+
+No migrations, function, dependency or `.env` changes; the frontend bundle is unchanged (`index-D3b-SqAu.js`). Added:
+- `scripts/release/` paste-ready SQL for the **hosted** project. `5978c42` records that hosted still had the broken
+  `private.user_can_access_assessment` from `20261007082238` (3 draft assessments candidate-visible) and was repaired with the body of my
+  follow-up `20261007090000`. Running their read-only `probe-assessment-gate.sql` on UAT returns `gate_student_visible=1
+  gate_is_published=1 gate_body_chars=548`, i.e. UAT already has the correct gate. These scripts are **not** run on UAT.
+- `tests/e2e/qa-*` Playwright journeys (student/trainer/admin, transactions, load) on a mocked backend.
+
+Verified: admin 5/5, e2e ×2, Coding Challenges 370, Save Module, Student Tier search, all 44 admin pages 0 errors.
+Snapshot `~/banking-sb/snapshots/20261007T122203Z`. Still open: `students` read/write `USING (true)`.
