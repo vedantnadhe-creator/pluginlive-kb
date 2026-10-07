@@ -2608,3 +2608,15 @@ Snapshot `~/banking-sb/snapshots/20261007T123153Z`.
 
 Verified: admin 5/5; Module Groups Draft badge + Publish and Bulk Assign draft warning still present; 0 page errors; live function has
 the profile fallback; `my_assigned_curricula()` callable as a candidate. Snapshot `~/banking-sb/snapshots/20261007T134509Z`.
+
+## 2026-10-07 (eve) — redeployed to `631a9a36`
+
+Since my `5978c42` deploy another session deployed twice (`44807285` module-group publish/draft flag; then up to `937135a9`), which
+applied `20261007132257` (rewrites `private.user_can_access_module`: falls back to the **profile's** institute/college/degree when a candidate
+has no `students` row; picks the oldest students row). Verified live: the body contains the `me` CTE (upstream's read-only
+`probe-module-access-version.sql`: `has_me_cte=1 private_chars=2172`), and my assessment gate is intact (`student_visible` + `is_published`).
+The only new commit for this deploy was a release-probe tweak (`631a9a36`); the bundle is unchanged (`index-BTlhk-P0.js`).
+
+Visibility now: candidate×module **986** (was 960; +26 from profile-based matching), candidate×assessment **1,735**.
+Verified: admin 5/5, e2e ×2, Coding Challenges 370, Save Module, Student Tier search, 44 admin pages 0 errors.
+Snapshot `~/banking-sb/snapshots/20261007T155823Z`. Still open: `students` read/write `USING (true)`.
