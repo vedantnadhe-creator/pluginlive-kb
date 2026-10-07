@@ -2534,3 +2534,22 @@ option), console navigation fixes, display-name lookups, coding history queries.
 Verified: admin 5/5, e2e ×2, Coding Challenges 370, Save Module, Student Tier search, **all 37 admin pages** (expanded sidebar) with 0 errors.
 Note: the 2 `admin_error_logs` "Network error: Failed to fetch" rows per Save Module check are aborted requests from the test's own navigation (seen before the deploy too).
 Snapshot `~/banking-sb/snapshots/20261006T151721Z`. Still open: `students` read/write `USING (true)`.
+
+## 2026-10-07 — redeployed to `09c83c1` (upstream `41374ac` + 1 follow-up migration pushed to main), 3 migrations
+
+Upstream "Fixed module mapping access": SECURITY DEFINER `staff_can_manage_student` (moved to `private`), staff writes on
+`module_group_assignments` and `user_module_access` (trainers/teachers/institute users for students they manage; `granted_by = self`,
+never for themselves), `module_visible_to` shows explicitly assigned modules even if unpublished, and curriculum matching via the profile's
+institute.
+
+| Migration | UAT action |
+|---|---|
+| `20261007082238` | **Fixup** (`~/banking-sb/fixups/`): (1) **dropped UAT's open `module_group_assignments authenticated write` (FOR ALL USING/WITH CHECK `true`)**, a pre-existing UAT-only hole that let any candidate assign module groups to themselves; hosted never had it. (2) Non-admin staff cohort-wide rows (`student_id` NULL) are limited to their own institute (`private.my_institute_ids()`) or own college (new `private.my_trainer_colleges()`); scope-less rows (grant nobody) stay allowed. Upstream let any trainer target any college, department, degree or institute |
+| `20261007082311` | As shipped (function moved to `private`; policies keep working by OID) |
+| **`20261007090000_assessment_access_keep_published_and_student_visible`** (new, pushed to main as `09c83c1`) | Upstream's rewrite of `private.user_can_access_assessment` dropped the `is_published` gate (drafts visible to students with matching modules) and the `metadata.student_visible` path (24/32 seeded banking assessments vanished for every candidate: visible pairs **1,737 → 517**). Restored both, keeping the new `user_can_access_module`-based check and overrides. Live after deploy: **1,734** pairs (−3 from the 10-06 self-grant rule) |
+
+Rehearsal probes: candidate cannot self-assign a module group or self-grant module access; trainer can add own-college and scope-less
+cohorts, and is blocked for another college or a department across all colleges; core reads clean as every role. Pre-migration DB dump
+`~/banking-sb/snapshots/20261007T083247Z-premig`; deploy snapshot `20261007T083249Z`.
+Verified: admin 5/5, e2e ×2, Coding Challenges 370, Save Module, Student Tier search, all 44 admin pages 0 errors.
+Still open: `students` read/write `USING (true)`.
