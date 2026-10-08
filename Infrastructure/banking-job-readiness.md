@@ -53,6 +53,7 @@ nvm use 20 && npm install && npm run build
 | 2026-09-25 | `0538e22` | 2 applied verbatim | 8 commits: module save fixes; **all published modules now DB-readable by any signed-in user** (entitlement gate frontend-only). See *2026-09-25 (later)*. |
 | 2026-09-26 | `1322956` | 3 verbatim, 2 fixups (menu upsert → DO NOTHING; drop+recreate payment RPC) | 23 commits: AI registry/grounding/quality; 4 new VITE gates set true. See *2026-09-26*. |
 | 2026-09-28 | `6bf8a7f` (new line after force-push) | 2 new, via fixup (broken role/column refs) | upstream main force-pushed (112 commits discarded, backup bundle kept); ai-content isTechTrack crash + banking persona fixed. See *2026-09-28*. |
+| 2026-10-08 | `8de2037` | none | 1 commit: candidate **module view no longer reloads on click / tab switch**. `useAdminModules` + `useAssignedModuleIds` set `loading=true` on every window `focus`, so `TechStudentJourney` swapped `ModuleDetailView` for a skeleton (remount → lost topic/video position). Focus refetches are now silent; the ~5 MB catalog refetch on focus is throttled to 1/min. Same day: **gzip enabled in `banking-react.conf`** (see nginx note). Checks: `~/banking-checks/modfocus.cjs` (remount regression), `modperf.cjs` (Modules tab timing/payload). |
 
 `20260810100000` needed **no fixup** — it is `ALTER COLUMN … SET DEFAULT` plus a distinct-union
 `UPDATE`, so it is naturally idempotent. Effect on UAT: per-admin `allowed_tabs` went 56 → 58 and
@@ -119,6 +120,8 @@ Before this key existed the function returned `503 {"error": "ElevenLabs is not 
 project"}` and `ttsClient.ts` fell back to `window.speechSynthesis` — that fallback is still the
 behaviour if the key is removed or the account runs out of credits, so the feature fails soft.
 
+- **gzip (since 2026-10-08) lives in the banking server block, not global `nginx.conf`** — the global config only gzips `text/html` and never proxied responses, so `/sb/rest` JSON and the JS bundle went out raw. Now: `gzip_proxied any` + JSON/JS/CSS/SVG types, and `gzip off` in `/sb/functions/` (SSE streams must not be buffered). Effect on the candidate Modules tab: API 4.9 MB → 1.1 MB on the wire, main bundle 4.57 MB → 1.30 MB. Backup: `/etc/nginx/sites-available/banking-react.conf.bak-20261008*`.
+- **Known slow spot (open):** the Modules tab downloads every module's full topic content (`admin_module_topics` + `topics`, `select=*`, ~4.5 MB raw) because `ModuleDetailView` reads content from the same `useAdminModules` catalog; and `topics` takes ~1.2 s server-side because the RLS policy calls `module_visible_to()` per row (735 rows). Fix = list-columns-only catalog + lazy per-module content, and a set-based RLS check; needs an RLS dry run.
 - nginx (`/etc/nginx/sites-enabled/banking-react.conf`) serves `dist/` as static files directly — no service/container restart needed, nginx picks up the new build immediately. Because there is no container swap, a failed build leaves a **half-updated live site** — back `dist/` up before building.
 - `.env` holds the backend URL + anon key; `VITE_*` vars are baked in at build time. **On UAT these
   now point at `https://banking.uat.pluginlive.com/sb` and the keys are signed with the self-hosted
