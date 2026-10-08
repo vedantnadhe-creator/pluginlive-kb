@@ -1,5 +1,9 @@
 # Users Module
 
+> **Superseded (DEV + UAT 2026-10-08):** v1 `/users` now redirects to corporate-react-v2 `/v2/users`. User management,
+> roles and per-user permissions are documented in [company-management-v2.md](company-management-v2.md). This page
+> describes the legacy v1 screen.
+
 **Route:** `/users`
 **Frontend:** `corporate-react-1/src/modules/Users/`
 

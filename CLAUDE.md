@@ -6,6 +6,7 @@ When working on a feature, check the relevant file here **before asking the user
 
 - `pluginlive.md` — company overview (SaaS hiring platform, Assessment + ATS products)
 - `ATS/auth-react-login-app.md` — the shared sign-in app and the platform **session model**: 2-day access token + 30-day rotating refresh cookie, and the per-env `LOGIN_TOKEN_EXPIRES_IN=2d` requirement
+- `ATS/Corporate/Users/company-management-v2.md` — corporate v2 Manage Users: Admin + per-corporate roles, per-user action permissions, check-in = full access, BFF `requireAction`, `PASSWORD_MASK_SECRET`
 - `Assessment/README.md` — assessment system overview
 - `Assessment/candidate-frontend-v2.md` — **the candidate app is `assessment-react-v2`; `Assessment-React` is legacy/maintenance-only** — read this before editing either frontend
 - `Assessment/aptitude.md` — aptitude test scoring, flow, proctoring
