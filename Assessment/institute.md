@@ -258,6 +258,29 @@ Every v2 screen (assessments list `assigned`/`done`/units/audience, the dashboar
 - **Admin still reads lower in one case:** students whose `institute_campus_id` is blank or NULL, or who have no `current_course`, never match admin's passing-year filter, but v2 counts them. That is a data fix: link them to the right campus.
 - **Commits:** institute-node `931ccf4` (Development), `f6825d6` (UAT).
 
+#### V2 status labels: Upcoming / Live / Finished / Cancelled (2026-10-08; DEV + UAT, PROD pending)
+
+`institute-react-v2` uses the same status names as corporate-react-v2. This is
+a frontend label map only (`src/lib/assessments/format.tsx`). The API still
+returns `scheduled` / `live` / `aboutToExpire` / `expired` / `cancelled`.
+
+| Where | Shows now (was) |
+|---|---|
+| Status chip on list rows and the shared chip | Live (Ongoing / About to expire), Upcoming, Finished (Expired), Cancelled |
+| Assessments list status tabs | All, Active, Finished (Expired), Cancelled |
+| Detail page, Schedule tab: run chips and Diagnosis chip | Live (Ongoing), Upcoming, Finished (Completed), Cancelled |
+| Schedule details drawer: run chips | Live / Finished |
+| Schedule page: chips and Status filter | Finished (Expired) |
+
+- `aboutToExpire` now renders as a green **Live** chip. The row's "N days
+  left" hint is the only expiring signal.
+- The Filters popover gained a **Status** filter and a **Valid till** filter
+  (`src/lib/assessments/filters.ts`).
+- Commits: irv2 `a5e57c1` (Development, Abimanyu S), cherry-picked alone to
+  UAT as `3a8de9e`.
+- Not moved with it: the Development-only "Create assessment" (`60b4f5c`) and
+  three table-width tweaks.
+
 #### V2 assessment list expiry (fixed 2026-09-15; UAT)
 
 The v2 list (`GET /institutes/assessments/v2/list`, consumed by
