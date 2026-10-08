@@ -155,8 +155,12 @@ grain:
   Assessments as **Upcoming** (API status `scheduled`) with N assigned and
   0 sent. Before 2026-10-08 the list counted only opened rows, so assigned was
   0 and `HAVING assigned > 0` hid the send until its start date (UAT
-  `93825ruie`, start 15 Oct). The status compares the start as a real instant
-  (IST digits − 05:30), so Upcoming flips to Live exactly when Sent opens.
+  `93825ruie`, start 15 Oct). The status passes the raw IST-digit start to
+  `deriveAssessmentStatus`, which compares on an IST clock, so Upcoming flips
+  to Live exactly when Sent opens. (Until 2026-10-08 the list also subtracted
+  05:30 from the start before calling the IST-clock helper, a double shift
+  that showed Live up to 11h early while the detail page said Upcoming. Fixed
+  in Development `5b02516` / UAT `522ee62`.)
   institute-node Development `81f4c77` / UAT `d85866b` (DEV + UAT, PROD
   pending). The TPO Dashboard cockpit still lists only open assessments, by
   design.
@@ -291,7 +295,7 @@ returns `scheduled` / `live` / `aboutToExpire` / `expired` / `cancelled`.
 - Not moved with it: the Development-only "Create assessment" (`60b4f5c`) and
   three table-width tweaks.
 
-#### V2 assessment list expiry (fixed 2026-09-15; UAT)
+#### V2 assessment list expiry (fixed 2026-09-15; UAT, DEV 2026-10-08)
 
 The v2 list (`GET /institutes/assessments/v2/list`, consumed by
 `institute-react-v2` at `/v2/assessments`) derives `scheduled`, `live`,
@@ -306,7 +310,11 @@ The v2 frontend uses the same IST-wall-clock comparison in
 `src/lib/assessments/time.ts`. Consequently, a closed row cannot retain the
 amber **0 days left** warning while waiting for UTC to catch up. Missing or
 invalid end dates do not render a countdown. UAT commits: institute-node
-`a1483ac`, institute-react-v2 `f877740`.
+`a1483ac`, institute-react-v2 `f877740`. The helper fix reached Development
+only on 2026-10-08 (`2a4cea2`). Callers must pass raw IST-digit start/end and
+must not pre-shift them. Known gap: `plannedSeriesEnd` (recurring series, runs
+not yet minted) returns a true UTC instant, so in this helper such a series
+reads Finished 05:30 early.
 
 Status is **computed at request time** against `now = new Date()` — it is NOT stored in any DB column. There are **two distinct levels**, computed independently:
 
