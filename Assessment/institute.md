@@ -150,6 +150,16 @@ grain:
   status badge (`deriveAssessmentStatus`, `occurrencePhase`) still compares
   against raw `Date.now()`. That is open: its `end` can be a true UTC instant
   from `assessmentPlan`, so it needs a per-source fix, not a blanket offset.
+- **Assigned** ("Assigned to: N students") counts the whole audience, opened
+  or not. A one-time send dated in the future therefore stays on Manage
+  Assessments as **Upcoming** (API status `scheduled`) with N assigned and
+  0 sent. Before 2026-10-08 the list counted only opened rows, so assigned was
+  0 and `HAVING assigned > 0` hid the send until its start date (UAT
+  `93825ruie`, start 15 Oct). The status compares the start as a real instant
+  (IST digits − 05:30), so Upcoming flips to Live exactly when Sent opens.
+  institute-node Development `81f4c77` / UAT `d85866b` (DEV + UAT, PROD
+  pending). The TPO Dashboard cockpit still lists only open assessments, by
+  design.
 - **Taken** is the subset of those Sent rows whose `attempted` flag is true or
   whose status is `INPROGRESS`, `DROPOUT`, or `COMPLETED`.
 - Rates are always `Taken / Sent`; numerator and denominator therefore use the
