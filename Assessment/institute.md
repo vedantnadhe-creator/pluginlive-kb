@@ -585,3 +585,7 @@ Development-only Schedules column layout fixes (`2519f92`, `b6bb95d`, `3d6aa48`)
   - The "Overall Performance" card is now **Performance** and shows the difficulty-based score, not the progress score.
 - **Analytics drawer:** student names link to the student's report page.
 - **Dashboard Active schedules:** in "Recently sent" mode, recurring rows show "Next Scheduled on: <date>".
+
+## Create assessment in the TPO portal (2026-10-08, DEV + UAT; PROD pending)
+
+institute-react-v2 has **Create assessment** (`/v2/assessments/new`, the shared wizard, segment `college`). Visible only when the admin turns on Feature Access → **Allow assessment creation** for the institute (off by default) or when a PluginLive user is checked in. Details: `Assessment/shared-assessment-creation.md` → "Institute portal creation".

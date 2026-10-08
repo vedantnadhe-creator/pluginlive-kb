@@ -1,8 +1,8 @@
-# Shared assessment creation — Admin and Corporate
+# Shared assessment creation — Admin, Corporate and Institute
 
 ## Architecture
 
-`PluginLive-Technologies/design-system` owns the reusable React UI and four-step assessment wizard. `admin-react-v2` and `corporate-react-v2` consume it at build time. Legacy Admin redirects creation into the v2 app. There is no separate design-system server or microfrontend runtime.
+`PluginLive-Technologies/design-system` owns the reusable React UI and four-step assessment wizard. `admin-react-v2`, `corporate-react-v2` and `institute-react-v2` consume it at build time. Legacy Admin redirects creation into the v2 app. There is no separate design-system server or microfrontend runtime.
 
 The Next.js apps pin versioned `@pluginlive-technologies/assessment-creation` and `@pluginlive-technologies/ui` artifacts. Admin currently uses assessment creation 0.1.12; Corporate uses 0.1.2-bugfix.2. Packages are generated using `npm pack`, committed as `vendor/*.tgz`, and integrity-pinned in package-lock.json. This rollout does not publish to an npm registry. Both apps transpile the packages through Next.js and load their scoped styles. Docker dependency stages copy vendor before npm ci.
 
@@ -11,7 +11,7 @@ The Next.js apps pin versioned `@pluginlive-technologies/assessment-creation` an
 - Admin: Create Assessments on legacy `/assessment` redirects to `/v2/assessment?create=1&type=college|corporate`. The entity picker opens immediately. Cancel (including Escape) returns to legacy `/assessment`. Selection opens the shared wizard at `/v2/assessment/new` with the selected entity context.
 - Wizard exits: Close, the Assessments breadcrumb, and confirmed Discard and leave navigate to legacy `/assessment`, using a native browser navigation that does not add the `/v2` prefix. The missing-organisation Back link also returns there. Keep editing stays in the wizard; step-level Back still moves to the previous step. Creation success retains the existing v2 confirmation flow.
 - Corporate: `/v2/assessments/new`, using the corporate organisation derived by its BFF from the authenticated session.
-- Institute: excluded from this rollout. Its temporary creation implementation was removed on its feature branch; no Institute merge or deployment is needed for the shared wizard.
+- Institute (TPO portal): `/v2/assessments/new`, segment `college`, scoped by its BFF to the session's `institute_id`. Gated by Feature Access (off by default) or a PluginLive check-in — see "Institute portal creation" below.
 
 The package owns setup, type configuration, recipient tools, scheduling, validation and review. Hosts own authentication headers, basePath-aware transport, navigation, organisational scope and existing BFF routes. Admin's selected IDs and display name are not authorization evidence; its authenticated upstream authorizes access. Corporate ignores client entity IDs and derives its scope from the session. No backend or database changes are part of this rollout.
 
@@ -179,3 +179,17 @@ no subscription row, are not counted. The counts come from the existing `GET /ap
 | admin-node DEV / UAT | — | — | `c31b1a1` / `5fa6427` |
 
 The UAT bundles have no DEV URLs.
+
+## Institute portal creation — DEV + UAT 2026-10-08 (PROD pending)
+
+`institute-react-v2` mounts the same wizard (admin's lineage, `0.1.16-custom.3`, vendored in `vendor/` with a pnpm override pointing the nested `@pluginlive-technologies/ui` dependency at the vendored tgz; the Dockerfile copies `vendor/` before `pnpm install`). Assessment Schedules shows **Create assessment** in the top bar only when access is granted.
+
+**Access rule** (`src/lib/api/assessmentCreationAccess.ts`): allowed when admin-node's `GET /assessment/featureAccess?entityType=institute` returns `ASSESSMENT_CREATION: true` for the session's institute, **or** the session is a PluginLive check-in (the auth-service profile of the JWT `_id` has a `pluginlive_id` — the same signal `/api/me` uses for Check out). The check-in is read from the auth service, so a hand-edited JWT cannot claim it. Lookup failure = 502 (never a grant). Every write route (`/api/assessments/mix-match`, custom-bank save, saved-list save, AI parameter suggestions) re-checks access server-side.
+
+**BFF routes** (all derive the institute from the JWT; the wizard's `entityId=me` is ignored): `/api/entities/{assessment-types,courses,batches,recipient-lists}`, `/api/assessments/{aptitude-topics,custom-banks,custom-banks/[id]/questions,ai-interview/suggest-parameters,broadcast/passing-years,mix-match}`, `/api/candidates/parse-sheet`, `/api/me/feature-access`. `mix-match` is admin's college path (one-time group, Broadcast for Role Based, recurring schedule) plus `validateDraft(draft, "college")` and a subscription check against `getSubscribedAssessmentByInstitute`. Broadcast passing years resolve the campus id via institute-node `/institutes/:id` (`instituteCampus[0]`).
+
+**Not supported in the institute portal:** on-call AI Interviews (refused with a message — the bulk rows don't carry call windows), and JD autofill (`/api/jd/parse` is corporate-node-v2 only; enter details manually).
+
+**admin-node:** `CustomBankAccessService` scopes institute tokens to their own banks (previously 403 for any institute token). `AddCandidatesAccessService` still refuses institute tokens.
+
+Releases: admin-node DEV `7580de7` / UAT `a769b29`; admin-react DEV `2cf51559` / UAT `e33e249e`; institute-react-v2 DEV `60b4f5c` / UAT `12f50fb` (UAT commits are cherry-picks). No DB migration: the flag uses the existing `admin.feature_config` table and partial unique index.
