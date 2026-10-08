@@ -2661,3 +2661,11 @@ fixing: a bare array instead of `{topics}`, then malformed JSON before `response
 Verified: the trainer's own curriculum built **6 topics** in ~2 min (`finishReason STOP`, 36k chars); admin 5/5 and 3-role e2e after.
 
 **Open:** NVIDIA (403) and DeepSeek (401) provider keys in LLM Config are dead, and OpenAI times out on large documents. Replace or disable them.
+
+## 2026-10-08 (pm) — redeployed to `d577d3a5` (6 commits since another session's `eba2249c` deploy; no migrations)
+
+Upstream: video generation adds providers and lengths, 2D style and Indian languages (`generate-video` now reads `SARVAM_API_KEY`,
+`ELEVENLABS_VOICE_ID`). On UAT neither is set (ElevenLabs uses its configured key/default voice; there is no Sarvam provider row), so the Sarvam
+option will not work on UAT until a key is added. My `toPublicUrl` and Gemini PDF changes are intact; overlays 3.
+Verified: admin 5/5, e2e ×2, Coding Challenges 370, Save Module, Student Tier search, 44 admin pages 0 errors.
+Snapshot `~/banking-sb/snapshots/20261008T155237Z`. Still open: `students` read/write `USING (true)`; dead NVIDIA/DeepSeek keys.

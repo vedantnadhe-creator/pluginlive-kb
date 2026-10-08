@@ -1640,3 +1640,12 @@ and two files the deploy deliberately **does not run**:
   class, 10 students 9100000101-110, parent 9100000200, question bank, assessments, progress, competitive-exam mocks). Idempotent
   (`md5` ids, `ON CONFLICT DO NOTHING`). Run on UAT only on request.
 Grants 03 → 05 → 06 re-run. Verified all 10 demo logins. Credentials page bumped to `284cae00`.
+
+## 2026-10-08 — PilVidya UAT redeployed to `9fe97ec6` (16 commits, 1 migration as shipped)
+
+`20261004054000_parent_otp_login_support` (the former drizzle file promoted to a Supabase migration: `mobile_otps`, `parent_consents`,
+parent session columns, `parent_student_links.verified`). **No-op on UAT**: all objects already existed. The 4 demo parent links are
+`verified=true`, which matters because `_shared/parent-auth.ts` now refuses unverified links. `admin-set-teacher-password`: session
+revoke is now best-effort `auth.admin.signOut(..., "global")`. 259 of the 288 changed files are `migration/sql-editor` tooling (not deployed);
+the demo seed was edited but not run. Grants 03 → 05 → 06 re-run.
+Verified all 10 demo logins (admins, teachers, principal, HOD, students across reload, parents with children). Credentials page bumped to `9fe97ec6`.
