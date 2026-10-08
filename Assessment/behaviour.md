@@ -41,9 +41,11 @@ most important fact about this feature.
 
 `getSuitableJobRoles(assessment_assigned_id)` -- one argument.
 
-1. Load the candidate's proficiency scores and index their level **by competency
-   name**, not competency id.
-2. Load the **entire role catalogue** with its requirements.
+1. Load the candidate's proficiency scores and index their level by competency
+   name. Each score's competency carries its `assessment_domain_id`.
+2. Load only the roles whose `job_roles.assessment_domain_id` is one of the
+   domains the candidate was scored in (Engineering report -> Engineering roles,
+   Management report -> Management roles). Degree/stream are still not filtered.
 3. For each role, require that the candidate was measured on **every** competency
    the role requires. An unmeasured competency is not evidence, and the role is
    dropped rather than guessed at.
@@ -55,23 +57,28 @@ most important fact about this feature.
 
 The PDF splits these into a full-potential section and a partial section.
 
-### Why matching is by competency *name*
+### Roles are scoped to the tested domain (since 2026-10-08)
 
-Competencies are stored **per domain**, and every one of the 251
-`job_role_requirements` rows is same-domain. Walking
-`candidate competency -> requirements` therefore could only ever reach roles in the
-domain the candidate tested in. Because the domain follows the candidate's degree,
-this looked exactly like a degree/department filter even after the explicit
-degree filter was deleted. Matching on the competency **name** lets evidence carry
-across domains.
+From 2026-09-01 (`1aa7cf25`) to 2026-10-08 the function searched the **whole**
+catalogue and bridged domains by competency name. Because `Customer Orientation`
+and `Project Management` are spelled identically in Engineering and Management,
+an Engineering candidate strong in Customer Orientation was shown MBA roles
+(Account Manager, Financial Consultant/Advisor, HR/Budget roles) and Management
+candidates were shown DBA/Network/Field Application Engineer roles. Reported on
+PROD by QA (jershini.y+behprod1, Engineering Behavioral, 2026-10-08).
 
-**Gotcha:** the bridge is exact name equality. Only `Customer Orientation` and
-`Project Management` are spelled identically in both populated domains. Near
-synonyms do **not** bridge -- `Creative Mindset` vs `Creative Approach`,
-`Sales & Business Acumen` vs `Sales Acumen`. In practice this lets an Engineering
-candidate reach 14 Management roles and a Management candidate reach 9 Engineering
-roles. Widening the cross-domain reach is a **data** change (align competency
-names, or add cross-domain requirement rows), not a code change.
+Fix `6ab77a9e` (student-node) adds `where: { assessmentDomainId: { in: domainIds } }`
+to the role query. Within one domain, name and id matching are equivalent, so the
+proportional scoring and dedupe are unchanged. Verified on UAT: 29/29 attempts lost
+only cross-domain roles (Engineering 42->35, Management 44->35), none added.
+
+Roles are computed on every report/PDF request (`Assessment.js` report + PDF
+paths), not stored, so existing reports correct themselves once deployed -- no
+backfill. Status: DEV commit pushed (DEV build blocked by disk-full 2026-10-08),
+UAT live 2026-10-08 (`85d4dd35`), PROD pending.
+
+**Open product question:** some roles require a single competency, so Master in
+that one competency is a 100% "full potential" match.
 
 ## What was removed (2026-09-01)
 
