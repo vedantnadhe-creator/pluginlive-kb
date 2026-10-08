@@ -8,6 +8,10 @@
 > Frontends: only **assessment-react-v2** has the button today. The backend already
 > accepts every portal's login, so institute-react-v2 / corporate-react-v2 / etc.
 > only need a button + a `/api/support` route (deferred).
+> **Also used by** the assessment-creation wizard's "Not enough assessments" → Contact us → Send
+> (corporate-react-v2 + admin-react-v2 BFF `POST /v2/api/support/query`, sources
+> `corp-subscription-limit` / `admin-subscription-limit`). LIVE DEV + UAT 2026-10-08. See
+> [shared-assessment-creation.md](shared-assessment-creation.md).
 
 ## Flow
 

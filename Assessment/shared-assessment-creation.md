@@ -146,3 +146,36 @@ only one left ("Until assessment end date" when blank).
 The design-system branches are local worktrees on the DEV box (`~/worktrees/ds-rb-jd-attach`,
 `ds-custom-parity-admin`, `ds-custom-parity-admin-uat`). Each compiled bundle contains exactly one
 validity string. The UAT bundles have no DEV URLs.
+
+### 2026-10-08 — Subscription-limit check on Send Assessment (DEV + UAT, PROD pending)
+
+**Continue** on the Send Assessment step (Step 3) compares the number of selected candidates with the
+assessments left on the subscription. Each candidate uses one assessment from every selected type, so
+the limit is the type with the fewest left (`remainingForTypes`). Types that are unlimited, or that have
+no subscription row, are not counted. The counts come from the existing `GET /api/entities/assessment-types`
+→ `quotas`, which reads admin-node `/assessment/getInstituteSubscriptionQuota`.
+
+- **Over the limit:** the "Not enough assessments" dialog blocks Continue. It shows "N over limit (x% of
+  selected)", an Available / Exceeding bar, "Selected N · You can select up to M", and Cancel / Contact Us.
+- **Contact Us → Send** posts to the app's BFF `POST /v2/api/support/query`. The BFF forwards the
+  message to admin-node `POST /support/query` with the user's token and source
+  `corp-subscription-limit` or `admin-subscription-limit`. admin-node emails `quota_alert_recipients` and
+  posts to Slack, as described in [support-queries.md](support-queries.md). The message ends with
+  `Account: <organisation>`, so a request an admin sends for an institute still names the institute.
+  Name and email come from `/api/me` and from the token, never from the request body. There is no
+  relationship-manager field yet, so every request goes to the shared recipient list.
+- **Exactly at the limit:** an amber note says the float will use the last N assessments. Continue still
+  works. That note's "Contact us" link is still a `mailto:mandate@pluginlive.com`.
+- **Server enforcement (admin-node):** `assignMixMatchAssessment` now calls `assertFloatQuota`, which
+  checks every type before anything is saved. Before this, each type was checked separately inside the
+  loop, so a float whose second type was over its limit had already queued the first type and sent its
+  invites. An over-limit float now fails up front with a 400 and code `QUOTA_EXHAUSTED`.
+
+| App / env | Wizard | design-system commit | App commit |
+|---|---|---|---|
+| corporate-react-v2 DEV / UAT | 0.1.2-bugfix.11 | `ds-rb-jd-attach` (fe94223 + Contact-us send) | `7b7a128` / `18c499d` |
+| admin-react-v2 DEV | 0.1.16-custom.5 | `ds-custom-parity-admin` `23a9a2d` | `76c582c` |
+| admin-react-v2 UAT | 0.1.12-custom.4 | `ds-custom-parity-admin-uat` `2419c63` | `ac80d0f` |
+| admin-node DEV / UAT | — | — | `c31b1a1` / `5fa6427` |
+
+The UAT bundles have no DEV URLs.
