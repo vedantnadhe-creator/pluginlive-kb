@@ -10,6 +10,9 @@ tags: [service, frontend, uat, supabase, lovable]
 **Live URL:** `https://banking.uat.pluginlive.com/`
 **Stack:** Vite + React + shadcn/ui SPA — not part of the PluginLive Node/Prisma stack.
 
+> **What the app is (roles, features, content model, AI layer, risks):** see
+> `Infrastructure/banking-application-overview.md`. This page is the deploy/incident log.
+
 > **UAT moved off hosted Supabase on 2026-08-07.** UAT now talks to a self-hosted
 > Supabase-compatible stack on the same box (`~/banking-sb/`, proxied at
 > `https://banking.uat.pluginlive.com/sb`) backed by our own PostgreSQL. The browser still speaks

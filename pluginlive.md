@@ -85,6 +85,10 @@ Corporates post opportunities → ATS matches candidates → Hiring happens
 
 ---
 
+## Sibling Products
+
+- **Banking Job Readiness (BankReady)** — standalone Lovable/Supabase learning + assessment app for banking freshers; `banking.uat.pluginlive.com`. See `Infrastructure/banking-application-overview.md`.
+
 ## Tech Stack (High Level)
 - **Frontend:** React.js
 - **Backend:** Node.js (Express)
