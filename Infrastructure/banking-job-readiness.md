@@ -2637,3 +2637,18 @@ own-uid folder, trainer-curricula). Raise with the team before hosted keeps it.
 Verified: admin 5/5, e2e ×2, Coding Challenges 370, Save Module (the first listed module is now a new group-less one, so no
 group-items POST, which is expected and was confirmed against the pre-deploy dump), Student Tier search, 44 admin pages 0 errors.
 Snapshot `~/banking-sb/snapshots/20261007T183412Z`. Still open: `students` read/write `USING (true)`.
+
+## 2026-10-08 — fixed: trainer "Build topics, lessons & quizzes from my content" → "No working AI provider" (`dff50a13`, pushed to main)
+
+Reported on the trainer AI Curriculum Builder (NISM Series X-B Level 2 PDF). The **Gemini key was already mapped** (Admin → LLM Config,
+provider `gemini`, `gemini-3.6-flash`, global, enabled) and valid. Root cause from the function logs: `build-curriculum-from-content` sent
+the PDF to every provider through the **OpenAI-compatible** path as a `file` content part, and **Gemini's OpenAI endpoint rejects that**
+(`400 Invalid content part type: file`). OpenAI timed out on the document; NVIDIA (403) and DeepSeek (401) keys are dead.
+
+Fix: when files are attached, call Gemini's **native** `generateContent` with the PDF as `inline_data` (key: `GEMINI_API_KEY` or the `gemini`
+row), with the curriculum schema as `responseSchema` (JSON-Schema-only keywords stripped, so output is constrained and always parses) and
+`maxOutputTokens 32768`; accept a bare topics array. The configured-provider and Lovable paths are unchanged as fallbacks. Iterations seen while
+fixing: a bare array instead of `{topics}`, then malformed JSON before `responseSchema` was added.
+Verified: the trainer's own curriculum built **6 topics** in ~2 min (`finishReason STOP`, 36k chars); admin 5/5 and 3-role e2e after.
+
+**Open:** NVIDIA (403) and DeepSeek (401) provider keys in LLM Config are dead, and OpenAI times out on large documents. Replace or disable them.
