@@ -182,14 +182,18 @@ The UAT bundles have no DEV URLs.
 
 ## Institute portal creation — DEV + UAT 2026-10-08 (PROD pending)
 
-`institute-react-v2` mounts the same wizard (admin's lineage, `0.1.16-custom.3`, vendored in `vendor/` with a pnpm override pointing the nested `@pluginlive-technologies/ui` dependency at the vendored tgz; the Dockerfile copies `vendor/` before `pnpm install`). Assessment Schedules shows **Create assessment** in the top bar only when access is granted.
+`institute-react-v2` mounts the same wizard, **always the same package version as admin-react-v2 in that environment** (2026-10-08: DEV `0.1.16-custom.5`, UAT `0.1.12-custom.4`; vendored in `vendor/` with a pnpm override pointing the nested `@pluginlive-technologies/ui` dependency at the vendored tgz; the Dockerfile copies `vendor/` before `pnpm install`). Assessment Schedules shows **Create assessment** in the top bar only when access is granted.
 
 **Access rule** (`src/lib/api/assessmentCreationAccess.ts`): allowed when admin-node's `GET /assessment/featureAccess?entityType=institute` returns `ASSESSMENT_CREATION: true` for the session's institute, **or** the session is a PluginLive check-in (the auth-service profile of the JWT `_id` has a `pluginlive_id` — the same signal `/api/me` uses for Check out). The check-in is read from the auth service, so a hand-edited JWT cannot claim it. Lookup failure = 502 (never a grant). Every write route (`/api/assessments/mix-match`, custom-bank save, saved-list save, AI parameter suggestions) re-checks access server-side.
 
 **BFF routes** (all derive the institute from the JWT; the wizard's `entityId=me` is ignored): `/api/entities/{assessment-types,courses,batches,recipient-lists}`, `/api/assessments/{aptitude-topics,custom-banks,custom-banks/[id]/questions,ai-interview/suggest-parameters,broadcast/passing-years,mix-match}`, `/api/candidates/parse-sheet`, `/api/me/feature-access`. `mix-match` is admin's college path (one-time group, Broadcast for Role Based, recurring schedule) plus `validateDraft(draft, "college")` and a subscription check against `getSubscribedAssessmentByInstitute`. Broadcast passing years resolve the campus id via institute-node `/institutes/:id` (`instituteCampus[0]`).
 
-**Not supported in the institute portal:** on-call AI Interviews (refused with a message — the bulk rows don't carry call windows), and JD autofill (`/api/jd/parse` is corporate-node-v2 only; enter details manually).
+**On-call AI Interview** follows admin per environment: DEV (`0.1.16-custom.5`) shows the On call switch and the institute `mix-match` runs admin's `onCallFloatError` pre-check and sends each candidate's `call_at`, as admin does; UAT (`0.1.12-custom.4`) has no On call switch, same as admin UAT. `/api/support/query` (subscription-limit dialog → Contact us) forwards to admin-node `/support/query` with `source: institute-subscription-limit`.
+
+**Not supported in the institute portal:** JD autofill (`/api/jd/parse` is corporate-node-v2 only; enter details manually).
+
+**Keep in step:** when admin-react-v2 bumps its vendored wizard on a branch, bump institute-react-v2 on the same branch (copy the tgz, check the sha256 against admin's `vendor/manifest.json`, `pnpm install`, `tsc`), otherwise the two portals show different wizards.
 
 **admin-node:** `CustomBankAccessService` scopes institute tokens to their own banks (previously 403 for any institute token). `AddCandidatesAccessService` still refuses institute tokens.
 
-Releases: admin-node DEV `7580de7` / UAT `a769b29`; admin-react DEV `2cf51559` / UAT `e33e249e`; institute-react-v2 DEV `60b4f5c` / UAT `12f50fb` (UAT commits are cherry-picks). No DB migration: the flag uses the existing `admin.feature_config` table and partial unique index.
+Releases: admin-node DEV `7580de7` / UAT `a769b29`; admin-react DEV `2cf51559` / UAT `e33e249e`; institute-react-v2 DEV `60b4f5c` → `a532fc3` + `d8f98f2` / UAT `12f50fb` → `ee818fd` (UAT commits are cherry-picks or UAT-only). No DB migration: the flag uses the existing `admin.feature_config` table and partial unique index.
