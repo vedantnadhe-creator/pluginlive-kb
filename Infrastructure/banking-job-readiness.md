@@ -2669,3 +2669,21 @@ Upstream: video generation adds providers and lengths, 2D style and Indian langu
 option will not work on UAT until a key is added. My `toPublicUrl` and Gemini PDF changes are intact; overlays 3.
 Verified: admin 5/5, e2e ×2, Coding Challenges 370, Save Module, Student Tier search, 44 admin pages 0 errors.
 Snapshot `~/banking-sb/snapshots/20261008T155237Z`. Still open: `students` read/write `USING (true)`; dead NVIDIA/DeepSeek keys.
+
+## 2026-10-08 (eve) — fixed: AI Generated Videos → "runway is not configured" (409) + ElevenLabs "lang is not defined" (`32d303c1`)
+
+Reported for two modules with Visual Provider = **Runway**. Causes:
+1. **Runway row disabled.** `llm_provider_configs` had `runway` (feature `video_generation`, model `gen4.5`, key present) with
+   `enabled=false` since its creation on 09-24, never tested. `generate-video` only reads enabled rows, so an explicit
+   Runway choice returned 409. The key was validated read-only (`GET /v1/organization`: valid, 500 credits, `gen4.5` on tier) and **enabled**
+   (DB config, UAT only).
+2. **Code bug from `d577d3a5`:** `callElevenLabs` was called with `(…, voiceId, lang)` and uses both, but its signature ended at `targetMinutes`,
+   so every ElevenLabs narration threw `ReferenceError: lang is not defined`, both on the forced narration path and the audio fallback.
+   Fixed and pushed to main (`32d303c1`).
+
+Verified: the UI path (provider runway, 2D explainer, en-IN) for "The Balance Sheet (The Nucleus of Accounting)" → Runway video + narration
+in ~126 s, public link 206 video/mp4; forced ElevenLabs narration → audio in ~2 s. (The narration test overwrote that topic's project with
+audio-only; restored to the Runway video by re-signing the stored `videos/runway/<topic>.mp4`.) Admin 5/5 + 3-role e2e after.
+
+**Cost warning:** one Runway video used **96 credits** (500 → 404), so about 4 more fit. Use Veo or "auto" for bulk "Generate Missing", or top up Runway.
+Topics already marked Failed must be regenerated from the panel.
