@@ -81,6 +81,8 @@ corporate-react-v2 BFF: `/api/me/users`, `/api/me/users/[id]`, `/api/me/users/[i
 - `/api/me/password` masks both passwords server-side (CryptoJS-compatible AES) and calls auth
   `PATCH /user/:id/password`. **Needs `PASSWORD_MASK_SECRET` in corporate-react-v2 `.env.local`** — same value as that
   env's user-management-node `PASSWORD_MASK_SECRET`. A successful change revokes the user's refresh sessions.
+- Change Password UI: Current / New / Confirm each have their own Show/Hide toggle; on success the footer shows
+  "Password saved successfully." (no "other devices will be signed out" subtitle, though sessions are still revoked).
 
 ## Related v1 changes
 
