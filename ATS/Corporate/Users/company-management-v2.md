@@ -1,6 +1,6 @@
 # Corporate Company Management (v2) — Manage Users, roles, per-user permissions
 
-**Live:** DEV + UAT (2026-10-08). PROD pending.
+**Live:** DEV + UAT (updated 2026-10-09). PROD pending.
 **Where:** corporate-react-v2 `/v2/users` and Settings (account menu) › Profile / Change Password / Manage Users.
 v1 `/users` (sidebar "Users") now does a full-page redirect to `/v2/users`.
 
@@ -24,6 +24,16 @@ v1 `/users` (sidebar "Users") now does a full-page redirect to `/v2/users`.
     internal admin's own).
 - Picking **Admin** turns every switch on (each can still be turned off). Picking another role leaves the switches as they
   are. Anyone with `editUserPermissions` can grant anything, including Admin.
+- **Creating a user requires at least one enabled permission**, from either Assessment or User Management. The form
+  shows **"Select at least one permission."**, opens the permission sections, and keeps the entered details. Enabling an
+  action clears the error. Admin users must also have at least one switch on. Corporate-node checks the sanitized set
+  and returns 400 for missing, empty, all-off, or unknown-only permissions **before** creating a login, sending the
+  welcome email, or writing an access row. A creator needs both `addUsers` and `editUserPermissions`; if permission
+  editing is unavailable, the form asks them to contact their company admin. This minimum applies to creation;
+  editing an existing user's permissions can still turn every action off.
+- **The detail drawer's edit/pencil button requires `editUsers` ("Edit user details")** on the signed-in viewer.
+  `editUserPermissions` ("Change roles & permissions") alone does not show it. Inside the edit form, roles and switches
+  additionally require `editUserPermissions`.
 - **v1 role:** every user created or edited from v2 is **Admin in v1** (`user_management.users.admin_role_id` = the
   CORPORATE "Admin" role), whatever the v2 role. What they can do in v2 is decided by the v2 switches.
   ⚠️ There are several roles named "Admin" (`admin.roles` journeys CORPORATE / INTERNAL / INSTITUTE), and admin-node
@@ -64,7 +74,7 @@ corporate-node (JWT, tenant from the token via `assertCorporateScope`):
 | GET | `/corporates/:id/users/v2/me/access` | self |
 | PUT | `/corporates/:id/users/v2/me/profile` | self (name + phone) |
 | GET | `/corporates/:id/users/v2/:userId` | `viewUserDetails` (or self) |
-| POST | `/corporates/:id/users/v2` | `addUsers` (+ `editUserPermissions` if a role/switches are sent) |
+| POST | `/corporates/:id/users/v2` | `addUsers` + `editUserPermissions`; at least one enabled permission |
 | PUT | `/corporates/:id/users/v2/:userId` | `editUsers` for details, `editUserPermissions` for role/switches |
 | PATCH | `/corporates/:id/users/v2/:userId/status` | `deactivateUsers` |
 | GET/POST | `/corporates/:id/user-roles/v2` | list: any User Management action; create: `editUserPermissions` |
@@ -95,3 +105,6 @@ corporate-react-v2 BFF: `/api/me/users`, `/api/me/users/[id]`, `/api/me/users/[i
 corporate-node `4ee7d80c`, `215bf3bf`, `4537c296`, `88788ca7` (UAT `74620686…291cdffc`) · user-management-node `ce79726`
 (UAT `ba80768`) · corporate-react `82172a38a` (UAT `7dcb4d610`) · corporate-react-v2 UI `3ce2c48…dd80e79` + wiring
 `e7e4360` (UAT `b969c23`; UAT Sidebar keeps the ATS-access "Back to ATS" gate alongside permission-gated nav).
+
+2026-10-09 permission requirement and edit-button gate: corporate-react-v2 DEV `4e6b405` / UAT `025019d`;
+corporate-node DEV `df39847b` / UAT `19f6e5d6`.
