@@ -22,8 +22,10 @@ Backend lives entirely in `student-node`:
 | `assessment.job_roles` | role catalogue: `role_name`, `role_description`, `skills`, `assessment_domain_id`, `degree` (varchar) |
 | `assessment.job_role_requirements` | role -> competency -> required `proficiency_level` |
 
-Proficiency ladder (rank 1..8):
-`Novice, Beginner, Developing, Apprentice, Practitioner, Advanced, Expert, Master`.
+Proficiency ladder (rank 1..5):
+`Beginner, Apprentice, Practitioner, Master, Expert`.
+The matcher, report chart and v2 report use this order; Expert meets a Master
+minimum, while Master does not meet an Expert minimum.
 
 **Catalogue shape (DEV, 2026-09-01).** 123 `job_roles` rows but only **70 distinct
 role names** -- the same role is catalogued once per degree, so any consumer must
@@ -32,10 +34,9 @@ Engineering (6 competencies, 40 role rows) and Management (9 competencies, 83 ro
 rows). `job_roles.degree` is a display string combining degree and specialisation,
 e.g. `B.E. - Computer Science and Engineering`, `MBA - Finance`.
 
-**Requirement levels are extreme:** of 251 requirement rows, **136 are Expert and
-112 are Master** -- only 3 are Practitioner. Any pass/fail matching rule will
-therefore report almost every candidate as capable of nothing. This is the single
-most important fact about this feature.
+**Historical requirement snapshot (DEV, 2026-09-01):** of 251 requirement rows,
+136 were Expert, 112 Master and 3 Practitioner. Proportional attainment remains
+available for partial matches in the JSON response.
 
 ## Suitable job role matching (current behaviour)
 
@@ -47,15 +48,56 @@ most important fact about this feature.
    domains the candidate was scored in (Engineering report -> Engineering roles,
    Management report -> Management roles). Degree/stream are still not filtered.
 3. For each role, require that the candidate was measured on **every** competency
-   the role requires. An unmeasured competency is not evidence, and the role is
-   dropped rather than guessed at.
+   the role requires and that all candidate/requirement levels are known.
+   Missing competencies and invalid levels cause the role to be omitted.
 4. Score **attainment proportionally**: `min(studentLevel / requiredLevel, 1)`
    averaged across the role's requirements, as a percentage.
 5. Dedupe by role name, keeping the candidate's best score.
-6. Emit `match_type: 'full'` for 100% (meets every requirement, sorted by name)
-   and `match_type: 'partial'` for the rest, sorted by match percentage desc.
+6. Emit `match_type: 'full'` only when **every** candidate level meets its
+   required minimum, sorted by name. Other evidenced roles are `partial`, sorted
+   by attainment descending and capped at 99%. A rounded percentage cannot
+   promote a partial role to a full match.
 
-The PDF splits these into a full-potential section and a partial section.
+The PDF's potential-role table renders only full matches. The JSON response
+retains both full and partial matches with their `match_type`.
+
+### Minimum levels and Advertising Coordinator (2026-10-09)
+
+The old matcher used eight levels and ranked Master above Expert, unlike the
+five-level report. It also treated unknown requirement levels as satisfied.
+The matcher now uses the report's five levels, validates levels, and determines
+full eligibility through explicit minimum comparisons.
+
+DEV and UAT had two Advertising Coordinator catalogue entries, MBA - Marketing
+and PGDM - Marketing. Each contained Creative Approach twice (Master and
+Expert), with four required competencies missing. Both entries now contain:
+
+| Competency | Minimum level |
+|---|---|
+| Creative Approach | Master (4) |
+| Project Management | Master (4) |
+| Customer Orientation | Practitioner (3) |
+| Financial / Business Acumen | Apprentice (2) |
+| Crisis Management | Apprentice (2) |
+
+Both degree entries need the correction because the matcher deduplicates by role
+name and keeps the best matching entry. The correction is
+`student-node/script/20261009T104113Z__correct_advertising_coordinator_requirements.sql`;
+it is transactional, accepts the observed broken mapping or the already-correct
+mapping, and aborts on unexpected catalogue changes. No schema migration or
+candidate score recalculation is required.
+
+Regression profile: Creative Approach Master, Project Management Practitioner,
+Customer Orientation Expert, Financial / Business Acumen Expert and Crisis
+Management Apprentice. Advertising Coordinator is partial at 95% and absent from
+the PDF potential-role table. Changing Project Management to Master makes it a
+full 100% match. Six regression tests cover these cases, the level order,
+rounding, invalid levels, domain filtering, deduplication and PDF rendering.
+
+Live on DEV and UAT as of 2026-10-09: student-node Development `a0dc5a74`, UAT
+`25a2fcf7`. Both deployed containers pass all six regression tests and serve the
+API successfully. Read-only database verification confirms five correct
+requirements for each degree entry in both environments. PROD pending.
 
 ### Roles are scoped to the tested domain (since 2026-10-08)
 
@@ -74,8 +116,9 @@ only cross-domain roles (Engineering 42->35, Management 44->35), none added.
 
 Roles are computed on every report/PDF request (`Assessment.js` report + PDF
 paths), not stored, so existing reports correct themselves once deployed -- no
-backfill. Status: DEV commit pushed (DEV build blocked by disk-full 2026-10-08),
-UAT live 2026-10-08 (`85d4dd35`), PROD pending.
+backfill. Status: DEV live 2026-10-09 (`a0dc5a74`, including the minimum-level
+fix); UAT originally live 2026-10-08 (`85d4dd35`) and updated 2026-10-09
+(`25a2fcf7`). PROD pending.
 
 **Open product question:** some roles require a single competency, so Master in
 that one competency is a 100% "full potential" match.
@@ -101,7 +144,7 @@ DEV database**, so the query threw Prisma `P2022`; the caller caught it and the
 behaviour report silently rendered **zero** suitable roles on DEV. The current
 code does not reference either column.
 
-## Verified behaviour
+## Historical verification (2026-09-01, before domain restriction)
 
 | Env | Attempt | Result |
 |---|---|---|
@@ -198,7 +241,9 @@ Corporate Excel export of Behavior: see `ATS/Corporate/assessment-dashboard.md`
 
 ## Status
 
-Suitable-role matching: live on **DEV + UAT** as of 2026-09-01.
+Suitable-role matching originally shipped on **DEV + UAT** on 2026-09-01.
+The minimum-level fix and Advertising Coordinator data correction are live and
+verified on **DEV + UAT** as of 2026-10-09, as described above.
 Candidate paper (hidden behaviours, shuffle, mandatory answers) and admin
 question count: live on **DEV + UAT** as of 2026-09-15. **PROD pending** for
 all of it.
