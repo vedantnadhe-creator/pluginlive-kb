@@ -1,6 +1,8 @@
-# Centralized LLM routing — DEV and UAT live, PROD ready to roll out
+# Centralized LLM routing — live on DEV, UAT and PROD
 
-Deployed to DEV and UAT **2026-10-09**. **PROD is not migrated.** On 2026-10-09 PROD was inspected read-only and everything it needs was prepared and dry-run (see [PROD rollout runbook](#prod-rollout-runbook)); nothing on PROD was changed. PROD keeps its model-name setup and in-code interview overrides until someone runs that runbook with explicit PROD authorization.
+Deployed to DEV and UAT **2026-10-09**; **PROD live 2026-10-09 ~18:41 UTC** (release `release-v1.41-hotfix-4`, Raj K). PROD gateway: ConfigMap `litellm-task-policy` (= `litellm-central/prod/tasks-prod.json`, 41 tasks) mounted as a directory at `/app/policies`, hook ConfigMap `litellm-fallback-hook` = `litellm-central/pl_openai_fallback.py`, mount mirrored into `~/pl-oks-cluster/api-ns/litellm/litellm.yaml`; `corporate-node-v2-prod` key gained the 10 `pl/corporate-*` tasks. Gateway backups: `~/backups/litellm-hotfix4-20261009T184033Z/` on the PROD builder. Checks: `prod_apply_policy.sh` → 41 valid / 7 models registered; `prod_check_routes.sh` → 36 text tasks OK on primary, 0 failures; unknown task 400; legacy model names 200.
+
+**Migrated on PROD:** fast-api `be2b28b` (`pl-fast-api:2026-10-09-18-45-32-release-v1.41-hotfix-4`) and corporate-node-v2 + worker `ef2b53f` (`pl-corporate-api-v2:2026-10-09-18-47-57-release-v1.41-hotfix-4`). **Not migrated on PROD (deferred by Raj K):** pg-vector-api-service and form-data-normalization stay on `release-v1.38-hotfix-1` and still send physical model names (served unchanged); the runbook's form-data-normalization Secret was NOT created. Audio/image/grounding tasks are not yet exercised on PROD.
 
 ## Runtime contract
 
