@@ -19,6 +19,10 @@ v1 `/users` (sidebar "Users") now does a full-page redirect to `/v2/users`.
   are. Anyone with `editUserPermissions` can grant anything, including Admin.
 - **v1 role:** every user created or edited from v2 is **Admin in v1** (`user_management.users.admin_role_id` = the
   CORPORATE "Admin" role), whatever the v2 role. What they can do in v2 is decided by the v2 switches.
+  ⚠️ There are several roles named "Admin" (`admin.roles` journeys CORPORATE / INTERNAL / INSTITUTE), and admin-node
+  `/roles/journey/CORPORATE` returns the INTERNAL one too. Only a role whose **own** `journey = 'CORPORATE'` may be
+  written to a corporate user — the INTERNAL Admin sends them to the **admin portal** at sign-in (fixed 2026-10-09,
+  corporate-node `1c122812` / UAT `fde47e75`; 3 UAT users repaired).
 - **Resolution** of a user's v2 access (corporate-node `CorporateUserAccessService.resolveAccess`):
   1. PluginLive internal user (`pluginlive_id`, i.e. an admin **check-in**) → full access. Their own record has no
      `corporate_id` — the auth service writes the corporate only into the token — so this rule runs first.
