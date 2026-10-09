@@ -17,7 +17,9 @@ v1 `/users` (sidebar "Users") now does a full-page redirect to `/v2/users`.
   - `viewAssessmentDetails` (label **"View dashboard & assessments"**) opens the whole Assessment module: without it
     the Dashboard and Assessments nav items are hidden, `/v2/assessments/*` shows "no access", `/v2/dashboard` (the v2
     home) redirects to `/v2/users`, and the BFF read routes (list, dashboard, detail, overview, candidates) return 403.
-    The users list is open to every user (not an action). (2026-10-09, v2 `ef497e3` / UAT `73a5f91`.)
+    **Manage Users** (Settings rail item, `/v2/users`, and corporate-node `GET /users/v2` + `/user-roles/v2`) needs at least
+    one User Management action; with none, it is hidden, `/v2/users` shows "no access", and the APIs return 403
+    (2026-10-09, corporate-node `d6b6be89` / UAT `15fb42e6`, v2 `e1931bd` / UAT `feccd7c`). (2026-10-09, v2 `ef497e3` / UAT `73a5f91`.)
   - PluginLive check-in sessions: Settings opens on Manage Users; Profile and Change Password are hidden (they are the
     internal admin's own).
 - Picking **Admin** turns every switch on (each can still be turned off). Picking another role leaves the switches as they
@@ -58,14 +60,14 @@ corporate-node (JWT, tenant from the token via `assertCorporateScope`):
 
 | Method | Path | Gate |
 |---|---|---|
-| GET | `/corporates/:id/users/v2` | any user of the corporate |
+| GET | `/corporates/:id/users/v2` | any User Management action |
 | GET | `/corporates/:id/users/v2/me/access` | self |
 | PUT | `/corporates/:id/users/v2/me/profile` | self (name + phone) |
 | GET | `/corporates/:id/users/v2/:userId` | `viewUserDetails` (or self) |
 | POST | `/corporates/:id/users/v2` | `addUsers` (+ `editUserPermissions` if a role/switches are sent) |
 | PUT | `/corporates/:id/users/v2/:userId` | `editUsers` for details, `editUserPermissions` for role/switches |
 | PATCH | `/corporates/:id/users/v2/:userId/status` | `deactivateUsers` |
-| GET/POST | `/corporates/:id/user-roles/v2` | list: any user; create: `editUserPermissions` |
+| GET/POST | `/corporates/:id/user-roles/v2` | list: any User Management action; create: `editUserPermissions` |
 
 Create calls auth `POST /user` (generated password + welcome email). Email can't be changed on edit (auth `PUT /user/:id`
 doesn't update `login_email`).
