@@ -22,8 +22,13 @@ v1 `/users` (sidebar "Users") now does a full-page redirect to `/v2/users`.
     (2026-10-09, corporate-node `d6b6be89` / UAT `15fb42e6`, v2 `e1931bd` / UAT `feccd7c`). (2026-10-09, v2 `ef497e3` / UAT `73a5f91`.)
   - PluginLive check-in sessions: Settings opens on Manage Users; Profile and Change Password are hidden (they are the
     internal admin's own).
-- Picking **Admin** turns every switch on (each can still be turned off). Picking another role leaves the switches as they
-  are. Anyone with `editUserPermissions` can grant anything, including Admin.
+- Picking **Admin** turns every switch on (each can still be turned off). Picking a custom role **prefills the switches
+  of the user last saved with that role** (most recent `corporate_user_access.updated_at` for that `corporate_role_id`,
+  create or edit); a role nobody has been saved with yet leaves the switches as they are. Prefilled switches can be
+  changed; each user keeps their own set, and the latest save becomes the role's next prefill. No column stores a
+  role's defaults — `GET /user-roles/v2` derives `permissions` per role (Admin = all on, unused role = `null`), and the
+  form updates the role in memory after each save. Anyone with `editUserPermissions` can grant anything, including
+  Admin. (2026-10-09, corporate-node `cd58d591` / UAT `b26fd84b`, v2 `ff78576` / UAT `9c3dde1`.)
 - **Creating a user requires at least one enabled permission**, from either Assessment or User Management. The form
   shows **"Select at least one permission."**, opens the permission sections, and keeps the entered details. Enabling an
   action clears the error. Admin users must also have at least one switch on. Corporate-node checks the sanitized set
@@ -77,7 +82,7 @@ corporate-node (JWT, tenant from the token via `assertCorporateScope`):
 | POST | `/corporates/:id/users/v2` | `addUsers` + `editUserPermissions`; at least one enabled permission |
 | PUT | `/corporates/:id/users/v2/:userId` | `editUsers` for details, `editUserPermissions` for role/switches |
 | PATCH | `/corporates/:id/users/v2/:userId/status` | `deactivateUsers` |
-| GET/POST | `/corporates/:id/user-roles/v2` | list: any User Management action; create: `editUserPermissions` |
+| GET/POST | `/corporates/:id/user-roles/v2` | list: any User Management action (each role carries `permissions` for prefill); create: `editUserPermissions` |
 
 Create calls auth `POST /user` (generated password + welcome email). Email can't be changed on edit (auth `PUT /user/:id`
 doesn't update `login_email`).
