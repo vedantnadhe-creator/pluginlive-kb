@@ -2350,3 +2350,38 @@ already refetched. Manage's applied draft is now pinned to the overview it was
 saved over (`draft.on === overview`), so it stops overriding the record as soon
 as the refetch lands — previously a stale draft (old end date) kept masking
 every later refetch, e.g. a Reopen.
+
+## Design refresh items 14–26 + backend wiring (DEV + UAT, 2026-10-09; PROD pending)
+
+Abimanyu's design refresh (corporate-react-v2 `cab5ef1` + follow-ups `ffba377`
+list scoped search/status tabs, `7d12074`, `b3c2ef5` delivery-status filter and
+Sent/Taken columns, `a4ea0b4` taken time and Sent/Taken date filters) was on DEV
+since 2026-10-08 and is now cherry-picked to UAT (UAT `7dd9fdb..8faf182`).
+The AI Interview wizard bump `7a18c94` (wizard 0.1.2-bugfix.12) was **not**
+part of this UAT push.
+
+Backend wiring that came out of reviewing the items:
+
+- **Item 14 — fitness-first view:** the four-band verdict now comes from
+  corporate-node, stored verdict first. See
+  [Assessment/ai-interview.md](../../Assessment/ai-interview.md#corporate-v2-roster-four-fitness-bands-dev--uat-2026-10-09-prod-pending).
+- **Item 17 — configuration overview in Manage:** `GET /api/assessments/[id]`
+  already returned `configurations` (admin-node `/assessment/details` →
+  `AssessmentConfigService`). admin-node now also returns for AI Interview:
+  `secondaryLanguage` (from `stage_config`), `interviewerVoice` (select field:
+  value = ElevenLabs voice id, options Payal/Anika — v2 shows the name, admin-react
+  v1 shows the raw id like it does for resume policy), and evaluation parameters
+  labelled with weight (`"Communication · 20%"`; 0-weight = not scored, omitted;
+  kept as strings because admin-react renders list items as text). admin-node
+  DEV `0ced9f4` / UAT `61c58d7`.
+- **Still empty:** "Question types" (Interview Flow) and "Key focus areas" —
+  no AI Interview on DEV has `stage_config.flow` / `focusAreas` stored, so the
+  overview falls back to Skills.
+- **Items 19/21 — per-type transcript (choice / subjective / coding / reading /
+  listening):** UI only. The AI Interview runtime asks voice questions only; no
+  service runs or stores other question types, so real transcripts render as
+  voice turns. Needs the Interview Flow feature end to end (wizard → storage →
+  interviewer → report) before it carries data.
+- Known: admin-node `assessmentConfigService.spec.js` "AI_Interview: the brief
+  and format are editable" fails on Development and UAT independently of this
+  change (stale editable-keys expectation).

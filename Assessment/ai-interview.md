@@ -111,6 +111,29 @@ the full mechanics — as of 2026-07-16 both `overall_score` and `verdict` are
 **recomputed deterministically in code** from the LLM's per-parameter ratings,
 not taken from the model's own numbers.
 
+### Corporate v2 roster: four fitness bands (DEV + UAT, 2026-10-09; PROD pending)
+
+The corporate v2 assessment detail page (roster, Fitness column + filter, the
+fitness doughnut, the Strong Fit KPI) now shows all four verdicts —
+**Strong Fit / Fit / Borderline / Not Fit** — and supersedes the three-band
+roster wording in the section below for that page only (reports, PDF and admin
+exports are unchanged).
+
+- corporate-node `aiInterviewFitness` returns `strong | fit | medium | weak`
+  (= Strong Fit / Fit / Borderline / Not Fit). The **stored verdict wins** —
+  the scorer forces Not Fit on non-engagement whatever the score — and only
+  when no recognised verdict is stored does the rounded score band at
+  **80 / 50 / 40**. Legacy recommendation strings ("Recommend", …) fall back to
+  the score.
+- corporate-react-v2 no longer re-bands by score in the browser
+  (`interviewVerdict` removed); it renders the API's `fit`. Before this, a
+  stored Not Fit at 51 or a Borderline at 68 (both real on DEV) read **Fit** in
+  the table next to a report saying otherwise.
+- Deploy order: corporate-node before corporate-react-v2 (old API values would
+  be mislabelled by the new frontend).
+- Commits: corporate-node DEV `c279ff02` / UAT `7b72493c`; corporate-react-v2
+  DEV `951e18a` / UAT `37ea8c1`.
+
 ### AI Interview fitness display (DEV + UAT, 2026-09-18; PROD pending)
 
 AI Interview verdicts use **Fit / Borderline / Not Fit** across the corporate
