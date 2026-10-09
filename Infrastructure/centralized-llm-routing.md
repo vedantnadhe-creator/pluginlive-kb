@@ -69,9 +69,9 @@ All policies below use **0 retries**. Timeout is per attempt, not total end-to-e
 | `pl/interview-phone` | `gemini-3.8-flash` | `gpt-6-luna` | gemini-3.8-flash: low; gpt-6-luna: none | 12 | text |
 | `pl/interview-repeat-check` | `gemini-3-flash-preview` | `gpt-5.4-mini` | gemini-3-flash-preview: disable; gpt-5.4-mini: none | 6 | text |
 | `pl/interview-listener` | `gemini-2.5-pro` | `gemini-3.8-flash` → `gemini-2.5-flash` | gemini-2.5-pro: native default; gemini-3.8-flash: low; gemini-2.5-flash: disable | 120 | audio |
-| `pl/reading-audio` | `gemini-3-flash-preview` | `gemini-3.8-flash` → `gemini-2.5-flash` | gemini-3-flash-preview: disable; gemini-3.8-flash: low; gemini-2.5-flash: disable | 60 | audio |
+| `pl/reading-audio` | `gemini-3.8-flash` | `gemini-2.5-flash` | gemini-3.8-flash: low; gemini-2.5-flash: disable | 60 | audio |
 | `pl/reading-gaze` | `gemini-3.8-flash` | `gpt-6-luna` | gemini-3.8-flash: low; gpt-6-luna: none | 30 | text |
-| `pl/aptitude-generation` | `gemini-3-flash-preview` | `gpt-5.4-mini` | gemini-3-flash-preview: disable; gpt-5.4-mini: low | 120 | text |
+| `pl/aptitude-generation` | `gemini-3.8-flash` | `gpt-5.4-mini` | gemini-3.8-flash: low; gpt-5.4-mini: low | 120 | text |
 | `pl/communication-generation` | `gemini-3.8-flash` | `gpt-6-luna` | gemini-3.8-flash: low; gpt-6-luna: none | 60 | text |
 | `pl/hinglish-generation` | `gemini-3.8-flash` | `gpt-6-luna` | gemini-3.8-flash: low; gpt-6-luna: none | 60 | text |
 | `pl/role-generation` | `gemini-3.8-flash` | `gpt-6-luna` | gemini-3.8-flash: low; gpt-6-luna: none | 120 | text |
@@ -97,10 +97,12 @@ All policies below use **0 retries**. Timeout is per attempt, not total end-to-e
 | `pl/corporate-workflow` | `gemini-3.8-flash` | `gpt-6-luna` | gemini-3.8-flash: low; gpt-6-luna: none | 60 | text |
 | `pl/assistant-guide` | `gemini-3.8-flash` | `gpt-6-luna` | gemini-3.8-flash: low; gpt-6-luna: none | 60 | text |
 | `pl/assistant-chat` | `gemini-3.8-flash` | `gpt-6-luna` | gemini-3.8-flash: low; gpt-6-luna: low | 60 | text |
-| `pl/corporate-web-search` | `gemini-3.8-flash` | `gemini-3-flash-preview` | gemini-3.8-flash: low; gemini-3-flash-preview: disable | 60 | grounding |
+| `pl/corporate-web-search` | `gemini-3.8-flash` | `gemini-2.5-flash` | gemini-3.8-flash: low; gemini-2.5-flash: disable | 60 | grounding |
 | `pl/assessment-image` | `gemini-2.5-flash-image` | None | native default | 120 | image |
 | `pl/role-transcription` | `gemini-3.8-flash` | `gemini-2.5-flash` | gemini-3.8-flash: low; gemini-2.5-flash: disable | 60 | audio |
-| `pl/aptitude-validation` | `gpt-5.4-mini` | `gpt-6-luna` → `gemini-3-flash-preview` | gpt-5.4-mini: low; gemini-3-flash-preview: disable; gpt-6-luna: low | 120 | text |
+| `pl/aptitude-validation` | `gpt-5.4-mini` | `gpt-6-luna` → `gemini-3.8-flash` | gpt-5.4-mini: low; gpt-6-luna: low; gemini-3.8-flash: low | 120 | text |
+
+**Preview model retired 2026-10-09 (DEV+UAT):** `gemini-3-flash-preview` was replaced by `gemini-3.8-flash` everywhere **except the live interview tasks** (`pl/interview-probe`, `pl/interview-repeat-check`, UAT `pl/interview-must-ask`). Reason: 3.8 rejects thinking-off (`minimal`/`disable` fail and fall back), and with `low` it takes 6.5–8 s per call, which exceeds the 6 s live-turn cap, so every live call would time out and hit `gpt-5.4-mini` 6 s late. Moving those tasks to 3.8 also requires raising their timeout, which is a product decision.
 
 **UAT override:** `pl/interview-must-ask`: `gemini-3-flash-preview` → `gpt-5.4-mini`; reasoning disable → none; 6 seconds per attempt. DEV uses flash-lite → Luna, 4 seconds. Do not copy DEV policy wholesale over UAT without checking registrations and intended differences.
 
