@@ -94,6 +94,18 @@ corporate-react-v2 BFF: `/api/me/users`, `/api/me/users/[id]`, `/api/me/users/[i
 - Change Password UI: Current / New / Confirm each have their own Show/Hide toggle; on success the footer shows
   "Password saved successfully." (no "other devices will be signed out" subtitle, though sessions are still revoked).
 
+## Contact autofill and table search
+
+- The Add/Edit user drawer and the users search have separate HTML forms. Name and email inputs carry explicit
+  contact autofill hints; the table field is a named `type="search"` input. Chrome's saved-contact autofill fills the
+  user details without putting the saved email into the background search.
+- While a user drawer is open, the users table is inert and its search is disabled; search change events are ignored.
+  Closing the drawer restores search with the previous filter intact. This applies to both `/v2/users` and
+  Settings › Manage Users.
+- UAT deployed 2026-10-09 (`3f5aedd`); source is also on Development (`e650582`), with DEV deployment pending.
+  Verified with native Chrome autofill against the deployed UAT frontend using isolated API fixtures; 12 user drawer
+  and search component tests pass. No backend or database change was needed.
+
 ## Related v1 changes
 
 - Interviewer pickers (schedule interview, create slot, add/replace interviewer) list **every active** user of the
