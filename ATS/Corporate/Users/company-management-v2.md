@@ -34,8 +34,9 @@ v1 `/users` (sidebar "Users") now does a full-page redirect to `/v2/users`.
   2. A `corporate_user_access` row → that row's role + switches.
   3. No row (e.g. a user added from v1 later) → v1 Admin = full access, anything else = nothing on.
   An inactive user has nothing.
-- **Guards:** a corporate always keeps one active Admin (can't deactivate or demote the last one); you can't deactivate
-  yourself; every call is scoped to the token's corporate (another corporate's user is a 404).
+- **Guards:** you can't deactivate yourself; every call is scoped to the token's corporate (another corporate's user is
+  a 404). There is **no** "keep one active Admin" rule — any other user, the last Admin included, can be deactivated or
+  demoted (removed 2026-10-09, corporate-node `4ce499d7` / UAT `fa95751c`).
 
 ## Data
 
