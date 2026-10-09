@@ -1,6 +1,6 @@
 # AI Gateway (LiteLLM)
 
-> **2026-10-09 — DEV/UAT update:** DEV and UAT now route migrated calls by stable `pl/<task>` names. Physical models, reasoning/payload conversion, retries, timeouts and fallbacks are loaded from host policy for each request. A validated policy change needs no service or gateway restart. See [centralized routing](centralized-llm-routing.md) for mappings, onboarding rule and current Google quota blockers. PROD retains the earlier setup; older descriptions below are historical where superseded.
+> **2026-10-09 — DEV/UAT update:** DEV and UAT now route migrated calls by stable `pl/<task>` names. Physical models, reasoning/payload conversion, retries, timeouts and fallbacks are loaded from host policy for each request. A validated policy change needs no service or gateway restart. See [centralized routing](centralized-llm-routing.md) for mappings, onboarding rule and current Google quota blockers. PROD retains the earlier setup until the [PROD rollout runbook](centralized-llm-routing.md#prod-rollout-runbook) is run (prepared and dry-run 2026-10-09); older descriptions below are historical where superseded.
 
 Self-hosted **LiteLLM** proxy that fronts all LLM calls for the platform: one OpenAI-compatible endpoint with a dashboard for **provider-key management, cost/usage tracking, fallbacks, retries, and per-service virtual keys**. One gateway is deployed **per environment** (isolated; no shared cross-env instance).
 

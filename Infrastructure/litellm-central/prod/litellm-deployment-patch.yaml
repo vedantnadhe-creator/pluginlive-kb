@@ -1,0 +1,20 @@
+# Strategic-merge patch for deploy/litellm (namespace api): mounts the task policy
+# as a DIRECTORY at /app/policies. Never use subPath for this mount: a subPath
+# ConfigMap mount is frozen at pod start, so policy edits would need a restart.
+# The hook reads /app/policies/tasks.json on every pl/<task> request.
+#   kubectl -n api patch deploy litellm --type strategic --patch-file litellm-deployment-patch.yaml
+# Then mirror the same volume + mount into ~/pl-oks-cluster/api-ns/litellm/litellm.yaml,
+# or the next `kubectl apply -f litellm.yaml` silently drops it (unknown task → 503).
+spec:
+  template:
+    spec:
+      containers:
+        - name: litellm
+          volumeMounts:
+            - name: litellm-task-policy
+              mountPath: /app/policies
+              readOnly: true
+      volumes:
+        - name: litellm-task-policy
+          configMap:
+            name: litellm-task-policy

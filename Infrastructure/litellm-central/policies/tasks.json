@@ -121,15 +121,13 @@
       "modality": "audio"
     },
     "pl/reading-audio": {
-      "primary": "gemini-3-flash-preview",
+      "primary": "gemini-3.8-flash",
       "fallbacks": [
-        "gemini-3.8-flash",
         "gemini-2.5-flash"
       ],
       "timeout": 60,
       "retries": 0,
       "reasoning": {
-        "gemini-3-flash-preview": "disable",
         "gemini-3.8-flash": "low",
         "gemini-2.5-flash": "disable"
       },
@@ -149,14 +147,14 @@
       "modality": "text"
     },
     "pl/aptitude-generation": {
-      "primary": "gemini-3-flash-preview",
+      "primary": "gemini-3.8-flash",
       "fallbacks": [
         "gpt-5.4-mini"
       ],
       "timeout": 120,
       "retries": 0,
       "reasoning": {
-        "gemini-3-flash-preview": "disable",
+        "gemini-3.8-flash": "low",
         "gpt-5.4-mini": "low"
       },
       "modality": "text"
@@ -489,13 +487,13 @@
     "pl/corporate-web-search": {
       "primary": "gemini-3.8-flash",
       "fallbacks": [
-        "gemini-3-flash-preview"
+        "gemini-2.5-flash"
       ],
       "timeout": 60,
       "retries": 0,
       "reasoning": {
         "gemini-3.8-flash": "low",
-        "gemini-3-flash-preview": "disable"
+        "gemini-2.5-flash": "disable"
       },
       "modality": "grounding"
     },
@@ -524,14 +522,14 @@
       "primary": "gpt-5.4-mini",
       "fallbacks": [
         "gpt-6-luna",
-        "gemini-3-flash-preview"
+        "gemini-3.8-flash"
       ],
       "timeout": 120,
       "retries": 0,
       "reasoning": {
         "gpt-5.4-mini": "low",
-        "gemini-3-flash-preview": "disable",
-        "gpt-6-luna": "low"
+        "gpt-6-luna": "low",
+        "gemini-3.8-flash": "low"
       },
       "modality": "text"
     }
