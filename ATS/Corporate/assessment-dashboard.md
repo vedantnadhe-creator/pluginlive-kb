@@ -2382,6 +2382,15 @@ Backend wiring that came out of reviewing the items:
   service runs or stores other question types, so real transcripts render as
   voice turns. Needs the Interview Flow feature end to end (wizard → storage →
   interviewer → report) before it carries data.
+- **Item 10 — candidate reports:** not sample data for real candidates. The
+  drawer reads student-node `/reportV2` via corporate-node `/report/full`; the
+  `_data/mockReport.ts` files only render when a `/reports/*` page is opened
+  without `assessmentId`/`email` (design review). Real fields used by the
+  refresh: transcript turns (voice only), `parameters[].metrics` (`"96/100"` →
+  stars), `overall.recommendation` / `feedback.overall` (Hiring Recommendation).
+  A metric student-node cannot measure arrives as `"Not available"` — it now
+  shows "Not available" instead of 0 stars (corporate-react-v2 DEV `be8d9a6`,
+  UAT `75faf8e`).
 - Known: admin-node `assessmentConfigService.spec.js` "AI_Interview: the brief
   and format are editable" fails on Development and UAT independently of this
   change (stale editable-keys expectation).
