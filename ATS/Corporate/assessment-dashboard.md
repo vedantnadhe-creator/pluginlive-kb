@@ -2356,9 +2356,25 @@ every later refetch, e.g. a Reopen.
 Abimanyu's design refresh (corporate-react-v2 `cab5ef1` + follow-ups `ffba377`
 list scoped search/status tabs, `7d12074`, `b3c2ef5` delivery-status filter and
 Sent/Taken columns, `a4ea0b4` taken time and Sent/Taken date filters) was on DEV
-since 2026-10-08 and is now cherry-picked to UAT (UAT `7dd9fdb..8faf182`).
+since 2026-10-08 and was cherry-picked to UAT (UAT `7dd9fdb..8faf182`).
+**Item 20 was subsequently reverted on UAT; see the current list behavior below.**
 The AI Interview wizard bump `7a18c94` (wizard 0.1.2-bugfix.12) was **not**
 part of this UAT push.
+
+**Current UAT assessments list (2026-10-09):** corporate-react-v2 `585ebc2`
+reverts `531ab49`, the UAT cherry-pick of DEV `ffba377`. The list restores:
+
+- An **Assessment-wise** view band with the subscribed assessment-type legend
+  and counts. **Candidate-wise** is again an inactive **Coming soon** control.
+- Plain **Search assessments** input, status tabs and Filters inside the table
+  card. The Assessment / Candidate search-scope picker is removed.
+- Assessment-type colour dots beside assessment names, with type text below
+  and additional types in the **+N More** popover, replacing the inline type tags.
+
+This is a UAT-only revert of those eight list files. DEV retains item 20. The
+assessment-detail/report refresh, delivery filters and Sent/Taken columns remain
+in UAT. The candidate API and filtering hooks remain available; this revert
+restores the previous list UI and does not change backend endpoints or data.
 
 Backend wiring that came out of reviewing the items:
 
