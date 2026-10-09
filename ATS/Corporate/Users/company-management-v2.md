@@ -14,7 +14,12 @@ v1 `/users` (sidebar "Users") now does a full-page redirect to `/v2/users`.
     `shareAssessment`, `addCandidates`, `remindCandidates` (reminders + resend), `removeCandidates`,
     `viewCandidateReport`, `downloadReports` (downloads + export sheets).
   - User Management: `viewUserDetails`, `addUsers`, `editUsers`, `editUserPermissions`, `deactivateUsers`.
-  - The assessments list, the candidate list and the users list are open to every user (not actions).
+  - `viewAssessmentDetails` (label **"View dashboard & assessments"**) opens the whole Assessment module: without it
+    the Dashboard and Assessments nav items are hidden, `/v2/assessments/*` shows "no access", `/v2/dashboard` (the v2
+    home) redirects to `/v2/users`, and the BFF read routes (list, dashboard, detail, overview, candidates) return 403.
+    The users list is open to every user (not an action). (2026-10-09, v2 `ef497e3` / UAT `73a5f91`.)
+  - PluginLive check-in sessions: Settings opens on Manage Users; Profile and Change Password are hidden (they are the
+    internal admin's own).
 - Picking **Admin** turns every switch on (each can still be turned off). Picking another role leaves the switches as they
   are. Anyone with `editUserPermissions` can grant anything, including Admin.
 - **v1 role:** every user created or edited from v2 is **Admin in v1** (`user_management.users.admin_role_id` = the
