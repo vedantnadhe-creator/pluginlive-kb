@@ -5,6 +5,8 @@ tags: [service, api, python, fastapi, parsing, cv, jd, ai]
 
 # CV & JD Document Parsers (inside fastapi-ai-engine)
 
+> **2026-10-09 — DEV/UAT update:** Live DEV/UAT CV and JD parsing inside fastapi now use `pl/cv-parse` and `pl/jd-parse`, with Gemini 3.8 → Luna selected centrally. The standalone JD shim source is migrated too, but no unused standalone parser was started. See [centralized routing](centralized-llm-routing.md). PROD is unchanged by this rollout.
+
 **Repo:** `/home/ubuntu/api/fastapi-ai-engine`
 **Package:** `DocumentParsing/` · **Routers:** `routers/cv_parser.py`, `routers/jd_parser.py`
 **Runs in:** the `fastapiai` container (port 8011), *not* as separate services

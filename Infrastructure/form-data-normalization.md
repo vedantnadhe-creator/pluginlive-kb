@@ -5,6 +5,8 @@ tags: [service, api, python, normalization, ingestion, ai]
 
 # Form Data Normalization Service
 
+> **2026-10-09 — DEV/UAT update:** DEV/UAT APIs and UAT worker/cron now use `pl/normalization`, `pl/entity-match` and `pl/column-map`; gateway policy selects Gemini 3.8 → Luna and handles thinking/fallbacks. Missing gateway configuration fails explicitly; provider credentials no longer supply a native chat escape path. Existing embeddings are unchanged. See [centralized routing](centralized-llm-routing.md).
+
 **Repo:** `/home/ubuntu/api/form-data-normalization`
 **Stack:** Python 3.11 · FastAPI · PostgreSQL · OpenAI (GPT-4o-mini) · **Gemini 2.5 Flash-Lite** (primary normalization model)
 **Port:** 5013 (production) / 8001 (development)

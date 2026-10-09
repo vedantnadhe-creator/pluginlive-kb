@@ -1,5 +1,7 @@
 # AI Gateway (LiteLLM)
 
+> **2026-10-09 — DEV/UAT update:** DEV and UAT now route migrated calls by stable `pl/<task>` names. Physical models, reasoning/payload conversion, retries, timeouts and fallbacks are loaded from host policy for each request. A validated policy change needs no service or gateway restart. See [centralized routing](centralized-llm-routing.md) for mappings, onboarding rule and current Google quota blockers. PROD retains the earlier setup; older descriptions below are historical where superseded.
+
 Self-hosted **LiteLLM** proxy that fronts all LLM calls for the platform: one OpenAI-compatible endpoint with a dashboard for **provider-key management, cost/usage tracking, fallbacks, retries, and per-service virtual keys**. One gateway is deployed **per environment** (isolated; no shared cross-env instance).
 
 ## Endpoints
@@ -12,7 +14,7 @@ Self-hosted **LiteLLM** proxy that fronts all LLM calls for the platform: one Op
 
 - Dashboard login is the LiteLLM UI (username `pluginlive`; password + master key in `~/litellm/secrets.env` on each box).
 - Runtime **DEV/UAT**: `litellm` container (`ghcr.io/berriai/litellm:main-stable`, port 4000, published on `127.0.0.1` for nginx and `172.17.0.1` for sibling containers) + `litellm-db` Postgres. Config `~/litellm/config.yaml`; served under `SERVER_ROOT_PATH=/ai-gateway`; nginx route in `static-website.conf`.
-- Runtime **PROD**: K8s namespace `api` — `litellm` + `litellm-postgres` deployments, manifests in `~/pl-oks-cluster/api-ns/litellm/`. Apps connect **in-cluster** at `http://litellm/v1`; the public ingress exists only for the UI. Only `GEMINI_API_KEY` is configured — router fallbacks map `gpt-*` / `llama-*` to `gemini-2.5-flash`. Query gateway spend directly with `kubectl -n api exec -i deploy/litellm-postgres -- psql -U litellm -d litellm`.
+- Runtime **PROD**: K8s namespace `api` — `litellm` + `litellm-postgres` deployments, manifests in `~/pl-oks-cluster/api-ns/litellm/`. Apps connect **in-cluster** at `http://litellm/v1`; the public ingress exists only for the UI. The 2026-10-07 rollout registered funded OpenAI fallbacks and mounted the compatibility hook in a ConfigMap; see the fallback section below. PROD retains that earlier model-name setup during the DEV/UAT centralization pilot. Query gateway spend directly with `kubectl -n api exec -i deploy/litellm-postgres -- psql -U litellm -d litellm`.
 
 ## What routes through it
 
@@ -21,7 +23,7 @@ Self-hosted **LiteLLM** proxy that fronts all LLM calls for the platform: one Op
 - **Embeddings — `gemini-embedding-001` is registered on DEV + UAT (2026-08-18), but nothing calls it through the gateway yet.** See *Embeddings* below. The other embedding models (`text-embedding-004`, `text-embedding-3-small`, Chroma) are still native.
 - **Excluded — STT/TTS** (Deepgram, ElevenLabs, Azure Speech): not routable through this gateway.
 
-Services opt in via env vars `LITELLM_PROXY_URL` + `LITELLM_VIRTUAL_KEY` (default-off — unset = native provider calls, unchanged behaviour).
+Migrated DEV/UAT services require `LITELLM_PROXY_URL` + `LITELLM_VIRTUAL_KEY`; unset fails explicitly. Earlier default-off native behavior remains only in unmigrated deployments.
 
 ### Currently routed
 - `fastapi-ai-engine` (Assessment: communication / hinglish / aptitude / role / AI-interview / resume-match LLM calls, **plus image generation** via `gemini-2.5-flash-image` for communication/hinglish Question-Based-Response questions) — DEV + UAT + PROD. Image gen routes through `utils/portkey_gateway.build_image_client()` → `QuestionGeneration/Communication/image_generation_google.py` (gateway-first, native `google.genai` fallback only when `LITELLM_*` env unset).
@@ -210,7 +212,7 @@ router_settings:
 
 - **Models:** `gpt-5.4-mini` and `gpt-6-luna` are DB-managed rows on DEV and UAT, using the funded OpenAI key taken from UAT's `gpt-5-mini` row. `gpt-5.6-luna` is still registered but is no longer in any chain.
 - **Why OpenAI is the first hop:** it covers a single-model blip and a full Google outage the same way. LiteLLM can follow nested chains, so a Gemini hop in between made it unclear which model a task finally landed on.
-- **Per-task overrides in code:** these take precedence over the per-model chain.
+- **Historical per-task overrides in code (now PROD only):** these take precedence over the per-model chain. DEV/UAT overrides were removed and replaced with centralized task policies on 2026-10-09.
   - Live AI Interview calls: 12 s per attempt, then `gpt-5.4-mini` / `gpt-6-luna` with reasoning `none`.
   - score-final: `gpt-6-luna` with reasoning `low`. The per-model chain would give `gpt-5.4-mini` with reasoning off, which was lenient and missed the non-engagement cap.
   - See *Assessment/ai-interview.md*.

@@ -1,5 +1,7 @@
 # Communication Assessment
 
+> **2026-10-09 — DEV/UAT update:** DEV/UAT generation and scoring now use centralized `pl/communication-generation`, `pl/hinglish-generation`, `pl/communication-score`, `pl/reading-audio`, `pl/reading-gaze` and `pl/assessment-image` policies. See [centralized routing](../Infrastructure/centralized-llm-routing.md) for Gemini 3.8/OpenAI mappings and capability limits. UAT audio and both environments’ image generation currently encounter Google quota errors; OpenAI text fallbacks are working. STT/TTS/embeddings retain their existing integrations.
+
 > The Communication Assessment evaluates a student's **reading, listening, speaking, and writing** abilities using AI-powered scoring. Students are assigned a **CEFR level** (A1–C2) that adapts over time based on their performance.
 
 ---

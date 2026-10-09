@@ -5,6 +5,8 @@ tags: [service, api, python, vector-search, normalization, ai, pgvector]
 
 # PG Vector Search Service (Entity Normalizer)
 
+> **2026-10-09 — DEV/UAT update:** DEV/UAT chat clients now require LiteLLM and use `pl/entity-disambiguation`, `pl/pincode-resolution` and `pl/query-rewrite` (Gemini 3.8 → Luna in gateway policy). The existing embedding model/vector space is unchanged. See [centralized routing](centralized-llm-routing.md). Older gated/default-off chat descriptions below are superseded for DEV/UAT.
+
 **Repo:** `/home/ubuntu/api/pg-vector-api-service`
 **Stack:** Python 3.12 · FastAPI · PostgreSQL (pgvector + pg_trgm) · Gemini · OpenAI
 **Port:** 8002 (UAT/Prod) / 8000 (default)
