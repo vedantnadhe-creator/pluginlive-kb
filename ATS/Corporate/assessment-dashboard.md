@@ -2376,6 +2376,17 @@ assessment-detail/report refresh, delivery filters and Sent/Taken columns remain
 in UAT. The candidate API and filtering hooks remain available; this revert
 restores the previous list UI and does not change backend endpoints or data.
 
+**Filter alignment follow-up (UAT, 2026-10-09, `cf05ad7`):** the revert also
+restored an obsolete copy of the shared filter styles in `assessments.css`.
+Its `.fp-values-body { display: flex }` overrode the `.fp-panes` grid in
+`styles/ds/app.css`. Hidden category panes then took up vertical space, pushing
+the active field (notably Minimum score) down and stretching the panel. The
+duplicate filter-style block is removed; both list and candidate filters use
+the shared styles. Category panes overlap in one grid cell, so their headings
+stay aligned at the top and the panel keeps a stable height when switching
+between status, delivery, score and date filters. The restored list layout is
+unchanged.
+
 Backend wiring that came out of reviewing the items:
 
 - **Item 14 — fitness-first view:** the four-band verdict now comes from
