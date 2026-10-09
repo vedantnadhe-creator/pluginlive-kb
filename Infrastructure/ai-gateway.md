@@ -205,7 +205,7 @@ router_settings:
     - gemini-2.5-flash: ["gpt-6-luna"]
     - gemini-2.5-flash-lite: ["gpt-6-luna"]
     - gemini-2.0-flash: ["gpt-6-luna"]
-    - gemini-2.5-pro: ["gemini-2.5-flash"]   # AI Interview listener (audio): no OpenAI hop
+    - gemini-2.5-pro: ["gemini-3.8-flash", "gemini-2.5-flash"]   # AI Interview listener (audio): 3.8 hears audio; no OpenAI hop
 ```
 
 - **Models:** `gpt-5.4-mini` and `gpt-6-luna` are DB-managed rows on DEV and UAT, using the funded OpenAI key taken from UAT's `gpt-5-mini` row. `gpt-5.6-luna` is still registered but is no longer in any chain.
@@ -214,6 +214,20 @@ router_settings:
   - Live AI Interview calls: 12 s per attempt, then `gpt-5.4-mini` / `gpt-6-luna` with reasoning `none`.
   - score-final: `gpt-6-luna` with reasoning `low`. The per-model chain would give `gpt-5.4-mini` with reasoning off, which was lenient and missed the non-engagement cap.
   - See *Assessment/ai-interview.md*.
+
+### Listener fallback and the 2026-10-09 PROD quota outage
+
+**What happened:** from about 04:15 UTC on 2026-10-09, Google answered PROD's `gemini-3-flash-preview`, `gemini-2.5-flash` and `gemini-2.5-pro` with **429 "You exceeded your current quota, please check your plan and billing details"**.
+- `gemini-3.8-flash` kept working **on the same API key**, so the limit is **per model**, not per key or project.
+- Text calls went to `gpt-5.4-mini` / `gpt-6-luna` through the chains above, with 0 fallback failures and no errors in fast-api or student-node.
+- The listener had no working hop.
+
+**The fix (same day, all three environments):** `gemini-2.5-pro` → `gemini-3.8-flash` → `gemini-2.5-flash`.
+- On PROD the listener's audio was then answered by 3.8 (verified with a synthetic clip and fastapi's PROD key).
+- In the 2026-10-06 listener test, 3.8 matched 2.5 Pro on English but scored strong regional-language speakers about 11–30 points lower. That is still far closer than the no-listener path (+13 Communication, 8/168 Not Fit → Fit).
+- **No OpenAI model can be a listener fallback.** `gpt-6-luna` and `gpt-5.4-mini` reject audio input (400 "Content blocks are expected to be either text or image_url"), and `gpt-audio-1.5` failed the 2026-10-06 quality test.
+
+**Root cause still open:** the Gemini quota or billing for those three models on the PROD key has to be raised or topped up.
 
 ### `pl_openai_fallback.py`: why a plain OpenAI fallback fails
 
