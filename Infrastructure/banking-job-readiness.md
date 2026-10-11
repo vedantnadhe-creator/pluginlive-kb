@@ -2725,3 +2725,9 @@ Key Features section. `elevenlabs-tts` gains a Gemini TTS path whose default voi
 (unset on UAT → "Kore"; male/female pick Charon/Kore). `vite.config.ts` adds `optimizeDeps` (dev server only).
 Verified: admin 5/5, Coding Challenges 375, Save Module, Student Tier search, 45 admin pages ✓, 3-role e2e ×2.
 Snapshot `~/banking-sb/snapshots/20261011T132713Z`.
+
+## 2026-10-11 (eve) — redeployed to `90a654e0` (8 commits since `4193d9f4`; no migrations, no new env)
+
+Upstream: Robo Assistant voice — hands-free listening resumes after the persona speaks; `elevenlabs-tts` / `_shared` tweaks.
+Verified: admin 5/5, Coding Challenges 375, Save Module, Student Tier search, 45 admin pages ✓, 3-role e2e ×2.
+Snapshot `~/banking-sb/snapshots/20261011T145133Z`.
