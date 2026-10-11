@@ -2717,3 +2717,11 @@ Rehearsed in BEGIN…ROLLBACK with candidate/trainer/admin probes first. Verifie
 Student Tier search, 45 admin pages 0 errors, 3-role e2e ×2. Snapshot `~/banking-sb/snapshots/20261011T115700Z`.
 Still open: `students` read/write `USING (true)` (candidate still reads 79 student rows); UAT keeps the older open
 "signed in read topic_videos" policy; dead NVIDIA/DeepSeek keys; Runway credits ~404.
+
+## 2026-10-11 (pm) — redeployed to `4193d9f4` (22 commits since `57552460`; no migrations)
+
+Upstream: Robo Assistant fixes + voice/animation enabled, track filter applied to simulations (filter-tracking bug fixed),
+Key Features section. `elevenlabs-tts` gains a Gemini TTS path whose default voice reads optional `GEMINI_TTS_VOICE`
+(unset on UAT → "Kore"; male/female pick Charon/Kore). `vite.config.ts` adds `optimizeDeps` (dev server only).
+Verified: admin 5/5, Coding Challenges 375, Save Module, Student Tier search, 45 admin pages ✓, 3-role e2e ×2.
+Snapshot `~/banking-sb/snapshots/20261011T132713Z`.
