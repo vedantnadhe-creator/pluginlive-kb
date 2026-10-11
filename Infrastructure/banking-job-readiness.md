@@ -2687,3 +2687,33 @@ audio-only; restored to the Runway video by re-signing the stored `videos/runway
 
 **Cost warning:** one Runway video used **96 credits** (500 → 404), so about 4 more fit. Use Veo or "auto" for bulk "Generate Missing", or top up Runway.
 Topics already marked Failed must be regenerated from the panel.
+
+## 2026-10-11 — redeployed to `57552460` (104 commits since `32d303c1`, 16 migrations)
+
+Upstream: Robo Assistant / voice simulation layer (`sim-voice`, human banker avatar), in-conversation task workspaces with
+server-side validators, speech metrics, assessment experience level + lowercase question difficulty, fail-closed proctoring
+telemetry, learning-path intake (`students.job_description/skills/experience`), Admin LLM Config save fix, RBAC table policies.
+
+New schema on UAT: `sim_voice_sessions`, `sim_utterances`, `sim_consent_records`, `sim_avatar_assets`, `sim_voice_profiles`,
+`sim_task_fixtures`, `sim_task_submissions`, `sim_validator_runs` (staff-only, holds the answer key), `sim_speech_metrics`,
+private bucket `sim-voice-audio`; `sim_events.seq`; `assessments.experience_level` (fresher/intern/experienced);
+`assessment_questions.difficulty` now easy/medium/hard (was Easy/Medium/Hard); proctoring pct columns have no default (NULL = not captured).
+Menus `simulations`, `live_sessions`, `robo_assistant` registered in menu access + RBAC (all tiers on).
+
+Behaviour changes:
+- **Publish = student-visible.** A trigger sets `metadata.student_visible=true` on publish unless the author set it; 8 published
+  UAT assessments without the flag became visible (candidate×assessment 2,195 → 2,248).
+- **Institute scope is now a server rule** (`private.assessment_institute_open_to`): an assessment mapped via
+  `assessment_institute_mapping` or `institute_ids` is visible only to that institute's students (6 scoped published rows on UAT).
+- Sim attempt updates limited to the pack manager (was any curriculum staff).
+- `llm_settings` readable by every signed-in user (no secrets in it; keys stay in `llm_provider_configs`), writable by admins only.
+
+UAT fixups (`~/banking-sb/fixups/`): `20261010091500_topic_videos_student_read_policy` (UAT `topic_videos.module_id` is text, upstream uuid —
+guarded cast); `20261010160000_tech_assessment_catalog_backfill` (UAT `quiz_question_bank.source_module_id` is uuid — compare as text;
+UAT has 0 tech questions, so it wrote no papers). Drizzle `0001_create_llm_usage_logs` not needed (table already exists with admin-read RLS).
+The modified `20260911132000` is superseded by `20261010203000`, which ran.
+
+Rehearsed in BEGIN…ROLLBACK with candidate/trainer/admin probes first. Verified after: admin 5/5, Coding Challenges 375, Save Module,
+Student Tier search, 45 admin pages 0 errors, 3-role e2e ×2. Snapshot `~/banking-sb/snapshots/20261011T115700Z`.
+Still open: `students` read/write `USING (true)` (candidate still reads 79 student rows); UAT keeps the older open
+"signed in read topic_videos" policy; dead NVIDIA/DeepSeek keys; Runway credits ~404.
