@@ -2731,3 +2731,15 @@ Snapshot `~/banking-sb/snapshots/20261011T132713Z`.
 Upstream: Robo Assistant voice — hands-free listening resumes after the persona speaks; `elevenlabs-tts` / `_shared` tweaks.
 Verified: admin 5/5, Coding Challenges 375, Save Module, Student Tier search, 45 admin pages ✓, 3-role e2e ×2.
 Snapshot `~/banking-sb/snapshots/20261011T145133Z`.
+
+## 2026-10-11 (late) — redeployed to `2da98562` (3 commits since `90a654e0`) — Simulation performance dashboard
+
+Upstream: candidate "Performance" dashboard (`SimPerformanceDashboard.tsx`, linked from My Simulations and Robo Assistant),
+backed by RPC `public.sim_candidate_dashboard()` — SECURITY DEFINER, returns the caller's own non-preview attempts (`mine`)
+plus every candidate's scored attempts anonymised by `dense_rank` (`peers`: module, mode, score, time; no user ids).
+**The RPC ships only as drizzle `0002_sim_candidate_dashboard.sql`** (not in `supabase/migrations`), so `deploy.sh` does not apply it:
+it was rehearsed (BEGIN…ROLLBACK, as a candidate: mine=7 peers=3) and applied by hand; copy kept in `~/banking-sb/drizzle-applied/`.
+`03_grants.sql` re-grants anon EXECUTE on all public functions, so it now ends with an explicit revoke for this RPC (anon=false, authenticated=true).
+Gotcha for future releases: check `drizzle/migrations` for new SQL too — the deploy script only reads `supabase/migrations`.
+Verified: admin 5/5, Coding Challenges 375, Save Module, Student Tier search, 45 admin pages ✓, 3-role e2e ×2.
+Snapshot `~/banking-sb/snapshots/20261011T161123Z`.
