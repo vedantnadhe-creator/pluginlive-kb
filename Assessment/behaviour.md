@@ -99,6 +99,41 @@ Live on DEV and UAT as of 2026-10-09: student-node Development `a0dc5a74`, UAT
 API successfully. Read-only database verification confirms five correct
 requirements for each degree entry in both environments. PROD pending.
 
+### Role requirements come from the mapping sheets (rebuilt 2026-10-12)
+
+**Source of truth:** the Google Sheets "Job Role Mappings - Mgmt" (35 MBA roles) and
+"Job Role Mappings - Engg" (40 roles across CSE, ECE and AI&DS). Each role lists 4-5
+behavioural competencies. **The minimum level is the cell's fill colour, not its
+column:** pink `EA9999` = Apprentice, yellow `FFD966` = Practitioner, green `B6D7A8` =
+Master, teal `A2C4C9` = Expert. Read the sheet as `.xlsx` (CSV loses colours).
+
+**What was wrong:** the original import stored, for almost every role, ONE competency
+repeated 2-4 times at mixed levels (e.g. Accounting Analyst = Financial / Business
+Acumen x4) instead of 4-5 distinct ones. The matcher therefore judged roles on a single
+competency and over-reported full matches (a QA MBA profile got 19). Advertising
+Coordinator (fixed 2026-10-09) was the first instance found.
+
+**Fix:** data only, no code. student-node
+`script/20261012T125045Z__rebuild_behavior_job_role_requirements_from_sheets.sql`
+deletes and re-inserts the requirements of every role in a covered degree. Matching is
+(domain, degree, role) with whitespace removed, case-folded and the role name cut at the
+first `:`; `PGDM - <dept>` rows take the `MBA - <dept>` sheet rows. It aborts on any
+unmatched role on either side, unknown competency or level; re-running is a no-op.
+`CA - Finance` (13 Management roles) is in neither sheet, has no requirements and is
+left untouched, so those rows never match. UAT also holds every CSE role twice; both
+copies are rewritten (the matcher dedupes by name).
+
+Verified: DEV 110 role rows / 480 requirements, UAT 126 / 548, both 0 differences from
+the sheets; the 6 `test/behaviorJobRoles.spec.js` tests pass. QA profile (UAT attempt
+`bba23d98`) now gets 13 full / 22 partial (Account Manager drops to partial: it needs
+Crisis Management Practitioner). Roles are computed per request, so reports correct
+themselves with no backfill. **PROD pending** -- needs this script AND the matcher code
+(`6ab77a9e` domain scoping, `a0dc5a74` level order), which PROD does not have yet.
+
+Note: the report's competency table/chart still lists every competency of the domain
+(9 for Management) regardless of specialisation; the PG specialisation pick
+(`selected_specialisation_id`, legacy app only) is not used by the report.
+
 ### Roles are scoped to the tested domain (since 2026-10-08)
 
 From 2026-09-01 (`1aa7cf25`) to 2026-10-08 the function searched the **whole**
@@ -276,6 +311,8 @@ candidate or per cohort, it now shows a **level** on the report's own ladder
   backfilled** -- turn proctoring on again via edit details if needed.
 
 ## Status
+
+Role requirements rebuilt from the mapping sheets: **DEV + UAT 2026-10-12**, PROD pending.
 
 Suitable-role matching originally shipped on **DEV + UAT** on 2026-09-01.
 The minimum-level fix and Advertising Coordinator data correction are live and
