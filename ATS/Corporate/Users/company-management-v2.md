@@ -1,6 +1,6 @@
 # Corporate Company Management (v2) — Manage Users, roles, per-user permissions
 
-**Live:** DEV + UAT (updated 2026-10-09). PROD pending.
+**Live:** DEV + UAT (updated 2026-10-12). PROD pending.
 **Where:** corporate-react-v2 `/v2/users` and Settings (account menu) › Profile / Change Password / Manage Users.
 v1 `/users` (sidebar "Users") now does a full-page redirect to `/v2/users`.
 
@@ -98,6 +98,15 @@ corporate-react-v2 BFF: `/api/me/users`, `/api/me/users/[id]`, `/api/me/users/[i
   env's user-management-node `PASSWORD_MASK_SECRET`. A successful change revokes the user's refresh sessions.
 - Change Password UI: Current / New / Confirm each have their own Show/Hide toggle; on success the footer shows
   "Password saved successfully." (no "other devices will be signed out" subtitle, though sessions are still revoked).
+- **Password rule = v1 corporate rule** (`lib/passwordRules.ts`, equals v1 regex
+  `^(?=.*[a-zA-Z])(?=.*\d)(?=.*[!@#$%^&*])[a-zA-Z\d!@#$%^&*]{8,}$`): 8+ chars, 1 letter, 1 number, 1 symbol from
+  `! @ # $ % ^ & *`, nothing else (no spaces). Save shows the first unmet rule ("Use at least 8 characters." /
+  "Add at least 1 letter." / "Add at least 1 number." / "Add at least 1 symbol: ! @ # $ % ^ & *" / "Use only letters,
+  numbers and ! @ # $ % ^ & * (no spaces)."). An "i" hint beside New password lists the rules; it opens on hover / focus /
+  tap and by itself while typing, with a live tick/cross per rule. Confirm shows "Passwords don't match." live.
+- **The BFF enforces the same rule** (400 with the same message; max 128 chars). The shared auth service
+  `PATCH /user/:id/password` does **no** strength check (other portals share it), so the BFF is the only server-side
+  gate. (2026-10-12, v2 `adcb068`+`3e821cb` / UAT `29b7205`+`493793b`.)
 
 ## Contact autofill and table search
 
