@@ -127,8 +127,12 @@ Verified: DEV 110 role rows / 480 requirements, UAT 126 / 548, both 0 difference
 the sheets; the 6 `test/behaviorJobRoles.spec.js` tests pass. QA profile (UAT attempt
 `bba23d98`) now gets 13 full / 22 partial (Account Manager drops to partial: it needs
 Crisis Management Practitioner). Roles are computed per request, so reports correct
-themselves with no backfill. **PROD pending** -- needs this script AND the matcher code
-(`6ab77a9e` domain scoping, `a0dc5a74` level order), which PROD does not have yet.
+themselves with no backfill. **PROD applied 2026-10-12**: 75 role rows / 323 requirements,
+0 differences from the sheets (PROD has no PGDM rows and no duplicate CSE rows). The
+matcher code was already on PROD (image `release-v1.41-hotfix-4`). This script supersedes
+the 2026-10-09 Advertising Coordinator script, which was never run on PROD. Backup of the
+previous rows: `~/backups/job_role_requirements_prod_before_20261012T125045Z.csv` on the
+PROD box. PROD's DB is on a private address: run psql from the PROD box.
 
 Note: the report's competency table/chart still lists every competency of the domain
 (9 for Management) regardless of specialisation; the PG specialisation pick
@@ -312,7 +316,7 @@ candidate or per cohort, it now shows a **level** on the report's own ladder
 
 ## Status
 
-Role requirements rebuilt from the mapping sheets: **DEV + UAT 2026-10-12**, PROD pending.
+Role requirements rebuilt from the mapping sheets: **DEV + UAT + PROD 2026-10-12**.
 
 Suitable-role matching originally shipped on **DEV + UAT** on 2026-09-01.
 The minimum-level fix and Advertising Coordinator data correction are live and
