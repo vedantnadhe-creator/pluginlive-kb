@@ -155,6 +155,29 @@ The **same** verification OTP is now also delivered by **SMS via MSG91**, as a *
 
 DEV + UAT: live 2026-07-09 (`SMS_ENABLED="true"`). PROD: pending (set the keys + `SMS_ENABLED` and confirm the DLT chain before enabling).
 
+## WhatsApp channel — OTP also sent on WhatsApp via MSG91 (2026-10-12)
+
+The **same** OTP that goes by email and SMS is now also sent on **WhatsApp** as a best-effort third channel, in the same `requestOtp`/`resendOtp` call. The phone comes from the same place as SMS: the invite token's `phone` claim first, then the candidate's user record. If there's no phone, nothing goes to SMS or WhatsApp. Like SMS, the WhatsApp send is fire-and-forget: if it fails, the error is logged (`assessment otp whatsapp failed`) and email still succeeds.
+
+- **Template:** `assessment_otp_v1` on MSG91 integrated number **916380485173** (the number DEV, UAT and PROD all use). Category **AUTHENTICATION**, approved 2026-10-12. Meta fixes the body: "*{{1}}* is your verification code. For your security, do not share this code." It also adds the footer "This code expires in 5 minutes." (matching `OTP_TTL_MS`) and a **Copy code** button (`OTP` / `COPY_CODE`). Meta doesn't allow custom wording on AUTHENTICATION templates. Payload: `~/jobs-mail-mcp/whatsapp-templates/assessment_otp_v1.json` on the DEV box.
+- **Sender:** `assessmentInviteOtpHandler.js` → `sendOtpWhatsapp` → `helpers/whatsapp.js` `sendWAmessage` with type `template`. The OTP is passed **twice**: as body param 1 **and** as a `{ type:"button", sub_type:"url", index:"0" }` component. Meta requires the copy-code button to carry the code as a url-button param.
+- **Builder change:** `buildMsg91Components` now also maps button components to MSG91's `button_<index+1>: { subtype, type:"text", value }`. Before this it **dropped every button param**, so any template with a dynamic button could not be sent through MSG91. No caller sent button params before, so existing templates are unaffected.
+- **Response:** `/request` and `/resend` now also return `whatsapp_sent: boolean`, meaning a phone was found and the send was dispatched. It is **not** proof of delivery. `masked_phone` is now set when either SMS or WhatsApp went out.
+- **Frontend:** the `Assessment-React` `InviteStart` OTP screen says "and texted to", "and sent on WhatsApp to", or "and texted + sent on WhatsApp to" **••••1234**, based on `sms_sent` / `whatsapp_sent`.
+- **Delivery visibility:** MSG91 returns `request_id` on acceptance. These sends are not stored, so admin-node's `/delivery-feedback/whatsapp` webhook has nothing to match them to. Check failures in MSG91 → WhatsApp → Logs.
+
+### WhatsApp OTP env keys (`user-management-node/.env.<env>`, box-local, NOT in git)
+
+| Key | Value | Notes |
+|---|---|---|
+| `WA_OTP_ENABLED` | `"true"` | only the literal `"true"` sends |
+| `WA_OTP_TEMPLATE_NAME` | `assessment_otp_v1` | unset = off |
+| `WA_PROVIDER` / `MSG91_AUTHKEY` / `MSG91_INTEGRATED_NUMBER` | (existing) | shared with the other WhatsApp sends |
+
+WhatsApp OTP also stays off when `WHATSAPP_DISABLED="true"`. That flag makes `sendWAmessage` report success without sending, so the handler checks it first and never claims a fake send.
+
+DEV: live 2026-10-12 (UMS `92affea`, Assessment-React `3a2bb70`). UAT: live 2026-10-12 via cherry-pick (UMS `b09bd3a`, Assessment-React `7159eaa`). On both, Jev requested an OTP on a real invite and reached the "sent on WhatsApp to ••••6084" screen. PROD: pending (add the two keys; the template is already approved on the shared number).
+
 ## Invite link shortener (`/s/<code>`) — 2026-07-15
 
 The invite URL used to carry the whole JWT in its path (~475 chars): wrapped and broken by mail clients, unusable in WhatsApp templates, impossible to read aloud. It is now a **49-char** `https://assessment.<env>.pluginlive.com/s/<9-char code>`.
