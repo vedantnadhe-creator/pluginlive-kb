@@ -239,6 +239,42 @@ takes the full width with no left divider or padding (`.aa-split.no-dist .aa-flo
 Corporate Excel export of Behavior: see `ATS/Corporate/assessment-dashboard.md`
 → Export Sheet (fixed 2026-10-01).
 
+## Roster level, KPI cards and proctoring (DEV + UAT 2026-10-12)
+
+**A Behavior attempt still has no score.** Where a dashboard needs ONE value per
+candidate or per cohort, it now shows a **level** on the report's own ladder
+(Beginner -> Apprentice -> Practitioner -> Master -> Expert) instead of a dash.
+
+- **Rule:** the candidate's level is the **median** of the latest submitted
+  attempt's competency levels, read from `assessment.behavior_proficiency_scores`
+  (the value the PDF prints). Even count -> the lower middle level. `Unknown`
+  rows are ignored. T-scores (`behavior_competency_scores.score`) are never used.
+  A cohort level is the median of the candidates' levels.
+- **Code:** corporate-node `app/helpers/behaviorLevel.js`; institute-node
+  `app/helpers/behaviorProficiency.js` (`medianBehaviorLevel`,
+  `loadBehaviorMedianLevels`). Keep the two ladders in step.
+- **Corporate v2 (assessment detail):** corporate-node `getCandidates` now returns
+  `byType: [{ type: "Behavior", score: null, level }]` for a completed Behavior
+  part (it used to drop it, so Behavior read as "not attempted").
+  - Mix & Match **Average** column averages only the *scored* parts and leaves
+    Behavior out (`src/lib/assessments/mixAverage.ts`); it used to be blank for
+    every candidate of any mix containing Behavior.
+  - The **Behavior** column shows the candidate's level.
+  - **Distribution by levels** plots Behavior on the 5-level ladder (`LADDERS.Behavior`
+    in `src/lib/dashboard/competency.ts`). It used to be hidden for a
+    Behavior-only float and empty ("No Behavior attempts yet") on a mix.
+- **TPO v2 (institute):** the student-wise **Performance** cell shows the level
+  badge; the **Average score** card becomes **"Median level"** (overview + student
+  tabs) with the caption "Reported as levels, not a score", instead of "No attempts
+  yet" / "No scored attempts yet". API: per-student `level` / `levelIndex`,
+  `kpis.medianLevel`, `meta.levelCount = 5`.
+- **Proctoring:** admin-node `assignBehaviorAssessment` (sync and async-queue paths)
+  ignored the wizard's proctoring switch, so every Behavior map row was saved with
+  `allow_proctoring = false` and candidates sat it unproctored ("Proctoring was
+  disabled for this assessment" in the report). It now writes `allow_proctoring`
+  and `allow_verification` like every other type. **Existing rows were not
+  backfilled** -- turn proctoring on again via edit details if needed.
+
 ## Status
 
 Suitable-role matching originally shipped on **DEV + UAT** on 2026-09-01.
@@ -248,8 +284,12 @@ Candidate paper (hidden behaviours, shuffle, mandatory answers) and admin
 question count: live on **DEV + UAT** as of 2026-09-15. **PROD pending** for
 all of it.
 
+Roster level / KPI median level / Mix & Match average / levels donut / proctoring
+flag fix: live on **DEV + UAT** as of 2026-10-12 (admin-node, corporate-node,
+institute-node, corporate-react-v2, institute-react-v2). **PROD pending.**
+
 ## Related
 
 - `admin.md`, `institute.md` -- where behaviour reports are surfaced
 - `nps-scale-and-curve.md` -- NPS covers Communication + Aptitude only; behaviour
-  has **no score**, only levels
+  has **no score**, only levels (dashboards summarise them as the median level)

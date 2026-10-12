@@ -1949,10 +1949,19 @@ level must be **read** from `behavior_proficiency_scores`, never re-derived from
 the number: 40.65 is "Apprentice" for Project Management and "Beginner"
 elsewhere.
 
-**Levels appear in the report drawer and nowhere else.** No roll-up on the
-roster's Achieved Level column and none on the Overview Competency ladder — the
-assessment awards one level PER COMPETENCY and no overall one, so any single
-level would be the dashboard's invention, the same mistake as the score. In the
+**Superseded 2026-10-12 (product decision, DEV + UAT):** the roster's
+Performance cell and the KPI cards now show a **median level** — the median of
+the latest attempt's `behavior_proficiency_scores` levels (lower middle on an
+even count; per-student `level`/`levelIndex`, `kpis.medianLevel`,
+`meta.levelCount = 5`; "Median level" card captioned "Reported as levels, not a
+score"). Still no number and no T-score anywhere. See
+`Assessment/behaviour.md` → "Roster level, KPI cards and proctoring". The
+paragraph below is the original 2026-08-20 rationale and still holds for the
+drawer:
+
+**Levels appear in the report drawer** (originally nowhere else). No roll-up on
+the Overview Competency ladder — the assessment awards one level PER COMPETENCY
+and no overall one. In the
 drawer the "Score breakdown" card becomes a **"Competency profile"** card grid
 (`.cmp-cards` / `.cmp-card`, ported from v1 `StudentReport`
 `renderBehaviorScoreCards`, on DS subtle surfaces so it survives dark mode, red
