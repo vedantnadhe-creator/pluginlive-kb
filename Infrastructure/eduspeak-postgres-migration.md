@@ -1649,3 +1649,14 @@ parent session columns, `parent_student_links.verified`). **No-op on UAT**: all 
 revoke is now best-effort `auth.admin.signOut(..., "global")`. 259 of the 288 changed files are `migration/sql-editor` tooling (not deployed);
 the demo seed was edited but not run. Grants 03 → 05 → 06 re-run.
 Verified all 10 demo logins (admins, teachers, principal, HOD, students across reload, parents with children). Credentials page bumped to `9fe97ec6`.
+
+### 2026-10-12 — Lovable image assets vendored into the UAT build (`eduspeakreact:9fe97ec6-logo`)
+
+Images uploaded through Lovable are **not in the repo**: the repo holds only a pointer `src/**/<name>.asset.json` whose `url` is
+`/__l5e/assets-v1/<asset_id>/<file>`, a path that exists only on Lovable hosting. On self-hosted UAT nginx's SPA fallback returned
+`index.html` for it, so the aividya.si logo (landing header, `RoleNavSidebar`, `AppSidebar`) rendered as broken alt text.
+`~/eduspeak-sb/Dockerfile.uat-build` now has a step after the vite build that downloads every `*.asset.json` from
+`LOVABLE_ASSET_HOST` (default `https://pilvidya.lovable.app`) into `/dist/<url>` and **fails the build** if the HTTP status is
+not OK or the byte size differs from the pointer's `size`. The build therefore needs pilvidya.lovable.app reachable.
+Same commit `9fe97ec6` rebuilt (no upstream changes pulled; `origin/main` was at `b7aec038`), container recreated with the
+usual `-p 3008:80` on the default bridge network. Verified: logo `200 image/png 556119` on both hostnames, headless `naturalWidth 1665`.
