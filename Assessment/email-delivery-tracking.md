@@ -490,7 +490,7 @@ Webhooks are configured per environment in MSG91 (`pluginlive5`) as three events
 each — On Outbound Report Received, On Failed Events, On API Failed Events — all
 pointing at that environment's `/delivery-feedback/whatsapp?token=…`. The WABA
 (`916380485173`) is shared, so every environment receives every environment's
-callbacks and ignores the ids it does not own.
+callbacks and ignores the ids it does not own. **Wrong — see 2026-10-12 below: MSG91 calls only one webhook per event.**
 
 **As of 2026-10-12 only DEV has these webhooks.** PROD (`https://api-admin.pluginlive.com/delivery-feedback/whatsapp?token=<DELIVERY_WEBHOOK_SECRET from admin-api-config>`)
 and UAT have never received a WhatsApp callback, so every PROD WhatsApp row sat at
@@ -504,6 +504,16 @@ in the MSG91 panel (Webhook (New) → the three events above).
 `accepted` rows' `message_id` and POSTing `{data:[{requestId,status,reason,customerNumber}]}`
 to the PROD webhook moved 1,981 rows to `delivered` (81 still genuinely `sent`, 3 `hold`).
 This is a replay, not a poller — rows sent after it stay Processing until the PROD webhook exists.
+
+**Root cause found 2026-10-12: MSG91 calls only ONE webhook per event.** All 9 webhooks
+(DEV/UAT/PROD × outbound-report/failed/api-failed) existed, but with three "On Outbound
+Report Received" webhooks on the shared number `916380485173`, MSG91 only called the oldest
+(`pl-dev-wa-outbound-report`). Proof: real PROD sends delivered/read at 14:42, 14:49, 14:55 IST
+hit DEV only. After `pl-dev-wa-outbound-report` was **disabled**, the next PROD send
+(09:30:22Z) flipped to `delivered` 4 s later via MSG91's own callback. Current state: DEV
+outbound webhook OFF → PROD gets updates; DEV + UAT get none. Lasting fix (not built):
+one webhook → a receiver that forwards each callback to DEV, UAT and PROD (each env
+already ignores ids it doesn't own).
 
 ## Known gaps
 
