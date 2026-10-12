@@ -491,6 +491,78 @@ it re-runs on the server.
 scoring accepts browser-reported verdicts that match the visible expected outputs, because v1
 grades in the browser. SQL questions are not affected.
 
+### Coding languages come from the code-runner; questions can require one; R + R chart questions (2026-10-12, DEV + UAT, PROD pending)
+
+**One language list.** `code-runner/languages.js` is the only list of coding languages; `GET /languages` on the
+runner publishes `{key, label, kind: program|sql, editor, charts}` (today: python, javascript, typescript, java,
+cpp, c, **r**, postgresql, sqlite). fastapi reads it (5-min cache, fails loudly if unreachable: no coding section),
+student-node proxies it at `GET /students/coding/languages`, and the v2 candidate app builds its picker, labels and
+editor grammar from it (BFF `/api/assessment/coding-languages`). Nothing in the candidate app names a language.
+
+**Language lock (`coding_metadata.languages`).** Coding generation now uses a strict Pydantic `response_schema`
+(`coding_schema.py`: starter code as a `{language, code}` list, every field required, languages as an enum), so
+Gemini and the OpenAI fallback return the same shape. Each question carries `allowed_coding_lang`: `[]` (any
+language, the default) unless a language is explicitly required, by the problem itself ("Using Java's Stream API")
+or by the job description ("coding problems must be solved in R"). A language merely listed among skills never
+locks a question. Only languages the statement names count (Gemini otherwise lists every language), and "using
+<language>" in the statement locks it. admin-node stores a non-empty list as `coding_metadata.languages`.
+Enforcement: student-node Run returns `400 language_not_allowed` ("This question must be answered in R."), and
+scoring gives that question 0. The candidate app shows only the allowed languages, or an "Answer in R" chip for one.
+**There is no admin control yet**: the lock comes from the question/JD wording.
+
+**Scoring always re-runs on the server.** Browser-reported verdicts are no longer accepted for any question, and
+hidden test cases (input and expected output) are blanked for every question type, not only SQL. The legacy v1 app
+(`Assessment-React`) still has a Role_Based coding screen; its own in-browser tick for a hidden case may read as
+failed, but the score is the server's.
+
+**R (function questions).** Runner image has R 4.2 (Debian) + jsonlite; `Rscript --vanilla`. student-node finds
+`name <- function(...)`, drops top-level calls, converts Python-style test inputs to R (`[1,2]` -> `c(1, 2)`, nested
+or mixed -> `list(...)`, dicts -> named lists, `True`/`None` -> `TRUE`/`NULL`) and prints the result with
+`jsonlite::toJSON(auto_unbox = TRUE)`. R has no scalars, so for R answers a one-element list and a single value
+compare equal. Base R only (no packages) for function questions. Editor: CodeMirror legacy R mode
+(`@codemirror/legacy-modes` pinned to 6.5.4: 6.5.5 needs `@codemirror/streamparser` and does not type-check).
+
+**R chart (data visualisation) questions.** How many of a paper's coding questions are charts is decided by
+fastapi *before* the SQL split (`decide_chart_count`): all of them when the JD asks for visualisation questions
+(e.g. "Give R data visualisation questions: the candidate must plot graphs from data. No SQL questions."), some for
+roles that build charts, none otherwise, and 0 if no runner language has `charts: true`. Each chart question has a
+statement naming the chart, `df` columns, graded checks, any exact labels asked for, 3 small datasets (1 hidden)
+and an R reference solution. **The reference is executed on every dataset; its chart becomes the expected answer**,
+and a question whose reference errors or draws nothing readable is discarded and regenerated.
+
+- *Runner chart harness* (`code-runner/harnesses/r_chart.R`, `POST /execute` with `harness: {mode: "chart",
+  datasetCsv}`): loads the dataset as `df`, runs the code, renders every chart (ggplot2 or base `plot`, `barplot`,
+  `hist`, `boxplot`, `pie`, `lines`, `points`) to a 1600x1200 PNG (ragg, 192 dpi, DejaVu font) and describes it as
+  `chart-spec/v1`: per panel the mark kinds, values per category/point, series by legend label (not colour), facet,
+  title/axis labels. Pie slices and stacked bars are normalised so ggplot2 and base R describe the same chart
+  identically. Candidate code cannot open/close graphics devices or call `system`/`download.file`/`install.packages`.
+  A page drawn with something it cannot read (e.g. `matplot`) is kept as an unreadable chart.
+- *Grading* (`student-node/app/helpers/chartGrader.js`): compares descriptions, never pixels. Pass/fail per test case
+  on `chart_type` (histogram == bar of the same counts; markers on a line are ignored), `data` (0.5% / 1e-6
+  tolerance, stacked rows summed, order-insensitive), `grouping` and `facets` (added automatically when the reference
+  has them) and `labels` (only text the question explicitly asks for; ggplot's automatic axis names never count).
+  An unreadable chart fails with a message to use ggplot2 or the base functions above.
+- *Storage*: reference PNGs are uploaded by admin-node before the DB transaction (`storeChartReferences`) and
+  candidates' PNGs by student-node at scoring, both to `coding-charts/<sha256>.png` in the env bucket; question
+  and score rows hold keys only. `coding_metadata` gets `output_type: "chart"`, `chart {checks, labels,
+  cases[{spec, image_key}]}` and `reference_solutions`; the candidate view strips the references and solutions.
+- *Candidate app*: a data panel shows each visible case's `df` (first 8 rows). After Run, a visible case shows the
+  check list, the candidate's chart and the expected chart (15-min signed URL): one at a time with tabs in the ~800px
+  exam column, side by side when the container is >= 960px and in the Enlarge dialog (in-page modal, not the
+  Fullscreen API). Every chart box is 4:3. Hidden cases show the verdict only.
+
+**Not done yet:** corp v2 / institute v2 report `CodingBlock` shows chart cases as "PASS chart_type, FAIL data" text
+(no images); Python/matplotlib charts; image-similarity fallback for unreadable charts (and, later, an LLM vision
+check if ever needed); per-run sandbox, auth and capacity limits in the code-runner (R can reach the shell exactly
+like Python already can); an admin "coding languages" setting. Design: PRD
+`pl-uat-public-docs/prds/PRD-rolebased-coding-r-charts-language-lock.html`.
+
+**UAT deploy notes (2026-10-12):** cherry-picked onto UAT (student-node fa213cb6/dc8dd7af/b21d1aaf, admin-node
+0040d0d, fastapi 46bee5b/26680df/f65b3e4, assessment-react-v2 fec3f33..bd2947f), not `Development:UAT`, which
+carries other unreleased work. UAT code-runner image `pl-code-runner:latest`, rollback `pl-code-runner:pre-langlock`;
+DEV rollback `code-runner:pre-charts`. The fastapi release also shipped 1018c09/0eee665/a4a715a (central-LLM
+routing fixes already on the UAT branch since 10-09 but never deployed).
+
 ### Java was dropped from every coding question (fixed 2026-09-23, DEV + UAT)
 
 `_is_placeholder_starter_code` looked for exactly one `{ … }` body, but a Java stub is a method

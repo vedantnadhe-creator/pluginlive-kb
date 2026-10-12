@@ -242,7 +242,18 @@ Every service sends Gemini-shaped parameters, and OpenAI 400s on each of them, s
 The hook (`async_pre_call_deployment_hook`) runs only for `gpt-5.4-mini` and `gpt-6-luna` deployments and rewrites those parameters just before the call. Gemini calls are never touched. It handles:
 - **No-thinking requests become `reasoning_effort: "none"`.** It is sent inside `extra_body`. **Gotcha:** if a `temperature` is present, LiteLLM loses a top-level `"none"` for the gpt-5 family, and OpenAI then rejects the temperature.
 - **`max_tokens` becomes `max_completion_tokens`**, raised to at least 4096 when reasoning is on.
-- **Strict schemas become `strict: false`.**
+- **Strict schemas stay strict only when they already can be** (changed 2026-10-12, DEV + UAT; PROD hook
+  ConfigMap pending). A schema whose every object lists all its properties as `required` is sent with
+  `strict: true` and `additionalProperties: false` added to every object, so the fallback returns the same
+  shape the primary is held to. Any other schema (an optional property, or a non-object root) is sent
+  `strict: false`, as before. Before this, *every* schema was downgraded, so the OpenAI fallback silently
+  dropped required fields (seen with the coding-question schema: `examples` missing). Tests:
+  `test_pl_openai_fallback.py`. Force a fallback to check it: send `"mock_timeout": true` in the body
+  (`mock_testing_fallbacks` does not trigger the task fallback).
+- **UAT host gotcha:** `run.sh` runs the hook tests with the host `python3`, which has no `fastapi` on UAT,
+  so it refuses to recreate. Run the tests inside the LiteLLM image
+  (`docker run --rm -v $PWD:/w -w /w --entrypoint python <litellm image> test_pl_openai_fallback.py`), then
+  run `run.sh` minus that line from inside `~/litellm` (it `cd`s to its own dir for `litellm.env`).
 
 Things that did **not** work:
 - A deployment-level `reasoning_effort` in `litellm_params`: never forwarded.
