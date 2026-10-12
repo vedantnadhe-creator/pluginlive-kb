@@ -492,6 +492,19 @@ pointing at that environment's `/delivery-feedback/whatsapp?token=…`. The WABA
 (`916380485173`) is shared, so every environment receives every environment's
 callbacks and ignores the ids it does not own.
 
+**As of 2026-10-12 only DEV has these webhooks.** PROD (`https://api-admin.pluginlive.com/delivery-feedback/whatsapp?token=<DELIVERY_WEBHOOK_SECRET from admin-api-config>`)
+and UAT have never received a WhatsApp callback, so every PROD WhatsApp row sat at
+`accepted` → **"WhatsApp: Processing"** even though the candidate had read it. MSG91 has
+no webhook-config API (authkey can't do it) — the PROD/UAT webhooks must be added by hand
+in the MSG91 panel (Webhook (New) → the three events above).
+
+**One-off replay (2026-10-12, PROD):** `GET https://control.msg91.com/api/v5/report/logs/wa?startDate=D&endDate=D&limit=500&direction=1`
+(header `authkey`, paginate with `metadata.paginationToken`) returns per-message `requestId`
++ `status` (`sent`/`delivered`/`read`/`hold`/`failed`) + `failureReason`. Matching the
+`accepted` rows' `message_id` and POSTing `{data:[{requestId,status,reason,customerNumber}]}`
+to the PROD webhook moved 1,981 rows to `delivered` (81 still genuinely `sent`, 3 `hold`).
+This is a replay, not a poller — rows sent after it stay Processing until the PROD webhook exists.
+
 ## Known gaps
 
 - ~~**`delivered` / `bounced` are never written.**~~ **Closed 2026-08-20** by the
