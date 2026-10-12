@@ -1660,3 +1660,9 @@ Images uploaded through Lovable are **not in the repo**: the repo holds only a p
 not OK or the byte size differs from the pointer's `size`. The build therefore needs pilvidya.lovable.app reachable.
 Same commit `9fe97ec6` rebuilt (no upstream changes pulled; `origin/main` was at `b7aec038`), container recreated with the
 usual `-p 3008:80` on the default bridge network. Verified: logo `200 image/png 556119` on both hostnames, headless `naturalWidth 1665`.
+**Follow-up (same day) — stale service worker on pilvidya.uat.** The logo still showed broken on `pilvidya.uat.pluginlive.com`
+(fine on aividya.si): an older build had installed a service worker on that origin. It served cached files, so the logo request
+never reached nginx. `index.html`'s `clearPreviewCaches` only runs on Lovable hosts, and `/sw.js` returned `index.html`, which
+Chrome rejects, so the worker never updated or went away. `Dockerfile.uat-build` now writes a kill-switch `/dist/sw.js`
+(skipWaiting → delete all caches → unregister → reload open tabs) unless upstream ships its own `sw.js`.
+Image `eduspeakreact:9fe97ec6-logo-sw`. Verified headless: `/sw.js` 200 `application/javascript`; registration + caches → 0; logo naturalWidth 1665.
