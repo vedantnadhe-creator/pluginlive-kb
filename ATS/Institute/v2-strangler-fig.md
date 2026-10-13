@@ -714,6 +714,11 @@ all), and the drawer says **"No report"** vs **"Not proctored"** instead of one
 ambiguous dash. Deliberately not "Awaiting review" — for a May attempt nothing
 is coming.
 
+**Superseded 2026-10-13 (`ac09fd9` DEV, `aab5ca6` UAT):** the drawer now uses the
+shared Good / Bad / Disabled verdict (`lib/assessments/nomenclature.ts`) —
+"Disabled" when the run was not proctored, `—` when there is no verdict. See
+`Assessment/institute.md`.
+
 ### The hover cards had CSS but no driver (2026-08-12)
 
 `3e398c0` frontend. `assessment-detail.css` and `manage-assessments.css` have

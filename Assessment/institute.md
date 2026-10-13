@@ -33,16 +33,20 @@ the following presentation rules for schedule and one-time student lists:
 - Communication and Aptitude level changes appear below the score bar as
   `PreviousLevel » CurrentLevel`, colored by direction.
 - The attempts doughnut exposes its sent-versus-taken counts on hover.
-- One-time assessment performance includes a canonical **Proctoring** column
-  (helper `proctoringStatus` in `src/app/(app)/assessments/[id]/_constants.ts`
-  is the single mapping source). Four outcomes since 2026-09-17 (DEV + UAT):
-  **Good** / **Bad** from the integrity band; **Pending** when the student sat
-  it but no report has landed (or it captured nothing, `no_data`); a dash when
-  the student has not started / is absent (nothing to proctor yet); **Disabled**
-  only when the run itself is not proctored (`proctored: false`). Before this the
-  3-state model printed **Disabled** for every row without a verdict, so a
-  not-started student on a run the TPO had just switched proctoring ON for read
-  as if proctoring were off.
+- **Proctoring status is one Good / Bad / Disabled verdict everywhere (2026-10-13, DEV `ac09fd9` + UAT `aab5ca6`; PROD pending).**
+  `proctoringVerdict(band, proctored)` in `src/lib/assessments/nomenclature.ts` is the single
+  mapping, used by the one-time performance table (`proctoringStatus` in
+  `src/app/(app)/assessments/[id]/_constants.ts` delegates to it), the student report drawer, the
+  occurrence drawer, the recurring student PDF and the report pages' Proctoring panel:
+  `proctored: false` → **Disabled**; band `review` / `high_concern` (or any bad/high/severe/concern/flag)
+  → **Bad**; `clean` / good / low → **Good**; `no_data`, no report, or an unrecognised band → a dash
+  (`—`), never a state. **Pending** (2026-09-17 → 10-13), the occurrence drawer's **"No report" /
+  "Not proctored"** and the report panel's **"No concerns"** are gone (the panel now says **Good**,
+  keeps **Review needed**, and hides the chip when the attempt has no verdict). The recurring PDF prints
+  `Proctoring: Good / Bad / Disabled` or `—` instead of the raw band. Frontend-only: institute-node
+  already returns `proctoring.band` (from `proctoring_reports.integrity_band`) and `proctored`
+  (from `allow_proctoring`) on `/students`; the same Good/Bad rule as the backend's
+  `helpers/proctoringVerdict.js` export column.
 - One-time assessments label their timestamp **Submitted on**. Their student
   report drawer omits the schedule-wise performance card because one-time
   assessments have no schedules.
