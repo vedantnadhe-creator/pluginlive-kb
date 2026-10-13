@@ -2074,6 +2074,22 @@ wired in `sortValue` so restoring a column is an uncomment rather than a
 re-derivation. Communication's breakdown now reads by competency area
 (Reading / Writing / Listening / Speaking) instead of by question type.
 
+### AI Interview "Additional instructions" in the Manage drawer
+
+admin-node's configuration payload has **two fields keyed `instructions`**: the
+interviewer's instructions (group `guidance`, from `ai_interview_config`
+`interview_instructions` → `question_guidance` → `scoring_guidance`) and the
+candidate-instructions screen text (group `delivery`). The drawer's
+`aiInterviewGroups()` (`AssessmentConfigurationOverview.tsx`) looks fields up by
+key and **skips the `delivery` group**, so "Additional instructions" always shows
+the interviewer's text. Before this fix the delivery field, coming last,
+replaced it: empty candidate text made the section vanish (seen on a PROD map);
+set candidate text was shown as the interviewer's. The drawer is read-only for
+this, and admin-node's write whitelist maps AI Interview `instructions` to
+`interview_instructions`, so no backend change was needed. Coverage:
+`tests/ai-interview-instructions.test.tsx`. DEV `390ef30`, UAT `17e87dd`
+(2026-10-13); PROD pending.
+
 ### Editable delivery settings
 
 **Per-candidate assessment validity** is editable for corporate Mix & Match
