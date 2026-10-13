@@ -30,6 +30,21 @@ assessment-react-v2  ⋯ menu → Support → SupportDialog (name, read-only ema
 The candidate never waits on the mail relay or Slack: the row is written and the job
 queued, then the dialog shows "Your message has been sent to the team."
 
+### Signed-out variant — sign-in screen "Get Support" (DEV + UAT 2026-10-13, PROD pending)
+
+The v2 sign-in page ("Trouble signing in? **Get Support**") has no token yet, so it uses a public endpoint into the **same** queue, recipients and Slack post:
+
+```
+ContactRecruiterDialog (name, email, comments)
+  → POST /api/support/sign-in                  (BFF; 400 unless name+email+message)
+  → admin-node POST /support/public-query      (no auth; source "assessment-v2-sign-in")
+```
+
+- **Identity:** `supportHandler.resolveSignedOutIdentity`, `user_role = "signed-out"`, typed email is used as given (never verified). If the page carries an `inviteToken` that verifies with the invite secret (**expired accepted**), its `sub` pins `assessment_assigned_id`, so the email/Slack post show the assessment and owner.
+- **Abuse caps:** the per-email cap (5 / 10 min) **plus** a shared cap of **30 signed-out messages / 10 min** across all senders (`SIGNED_OUT_MAX`, `SupportQuery.countByRoleSince`) → 429 "Support is busy right now…". Ceiling: a flood blocks genuine signed-out candidates for the window; upgrade is a per-IP limit at the edge.
+- Replaced the earlier `mailto:mandate@pluginlive.com` hand-off. Mail goes to `quota_alert_recipients`; mandate@ is only the sender.
+- **Commits:** admin-node DEV `6fa66f7` / UAT `61a1016`; assessment-react-v2 DEV `9cdfa0a` / UAT `6d33700`.
+
 ## What the team sees
 
 Both the email and the Slack post name the **college or company that owns the
