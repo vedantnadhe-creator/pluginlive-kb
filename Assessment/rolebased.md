@@ -537,8 +537,17 @@ statement naming the chart, `df` columns, graded checks, any exact labels asked 
 and an R reference solution. **The reference is executed on every dataset; its chart becomes the expected answer**,
 and a question whose reference errors or draws nothing readable is discarded and regenerated.
 
+**The candidate completes a function** (2026-10-13, DEV + UAT). A chart question's starter code is the `df` column
+list followed by `draw_chart <- function(df) {  # Write your code here  }`, and the question's
+`coding_metadata.chart.entry` is `"draw_chart"`. The runner (harness `entry`) runs the script, and if nothing was
+drawn at the top level calls `draw_chart(df)`: the function may draw with base R or return/print a ggplot.
+Missing function → `Define the function draw_chart(df): …`; an unedited starter draws nothing and fails. Drawing at
+the top level still works (no double chart). The model's reference must define `draw_chart` without calling it and
+is verified through the same entry call. Questions saved before this have no `entry` and still run as scripts.
+The entry name is validated by the runner (`^[A-Za-z][A-Za-z0-9_.]{0,40}$`).
+
 - *Runner chart harness* (`code-runner/harnesses/r_chart.R`, `POST /execute` with `harness: {mode: "chart",
-  datasetCsv}`): loads the dataset as `df`, runs the code, renders every chart (ggplot2 or base `plot`, `barplot`,
+  datasetCsv, entry?}`): loads the dataset as `df`, runs the code, renders every chart (ggplot2 or base `plot`, `barplot`,
   `hist`, `boxplot`, `pie`, `lines`, `points`) to a 1600x1200 PNG (ragg, 192 dpi, DejaVu font) and describes it as
   `chart-spec/v1`: per panel the mark kinds, values per category/point, series by legend label (not colour), facet,
   title/axis labels. Pie slices and stacked bars are normalised so ggplot2 and base R describe the same chart
@@ -552,7 +561,7 @@ and a question whose reference errors or draws nothing readable is discarded and
   An unreadable chart fails with a message to use ggplot2 or the base functions above.
 - *Storage*: reference PNGs are uploaded by admin-node before the DB transaction (`storeChartReferences`) and
   candidates' PNGs by student-node at scoring, both to `coding-charts/<sha256>.png` in the env bucket; question
-  and score rows hold keys only. `coding_metadata` gets `output_type: "chart"`, `chart {checks, labels,
+  and score rows hold keys only. `coding_metadata` gets `output_type: "chart"`, `chart {entry, checks, labels,
   cases[{spec, image_key}]}` and `reference_solutions`; the candidate view strips the references and solutions.
 - *Candidate app*: a data panel shows each visible case's `df` (first 8 rows). After Run, a visible case shows the
   check list, the candidate's chart and the expected chart (15-min signed URL): one at a time with tabs in the ~800px
@@ -575,8 +584,8 @@ and a question whose reference errors or draws nothing readable is discarded and
   `docker run -d --name code-runner --restart always --network code-runner-net -p 172.17.0.1:9090:9090
   --env-file ~/.code-runner.<env>.env --cap-add NET_ADMIN --read-only --tmpfs /tmp:rw,exec,nosuid,size=1g
   --pids-limit 1024 --memory 3g --security-opt no-new-privileges <image>`. Port is bound to the docker bridge only
-  (it was open to the internet without auth before). Rollback images: DEV `code-runner:pre-rivetfix`,
-  UAT `pl-code-runner:pre-rivetfix` (old images do not need the key). **PROD** needs: `CODE_RUNNER_KEY` secret on
+  (it was open to the internet without auth before). Rollback images: DEV `code-runner:pre-scaffold` (before that `pre-rivetfix`),
+  UAT `pl-code-runner:pre-scaffold` / `pre-rivetfix` (old images do not need the key). **PROD** needs: `CODE_RUNNER_KEY` secret on
   the runner and on student-node/fastapi, `NET_ADMIN` capability, emptyDir `/tmp`, before the new image ships.
 - *Grading*: a chart drawn before the code failed is shown but never credited; the grader fails closed when the
   reference is missing/empty and rejects extra panels, mark kinds or series; box plots record and compare the full
