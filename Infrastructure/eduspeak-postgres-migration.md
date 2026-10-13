@@ -1666,3 +1666,46 @@ never reached nginx. `index.html`'s `clearPreviewCaches` only runs on Lovable ho
 Chrome rejects, so the worker never updated or went away. `Dockerfile.uat-build` now writes a kill-switch `/dist/sw.js`
 (skipWaiting → delete all caches → unregister → reload open tabs) unless upstream ships its own `sw.js`.
 Image `eduspeakreact:9fe97ec6-logo-sw`. Verified headless: `/sw.js` 200 `application/javascript`; registration + caches → 0; logo naturalWidth 1665.
+
+## 2026-10-13 — deployed `b2dfc137` (23 upstream commits on top of `9fe97ec6`)
+
+**What shipped:** teacher **AI lesson video request** (Lovable AI gateway video model, render queue with
+progress + private MP4 storage, `LessonVideoRequest`/`AiVideoPlayer`), parent session hardening (only auth
+errors sign the parent out; display name stored), `student-lesson-progress` accepts `pending` students and
+keeps an equal earlier quiz score, `curriculum-generate` and `admin-create-teacher` fixes, content-approval
+and teacher lesson-content tweaks. Image `eduspeakreact:b2dfc137` (still built with `Dockerfile.uat-build`,
+so the Lovable-asset vendoring and kill-switch `/sw.js` are included). Functions rsynced
+(backup `~/eduspeak-sb/functions.bak-20261013T164704Z`).
+
+**DB — note the new migration location.** This release put its SQL in **`drizzle/migrations/`** and a root
+`213_migration_temp.sql`, not `supabase/migrations/`. Check all three on every deploy
+(`git diff --name-only <live>..origin/main -- '*.sql'`). Files in `~/pilvidya-data-import/newmigs/20261013T*/`;
+canonical script in DB-Scripts `EduSpeak Postgres Migration/*__pilvidya_ai_video_render_pipeline.sql`.
+
+| Upstream file | UAT action |
+|---|---|
+| `drizzle/0001_ai_video_render_pipeline` | As shipped: `ai_video_render_jobs`, `ai_video_render_control`, `claim_ai_video_render()`. |
+| `drizzle/0002_ai_video_worker_access` | **Adapted.** Columns + storage owner-read policy applied; private bucket `ai-lesson-videos` added; `dispatch_ai_video_render()` + `arm_ai_video_render` trigger **skipped** (need `pg_cron`/`pg_net`, not installable — the trigger would fail every job insert). Jobs advance only while the requester's browser polls. |
+| `213_migration_temp.sql` + `migration/sql-editor/213` edit | **Skipped.** Re-creates `is_parent_of_student` with `OR pp.user_id IS NULL` → any authenticated user could read students linked to user-less parent profiles (5 of 7 on UAT). Cross-tenant widening. |
+| `migration/sql-editor/233` edit | Skipped: tooling file; its added branch joins `teacher_profiles.id = student_profiles.id` and can never match. |
+
+**New deploy step 07.** `03_grants.sql` re-granted `anon` EXECUTE on the SECURITY DEFINER
+`claim_ai_video_render` and anon SELECT on both new tables; `gen_06` only scans `supabase/migrations`, so it
+missed them. `~/eduspeak-pg-migration/sql/07_drizzle_revokes.sql` restores upstream's grants.
+**Order is now 03 → 05 → 06 → 07.**
+
+**Verified:** container healthy; bundle has no DEV / `*.supabase.co` hosts; logo + `/sw.js` OK on both hosts;
+new functions reject unauthenticated calls (ai-video-request 401, curriculum-generate / admin-create-teacher
+unauthorized); `logins.cjs`: all 10 demo accounts sign in and land on their dashboard (2 admin, 2 teacher,
+principal, HOD, 2 student, 2 parent); `parent.cjs` OTP → dashboard with child; `e2e.cjs` 0 page errors.
+`/student-entry` now opens on **Register**; the Login switch is a plain button (check script updated).
+
+**Open issues found (not introduced by this deploy):**
+- `student-lesson-progress` has **no caller authentication** — service-role writes for any `studentProfileId`
+  in the body (anyone can write any student's lesson progress/quiz score). Upstream fix needed.
+- UAT `assessments` lacks `total_questions` and `is_public` (CREATE TABLE IF NOT EXISTS drift) → student
+  dashboard public-assessments query 400s, widget empty.
+- Parent portal reads `parent_profiles.plan_override` / `parent_student_links` via REST without a Supabase JWT
+  → 401 (`usePlanAccess`, unchanged since 08-13); parents always resolve to the Free plan.
+- Video generation needs `LOVABLE_API_KEY` in the functions container (not set on UAT) — requests error until provided.
+- Upstream committed `JWT_SECRET` in the repo-root `.env` (not used by the UAT build; rotate if it is used anywhere).
