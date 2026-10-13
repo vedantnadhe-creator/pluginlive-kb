@@ -508,7 +508,14 @@ locks a question. Only languages the statement names count (Gemini otherwise lis
 <language>" in the statement locks it. admin-node stores a non-empty list as `coding_metadata.languages`.
 Enforcement: student-node Run returns `400 language_not_allowed` ("This question must be answered in R."), and
 scoring gives that question 0. The candidate app shows only the allowed languages, or an "Answer in R" chip for one.
-**There is no admin control yet**: the lock comes from the question/JD wording.
+**JD requirement (2026-10-13, DEV + UAT):** a job description that says problems must be solved in specific languages
+("Coding problems must be solved in R or Python", "should be written using Java", "only in Python", "in C++ only") is
+read deterministically in fastapi (`_required_languages_from_text`), not left to the model: only those languages go to
+the model (prompt and schema enum), every program question is locked to them (a question left open is rejected and
+regenerated), and the same requirement rules out SQL questions unless SQL is named and chart questions unless R is.
+Before this, a JD-only requirement was dropped whenever the model did not repeat the language inside each problem
+statement, so UAT questions came back with R/Python starter code but no lock. Describing the role ("a Java
+developer") is still not a requirement. **There is no admin control yet**: the lock comes from the question/JD wording.
 
 **Scoring always re-runs on the server.** Browser-reported verdicts are no longer accepted for any question, and
 hidden test cases (input and expected output) are blanked for every question type, not only SQL. The legacy v1 app
