@@ -535,7 +535,8 @@ and a question whose reference errors or draws nothing readable is discarded and
   `hist`, `boxplot`, `pie`, `lines`, `points`) to a 1600x1200 PNG (ragg, 192 dpi, DejaVu font) and describes it as
   `chart-spec/v1`: per panel the mark kinds, values per category/point, series by legend label (not colour), facet,
   title/axis labels. Pie slices and stacked bars are normalised so ggplot2 and base R describe the same chart
-  identically. Candidate code cannot open/close graphics devices or call `system`/`download.file`/`install.packages`.
+  identically. Candidate code cannot open/close graphics devices; `system`/`download.file`/`install.packages` are
+  masked only for a clearer message — isolation is the runner sandbox (below).
   A page drawn with something it cannot read (e.g. `matplot`) is kept as an unreadable chart.
 - *Grading* (`student-node/app/helpers/chartGrader.js`): compares descriptions, never pixels. Pass/fail per test case
   on `chart_type` (histogram == bar of the same counts; markers on a line are ignored), `data` (0.5% / 1e-6
@@ -551,10 +552,43 @@ and a question whose reference errors or draws nothing readable is discarded and
   exam column, side by side when the container is >= 960px and in the Enlarge dialog (in-page modal, not the
   Fullscreen API). Every chart box is 4:3. Hidden cases show the verdict only.
 
-**Not done yet:** corp v2 / institute v2 report `CodingBlock` shows chart cases as "PASS chart_type, FAIL data" text
-(no images); Python/matplotlib charts; image-similarity fallback for unreadable charts (and, later, an LLM vision
-check if ever needed); per-run sandbox, auth and capacity limits in the code-runner (R can reach the shell exactly
-like Python already can); an admin "coding languages" setting. Design: PRD
+**Hardening after code review (2026-10-13, DEV + UAT, PROD pending):**
+- *Code-runner sandbox* (`code-runner/sandbox.js`): every execution runs as its own unprivileged uid (pool
+  20000-20999) with an empty environment (PATH/HOME/TMPDIR/LANG only), rlimits (`--nproc=256 --nofile=256`,
+  20 MB files, CPU, 2 GB address space except JVMs, which get `-Xmx256m`), in its own process group; on exit, timeout
+  or caller hang-up every process of that uid is killed. An iptables owner rule rejects all network traffic from the
+  uid pool. Bounded concurrency (`CODE_RUNNER_CONCURRENCY`, default = CPUs), 1 MB output cap. `tini` is PID 1 so
+  killed processes are reaped. Limits: program 10 s (+10 s compile), chart 20 s; student-node waits 25 s.
+- *Auth*: `POST /execute` requires header `x-code-runner-key` = `CODE_RUNNER_KEY`; `/languages` and `/health` stay
+  open. The runner **refuses to start** without a 32+ char key, without root, or if it cannot install the network
+  rule. Callers send the key: student-node and fastapi read `CODE_RUNNER_KEY` from their env (DEV: `.env`/`.env.dev`
+  of student-node, fastapi `.env`; UAT: `.env.uat` of both; UAT fastapi container env set through the overlay
+  script's `CENTRAL_LLM_ENV_FILE`). Key files: `~/.code-runner-key.{dev,uat}`; runner env `~/.code-runner.{dev,uat}.env`.
+- *Run command* (DEV `code-runner:<sha>`, UAT `pl-code-runner:<sha>`, `:latest` = same image):
+  `docker run -d --name code-runner --restart always --network code-runner-net -p 172.17.0.1:9090:9090
+  --env-file ~/.code-runner.<env>.env --cap-add NET_ADMIN --read-only --tmpfs /tmp:rw,exec,nosuid,size=1g
+  --pids-limit 1024 --memory 3g --security-opt no-new-privileges <image>`. Port is bound to the docker bridge only
+  (it was open to the internet without auth before). Rollback images: DEV `code-runner:pre-rivetfix`,
+  UAT `pl-code-runner:pre-rivetfix` (old images do not need the key). **PROD** needs: `CODE_RUNNER_KEY` secret on
+  the runner and on student-node/fastapi, `NET_ADMIN` capability, emptyDir `/tmp`, before the new image ships.
+- *Grading*: a chart drawn before the code failed is shown but never credited; the grader fails closed when the
+  reference is missing/empty and rejects extra panels, mark kinds or series; box plots record and compare the full
+  five-number summary (`box: [[lower whisker, Q1, median, Q3, upper whisker]]`; older references compare the median).
+- *Run scope*: the Run route only executes questions mapped to the candidate's own assessment set (404 otherwise).
+  Legacy `/assessment/execute-code` (v1 screen) now requires the candidate token.
+- *Reports*: report-v2 coding tests carry `chart {drawn[], expected, checks[], error}` with 15-min signed URLs
+  (`Assessment._signCodingCharts`); corp v2 and institute v2 `CodingBlock` show the candidate's chart next to the
+  expected one with the checks (`_components/CodingChartCases.tsx`).
+- *fastapi* `POST /role_based/generate-questions` verifies the JWT first (401, not 500); counts are bounded
+  (mcq <= 100, subjective <= 20, video <= 10, coding <= 10). Count contract (`split_coding_counts`): `codingCount` is
+  programs; an explicit `sqlCount`/`chartCount` is **added** (admin-node's replacement flow sends `{codingCount: 0,
+  sqlCount: 1}`); a missing one is decided by the model and carved out of `codingCount`, charts first.
+- *Overlay deploy* (`~/scripts/deploy-central-llm.py`, DEV + UAT copies): refuses when the running image's revision
+  is unknown (set `CENTRAL_LLM_BASE=<sha>` explicitly) or not an ancestor; deleted and renamed-away files are removed
+  from the image.
+
+**Not done yet:** Python/matplotlib charts; image-similarity fallback for unreadable charts; an admin "coding
+languages" setting; rate limiting on generate-questions; `~/scripts` and `~/litellm` are still not in git. Design: PRD
 `pl-uat-public-docs/prds/PRD-rolebased-coding-r-charts-language-lock.html`.
 
 **UAT deploy notes (2026-10-12):** cherry-picked onto UAT (student-node fa213cb6/dc8dd7af/b21d1aaf, admin-node
