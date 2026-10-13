@@ -782,6 +782,42 @@ Gotchas:
   **in memory, not localStorage**: the body carries presigned media URLs that
   expire in minutes and scores that may still be landing.
 
+### Mix-n-Match radar breakdown, rank tag, Strengths / Weaknesses (DEV + UAT, 2026-10-13)
+
+corporate-react-v2 53c9762 (UAT ea3e1e1) + backend wiring: corporate-node
+f84d7ee7 (UAT bcd9cc8a), corporate-react-v2 ea818a2 (UAT 5801cca). PROD pending
+— deploy corporate-node **before** the frontend, or the radar shows only the
+candidate with "(not enough attempts yet)".
+
+- **Mix-n-Match Overview:** one card per bundled type with a radar of its
+  sub-sections, this candidate vs **the average of every attempted candidate**,
+  each sub-score listed with ▲/▼ and its gap from the average. Clicking a
+  legend entry ("This candidate" / "Average of all candidates") isolates that
+  series; the legend says "(calculating…)" while the pool loads and "(not
+  enough attempts yet)" when it is empty or failed.
+  - Candidate sub-scores: the existing `/candidates/report` (`dimensions`).
+  - Pool series: `GET /corporates/:corporateId/assessments/v2/:id/candidates/dimension-averages`
+    → `{ "<type>": { "<lower-cased sub-section>": meanScore } }`, BFF
+    `/api/assessments/[id]/candidates/dimension-averages` (gate
+    `viewCandidateReport`). One pass over every attempted, non-practice
+    assignment through `CorporateAssessmentDetailV2.buildTypeReports` — the
+    **same** breakdown queries `getCandidateReport` uses, so names always match
+    the candidate's own; `helpers/reportDimensions.averageDimensions` does the
+    mean (names lower-cased; rounded). 403 cross-tenant, 404 unknown float.
+    Replaced a client fan-out of one `/candidates/report` call per candidate
+    (UAT float 457f6e33, 35 candidates: one call, ~90 ms). Cached in memory per
+    assessment until page reload.
+- **Rank tag** beside every report's Overview score (drawer and the Mix-n-Match
+  report page): competition rank among scored candidates in the live roster
+  (`lib/reports/rankIn.ts`, ties share a rank), tooltip "Rank 2 of 14
+  candidates"; #1 green, #2 blue, rest neutral. A Mix-n-Match per-type tab ranks
+  by that part's `byType` score. Client-side off the paged roster — no backend.
+- **Recommendations headings** read **Strengths / Weaknesses** for AI
+  Interview, Role Based (third "Recommendations" group dropped), Behaviour and
+  Communication (Areas to improve + Areas missing merged into Weaknesses).
+- **Behaviour floats hide the "Distribution by levels" donut** on the
+  assessment detail page; the roster takes the full width.
+
 ### Custom Assessment report (DEV + UAT, 2026-09-18)
 
 Custom has no PDF (see below) but it does have an on-screen report now —
