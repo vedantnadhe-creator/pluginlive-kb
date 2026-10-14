@@ -25,12 +25,17 @@ with one combined score and one report.
    describe the task). Single/multiple choice rows may carry hand-written questions. Count blank = "Auto".
 2. **Float route** sends `assessmentType: "AI_Interview_v2"` with `interviewConfig.flow`.
 3. **admin-node** `AIInterviewV2AssignmentService` only **validates** the flow and registers the Role Based async
-   job — the float returns at once (~0.7 s); the creator is told invites follow paper generation. The **first set
-   generator of the job** calls fastapi `POST /ai-interview-v2/skeleton` (up to 3 LLM attempts with the validator's
-   errors fed back) and stores the plan on the job (`config_snapshot.aiInterviewV2Plan`, compare-and-set), so every
-   paper of the job shares one plan. A failed plan throws and rides the queue's retries (8 attempts, exponential
-   from 30 s, then the transient-recovery reconciler); if it never succeeds the job fails and notifies like any
-   generation failure. Jobs queued before this change carry their plan on `spec.payload.skeleton`.
+   job — the float returns at once (~0.7 s); the creator is told invites follow paper generation. An omitted
+   `interviewDuration` is normalised to 30 min at validation, so the invite, the planner target and the runner
+   deadline all use one value. **One set generator per job plans**: it claims planning on the job row
+   (`config_snapshot.aiInterviewV2PlanClaim`, epoch seconds, 240 s TTL so a dead claimer is taken over; released on
+   failure), calls fastapi `POST /ai-interview-v2/skeleton` (up to 3 LLM attempts with the validator's errors fed
+   back) and stores the plan (`config_snapshot.aiInterviewV2Plan`, compare-and-set). The other papers poll every 3 s
+   for the stored plan, so a job costs **one planner call**. A failed plan throws and rides the queue's retries
+   (8 attempts, exponential from 30 s). The error keeps the upstream status (`plan failed (HTTP 502): …`), so a
+   planner outage (5xx / timeout / "timeout waiting for another set") is left in `preparing` for the
+   transient-recovery reconciler, while a 4xx (no valid plan) fails the job and notifies like any generation
+   failure. Jobs queued before this change carry their plan on `spec.payload.skeleton`.
 4. **Paper generation** (assignment worker, set generator `ai-interview-v2-generate`): Role Based questions for
    subjective / single choice / coding rows, fastapi `POST /ai-interview-v2/generate-slots` for task content
    (passages, TTS audio, questions), authored questions as written. Every **answering step of a task gets its own
@@ -48,7 +53,8 @@ questions) and pre-fills the corporate wizard.
 - Question blocks carry `transition` (one spoken line) and **`howTo`** (2–4 sentences, interview language, how to
   attempt the row — e.g. "these questions can have more than one correct answer"). **Voice** rows carry neither: the
   interviewer just asks. A **task** row's `howTo` is one sentence on what the task is about; each task phase carries
-  its own **`say`** — what the interviewer says as that step opens (never step counts).
+  its own **`say`** — what the interviewer says as that step opens (never step counts). A blank `say` on any task
+  phase is a validation error (passage-/audio-only steps would otherwise open in silence), so the planner retries.
 - Content (`slot_content.py`) is sized to the step: the prompt states the minutes the part allows, one focused problem,
   ≤2 deliverables, ≤5 named columns; problem statements 40–120 words. Hard caps (passage 180, prompt 150, audio 200
   words) send content back to be shortened.
@@ -60,6 +66,9 @@ questions) and pre-fills the corporate wizard.
   questions part says its transition + how-to once; a task says the transition before its first step, then each
   step's own `say`. The step's questions / passage / answer surface — and its timer — appear when she finishes or the
   candidate presses Continue. Voice parts are not announced. Papers without `howTo`/`say` get a code-built line.
+  A **proctoring warning holds all of it** (`lib/aiInterviewV2/instructionGate.ts`): the voice pauses (even if the
+  warning came up while it was loading), its playback deadline stops counting, and the step — with its timer —
+  opens only after the warning is acknowledged.
 - Task steps render by answer type; a **code step** is an editor locked to the task's language whose **Run** executes
   the program and shows its output (no test cases). An "answer required" button never blocks a step with nothing to
   answer.
@@ -70,7 +79,8 @@ questions) and pre-fills the corporate wizard.
 Voice turns by the AI Interview scorer; Role Based questions by the Role Based pipeline; choices computed; task steps
 by fastapi `POST /ai-interview-v2/score-answers` (spoken → transcript + judge; translation vs reference; written;
 code judged against the task in its language). A judged step mapped to **several parameters** sends them to
-score-answers and gets `parameterScores` (id → 0–100), so each parameter is credited with its own score (an omitted or
+score-answers and gets `parameterScores` (id → 0–100; a **required** schema field, so the OpenAI fallback keeps
+strict json_schema and cannot drop it), so each parameter is credited with its own score (an omitted or
 unknown id falls back to the step's overall score; older stored results and choice / Role Based steps keep one
 score). Combined per parameter → one row in `ai_interview_scores`, verdict
 bands 80/50/40. **Abandoned attempts:** the drop-off cron finalizes the v2 session (`ABANDONED`, reason `dropout`) and
@@ -87,6 +97,6 @@ DEV `code-runner:r-tidyverse`, UAT `pl-code-runner:c4d07afe`; previous container
 `code-runner-prev-tidyverse` for rollback.
 
 ## Commits (UAT branch heads, 2026-10-14)
-fastapi-ai-engine 6b7912f · admin-node 60a5338 · student-node 0b8c7d04 · corporate-node b94c6206 ·
-assessment-react-v2 59de25d · corporate-react-v2 bb86eff · admin-react-v2 e440dd5 · admin-react fb5c2f07 ·
+fastapi-ai-engine 68c30d5 · admin-node d1b21b8 · student-node 0b8c7d04 · corporate-node b94c6206 ·
+assessment-react-v2 a7d066a · corporate-react-v2 bb86eff · admin-react-v2 e440dd5 · admin-react fb5c2f07 ·
 design-system wizard sources (local only, push not permitted): `uat/aiv2-0.1.2`, `uat/aiv2-0.1.12`.
