@@ -516,6 +516,20 @@ regenerated), and the same requirement rules out SQL questions unless SQL is nam
 Before this, a JD-only requirement was dropped whenever the model did not repeat the language inside each problem
 statement, so UAT questions came back with R/Python starter code but no lock. Describing the role ("a Java
 developer") is still not a requirement. **There is no admin control yet**: the lock comes from the question/JD wording.
+So "Java preferred", "our codebase is Java 17", "auditors certify JVM services only" or "C or C++ — C++ preferred" do
+**not** lock; only an explicit "must be solved in / only in / in X only" sentence does (checked 2026-10-14 against
+three such JDs: 0/6 questions locked).
+
+**C++ starter templates (2026-10-14, DEV + UAT, PROD pending):** the C++ scaffold check accepted only
+`throw std::logic_error("not implemented");` and the generic body extractor read `return {};` as two bodies, while the
+model writes `return {};` / `return "";` and the prompt never stated a C++ stub. So **every generated C++ template was
+dropped** — 0/6 questions carried C++. On an open question the candidate app still offered C++ with a synthesised
+template, but a JD requiring C++ ("must be solved in C++ only") left each question with no language → rejected →
+coding section failed. Fix: C++ also accepts a bare neutral return (`{}`, `""`, `0`, `0.0`, `false`), its body is
+read from the outermost braces, and the prompt states the C++ stub. After: C++ on 6/6 questions on DEV and UAT, and a
+C++-only JD locks both questions to `cpp`. C is still left out when an argument is a list (by design).
+Commits: fastapi `eb0f59b` (DEV overlay, rollback sha256:bfa29993…) → UAT `61554ee` (overlay on `68c30d5`, rollback
+sha256:2f92a9d5…).
 
 **Scoring always re-runs on the server.** Browser-reported verdicts are no longer accepted for any question, and
 hidden test cases (input and expected output) are blanked for every question type, not only SQL. The legacy v1 app
