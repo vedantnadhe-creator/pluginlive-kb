@@ -2743,3 +2743,38 @@ it was rehearsed (BEGIN…ROLLBACK, as a candidate: mine=7 peers=3) and applied 
 Gotcha for future releases: check `drizzle/migrations` for new SQL too — the deploy script only reads `supabase/migrations`.
 Verified: admin 5/5, Coding Challenges 375, Save Module, Student Tier search, 45 admin pages ✓, 3-role e2e ×2.
 Snapshot `~/banking-sb/snapshots/20261011T161123Z`.
+
+## 2026-10-14 — redeployed to `4f808d6d` (31 commits since `2da98562`, 11 migrations + drizzle 0003)
+
+Upstream: AI Coach sprints 1–6 (trusted grading, evidence outbox/ledger, skill graphs, learner model, server-side quiz
+sessions, pilot controls + shadow runs), trainer workspace + student "module tutor" menu rows, taxonomy write repair
+(`can_manage_taxonomy_v1`, admin/super_admin/taxonomy_editor only), persistent sim voice rooms + private `sim-avatar-assets`
+bucket (GLB runtime), bulk "generate missing simulations", learning-hours tracking (`learning_hours_report`,
+`my_assigned_module_hours` — drizzle 0003, applied by hand, copy in `~/banking-sb/drizzle-applied/`), new
+`grade-coding-challenge` function (JDoodle), Vite `manualChunks` (9 `vendor-*` chunks).
+
+**Coach capture triggers** (`coach_source_capture`) now fire on every write to quiz_attempts, assessment_attempts,
+student_solved_challenges, module_progress, student_module_topic_progress, sim_attempts, curriculum_topic_progress, plus
+`assessment_responses` / `assessment_questions` (invalidate receipts). Rehearsed: ≤100 ms per 20-row write.
+
+**UAT fixup** `20261012120000_coach_sprint3_adapters`: upstream `NOT EXISTS(SELECT 1 FROM topics WHERE id=topic AND
+module_id=content)` is ambiguous (42702) because `topics` has a `content` column and the PL/pgSQL variable is also `content`;
+the error is not in the adapter's quarantine list, so it would roll back every submitted simulation whose pack names a topic.
+Rewritten as `(SELECT tp.module_id FROM topics tp WHERE tp.id=topic) IS DISTINCT FROM content`. Upstream still has the bug.
+
+**Deploy-script change — function ACLs are preserved.** `03_grants.sql` grants anon + authenticated EXECUTE on ALL public
+functions, which silently reopened functions upstream revokes (e.g. `coach_enqueue_evidence_v1` — any signed-in user could have
+forged graded evidence). `deploy.sh` now snapshots function ACLs after migrations (`~/banking-checks/fn_acl_snapshot.sql`
+→ `snapshots/<TS>/fn_acl_restore.sql`), runs 03/05, then restores them. Verified live: enqueue/outbox not callable by
+authenticated/anon (anon REST → 401); browser RPCs (coach_contract_v1, submit_quiz, configure_pilot, learning_hours_report) still callable.
+
+Gotchas this release: upstream `package-lock.json` is out of sync with `package.json` (`npm ci` → "Missing: @esbuild/win32-x64");
+the only new dep is dev-only `@electric-sql/pglite` (tests), so the build ran on the existing node_modules. Fix upstream with a regenerated lock.
+`sim-voice` signs `sim-avatar-assets` GLB URLs with `createSignedUrl` (internal `http://gateway` origin on self-hosted) — harmless
+until an approved avatar asset exists (0 on UAT), then it needs `toPublicUrl` like `generate-video`.
+Coding: UAT has no `JDOODLE_CLIENT_ID/SECRET`, so Run (`execute-code`) and the new hidden-test grader both fail (pre-existing for Run);
+0 of 375 challenges carry `metadata.module_id`, which the grader also requires.
+
+Verified: admin 5/5, Coding Challenges 375, Save Module (now also calls `learning_hours_report` 200), Student Tier search,
+admin crawl 42 sidebar pages ✓ 0 ✗ (menu rows changed), 3-role e2e ×2. Candidate×module 1,619 / ×assessment 2,304 unchanged.
+Snapshot `~/banking-sb/snapshots/20261014T031415Z`.
