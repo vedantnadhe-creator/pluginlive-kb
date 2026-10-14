@@ -197,3 +197,9 @@ The UAT bundles have no DEV URLs.
 **admin-node:** `CustomBankAccessService` scopes institute tokens to their own banks (previously 403 for any institute token). `AddCandidatesAccessService` still refuses institute tokens.
 
 Releases: admin-node DEV `7580de7` / UAT `a769b29`; admin-react DEV `2cf51559` / UAT `e33e249e`; institute-react-v2 DEV `60b4f5c` → `a532fc3` + `d8f98f2` / UAT `12f50fb` → `ee818fd` (UAT commits are cherry-picks or UAT-only). No DB migration: the flag uses the existing `admin.feature_config` table and partial unique index.
+
+### 2026-10-14 — College upload cohort row (admin DEV 0.1.16-custom.6, UAT 0.1.12-custom.5; PROD pending)
+
+College Step 3 → Upload a sheet is one row: **Degree & Department** (single searchable, clearable dropdown grouped by degree) / **Year of passing** / Upload / **+ Add**; every added sheet is stamped with the cohort picked at that moment and listed as a chip (file name + candidate count). Manual entry carries the same two fields; "Use an existing list" asks for neither. Recipient rows show Degree-Department and Year as read-only columns; the recipient list starts collapsed; Candidate Details opens only after Schedule & settings is saved; one Save dialog asks "save as custom list?"; all Aptitude sections are ticked by default; upload errors are a red toast. No API change: each recipient already carried its own `cohort`, and admin-node provisions per row (`degree`/`department`/`passingYear` on each `bulkUploadData` row).
+
+UAT lineage: `0.1.12-custom.5` = `~/worktrees/ds-custom-parity-admin-uat` `d1dfda6` (port of DEV custom.6; the read-only cohort columns follow Mobile because the UAT line has no on-call column). **institute-react-v2 not yet bumped** to match (see "Keep in step").

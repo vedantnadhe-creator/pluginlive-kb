@@ -25,6 +25,21 @@ vedantnadhe-creator) nor the MCP GitHub identity can `POST /orgs/.../repos` — 
 | UAT | systemd :3013 | yes | `''` |
 | PROD | Outside this rollout | Verify separately | Verify separately |
 
+## Manage Assessments list + detail — real admin-node data (DEV + UAT 2026-10-14, PROD pending)
+
+`/v2/assessment` (list) and `/v2/assessment/:id` (detail) were driven by `src/lib/dummy/*`; they now read admin-node.
+
+- **List** — BFF `GET /v2/api/assessments` calls admin-node `getActiveAssessments` + `getCompletedAssessments` for college and corporate (`pageLimit` 5000) and maps rows in `src/lib/assessments/listRows.ts`. Search, filters, tabs and counts stay client-side over the whole set. Window times come from admin-node as IST wall-clock digits in a UTC column; the mapper subtracts 330 min to get the real instant. Status is derived from the window: future start → Upcoming, ended → Expired, ≤ 2 days left → About to expire, else Live. Rows are per occurrence (no recurring grouping). The Degree/Dept column shows "All candidates · N students" — admin-node's list `degreeDepartment` is the institute's whole course catalogue, not the audience, so it is not used. A row whose type has no card is skipped and logged (`rows skipped — no card for type(s)`).
+- **Detail** — rows open `/v2/assessment/:id?segment=college|corporate`. BFF `GET /v2/api/assessments/:id?segment=` makes one unpaginated admin-node `getAssessmentDetails` call (map id, or Mix & Match group id) and builds both the Overview and the Candidates payloads (`src/lib/assessments/detailFromRoster.ts`). Unknown id → 404 "Assessment not found".
+- **Candidate status** comes from admin-node's buckets: every candidate is in `sent` plus at most one of `completed` → Completed, `inProgress` → In progress, `droppedOff` → **Dropped off**, `pending` → Not started; in none (window closed, never started) → Not started. Shown in the Student-wise performance **Status filter** (with counts), CSV export and occurrence drawer — the table has no status column.
+- **Score** = the type's overall number: `totalScore` (Communication, Mix & Match), `overallScore` (Behaviour), `aptitudeScores.overallPercentage`, `roleBasedScores.overallScore`, `customAssessmentScores.percentage`, `aiInterviewScores.overallScore`; only for Completed rows. Risk and level derive from it (`detailMetrics.ts`, shared with the dummy generator).
+- **Not available from admin-node yet** (shows "—"): passing year, consistency, attempt rate, last submitted. **Still dummy:** student report drawer, Schedule-tab occurrence drawer, corporate single view. A real corporate assessment therefore renders the standard tabs (its demo Manage/Cancel header is not shown — the cancel was fake).
+- **admin-node perf (same release):** `getActiveAssessments` (college) ran 3 sequential queries per row; degree info is now fetched once per institute, concurrently. DEV 204 rows 16.9 s → 1.2 s (byte-identical output); UAT 769 rows ~1.2 s.
+
+Releases: admin-react-v2 DEV `e08e145` / UAT `bd4e237` (+ `0222426`, the UAT port of `caa9bec`); admin-node DEV `a4e23b3` / UAT `275ca41`.
+
+**Security note (open):** admin-node `GET /assessment/getAssessmentDetails` has `isPrivate` commented out — the roster is readable without a token. The v2 BFF always sends the admin token, so enabling it would not break v2.
+
 ## Create Assessments handoff and return routing
 
 `ADMIN_V2_CREATE_ASSESSMENT=1` in legacy Admin enables browser navigation to `/v2/assessment?create=1&type=college|corporate`. Selection proceeds to `/v2/assessment/new`. The temporary inline integration was reverted.
