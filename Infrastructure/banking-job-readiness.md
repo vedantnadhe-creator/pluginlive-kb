@@ -2778,3 +2778,13 @@ Coding: UAT has no `JDOODLE_CLIENT_ID/SECRET`, so Run (`execute-code`) and the n
 Verified: admin 5/5, Coding Challenges 375, Save Module (now also calls `learning_hours_report` 200), Student Tier search,
 admin crawl 42 sidebar pages ✓ 0 ✗ (menu rows changed), 3-role e2e ×2. Candidate×module 1,619 / ×assessment 2,304 unchanged.
 Snapshot `~/banking-sb/snapshots/20261014T031415Z`.
+
+## 2026-10-14 (pm) — redeployed to `a8ae5769` (2 commits since `4f808d6d`, 1 migration)
+
+Upstream: in-app, admin-triggered content / AI quality audits (`content-quality-audit`, `coach-in-app-runner`, `_shared/content-quality.ts`;
+tables `content_quality_jobs` + `content_quality_reviews`, admin-only RLS, no cron), AI quality gates in the question/coding/curriculum/
+sim-pack generators, WebRTC avatar transport, `npm run test:providers` smoke script (package.json only, lock unchanged).
+Rehearsed (candidate insert blocked, admin insert ok, rollback clean). The function-ACL restore ran (287 functions;
+`coach_enqueue_evidence_v1` still closed) and the sprint-3 `topics.content` fixup is still the live adapter body (upstream still unfixed).
+Verified: admin 5/5, Coding Challenges 375, Save Module, Student Tier search, admin crawl 42 ✓ 0 ✗, 3-role e2e ×2.
+Snapshot `~/banking-sb/snapshots/20261014T061900Z`.
