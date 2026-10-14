@@ -16,6 +16,7 @@ This folder contains detailed documentation for each assessment type and cross-c
 - `behaviour.md` -- Behaviour Assessment (competency proficiency levels + suitable job roles). Role matching is scoped to the candidate's tested domain (no MBA roles in Engineering reports, since 2026-10-08), proportionally scored -- requirements are almost all Expert/Master, so pass/fail matching returns nothing. Candidate paper is flattened + seed-shuffled with every question mandatory (client-side by design); admin wizard quotes the real bank (115/129) from admin-node. Live DEV + UAT.
 - `custom.md` -- Custom Assessment (admin-defined sections with MCQs and image support)
 - `ai-interview.md` -- AI Interview Assessment (real-time adaptive interview with shortlisting)
+- `ai-interview-v2.md` -- Complete AI Interview (AI_Interview_v2): Interview Flow of voice + fixed rows + tasks, one combined score
 - `schedule.md` -- Assessment Scheduling (recurring auto-assignment via cron)
 - `assignment-calculation-queue.md` -- Async assignment + calculation/progression queues (flag-gated), real-time Activity UI with Detail page + Assignment/Calculation toggle + retry. Live on DEV + UAT.
 - `auto-reminders.md` -- Automated 24h candidate reminders (hourly cron, atomic claim, capped at 3, queue-backed). DEV + UAT, ships disabled.

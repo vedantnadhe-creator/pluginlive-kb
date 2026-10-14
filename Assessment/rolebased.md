@@ -546,6 +546,9 @@ the top level still works (no double chart). The model's reference must define `
 is verified through the same entry call. Questions saved before this have no `entry` and still run as scripts.
 The entry name is validated by the runner (`^[A-Za-z][A-Za-z0-9_.]{0,40}$`).
 
+- *R packages in the runner* (2026-10-14, DEV + UAT): ggplot2, **dplyr, tidyr, readr** (Debian `r-cran-*` in
+  `code-runner/Dockerfile`), so a `library(dplyr)` answer runs instead of failing with "no package called 'dplyr'".
+
 - *Runner chart harness* (`code-runner/harnesses/r_chart.R`, `POST /execute` with `harness: {mode: "chart",
   datasetCsv, entry?}`): loads the dataset as `df`, runs the code, renders every chart (ggplot2 or base `plot`, `barplot`,
   `hist`, `boxplot`, `pie`, `lines`, `points`) to a 1600x1200 PNG (ragg, 192 dpi, DejaVu font) and describes it as

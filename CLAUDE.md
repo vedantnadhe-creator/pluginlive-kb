@@ -13,6 +13,7 @@ When working on a feature, check the relevant file here **before asking the user
 - `Assessment/communication.md` — video/audio assessment scoring
 - `Assessment/custom.md` — custom question assessments
 - `Assessment/rolebased.md` — role-based assessment scoring and calculations
+- `Assessment/ai-interview-v2.md` — Complete AI Interview (AI_Interview_v2): Interview Flow planning, per-step task answers, briefings, combined scoring, report, Feature Access
 - `Assessment/schedule.md` — assessment scheduling and cron jobs
 - `Assessment/admin.md` — admin panel, assessment management, TPO/corporate flows
 - `Assessment/admin-frontend.md` — admin-react Assessment module (UnifiedAssessmentTable, StudentReport, subscription filtering, heading display)
