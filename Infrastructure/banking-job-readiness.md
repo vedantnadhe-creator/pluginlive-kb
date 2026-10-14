@@ -2816,3 +2816,14 @@ Verified: admin 5/5, Coding Challenges 375, Save Module ×5 (all 200), Student T
 `admin_error_logs` "Network error: Failed to fetch" rows come from headless checks closing pages (seen on earlier days too);
 one "Failed to fetch dynamically imported module" right after the dist swap — the chunk exists, index.html is no-store.
 Snapshot `~/banking-sb/snapshots/20261014T090904Z`.
+
+## 2026-10-14 (eve) — redeployed to `afcb5272` (2 commits since `4a2cd7e6`, 1 migration)
+
+Upstream: candidate Learn menu shows "My Simulations" and "My Robo Assistant" again
+(`20261014160000_candidate_simulation_menu_access_repair` — note it shares a timestamp with the trainer-visibility file; fixups
+are keyed by full basename so no clash), and assessment filters stay wired across Domain/Tech tracks.
+The migration re-labels the two `menu_access_controls` rows (tier switches untouched, still all on) and adds both keys to
+`candidate_menu_permissions` rows missing them — 7 on UAT, all created 10-12/10-14 from the app's 48-menu default that lacked
+these keys (not admin removals), so the backfill is the intended fix.
+Verified: admin 5/5, Coding Challenges 375, Save Module, Student Tier search, admin crawl 42 ✓ 0 ✗, 3-role e2e ×2.
+Snapshot `~/banking-sb/snapshots/20261014T101301Z`.
