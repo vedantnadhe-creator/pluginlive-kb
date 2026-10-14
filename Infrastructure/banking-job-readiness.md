@@ -2789,3 +2789,30 @@ Rehearsed (candidate insert blocked, admin insert ok, rollback clean). The funct
 `coach_enqueue_evidence_v1` still closed) and the sprint-3 `topics.content` fixup is still the live adapter body (upstream still unfixed).
 Verified: admin 5/5, Coding Challenges 375, Save Module, Student Tier search, admin crawl 42 ✓ 0 ✗, 3-role e2e ×2.
 Snapshot `~/banking-sb/snapshots/20261014T061900Z`.
+
+## 2026-10-14 (late) — redeployed to `4a2cd7e6` (5 commits since `60a67d3c`, 2 migrations)
+
+(Between my `a8ae5769` deploy and this one, another session deployed up to `60a67d3c` — snapshot `20261014T081541Z`.)
+
+Upstream: trainer module visibility scoped to explicit mappings (`trainer_can_access_module`, `trainer_can_access_admin_module`;
+new read policies "Scoped authenticated module reads" / "Scoped admin module reads" / "Scoped admin module topic reads" replace
+the old open reads), student curriculum visibility across all identity keys (`student_has_curriculum` rewritten,
+`curriculum_assignments.student_user_id/student_profile_id` backfilled — 3 rows on UAT), paginated candidate assessments,
+trainer module-import blank-screen fix.
+
+**UAT fixup** `20261014160000_trainer_explicit_module_visibility`: UAT `admin_modules.source_module_id` is **uuid** (text upstream) →
+`uuid = text` error; three `::text` casts, nothing else changed.
+
+Measured in rehearsal (per role, summed over every trainer / 30 candidates / admin):
+- Candidates: `admin_modules` 2,130 → 372 and `admin_module_topics` 17,910 → 4,007 — the old `USING (true)` reads let every candidate
+  read the whole admin catalogue; now only modules they can access. `modules`/`topics` and candidate×module (1,623) / ×assessment (2,304) unchanged.
+- **Trainers: effectively unchanged (modules 480 → 470, admin_modules 355 → 355).** Upstream's new scoping is undone by its own older
+  policies still on the tables: `admin_modules staff write` / `admin_module_topics staff write` are `FOR ALL` to admin+trainer (so they also
+  grant SELECT of every row), and `modules mapped read` → `module_visible_to()` lets any trainer read every published module. Same on hosted.
+  Making trainer scope real needs those split into INSERT/UPDATE/DELETE policies and `module_visible_to` narrowed — team decision.
+- `curriculum_assignments` still has an open `authenticated read USING (true)` policy (pre-existing).
+
+Verified: admin 5/5, Coding Challenges 375, Save Module ×5 (all 200), Student Tier search, admin crawl 42 ✓ 0 ✗, 3-role e2e ×2.
+`admin_error_logs` "Network error: Failed to fetch" rows come from headless checks closing pages (seen on earlier days too);
+one "Failed to fetch dynamically imported module" right after the dist swap — the chunk exists, index.html is no-store.
+Snapshot `~/banking-sb/snapshots/20261014T090904Z`.
