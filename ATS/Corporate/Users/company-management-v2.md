@@ -9,10 +9,14 @@ v1 `/users` (sidebar "Users") now does a full-page redirect to `/v2/users`.
 - **Role = a label.** The built-in role is **Admin** (in code, never a DB row). Each corporate can create its **own** roles
   (typed into the role picker → "Create … as a new role"); they are visible only to that corporate. Roles can't be
   renamed or deleted yet.
-- **Permissions are per user** — 15 on/off actions, stored on the user, not the role:
+- **Permissions are per user** — 16 on/off actions, stored on the user, not the role:
   - Assessment: `viewAssessmentDetails`, `createAssessment`, `editAssessment` (edit/reopen/cancel), `duplicateAssessment`,
     `shareAssessment`, `addCandidates`, `remindCandidates` (reminders + resend), `removeCandidates`,
-    `viewCandidateReport`, `downloadReports` (downloads + export sheets).
+    `viewCandidateReport`, `changeFitnessVerdict` (label "Change fitness verdicts" — the roster's Change Fitness
+    Verdict action; checked by the BFF **and** by corporate-node itself), `downloadReports` (downloads + export sheets).
+  - A new key must be added to **both** corporate-react-v2 `src/lib/permissions.tsx` and corporate-node
+    `app/helpers/corporatePermissions.js` `ACTION_KEYS` — `sanitizePermissions` silently drops unknown keys, so a key
+    missing from the backend list reads as "off" for everyone even when stored `true`.
   - User Management: `viewUserDetails`, `addUsers`, `editUsers`, `editUserPermissions`, `deactivateUsers`.
   - `viewAssessmentDetails` (label **"View dashboard & assessments"**) opens the whole Assessment module: without it
     the Dashboard and Assessments nav items are hidden, `/v2/assessments/*` shows "no access", `/v2/dashboard` (the v2

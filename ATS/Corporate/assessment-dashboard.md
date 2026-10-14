@@ -782,6 +782,53 @@ Gotchas:
   **in memory, not localStorage**: the body carries presigned media URLs that
   expire in minutes and scores that may still be landing.
 
+### Change Fitness Verdict, Preparing / Delayed report, live roster (DEV + UAT, 2026-10-14)
+
+corporate-node f9bea361 + 58c25442 + 994be38a (UAT 15bc2b3a, 98f4d018,
+0d9e71ef); corporate-react-v2 09991fa + b15c15c + fc000a0 + 5e9d31e (UAT
+202bc6c, 37359d5, 3ecb05d, d69f1c8). DB script DB-Scripts
+`Corporate Candidate Fitness Verdict/20261014T083349Z__candidate_verdict_overrides.sql`
+(DEV + UAT applied, **PROD pending** — apply it before deploying corporate-node
+to PROD, or every roster read fails on the missing table).
+
+- **Change Fitness Verdict** (bulk bar, single-type AI Interview /
+  AI_Interview_v2 / Role Based floats, permission `changeFitnessVerdict`):
+  per selected candidate a new verdict (Strong Fit / Fit / Borderline / Not
+  Fit) with a **compulsory reason**. Only candidates whose every part is
+  COMPLETED and scored are offered or accepted.
+  - `POST /corporates/:cid/assessments/v2/:id/candidates/verdict`
+    `{ changes: [{ email, verdict: strong|fit|medium|weak, reason (1–1000) }] }`,
+    BFF `/api/assessments/[id]/candidates/verdict`. corporate-node re-checks the
+    permission (`CorporateUserAccessService.assertCan`), the float type and the
+    candidates; 400 with a user-facing message otherwise, 404 cross-tenant.
+  - Storage: append-only `corporate.candidate_verdict_overrides` (one row per
+    change, keyed by `assessment_corporate_map_id` + lower-cased email, with
+    `changed_by_user_id` / `changed_by_name`). The JWT only carries `_id` +
+    `corporate_id`, so the name comes from the auth service.
+  - **Label only:** roster rows carry `verdictOverride { verdict, reason,
+    changedAt, changedBy } | null` (newest row); `fit` stays the scored
+    verdict, so counts, filters and exports are unchanged. The row shows the
+    override with a "changed" marker; tooltip "Changed by <name>, <date
+    time>: <reason>". History stays in the table (no UI reads it yet).
+- **Preparing Report / Report Delayed** (`attemptStatus`, from corporate-node
+  `helpers/reportState.withReportState`): every part COMPLETED but no part has
+  a score or a Behaviour level → `reportPreparing` (chip tooltip: usually 1–2
+  minutes); still unscored **15 minutes** after the last submit →
+  `reportDelayed` (amber chip, own filter option, drawer says it is taking
+  longer than usual). Inferred from scores — no service records an evaluation
+  state, so "slow" and "failed" both read as delayed.
+  - Overview: `completed` = finished **with** a report; new `preparing` =
+    finished without one. Status and `completionPct` still count every
+    finisher; the Completion Rate card adds "N preparing report".
+- **Live roster** (no backend): while the tab is visible the detail page
+  re-reads roster page 1 + overview every 30 s; new submitters are highlighted
+  at the top, or counted on a "N new candidate responses received." pill when
+  the recruiter has scrolled away. The open drawer does not reload on a refresh.
+- **Recommendations (Strengths / Weaknesses) only for AI Interview and Role
+  Based** — drawer, standalone reports and Mix-n-Match (whose tab only appears
+  when the float bundles one of them). Communication, Aptitude and Behaviour
+  have no Recommendations tab.
+
 ### Mix-n-Match radar breakdown, rank tag, Strengths / Weaknesses (DEV + UAT, 2026-10-13)
 
 corporate-react-v2 53c9762 (UAT ea3e1e1) + backend wiring: corporate-node
@@ -813,8 +860,8 @@ candidate with "(not enough attempts yet)".
   candidates"; #1 green, #2 blue, rest neutral. A Mix-n-Match per-type tab ranks
   by that part's `byType` score. Client-side off the paged roster — no backend.
 - **Recommendations headings** read **Strengths / Weaknesses** for AI
-  Interview, Role Based (third "Recommendations" group dropped), Behaviour and
-  Communication (Areas to improve + Areas missing merged into Weaknesses).
+  Interview and Role Based (third "Recommendations" group dropped). Since
+  2026-10-14 only those two types show Recommendations at all (see above).
 - **Behaviour floats hide the "Distribution by levels" donut** on the
   assessment detail page; the roster takes the full width.
 
