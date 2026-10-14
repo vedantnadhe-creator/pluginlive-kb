@@ -291,6 +291,57 @@ but it was not the original motivation.
 
 ---
 
+### Full Interview recording (DEV + UAT, 2026-10-14; PROD pending)
+
+student-node 4171c570 + d4bf551e (UAT 7e22e69e, e808a947; UAT also needed
+the on-call report b61c9164 → 5eabed47). corporate-react-v2 d753b9f (UAT
+bfb24af). No schema change.
+
+- **What the recruiter sees:** a "Full Interview" button in the AI Interview
+  report's transcript header opens one waveform player for the whole web
+  interview, with Q1…Qn dividers (hover shows the question; click jumps to
+  it). The button only appears when the report carries `recording`.
+- **Report fields** (`mapAiInterview`, v1 and AI_Interview_v2; corporate-node
+  passes them through unchanged): `recording { src, duration_s, peaks[120] }`
+  (signed like answer clips) and `transcript[i].start_s` on spoken turns.
+  Omitted for phone interviews (they keep `call_recording`), unbuilt/failed
+  builds, and purged answers or session audio.
+- **Source:** the candidate app already uploads the whole interview
+  (interviewer TTS + mic) as the session-audio answer (`student_answers`,
+  question `a55c5db4…`) with chapter offsets `{interactionId, offsetMs}`.
+  That file is reused as-is (duration + 120 RMS peaks only). Fallback when it
+  is missing: ffmpeg joins question audio + 0.7 s + answer clip per turn
+  (`audio/AI_Interview_full_<sessionId>.mp3`); interviewer audio is not stored,
+  so questions are silent placeholders unless the backfill runs with `--tts`
+  (paid, per question).
+- **Build:** queue `ai-interview-full-recording-<env>` (calculation worker,
+  needs `CALCULATION_ASYNC=true`), enqueued at the end of a successful
+  `processAiInterviewFinalize`; never blocks submit. Result in
+  `ai_interview_sessions.session_metadata.fullRecording = {key, durationS,
+  peaks, offsets, status, builtAt, source}` (jsonb merge, atomic claim, safe
+  across pods). Opening a report whose session has no `fullRecording`
+  re-queues the build (other writers read-spread-write `session_metadata` and
+  can drop the key). Sunset purge clears the pointer.
+- **Backfill:** `node script/backfillAiInterviewFullRecording.js --from
+  YYYY-MM-DD [--to …] [--apply] [--tts]` (dry run by default). DEV: 9c74da01…
+  built from the session file (266.7 s) on 2026-10-14; not run on UAT.
+
+### Phone (on-call) interviews in Institute and Admin reports (DEV + UAT, 2026-10-14)
+
+- Institute v2 (institute-react-v2 c984805 / UAT 3780340) reads
+  `assessment.delivery`, `call_recording` and `transcript[].reading_flagged`
+  from the student-node report-v2: "Full call recording" player, no
+  Proctoring tab for phone interviews.
+- Admin v1 (admin-react 1150b8ff / UAT cde07ad1) reads admin-node
+  `GET /ai-interview/report-by-assignment/:assessmentAssignedId`, which now
+  sends `deliveryMode` ('call'|'web', from `stage_config`) and `callRecording
+  { url, durationSec, recordedAt } | null` — latest entry of
+  `ai_interview_call_slots.recordings`, signed for 1 h (admin-node 442d181 /
+  UAT c1f4dba). **That route now requires an admin JWT** (it returns the
+  transcript, answer audio and the call recording; ecb7850 / UAT 564c2bf).
+  Other `/ai-interview/*` admin routes (`assign`, `definition`, …) are still
+  unauthenticated.
+
 ## End-to-End Flow
 
 1. **Admin assigns AI Interview**: Specifies job role, skills, seniority, industry domain, optional JD, interview duration, follow-up enabled

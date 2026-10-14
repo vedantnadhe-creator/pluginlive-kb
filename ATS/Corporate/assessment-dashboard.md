@@ -829,6 +829,33 @@ to PROD, or every roster read fails on the missing table).
   when the float bundles one of them). Communication, Aptitude and Behaviour
   have no Recommendations tab.
 
+### Sprint 42 parity: Institute v2 + Admin v1 (DEV + UAT, 2026-10-14)
+
+Corporate behaviour ported to the other two dashboards — institute-react-v2
+c984805 (UAT 3780340), admin-react 1150b8ff (UAT cde07ad1); backends
+institute-node 913f9f9 (UAT 707447c), admin-node 442d181 (UAT c1f4dba).
+
+- **Proctoring rows:** no "Split screen" / "Window covered"; "Reading
+  detected" (read-aloud pace + external reference), "Focus lost to another
+  app" (institute-node now sends `windowFocusLostCount` in
+  `report.proctoring.signals[]`, only when > 0); integrity score in the card
+  head; "Proctoring was disabled for this assessment." when proctoring is off
+  (institute `proctored` is now set from `allow_proctoring` before the first
+  run opens — it used to read "Disabled" until then).
+- **Attempt status vocabulary:** Not started / In progress / Preparing Report
+  / Report Delayed / Dropped off / Completed. Institute and Admin infer
+  Preparing / Delayed on the client (Corporate gets it from corporate-node);
+  admin-node `/assessment/getAssessmentDetails` now sends `submittedAt` so
+  Report Delayed (15 min) can appear.
+- **Admin AI Interview verdict bands** match corporate / admin-node: Not Fit
+  is now below **40** (was 35).
+- **Communication email-writing answers** render as an email (subject row +
+  body) in Corporate (085f487 / UAT 19b4105) and Institute; other written
+  answers keep their line breaks. The admin PDF (student-node) is unchanged.
+- Corporate also: transcript accordion closed by default + Fitness column
+  right after Candidate (c16d6dc / UAT 952f998); "Full call recording" for
+  phone interviews (54c6091 / UAT 7a3bfc0).
+
 ### Mix-n-Match radar breakdown, rank tag, Strengths / Weaknesses (DEV + UAT, 2026-10-13)
 
 corporate-react-v2 53c9762 (UAT ea3e1e1) + backend wiring: corporate-node

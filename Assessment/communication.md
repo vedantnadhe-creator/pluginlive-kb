@@ -18,6 +18,19 @@
 
 ---
 
+## US listening accent = English-only evaluation (DEV + UAT, 2026-10-14)
+
+In the shared create wizard, choosing the **US** listening accent sets the
+speaking-evaluation language to English and locks the picker (the regional
+language hint is hidden). The shared `validateDraft` refuses US + a
+non-English language (400 "A US-accent Communication assessment is evaluated
+in English only"), and Duplicate opens an older US-accent float in English.
+Corporate DEV: wizard 0.1.2-bugfix.17 (design-system aa8d9e5, corporate-react-v2
+4e799b4). Corporate UAT: **0.1.2-bugfix.17-uat** = 0.1.2-bugfix.16-uat + aa8d9e5
+(design-system branch `uat/comm-us-accent-0.1.2` ce4b1fe, local only;
+corporate-react-v2 UAT 3a18f8f). The admin wizard does not link the two
+fields yet.
+
 ## Assessment Sections (8 Types)
 
 | # | Section | Ability Tested | Scoring Method |
