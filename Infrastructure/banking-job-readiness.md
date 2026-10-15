@@ -2869,3 +2869,13 @@ Deploy-script change: the Vite build regenerates the bundled MCP server into `su
 `git checkout -- supabase/functions/mcp/index.ts` before merging; the deployed MCP still comes from the function-fixups overlay.
 Verified: admin 5/5, Coding Challenges 375, Save Module, Student Tier search, admin crawl 42 ✓ 0 ✗, 3-role e2e ×2.
 Snapshot `~/banking-sb/snapshots/20261015T054107Z`.
+
+## 2026-10-15 (pm) — redeployed to `8130bbf8` (2 commits since `ea46395e`, 1 migration)
+
+Upstream: trainer console gets a "Create Assessment" menu entry and a clearer candidate bulk upload ("Bulk Upload Candidates",
+required vs optional template columns); AI-video progress skips non-UUID fallback topics and topics owned by another module
+(stops opaque 409s). Migration `20261015143000_reconcile_topic_progress_upsert` dedups `student_module_topic_progress` by
+(student_id, topic_id) keeping the newest row, then adds a unique index — on UAT a no-op: 0 duplicates (15 rows before/after) and
+the equivalent `student_module_topic_progress_student_id_topic_id_key` constraint already existed (the new index is redundant).
+Verified: admin 5/5, Coding Challenges 375, Save Module, Student Tier search, admin crawl 42 ✓ 0 ✗, 3-role e2e ×2.
+Snapshot `~/banking-sb/snapshots/20261015T121602Z`.
