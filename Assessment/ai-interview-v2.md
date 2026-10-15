@@ -19,12 +19,15 @@ with one combined score and one report.
 
 ## Float (creation)
 
-1. **Wizard** (corporate-react-v2 wizard `0.1.2-bugfix.18` DEV / `0.1.2-bugfix.18-uat` UAT; admin-react-v2 wizard
-   `0.1.16-custom.9` DEV / `0.1.12-custom.7` UAT). Role, skills, JD, evaluation parameters (Communication fixed 20%),
+1. **Wizard** (corporate-react-v2 wizard `0.1.2-bugfix.19` DEV / `0.1.2-bugfix.19-uat` UAT; admin-react-v2 wizard
+   `0.1.16-custom.10` DEV / `0.1.12-custom.8` UAT). Role, skills, JD, evaluation parameters (Communication fixed 20%),
    languages, voice, and the Interview Flow rows. **The question-type dropdown no longer offers Reading task or
    Listening task** (removed 2026-10-14/15 in both wizards, `FLOW_TYPE_OPTIONS` in
    `assessmentWizardConfigOptions.ts`). The `reading` / `listening` types, placeholders and payload mapping are kept,
-   so a float or duplicate that already carries one still validates, submits and runs. Reading / Listening / Custom
+   so a float or duplicate that already carries one still validates, submits and runs. Such a row still **shows its
+   own type** ("Reading task" / "Listening task") and keeps it in that row's dropdown only (`typeOptionsFor` in
+   `InterviewFlowTable.tsx`, 2026-10-15) — before that it rendered as "Select question type" and Enter re-typed it to
+   Subjective. Reading / Listening / Custom
    rows **require instructions** (they describe the task). Single/multiple choice rows may carry hand-written questions. Count blank = "Auto".
 2. **Float route** sends `assessmentType: "AI_Interview_v2"` with `interviewConfig.flow`.
 3. **admin-node** `AIInterviewV2AssignmentService` only **validates** the flow and registers the Role Based async
