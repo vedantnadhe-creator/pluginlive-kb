@@ -2856,3 +2856,16 @@ Metabase itself is not configured on UAT: `metabase-embed-token` answers 503 "Me
 
 Verified: admin 5/5, Coding Challenges 375, Save Module, Student Tier search, admin crawl 42 ✓ 0 ✗, 3-role e2e ×2;
 candidate×module 1,669 / ×assessment 2,354 unchanged. Snapshot `~/banking-sb/snapshots/20261015T044806Z`.
+
+## 2026-10-15 (am) — redeployed to `ea46395e` (3 commits since `65bd7b0b`; no migrations, no function changes)
+
+Upstream: platform text parameterised for multi-domain learning (50 files, copy/branding), student assessment catalogue
+browsing improved and its filters wired. New optional build var `VITE_CANONICAL_APP_URL` (Home page site URL) is unset on UAT and
+falls back to `window.location.origin`, i.e. UAT. Bundle audit: hosted refs unchanged vs previous build (the `kbwjokmmzkgjwiqelrdc`
+hits are the admin security-migration form default; `*.lovable.app` hits are SEO/OG strings).
+
+Deploy-script change: the Vite build regenerates the bundled MCP server into `supabase/functions/mcp/index.ts` (e.g. mcp-js
+0.26.2 → 0.26.3) — that, not a person, was the recurring dirty file that aborted the 10-15 fast-forward. `deploy.sh` now runs
+`git checkout -- supabase/functions/mcp/index.ts` before merging; the deployed MCP still comes from the function-fixups overlay.
+Verified: admin 5/5, Coding Challenges 375, Save Module, Student Tier search, admin crawl 42 ✓ 0 ✗, 3-role e2e ×2.
+Snapshot `~/banking-sb/snapshots/20261015T054107Z`.
