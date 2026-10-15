@@ -2879,3 +2879,32 @@ required vs optional template columns); AI-video progress skips non-UUID fallbac
 the equivalent `student_module_topic_progress_student_id_topic_id_key` constraint already existed (the new index is redundant).
 Verified: admin 5/5, Coding Challenges 375, Save Module, Student Tier search, admin crawl 42 ✓ 0 ✗, 3-role e2e ×2.
 Snapshot `~/banking-sb/snapshots/20261015T121602Z`.
+
+## 2026-10-15 (eve) — redeployed to `04130d70` (6 commits since `8130bbf8`, 2 migrations) — identity/RLS/billing hardening
+
+Upstream closes most P1s from the 10-15 E2E QA (see `~/banking-qa-20261015` report):
+- **students/profiles RLS rebuilt** (`20261015170000_identity_rls_and_billing_hardening`): every legacy policy on both tables is
+  dropped (incl. UAT's open `students authenticated read/write USING (true)`) and replaced by scoped policies — self, admin, or
+  trainer/teacher/institute within `current_user_institute_ids()` (+ trainer's own onboarded students). Rehearsed per role:
+  candidate students 93 → 1, trainer 93 → 10 (own institute/onboarded), admin unchanged; candidate cannot edit another student (0 rows).
+- **Trigger `prevent_client_identity_control_mutation`** on profiles/students: only admin or `service_role` (auth.role() from JWT
+  claims) may change subscription_tier/status/expiry, approval_status, is_active (profiles) or status (students) → candidate
+  self-upgrade blocked. Note: a plain psql session (no JWT claims) counts as untrusted too — set
+  `request.jwt.claims` role=service_role for manual data fixes on those columns.
+- `admin_approve_payment_request` now writes both profiles and students (approved plan no longer reverted on next login).
+- `candidate-otp-login`: random auth passwords + rotation of legacy derived passwords on successful OTP (closes the derived-password
+  login bypass). The fixed OTP that used to be hard-coded "1234" is now admin-configurable in SMS Gateway settings
+  (`sms_gateway_settings.temporary_otp_enabled/temporary_otp`, default on/"1234" — UAT behaviour unchanged; turn off for real SMS).
+- New `notification_gateway_settings` (admin-only), password-reset delivery hardening (`RESEND_API_KEY`, `PASSWORD_RESET_ALLOWED_ORIGINS`
+  optional), server-side duplicate module-group guard (UAT has 1 existing duplicate group; editing its name/taxonomy will now be refused).
+
+**UAT fixup** for `20261015170000` (two changes, rest verbatim):
+1. Students policies subqueried `trainers` directly while UAT's trainers read policy subqueries `students` — the 10-02 infinite-recursion
+   pattern; both now call `private.is_my_trainer_row(onboarded_by)` (same predicate, SECURITY DEFINER).
+2. Upstream trigger bug: one combined condition referenced `NEW.subscription_expires_at` for students rows; `students` has no such column
+   on UAT, so **every non-admin students UPDATE failed** (candidate editing own location). Rewritten as nested IFs per table. Upstream still
+   has the bug — it breaks on any DB whose students table lacks that column.
+
+Verified: admin 5/5, Coding Challenges 375, Save Module, Student Tier search, admin crawl 42 ✓ 0 ✗, 3-role e2e ×2 (candidate OTP login
+works after password rotation); candidate×module 1,700 / ×assessment 2,459 unchanged. Snapshot `~/banking-sb/snapshots/20261015T164830Z`.
+Still open from QA: trainer module scoping (older FOR ALL staff policies), JDoodle/Metabase config.

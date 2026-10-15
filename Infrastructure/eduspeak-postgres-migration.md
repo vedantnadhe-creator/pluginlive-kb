@@ -1782,3 +1782,21 @@ Open product gaps (not fixed): an assigned test opens `/practice?assessment=…`
 questions instead of the teacher's published `question_ids`**; plan **Upgrade is only a mailto:** link
 (no in-app Razorpay/receipt), so Subscription Approvals can't be exercised from the product.
 Report: pl-uat-public-docs/pilvidya-uat-e2e-report-20261015-4508121995 (200 scenarios, 189 PASS / 2 FAIL / 9 BLOCKED).
+
+## 2026-10-15 (eve) — PilVidya UAT `eeb8d84d` (+ one-line UAT patch) — teacher subscription upgrade requests
+
+Upstream: teachers request a paid plan from the Teacher Portal ("Request Upgrade" opens `SubscriptionUpgradeDialog`, replacing the old
+mailto link) with a payment reference/receipt; admins review them in the BRD workspace "Subscription Approvals" queue. New table
+`subscription_requests` (`20261005100000_subscription_requests.sql`, applied verbatim): RLS — teacher reads/inserts only their own
+pending rows (`teacher_profiles.user_id = auth.uid()`), platform admins read/update. Practice assessments get their question set.
+Rehearsed as two real teachers: own insert ok, sees 1; self-approved insert blocked; other teacher sees 0 and cannot insert for someone else.
+`anon` SELECT on the new table (default privileges) revoked explicitly; grants re-run 03 → 05 → 06 (regenerated) → 07.
+Data note: every teacher login that has a profile has `user_id` = auth id (the 11 NULL-user_id profiles have no login), but **7 teacher-role
+logins have no `teacher_profiles` row at all**, so they cannot submit upgrade requests (pre-existing gap).
+
+**Upstream bug patched on UAT only:** `TeacherPortal.tsx` passed `teacherProfileId={teacherProfileId || profileId}` — `profileId` is not in
+scope there, so the portal crashed for every teacher/principal/HOD ("This screen needs to restart", `ReferenceError: profileId is not
+defined`). The UAT checkout carries the one-line fix `teacherProfileId={teacherProfileId}` as an **uncommitted change** (image
+`eduspeakreact:eeb8d84d-tpfix`); not on GitHub. Next deploy: if upstream fixed the line, `git checkout -- frontend/src/pages/TeacherPortal.tsx`
+before the fast-forward. Also: `~/pilvidya-checks/deploy-frontend.sh` builds whatever is checked out — fast-forward first.
+Verified: logins.cjs 10/10 (admin ×2, teacher ×2, principal, HOD, student ×2, parent ×2), parent.cjs, e2e.cjs 0 page errors / 0 failed requests.
