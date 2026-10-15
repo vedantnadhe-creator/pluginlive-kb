@@ -1764,3 +1764,21 @@ school already gets an auto-created main campus.
 Still open: `AdmissionOffer` reads/updates by token as anon (will 401 under deny-by-default);
 Realtime still not deployed; DEV still on hosted Supabase (function-count cap).
 
+
+### 2026-10-15 (later) — QA rerun fixes: `5905fe8b`, `a6feaacd`, `ccd4599f` (GitHub main + UAT)
+
+Found by the 15 Oct QA rerun and fixed the same day:
+- **`question_bank` had no SELECT policy** since the 09-23 lockdown dropped `USING (true)`. No signed-in user
+  could read questions; "Publish to Students" failed with *new row violates row-level security policy* (the
+  upsert's ON CONFLICT/RETURNING needs a readable row). New `question_bank_scoped_read`: `school_id IS NULL OR
+  can_access_school(school_id)`, authenticated only. Side effect: the teacher Subscription usage card counts
+  the whole bank (2568/50) — display only, nothing enforced.
+- **Create Lesson always failed** (`curriculum_content.curriculum_topic_id` is NOT NULL): `LessonsView`
+  now upserts the teacher's `curriculum_topics` row first. Trigger `curriculum_content_default_school`
+  fills `school_id` from the author, otherwise published lessons never reached students.
+- Lesson row and plan-upgrade mailto printed raw `${...}` / `<span ...>` text.
+
+Open product gaps (not fixed): an assigned test opens `/practice?assessment=…`, which **generates 5 new AI
+questions instead of the teacher's published `question_ids`**; plan **Upgrade is only a mailto:** link
+(no in-app Razorpay/receipt), so Subscription Approvals can't be exercised from the product.
+Report: pl-uat-public-docs/pilvidya-uat-e2e-report-20261015-4508121995 (200 scenarios, 189 PASS / 2 FAIL / 9 BLOCKED).
