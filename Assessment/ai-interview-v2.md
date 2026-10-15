@@ -109,6 +109,19 @@ choice, Written, Coding, Reading/Listening task, Task), every option with **Pick
 code with its language, passage, per-step `Scored N/100 — feedback`, and "No answer given" for an empty step. Served via
 corporate-node `/candidates/report/download` (no corp-node/FE change needed). Commits: DEV 8591f221, UAT 90f39e7d.
 
+**Answer key is withheld while the attempt is open.** `generatePDFReport` and `reportV2` are unauthenticated
+student-node routes, so `AIInterviewV2.reportTurns` drops each turn's `correct` array until the attempt is closed
+(`submitted = true` or status `COMPLETED` / `DROPOUT`, helper `isAttemptClosed`). Without a key the PDF shows picks
+only (nothing marked Correct or red); the corp drawer reads a missing `correct` as `[]`. The route-wide auth gap itself
+(all assessment types) is still open — callers include admin/institute/student/assessment React apps directly.
+
+**PDF counts cover every step.** "Questions answered: N of M" and the not-completed banner add the fixed steps to the
+voice session counters (`combinedAnswerTotals`: each fixed step = one expected question; if the voice expected count
+is unknown the total stays unknown). A fixed-only attempt no longer reads 0, and the "No answers were captured" reason
+is replaced when fixed steps were answered. A recorded step whose clip was stored but has no transcript carries
+`recording_submitted: true` (also in `reportV2`) and prints "Recorded response submitted; transcript unavailable."
+instead of "No answer given". Commits: DEV c4838165, UAT dc7f8a55 (2026-10-15).
+
 ## Code runner
 R answers can use **ggplot2, dplyr, tidyr, readr** (Debian `r-cran-*` in `student-node/code-runner/Dockerfile`).
 DEV `code-runner:r-tidyverse`, UAT `pl-code-runner:c4d07afe`; previous containers kept stopped as
