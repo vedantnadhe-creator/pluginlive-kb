@@ -342,6 +342,14 @@ bfb24af). No schema change.
   Other `/ai-interview/*` admin routes (`assign`, `definition`, …) are still
   unauthenticated.
 
+### The candidate never sees the live transcript (DEV + UAT, 2026-10-15)
+
+While answering, both candidate apps show only a recording state ("Recording
+your answer"), never the words being transcribed: assessment-react-v2 21964aa
+(UAT 88a854a, voice-reactive waveform) and the legacy Assessment-React
+interview panel 69d06c0 (UAT 756bd73). The transcript is still captured and
+sent for scoring exactly as before.
+
 ## End-to-End Flow
 
 1. **Admin assigns AI Interview**: Specifies job role, skills, seniority, industry domain, optional JD, interview duration, follow-up enabled

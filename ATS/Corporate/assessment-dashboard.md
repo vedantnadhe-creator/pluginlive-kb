@@ -829,6 +829,13 @@ to PROD, or every roster read fails on the missing table).
   when the float bundles one of them). Communication, Aptitude and Behaviour
   have no Recommendations tab.
 
+### Reopen is forward-only (DEV + UAT, 2026-10-15)
+
+The Reopen dialog's date pickers start at today (`min`), and a start date still
+seeded from the closed window must be moved before Reopen enables ("Choose a
+start date from today onwards."). corporate-react-v2 ee5441a (UAT d1c28e6).
+The end-in-future check (2eff07a) is unchanged.
+
 ### Sprint 42 parity: Institute v2 + Admin v1 (DEV + UAT, 2026-10-14)
 
 Corporate behaviour ported to the other two dashboards — institute-react-v2

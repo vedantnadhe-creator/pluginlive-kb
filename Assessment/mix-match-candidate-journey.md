@@ -334,6 +334,18 @@ rows", which is every assessment the institute dashboard hands out. The summary'
 two per-entity branches collapse into one, with the group joined optionally and
 its title falling back to the assignment's own assessment name.
 
+## Creator's instructions appear under "Before you start" (DEV + UAT, 2026-10-15)
+
+`GET /students/mix-match/summary` returns `additionalInstructions` (student-node
+9de0d768 / UAT ec0b844b): the "instructions for candidates" the creator typed,
+read from `assessment.communication_instructions` (one row per part map, keyed
+by `assessment_corporate_map_id` / `assessment_institute_map_id` — the table
+holds every type's instructions despite its name). Repeats across parts are
+dropped; HTML saved by the v1 editor is turned into one plain line per
+paragraph / list item; `null` when nobody wrote any. The candidate app
+(assessment-react-v2 f1e703b) appends one numbered pointer per line after the
+standard rules on the overview page.
+
 ## Candidate APIs
 
 `student-node` exposes private Mix & Match routes. Every part-level route verifies that the requested assignment has the same Mix Match group and candidate email as the owner assignment in the scoped JWT.
