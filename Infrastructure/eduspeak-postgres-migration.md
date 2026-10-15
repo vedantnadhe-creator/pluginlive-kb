@@ -1712,9 +1712,7 @@ principal, HOD, 2 student, 2 parent); `parent.cjs` OTP → dashboard with child;
 
 ## 2026-10-15 — QA blockers fixed, scheduled jobs run without pg_cron (`6c3c5139`)
 
-Deployed branch `fix/uat-cron-and-qa-bugs-20261015` (upstream `837dbae2` + 3 commits) — the
-UAT checkout is on that branch, **not pushed to GitHub yet**: the next upstream deploy must
-merge it first or the fixes are rsynced away. Migration
+Merged to GitHub `main` (`6c3c5139`, fast-forward over upstream `837dbae2`); the UAT checkout is back on `main`. Migration
 `supabase/migrations/20261015140000_uat_qa_access_fixes_and_scheduled_jobs.sql`
 (DB-Scripts `EduSpeak Postgres Migration/20261015T135522Z__…`). Image `eduspeakreact:66920a12`
 (later commits are functions/SQL only).
