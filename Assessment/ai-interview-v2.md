@@ -79,7 +79,10 @@ questions) and pre-fills the corporate wizard.
   guard screen and completes the session directly.
 
 ## Scoring (student-node `models/AIInterviewV2.js`)
-Voice turns by the AI Interview scorer; Role Based questions by the Role Based pipeline; choices computed; task steps
+Voice turns by the AI Interview scorer; Role Based questions by the Role Based pipeline; choices computed
+(`choiceScore`: single = 100/0; multiple = **0 if any wrong option is picked** — so ticking every option never earns
+marks — otherwise right picks ÷ correct options, e.g. 1 of 2 correct = 50; since 2026-10-15, older attempts not
+re-scored); task steps
 by fastapi `POST /ai-interview-v2/score-answers` (spoken → transcript + judge; translation vs reference; written;
 code judged against the task in its language). A judged step mapped to **several parameters** sends them to
 score-answers and gets `parameterScores` (id → 0–100; a **required** schema field, so the OpenAI fallback keeps
