@@ -2827,3 +2827,32 @@ The migration re-labels the two `menu_access_controls` rows (tier switches untou
 these keys (not admin removals), so the backfill is the intended fix.
 Verified: admin 5/5, Coding Challenges 375, Save Module, Student Tier search, admin crawl 42 ✓ 0 ✗, 3-role e2e ×2.
 Snapshot `~/banking-sb/snapshots/20261014T101301Z`.
+
+## 2026-10-15 — redeployed to `65bd7b0b` (11 commits since `afcb5272`, 5 migrations)
+
+Upstream: role-scoped Metabase dashboards (`metabase-embed-token` function + 6 `metabase_*` reporting views), proctoring
+snapshots linked to the attempt via atomic RPC `append_assessment_proctoring_snapshot` (own, unfinished attempts only),
+simulation menus tied to module plans (`simulation_module_plan_catalog`: dedups `menu_access_controls`, tags 7 legacy
+aliases `deprecated` + `canonical_key` so Plan Menu Access hides them; tier switches unchanged on UAT — 0 switched on or off),
+module-group mapping across both catalogs (`save_module_group_mapping` / `replace_module_group_members` write `modules` and
+`admin_modules`), AI video requested/actual duration + quality metadata on `topic_videos`, grounded 3D video controls,
+Robo Assistant navigation/continuity/transport fallback, multi-domain AI context (MCP server renamed "Multi-domain Learning Platform").
+
+**Metabase views were a PII exposure on this stack — closed.** They are plain views owned by postgres, so they bypass RLS,
+and `03_grants.sql` grants anon SELECT / authenticated ALL on every relation in `public`: as shipped, anyone holding the public
+anon key could have read every student's names, scores and proctoring counts over PostgREST. The app never reads them
+(only Metabase, with its own DB role), so the UAT fixup revokes them from PUBLIC/anon/authenticated (service_role keeps SELECT)
+and `03_grants.sql` now ends with the same REVOKE. Verified live: anon REST → 401 "permission denied for view".
+Hosted Supabase's default grants expose these views the same way — upstream should revoke them (or use security_invoker).
+
+UAT fixup `20261014170000_metabase_reporting_views` also: `quiz_question_bank.module_id` and `module_live_sessions.module_id` are text
+on UAT (compare as text); `modules` has no `track` column on UAT (track lives in `metadata`), so `m.track` → NULL in the COALESCE.
+Metabase itself is not configured on UAT: `metabase-embed-token` answers 503 "Metabase is not configured" until
+`METABASE_URL`, `METABASE_JWT_SECRET` and the three `METABASE_*_DASHBOARD_ID` secrets exist.
+
+`mcp` overlay rebased onto upstream (rename + UAT issuer line). The checkout carried a stale working-copy edit to
+`supabase/functions/mcp/index.ts` that blocked the fast-forward (deploy aborted before any migration); saved to
+`snapshots/20261015T044757Z/mcp-working-copy.patch` and restored — the overlay is the source of truth.
+
+Verified: admin 5/5, Coding Challenges 375, Save Module, Student Tier search, admin crawl 42 ✓ 0 ✗, 3-role e2e ×2;
+candidate×module 1,669 / ×assessment 2,354 unchanged. Snapshot `~/banking-sb/snapshots/20261015T044806Z`.
