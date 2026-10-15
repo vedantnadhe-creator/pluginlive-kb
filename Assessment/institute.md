@@ -117,6 +117,13 @@ Proctoring, Sent / Taken, and Actions columns. Regular schedule occurrences
 still show `Difficulty / Score`; the shared visibility rule is covered by
 `src/lib/occurrenceReport.test.ts`.
 
+**Diagnosis Score column (2026-10-15, DEV `b6a98a7` + UAT `78266b5`; PROD pending):**
+hiding the difficulty also hid the score, since both shared the one
+`Difficulty / Score` column. The Diagnosis drawer now has its own **Score**
+column — the raw % (`rawScore` from institute-node), sortable, no difficulty
+level. Regular schedule runs (Schedule 1, 2, …) are unchanged and still show
+`Difficulty / Score`.
+
 ### Top-level Student-wise membership (2026-09-15)
 
 The top-level Student-wise table is an assessment-activity roster, not the
