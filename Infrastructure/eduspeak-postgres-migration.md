@@ -1709,3 +1709,60 @@ principal, HOD, 2 student, 2 parent); `parent.cjs` OTP → dashboard with child;
   → 401 (`usePlanAccess`, unchanged since 08-13); parents always resolve to the Free plan.
 - Video generation needs `LOVABLE_API_KEY` in the functions container (not set on UAT) — requests error until provided.
 - Upstream committed `JWT_SECRET` in the repo-root `.env` (not used by the UAT build; rotate if it is used anywhere).
+
+## 2026-10-15 — QA blockers fixed, scheduled jobs run without pg_cron (`6c3c5139`)
+
+Deployed branch `fix/uat-cron-and-qa-bugs-20261015` (upstream `837dbae2` + 3 commits) — the
+UAT checkout is on that branch, **not pushed to GitHub yet**: the next upstream deploy must
+merge it first or the fixes are rsynced away. Migration
+`supabase/migrations/20261015140000_uat_qa_access_fixes_and_scheduled_jobs.sql`
+(DB-Scripts `EduSpeak Postgres Migration/20261015T135522Z__…`). Image `eduspeakreact:66920a12`
+(later commits are functions/SQL only).
+
+**Scheduled jobs (replaces pg_cron).** `public.scheduled_jobs` (name, 5-field UTC cron,
+`function_name`, `payload`, `active`) + `public.scheduled_job_runs`, service-role only. The
+`eduspeak-sb-scheduler` compose service (curl loop) POSTs
+`admin-cron-jobs?action=tick` with the service key at the top of every minute; `tick` runs due
+jobs by calling `${SUPABASE_URL}/functions/v1/<function_name>` — no hard-coded hosts (the old
+function had `pfzstzxffbentcxlrior.supabase.co` baked in and also failed to boot on a missing
+`requireAdmin` export). Overlap safety: `claim_scheduled_job(jobid, minute)` (a PostgREST PATCH
+with an `or=` filter returns 42703 "column does not exist" on our build — don't use one).
+Admin page `/admin/cron-jobs` lists / runs / toggles; `tick` refuses user JWTs. Six jobs seeded
+**inactive**: outbox-dispatch (5 min), learning-alert-scan (hourly), wellbeing-followup-reminders
+(hourly), curriculum-videos ×2, foreign-language-content (daily). Not seeded: `ai-video-pending`
+and `foreign-language-all-languages-daily` — their SQL functions do not exist on UAT.
+
+**Access fixes (all verified by impersonation + live UI):**
+- Parents now get a real auth session: `parent-verify-otp` creates/links an auth user
+  (`parent.<mobile>@eduspeak.local`), sets `parent_profiles.user_id`, returns
+  `auth_session.token_hash`; `ParentLogin` exchanges it via `verifyOtp`. Before this every
+  parent REST read ran as `anon` → 401 since the 09-24 deny-by-default lockdown.
+  `is_parent_of_student` now requires `verified`; parent read policies added on
+  attendance, fee invoices (old policy compared the student's user_id), report cards, own
+  alert preferences.
+- Teachers: `is_teacher_for_student` also matches the class teacher
+  (`classes.class_teacher_profile_id`) and same-school principal/HOD —
+  `teacher_student_profiles` has no writer anywhere, so explicit assignment alone matched nobody.
+- Guard trigger `guard_student_profile_protected_columns`: a student can no longer change their
+  own approval_status / school / class / branch / plan (was possible via
+  `student_profiles_update_scoped` → cross-school access); staff cannot move a student into a
+  school they don't belong to.
+- Transport policy recursion fixed via `transport_route_school_id()`.
+- Registration (free-text since upstream `bfda1170`) links school + class when the name matches
+  exactly one active school and the grade exactly one class; otherwise stays unlinked.
+- Assessments: `total_questions`, `is_public` added; teacher-inserted tests inherit the author's
+  school (trigger); students read only published tests assigned to them (or public global ones).
+- Admissions application row is written by `admission-submit-inquiry` (anon insert was 401).
+- `virtual-tutor` 500 `req is not defined`, `runway-video` regex boot error,
+  `threed-video-generate` missing `_shared/supabase-client.ts`, `admin-set-secret` ignoring
+  `ops_admin` — all fixed. Locked plan menu items no longer carry `aria-disabled`.
+- Page queries fixed for columns that never existed upstream (`live_classes.board`,
+  `schools.principal_name`, `teacher_profiles.full_name|deleted_at`, `student_gamification`
+  → `student_gamification_profiles`, `curriculum_verification_runs.created_at` → `started_at`).
+
+QA item "main branch unique globally" was a false positive: the index is per school and each
+school already gets an auto-created main campus.
+
+Still open: `AdmissionOffer` reads/updates by token as anon (will 401 under deny-by-default);
+Realtime still not deployed; DEV still on hosted Supabase (function-count cap).
+
