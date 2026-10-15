@@ -116,6 +116,29 @@ still just `jwt.verify` the access token and needed no change.
   focus and every 5 minutes; the new token is written to **both**
   `localStorage.token` and the redux-persist `auth` slice, because v1 reads the
   latter.
+- **v2 401 handling (corporate/institute/admin v2, DEV+UAT 2026-10-15, PROD
+  pending):** `installAuthFetch()` in `lib/sessionRefresh.ts` wraps
+  `window.fetch` at import (not in an effect — child effects run before
+  AppShell's). Every BFF call carrying the portal `Bearer` token (i.e. built
+  with `authHeaders()`) renews the token first if it has <5 min left, and on a
+  401 refreshes once and retries. If the refresh fails for any reason the
+  session is cleared and the user goes to `NEXT_PUBLIC_LOGIN_URL`. A 401 that
+  survives a successful refresh is returned to the caller (a permission error,
+  not a logout). Calls with no / a foreign Authorization header pass through.
+  Before this, the timer was the only renewal path, so PROD corp v2 logged
+  `jwt expired` 401s on `/assessments/v2/usage` and `/users/v2/me/access` and
+  pages failed silently instead of renewing or logging out.
+  - Test: `institute-react-v2/src/lib/sessionRefresh.test.ts` (Node ≥ 22).
+    E2E: log in via auth UI, then reload `/v2/...` with (a) a forged-signature
+    copy of the token → expect 401 → `/api/auth/refresh` 200 → retry 200;
+    (b) an `exp`-in-the-past copy → refresh before any call; (c) cookies
+    cleared → redirect to auth. Seed the token with `addInitScript` on the v2
+    URL — visiting a v1 route first bounces to sign-in and wipes `localStorage`.
+  - (a) only exercises the 401 path on **corporate** v2: institute v2's BFF
+    decodes the JWT without verifying it and calls institute-node
+    `/institutes/dashboard/v2/*`, which are public routes, and admin v2
+    `/api/assessments` also returned 200 for a forged signature (known
+    security gap, 2026-10-15, unfixed).
 - **Admin check-out** (`/api/checkout`) relays `portalSignin`'s `Set-Cookie`.
   Without that, the refresh cookie still belongs to the corporate/institute
   session and the next refresh silently resurrects the identity the admin just
