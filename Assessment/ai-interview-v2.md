@@ -1,10 +1,10 @@
 # Complete AI Interview (AI_Interview_v2)
 
-> **State (2026-10-14):** LIVE on **DEV + UAT**. **PROD pending** (needs the DB script, the three gateway tasks,
+> **State (2026-10-15):** LIVE on **DEV + UAT**. **PROD pending** (needs the DB script, the three gateway tasks,
 > and every service below). Corporate floats only (the report lives in the corporate portal, not the institute one).
 
 AI Interview and Role Based merged into one assessment: the recruiter builds an **Interview Flow** of ordered rows
-(voice, subjective, single choice, multiple choice, coding, reading task, listening task, custom task), an LLM plans
+(voice, subjective, single choice, multiple choice, coding, custom task), an LLM plans
 the paper, and the candidate sits it as one interview — voice turns with the AI interviewer plus fixed screens —
 with one combined score and one report.
 
@@ -19,10 +19,13 @@ with one combined score and one report.
 
 ## Float (creation)
 
-1. **Wizard** (corporate-react-v2 wizard `0.1.2-bugfix.16` DEV / `0.1.2-bugfix.16-uat` UAT; admin-react-v2 wizard
-   `0.1.16-custom.8` DEV / `0.1.12-custom.6` UAT). Role, skills, JD, evaluation parameters (Communication fixed 20%),
-   languages, voice, and the Interview Flow rows. Reading / Listening / Custom rows **require instructions** (they
-   describe the task). Single/multiple choice rows may carry hand-written questions. Count blank = "Auto".
+1. **Wizard** (corporate-react-v2 wizard `0.1.2-bugfix.18` DEV / `0.1.2-bugfix.18-uat` UAT; admin-react-v2 wizard
+   `0.1.16-custom.9` DEV / `0.1.12-custom.7` UAT). Role, skills, JD, evaluation parameters (Communication fixed 20%),
+   languages, voice, and the Interview Flow rows. **The question-type dropdown no longer offers Reading task or
+   Listening task** (removed 2026-10-14/15 in both wizards, `FLOW_TYPE_OPTIONS` in
+   `assessmentWizardConfigOptions.ts`). The `reading` / `listening` types, placeholders and payload mapping are kept,
+   so a float or duplicate that already carries one still validates, submits and runs. Reading / Listening / Custom
+   rows **require instructions** (they describe the task). Single/multiple choice rows may carry hand-written questions. Count blank = "Auto".
 2. **Float route** sends `assessmentType: "AI_Interview_v2"` with `interviewConfig.flow`.
 3. **admin-node** `AIInterviewV2AssignmentService` only **validates** the flow and registers the Role Based async
    job — the float returns at once (~0.7 s); the creator is told invites follow paper generation. An omitted
