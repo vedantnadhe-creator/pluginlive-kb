@@ -100,6 +100,15 @@ Type `AI Interview v2`, the AI Interview report shape. Fixed steps follow the vo
 `answer_mode` (`recorded` → transcript + its own clip, `written`, `code` → code) and task kind (`reading`, `listening`,
 `custom` shown as "Task").
 
+### PDF download
+student-node `generatePDFReport` → `generateAIInterviewV2Report` (before 2026-10-15 it threw
+`Unsupported assessment type: ai_interview_v2`, so every corp v2 download / bulk zip failed). Same
+`public/aiInterviewReport.html` as AI Interview, over the combined score row; the transcript ("Interview Transcript")
+appends `AIInterviewV2.reportTurns` after the voice turns via helper `pdfTranscriptTurns`: a type tag (Single/Multiple
+choice, Written, Coding, Reading/Listening task, Task), every option with **Picked / Correct** marks (wrong pick in red),
+code with its language, passage, per-step `Scored N/100 — feedback`, and "No answer given" for an empty step. Served via
+corporate-node `/candidates/report/download` (no corp-node/FE change needed). Commits: DEV 8591f221, UAT 90f39e7d.
+
 ## Code runner
 R answers can use **ggplot2, dplyr, tidyr, readr** (Debian `r-cran-*` in `student-node/code-runner/Dockerfile`).
 DEV `code-runner:r-tidyverse`, UAT `pl-code-runner:c4d07afe`; previous containers kept stopped as
