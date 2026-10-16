@@ -815,6 +815,25 @@ to PROD, or every roster read fails on the missing table).
     verdict, so counts, filters and exports are unchanged. The row shows the
     override with a "changed" marker; tooltip "Changed by <name>, <date
     time>: <reason>". History stays in the table (no UI reads it yet).
+  - Modal layout (DEV + UAT, 2026-10-16): the modal CSS reads
+    `--border-width-focus`, `--border-width-hairline`, `--control-padding-block`,
+    `--focus-ring-color`, `--focus-ring-error-color`, which only existed in the
+    designer branch — an undefined `var()` with no fallback drops the whole
+    declaration, so "Reason for change" collapsed and the select lost padding.
+    Now defined in `src/styles/ds/tokens.css`. Guard: `scripts/check-css-tokens.mjs`
+    runs as `prebuild` and fails every build on a `var(--x)` with no fallback
+    that nothing defines (prints file:line).
+- **Manage drawer → Assessment overview for Complete AI Interview
+  (AI_Interview_v2)** (DEV + UAT, 2026-10-16, `AssessmentConfigurationOverview.tsx`):
+  mirrors the create form's five steps — Role Details · Interview Flow
+  (each question type, count or "AI decides", Total, Total minutes / Question
+  count; custom instructions behind a Show/Hide toggle) · Evaluation
+  Parameters (name, weight, description, Total weight) · Interview Voice &
+  Language · Additional Inclusions. Old AI Interview overview unchanged.
+  **Gap:** admin-node `AssessmentConfigService.getAssessmentConfiguration`
+  only maps `AI_Interview`, not `AI_Interview_v2`, so real Complete AI
+  Interviews show no type configuration until it maps
+  `stage_config.aiInterviewV2` (flow, parameters, languages).
 - **Preparing Report / Report Delayed** (`attemptStatus`, from corporate-node
   `helpers/reportState.withReportState`): every part COMPLETED but no part has
   a score or a Behaviour level → `reportPreparing` (chip tooltip: usually 1–2
