@@ -2977,3 +2977,84 @@ Verification: **89/89 focused checks** on the current GitHub code plus both fixe
 Live generation API verification: eight sequential real UAT calls, passing prior question texts as exclusions, returned **HTTP 200 ×8**, exactly **35 MCQ + 3 descriptive + 2 video**, 40 distinct prompts, **all 40 labelled `ai`**. Individual MCQ calls took approximately 60–72 seconds; the final descriptive/video batch took 42 seconds. Large mixed sets therefore still take several minutes with the current provider chain.
 
 Live browser verification: `node ~/banking-checks/assessment-generation.cjs --stable-network` completed the exact Admin → Assessments → Create Assessment → JD → Generate 40 questions flow in **464 seconds**. Eight five-question batches returned HTTP 200; the editor rendered exactly 40 questions with the requested 35/3/2 mix, **37 `ai` + 3 labelled `deterministic` templates**, zero generation errors and zero page errors. The draft was left unsaved. Earlier unproxied Chromium runs were interrupted by `net::ERR_NETWORK_CHANGED` (not server 503s), so this check forwarded identical live UAT requests/responses through Playwright's HTTP client; no response data was mocked. The independent direct API run above also passed all eight batches. Templates must still be reviewed/replaced before publication, as the existing UI warning states.
+
+
+## 2026-10-16 — full UAT release `b7df31d5`: all three pending SWOT migrations applied
+
+UAT advanced from `f23f2035` to GitHub main `b7df31d543353625e62459af6a6b8e1ffde0961b`
+(PR #1 merged). This deploy includes the newer SWOT frontend/function, subscription-menu alias
+consolidation, TypeScript fixes, the question-generation fix, and the now-merged mobile admin
+password-reset fix. All three pending migrations applied successfully, with no new Drizzle migrations:
+
+- `20261016123000_learning_swot_analytics`: 20 new tables, report/catalog RLS, scoring rules and role permissions.
+- `20261016130000_learning_swot_menu_wiring`: existing admin/candidate allowlists include `learning-swot`.
+- `20261016140000_rename_swot_menu_labels`: **My SWOT Analytics** for students; **SWOT Analytics** for staff.
+
+All three first passed a `BEGIN…ROLLBACK` rehearsal against the actual UAT schema. The full release
+ran through `~/auto_deploy.sh banking main`, which now dispatches to `~/banking-sb/deploy.sh`.
+The deploy script has `pipefail` enabled so function-sync failures cannot be hidden by its log pipeline.
+It preserved the UAT environment, refreshed grants while restoring 295 function ACL statements,
+synced the edge stack, and rebuilt the Vite bundle **on UAT**. Bundle inspection found no DEV,
+localhost Supabase or hosted-project API URLs. Current inventory: 310 application SQL migration files,
+99 application edge-function entry points, 226 public tables, seven running stack containers.
+All 20 SWOT tables have RLS enabled. No added migration files remain between the UAT checkout and
+this GitHub release, including the Drizzle directory.
+
+**Current SWOT behavior.** `/learning-swot` and the journey menus show readiness, competency gaps,
+Strengths/Weaknesses/Opportunities/Watch-outs, and a weekly action plan. The report aggregates existing
+assessment, quiz, coding-practice and completed learning-simulation attempts and saves a versioned
+`swot_reports` snapshot. Content views never create mastery. This release uses deterministic templates;
+AI narratives remain behind their checker gate and no new LLM configuration/provider call was needed.
+The new evidence/catalog tables are foundations for later processing, not a backfilled event ledger.
+Student reports target the caller; trainer requests and intervention queues are limited to assigned
+learners; admins may request other learners. Assigned job-role names resolve through
+`students.target_role_id -> job_roles.name`; the report target score defaults to 70 unless supplied.
+Subscription plan cards now combine legacy menu aliases into one row while preserving their enabled flags.
+
+**Necessary UAT function compatibility overlay:** `learning-swot-report/index.ts`, saved locally as
+commit `b4d7dadf` on DEV branch `fix/learning-swot-uat-compat-20261016` (not pushed to GitHub).
+Upstream constructed a service-key client but overwrote its Authorization header with the user JWT,
+so report writes hit user RLS and were silently discarded. The overlay verifies the caller with
+`auth.getUser(token)` and keeps the verified server-side client on the service key; existing explicit
+learner/trainer/admin scope checks remain in place. It also uses the existing job-role foreign key
+instead of selecting nonexistent `students.target_role/target_score`, queries simulation attempts by
+`user_id` instead of nonexistent `student_id`, and includes completed attempts only. A failed report
+save now returns an explicit error instead of an apparently successful unsaved report. Persistent copy:
+`~/banking-sb/function-fixups/learning-swot-report/index.ts`. Rebase this overlay when upstream edits the function.
+
+**Merged patches retired.** PR #1 is now on GitHub main. The `_shared/otp-login.ts`,
+`admin-user-actions`, `admin-reset-password`, `candidate-otp-login` and `generate-assessment-questions`
+overlays were moved to `~/banking-sb/function-fixups-retired-20261016`. All five deployed files were
+verified byte-for-byte equal to `b7df31d5`; the password/reset and generation fixes therefore run from
+the repository rather than old whole-file overrides. Four overlay directories remain: `main`,
+`live-session-rsvp`, `mcp`, and `learning-swot-report`. Hosted deployment status was not checked.
+
+**Verification:** 46 focused scoring/menu/error/auth/generation checks passed. Admin login 5/5;
+all 43 sidebar destinations load, including SWOT; Coding Challenges 375; Save Module and Student Tier
+search pass. Candidate, trainer and admin reach their home pages and separately open `/learning-swot`
+with HTTP 200, saved report IDs, all four quadrants and zero page errors. The mobile-admin-reset API
+and All Users dialog checks pass after retiring the auth overlays, including password preservation
+across OTP. The new runnable `node ~/banking-checks/swot.cjs` checks actual report persistence,
+candidate isolation, assigned-trainer access, exclusion of unassigned cohort reports, admin access,
+and RLS rejection of client-forged report snapshots. All disposable users, mappings and reports were
+removed; `profiles` and `auth.users` returned to 114 each, with zero remaining QA auth probes.
+No edge-runtime errors were found after release. The separate existing Platform Usage Report
+`profiles.plan_tier` 400 remains unchanged; adding that unguarded field is still not a safe fix.
+A local full TypeScript check was limited by the stale shared DEV dependencies: four pre-existing
+SQL test files import missing `@electric-sql/pglite`; no other compiler errors were reported.
+The UAT production build and the focused/runtime checks above passed.
+
+SQL archived with UAT applied / PROD pending in **DB-Scripts** commits `248eed2`, `5571330`,
+`ab587a9`, under *Banking Supabase to Postgres*:
+`20261016T085929Z__banking_learning_swot_analytics.sql`,
+`20261016T085930Z__banking_learning_swot_menu_wiring.sql`,
+`20261016T085931Z__banking_learning_swot_menu_labels.sql`.
+The archive adds explicit catalog-policy drops for safe repeat execution; all three archived copies
+also passed a transactionally rolled-back replay against the deployed schema. DEV is n/a for this
+self-hosted Banking stack; no PROD migration was performed.
+
+Rollback material: `~/banking-sb/snapshots/20261016T085651Z` contains the pre-release database dump,
+frontend and function archive plus `release-verification.json`. The earlier preparation snapshot
+`~/banking-sb/snapshots/20261016T085621Z-swot-release` contains the original deployment scripts,
+all original overlay files, and base/target commit records. Restore frontend/functions independently
+when possible; review post-release writes before restoring the database snapshot.
