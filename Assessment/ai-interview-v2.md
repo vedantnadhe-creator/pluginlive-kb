@@ -52,7 +52,12 @@ with one combined score and one report.
 questions) and pre-fills the corporate wizard.
 
 ### Planner rules (fastapi `QuestionGeneration/AIInterviewV2/skeleton.py`)
-- Standard rows are code-built; task rows are planned as phases (`show` pieces, one `answer`, `buttons`, `timeLimitSec`)
+- Standard rows (subjective / single / multiple choice / coding) are code-built as **one `perQuestion` phase showing a
+  `QuestionList` with answer `PerQuestion`** — the same contract as a task's question list; each question's own type
+  (`text` / `single` / `multiple` / `code`) picks its surface. Scorer and question type per row are unchanged
+  (`subjective`, `mcq_single`, `mcq_multiple`, `coding`). Papers planned before 2026-10-16 name the row's component
+  (`TextAnswer` / `ChoiceAnswer` / `CodeAnswer`) instead; the runner treats them the same (below).
+- Task rows are planned as phases (`show` pieces, one `answer`, `buttons`, `timeLimitSec`)
   from a closed vocabulary. Validator: every parameter measured; audio plays once; a task step's own answer is
   `VoiceAnswer`/`VideoAnswer` (scorer `spoken` / `translation_spoken`), `TextAnswer` (`subjective`), `CodeAnswer`
   (`coding`, with `answer.codeLanguage`, e.g. `"R"`) or `PerQuestion` (`per_question`); never a bare `ChoiceAnswer`.
@@ -75,6 +80,12 @@ questions) and pre-fills the corporate wizard.
   A **proctoring warning holds all of it** (`lib/aiInterviewV2/instructionGate.ts`): the voice pauses (even if the
   warning came up while it was loading), its playback deadline stops counting, and the step — with its timer —
   opens only after the warning is acknowledged.
+- **Question rendering reuses the shared exam components** (2026-10-16): a `perQuestion` phase always answers through
+  `PerQuestion` (`flow.ts` `answerComponentOf`), and each question renders its stem (`.qstem`) with the same component
+  Role Based / Aptitude / Behaviour / Custom use in `QuestionPanel` — `_components/exam/ChoiceOptions` (single /
+  multiple, rich text, option images), `_components/exam/TextAnswer` (typed answer), `CodeAnswer`, `RecordingAnswer`;
+  passages use `RichText`, listening clips `AudioPrompt`. There are no v2-only copies. Before this, a subjective row's
+  `TextAnswer` rendered a bare box with **no question above it** (UAT QA, corp assessment 1c62a706).
 - Task steps render by answer type; a **code step** is an editor locked to the task's language whose **Run** executes
   the program and shows its output (no test cases).
 - **Every question is mandatory** (2026-10-16, `lib/aiInterviewV2/flow.ts` `canMoveOn` / `answerTargets`): any button
