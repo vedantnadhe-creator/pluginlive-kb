@@ -2936,3 +2936,10 @@ drop `plan_tier` from the select, or add the column together with the trigger gu
 
 Verified: admin 5/5, Coding Challenges 375, Save Module, Student Tier search, admin crawl 42 ✓ 0 ✗, 3-role e2e ×2 (only API error = the
 plan_tier 400). Snapshots `~/banking-sb/snapshots/20261016T040345Z`, `20261016T040813Z`.
+
+## 2026-10-16 (am) — redeployed to `f23f2035` (2 commits since `9968cc19`; functions only)
+
+Upstream: `generate-assessment-questions` fallback hardened and bulk fallback questions de-duplicated (`_shared` + function; no
+migrations, no new env/provider calls). Verified: admin 5/5, Coding Challenges 375, Save Module, Student Tier search, admin crawl 42 ✓ 0 ✗,
+3-role e2e ×2 — only API error is the known `profiles.plan_tier` 400 on the admin Platform Usage Report (deliberately not "fixed" by adding
+the column; see 2026-10-16 entry). Snapshot `~/banking-sb/snapshots/20261016T064946Z`.
