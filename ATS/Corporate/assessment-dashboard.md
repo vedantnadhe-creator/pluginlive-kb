@@ -810,11 +810,34 @@ to PROD, or every roster read fails on the missing table).
     change, keyed by `assessment_corporate_map_id` + lower-cased email, with
     `changed_by_user_id` / `changed_by_name`). The JWT only carries `_id` +
     `corporate_id`, so the name comes from the auth service.
-  - **Label only:** roster rows carry `verdictOverride { verdict, reason,
-    changedAt, changedBy } | null` (newest row); `fit` stays the scored
-    verdict, so counts, filters and exports are unchanged. The row shows the
-    override with a "changed" marker; tooltip "Changed by <name>, <date
-    time>: <reason>". History stays in the table (no UI reads it yet).
+  - Roster rows carry `verdictOverride { verdict, reason, changedAt,
+    changedBy } | null` (newest row); `fit` stays the scored verdict. The row
+    shows the override with a "changed" marker; tooltip "Changed by <name>,
+    <date time>: <reason>". History stays in the table (no UI reads it yet).
+  - **Where the change shows (2026-10-16, DEV + UAT, PROD pending):**
+    - **Fitness filter** matches and counts on the changed verdict
+      (`effectiveFit()` in `lib/assessments/verdictOverrides.ts` = override,
+      else scored `fit`). KPI cards ("Strong Fit") and the pipeline chart still
+      count the scored `fit`.
+    - **Candidate drawer**: amber "Verdict changed to <verdict>" note above
+      General Details with the comment and "Changed by <name>, <date time>".
+    - **PDF** (AI Interview, AI_Interview_v2, Role Based): corporate-node's
+      `/candidates/report/download` passes `verdict_override { label, reason,
+      changedBy, changedAt }` to student-node `generatePDFReport`, which prints
+      a "Verdict changed to …" banner with the comment under the score strip
+      (`_renderVerdictOverrideHtml`, `{{{verdictOverrideHtml}}}` in both
+      templates). The scored verdict stays in the strip. Admin-side PDFs send no
+      override and are unchanged.
+    - **Excel** (`/candidates/export`): corporate-node appends `Changed
+      Verdict`, `Verdict Change Comment`, `Verdict Changed By`, `Verdict
+      Changed At` (IST) to the admin-node sheet, matched on the row-1 `Email`
+      column (`helpers/verdictOverrideSheet.js`); the scored `Verdict` column
+      is untouched. If that step fails, the original sheet is sent.
+    - Commits: student-node 01c2ad14 (UAT 212c3cf4); corporate-node 93a21bfa
+      + ed5ae3ec (UAT be54698b + 6ea7d1dd); corporate-react-v2 cd1e258 (UAT
+      cbb2e6a). **PROD: deploy student-node before corporate-node** — older
+      student-node schemas ignore the field, but the banner only appears once
+      it has the template change.
   - Modal layout (DEV + UAT, 2026-10-16): the modal CSS reads
     `--border-width-focus`, `--border-width-hairline`, `--control-padding-block`,
     `--focus-ring-color`, `--focus-ring-error-color`, which only existed in the
