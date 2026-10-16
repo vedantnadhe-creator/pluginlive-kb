@@ -76,8 +76,16 @@ questions) and pre-fills the corporate wizard.
   warning came up while it was loading), its playback deadline stops counting, and the step — with its timer —
   opens only after the warning is acknowledged.
 - Task steps render by answer type; a **code step** is an editor locked to the task's language whose **Run** executes
-  the program and shows its output (no test cases). An "answer required" button never blocks a step with nothing to
-  answer.
+  the program and shows its output (no test cases).
+- **Every question is mandatory** (2026-10-16, `lib/aiInterviewV2/flow.ts` `canMoveOn` / `answerTargets`): any button
+  that moves on (Next / Submit) stays disabled until the step is answered — on top of the planner's own
+  `enabledWhen`. Applies to standard MCQ, multi-select, subjective and coding steps (whose planner buttons are
+  ungated, `enabledWhen ""`) and to task steps; a list of questions on one screen needs every one answered. Answered =
+  an option picked / ≥1 tick, non-blank text, code edited (untouched starter code does not count), a recording.
+  There is no Skip. A step with nothing to answer (read the passage, listen to the clip) is never held, and a phase
+  with its own `timeLimitSec` still auto-submits whatever it has when the clock ends. Runner-only, so it applies to
+  already-floated papers. Gotcha: answers live in per-step state, so a reload mid-step shows an empty answer and the
+  candidate must answer that question again.
 - Finishing completes the session (`complete`) and lands on the done screen; a reload submits the attempt from the
   guard screen and completes the session directly.
 
@@ -129,5 +137,5 @@ DEV `code-runner:r-tidyverse`, UAT `pl-code-runner:c4d07afe`; previous container
 
 ## Commits (UAT branch heads, 2026-10-14)
 fastapi-ai-engine 68c30d5 · admin-node d1b21b8 · student-node 0b8c7d04 · corporate-node b94c6206 ·
-assessment-react-v2 a7d066a · corporate-react-v2 bb86eff · admin-react-v2 e440dd5 · admin-react fb5c2f07 ·
+assessment-react-v2 175aa5f (mandatory answers, 10-16; DEV 1fb7ea7) · corporate-react-v2 bb86eff · admin-react-v2 e440dd5 · admin-react fb5c2f07 ·
 design-system wizard sources (local only, push not permitted): `uat/aiv2-0.1.2`, `uat/aiv2-0.1.12`.
