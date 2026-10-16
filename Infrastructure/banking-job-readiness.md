@@ -3113,3 +3113,16 @@ picked by "Select all missing". Also fixed: the 240 s time budget was stamped at
 Deployed via `deploy.sh` (snapshot `~/banking-sb/snapshots/20261016T151842Z`, bundle `index-BKZoFW55.js`). Verified: function live (input
 validation responds), new chunks in `dist`, admin login 5/5, every admin page passes admcrawl. **Not yet verified with a real generation**
 (costs ~$1 of Runway credits + ElevenLabs).
+
+## 2026-10-16 — UAT `d705561f`: student module journey redesign + progress fix (frontend only)
+
+UAT advanced `3fd2dc48` → `d705561f` (3 commits: `5303bcfb` student module learning-journey redesign —
+`ModuleDetailView`, `TechStudentJourney`, `CandidateHome`; `d705561f` dashboard progress calculations
+via `src/lib/supabaseResult.ts`; candidate menu `robo_assistant` label **"My Robo Assistant" → "My Robo Play"**
+(frontend label maps only; `menu_access_controls` rows unchanged)). No migrations, no function changes,
+no new `VITE_*` gates, lockfile unchanged.
+
+**Verification:** admin login 5/5 (×2; one earlier pass timed out waiting for the login form right after
+the rest restart, not reproducible), `swotadmin.cjs` pass, admin crawl 43/43, Coding Challenges, Save
+Module, Student Tier search, and candidate/trainer/admin home pages with zero page errors / API errors.
+Snapshot: `~/banking-sb/snapshots/20261016T182515Z`.
