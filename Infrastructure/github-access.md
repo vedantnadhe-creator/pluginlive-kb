@@ -88,3 +88,5 @@ Backups of the credential file: `~/.git-credentials.bak.<epoch>` on each box.
   use the separate **vedantnadhe-creator** credential and were never affected by the org policy.
 - `PluginLive-Technologies/DB-Scripts` — pushed with the **vedantnadhe-creator** PAT (the MCP GitHub
   account does not have access); see the `db-script-push` skill.
+
+**GCP PROD copy (2026-10-12):** the same token is also in `~/.git-credentials` on the GCP app VM `pl-prod-app-01` (35.244.18.184, credential store only — not embedded in origin URLs). Include it in every rotation. See `gcp-prod-migration.md`.
