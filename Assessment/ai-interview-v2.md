@@ -51,6 +51,24 @@ with one combined score and one report.
 **Duplicate** rebuilds a v2 part from the config stored on its assignment job (flow rows, instructions, authored
 questions) and pre-fills the corporate wizard.
 
+### Input text limits
+
+**DEV + UAT, 2026-10-16; PROD pending.** The first release has no per-field character caps on AI Interview v2
+request strings in `POST /ai-interview-v2/skeleton`, `/generate-slots` and `/score-answers`. This covers flow
+instructions, role and job details, evaluation parameter names/descriptions, question/context/reference text,
+candidate answer text and string metadata. In particular, instructions over **4,000 characters** no longer fail
+queued planning with HTTP 422, and long parameter descriptions, job descriptions or answers are accepted by
+these request schemas. Planning and slot-generation prompts receive the **full job description**, rather than
+only its first 6,000 characters.
+
+Required fields, string types, nonempty required identifiers/names, allowed row/scorer types, evaluation weights,
+collection/count bounds and duration validation still apply. Generated content retains the word budgets described
+below; these are separate from recruiter-input character limits. No database migration or frontend change is required.
+
+Release commits: fastapi-ai-engine **DEV `81a8a74` / UAT `aff0847`**. Verification: all **32 focused offline checks**
+passed inside each deployed container, including long-text planning, slot generation and scoring; live OpenAPI
+schemas showed no request-string character caps, and the three deployed source files matched their release commits.
+
 ### Planner rules (fastapi `QuestionGeneration/AIInterviewV2/skeleton.py`)
 - Standard rows (subjective / single / multiple choice / coding) are code-built as **one `perQuestion` phase showing a
   `QuestionList` with answer `PerQuestion`** — the same contract as a task's question list; each question's own type
