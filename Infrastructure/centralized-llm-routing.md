@@ -171,6 +171,8 @@ Known gap carried to PROD: corp-v2 `src/lib/pdfVision.ts` still sends `env.JD_PA
 9. **Run the PROD sanity suite** (the only Jev run allowed on PROD): `~/jev-qa/bin/start.sh sanity --env prod`.
 10. **Update this KB:** flip the header to "PROD live", record the PROD commits/images, and copy the live policy back to `litellm-central/prod/tasks-prod.json`.
 
+**2026-10-16 (release-v1.42 prep, Raj K):** PROD policy 41 → **44 tasks**: added the AI_Interview_v2 tasks `pl/interview-skeleton` (120 s), `pl/interview-slot` (120 s) and `pl/interview-v2-score` (60 s), each gemini-3.8-flash (low) → gpt-6-luna, copied from UAT. Applied with `prod_apply_policy.sh` (backup `policy-backups/tasks-20261016T151603Z.json`). Verified from the fast-api pod with its own key (unrestricted, no key change): normal calls served by gemini-3.8-flash, `mock_timeout` calls by gpt-6-luna, all 200.
+
 ### Changing a model on PROD afterwards (no restart)
 
 Edit a copy of `~/pl-oks-cluster/api-ns/litellm/tasks.json`, then run `./prod_apply_policy.sh <copy>` (validate) and `./prod_apply_policy.sh <copy> --apply`. It backs up the live policy to `policy-backups/`, applies the ConfigMap and waits until the pod sees it (kubelet sync is about 1–2 min, not instant like DEV/UAT). Rollback: run it with the backup file.

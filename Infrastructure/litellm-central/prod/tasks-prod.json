@@ -532,6 +532,45 @@
         "gemini-3.8-flash": "low"
       },
       "modality": "text"
+    },
+    "pl/interview-skeleton": {
+      "primary": "gemini-3.8-flash",
+      "fallbacks": [
+        "gpt-6-luna"
+      ],
+      "timeout": 120,
+      "retries": 0,
+      "reasoning": {
+        "gemini-3.8-flash": "low",
+        "gpt-6-luna": "none"
+      },
+      "modality": "text"
+    },
+    "pl/interview-slot": {
+      "primary": "gemini-3.8-flash",
+      "fallbacks": [
+        "gpt-6-luna"
+      ],
+      "timeout": 120,
+      "retries": 0,
+      "reasoning": {
+        "gemini-3.8-flash": "low",
+        "gpt-6-luna": "none"
+      },
+      "modality": "text"
+    },
+    "pl/interview-v2-score": {
+      "primary": "gemini-3.8-flash",
+      "fallbacks": [
+        "gpt-6-luna"
+      ],
+      "timeout": 60,
+      "retries": 0,
+      "reasoning": {
+        "gemini-3.8-flash": "low",
+        "gpt-6-luna": "none"
+      },
+      "modality": "text"
     }
   }
 }
