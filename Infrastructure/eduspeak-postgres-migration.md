@@ -1800,3 +1800,25 @@ defined`). The UAT checkout carries the one-line fix `teacherProfileId={teacherP
 `eduspeakreact:eeb8d84d-tpfix`); not on GitHub. Next deploy: if upstream fixed the line, `git checkout -- frontend/src/pages/TeacherPortal.tsx`
 before the fast-forward. Also: `~/pilvidya-checks/deploy-frontend.sh` builds whatever is checked out — fast-forward first.
 Verified: logins.cjs 10/10 (admin ×2, teacher ×2, principal, HOD, student ×2, parent ×2), parent.cjs, e2e.cjs 0 page errors / 0 failed requests.
+
+## 2026-10-16 — PilVidya UAT `8c223082` (5 commits since `eeb8d84d`) — gateway configs, notification categories, LLM fallback
+
+Upstream: SMS / Email / WhatsApp gateway config tables (+ OTP / message logs), 8 new notification categories (user ID created,
+module mapping, assessment notification/published, password reset, curriculum assigned, live-session reminder, results), LLM
+fallback provider/model in `_shared/llm-resolver.ts`, enhanced LLM config page, teacher upgrade-dialog fix (`ad28917c` — the UAT-only
+TeacherPortal patch was dropped; the checkout is clean again), concurrency/regression specs. UAT files: `/home/ubuntu/pilvidya-data-import/newmigs/20261016T043824Z`.
+
+**Gateway migrations were a credential + account-takeover hole — UAT versions restrict them.** Upstream policies let anyone passing
+`can_access_school()` — that school's teachers, **students and parents** — write the school's gateway row (API keys, SMTP password,
+`temp_otp_code`), made the global row (school_id NULL, where the real keys go) readable by every signed-in user, and exposed the OTP
+log tables (live `otp_code`) the same way. Nothing in the frontend reads them (edge functions use service_role), so on UAT config and
+log tables are **platform-admin only** (`security_is_platform_admin`) and anon is revoked. Rehearsed: student sees 0 rows and cannot
+insert; admin sees the config; anon has no grant. Upstream (and hosted) still have the open policies.
+
+Other UAT reconciliations: `20261005140000_notification_config_update` — `ON CONFLICT (school_id, category)` has no matching constraint on
+UAT; target changed to the real expression index (coalesce(school_id,'global'), category, coalesce(class_level), coalesce(board)) →
+16 global categories. `llm_config.fallback_provider/fallback_model` added (upstream only edited `migration/sql-editor/113_…` in place,
+which never reaches an existing DB) — required, because the new resolver selects them for every AI call. The seeded notification
+UPDATE switches `assessment_overdue` and `fees` channels to include email/WhatsApp.
+Grants 03 → 05 → 06 (regenerated) → 07; anon stays revoked on all 7 new tables.
+Verified: logins.cjs 10/10, parent.cjs (all functions 200), e2e.cjs 0 page errors / 0 failed requests, no function boot errors.
