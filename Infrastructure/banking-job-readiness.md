@@ -3058,3 +3058,28 @@ frontend and function archive plus `release-verification.json`. The earlier prep
 `~/banking-sb/snapshots/20261016T085621Z-swot-release` contains the original deployment scripts,
 all original overlay files, and base/target commit records. Restore frontend/functions independently
 when possible; review post-release writes before restoring the database snapshot.
+
+## 2026-10-16 — UAT `639fdf9a`: admin SWOT Analytics renders (was an empty tab)
+
+**Symptom:** Admin → Insights → Assessment Reports → **SWOT Analytics** opened `/admin?tab=learning-swot`
+but showed nothing. **Cause:** frontend, not database. `Admin.tsx` had no `TabsContent` for
+`learning-swot`, so the menu entry selected a tab with no body. Upstream `9e82fe23` adds it, embedding
+`LearningSwot` (new `embedded` prop, no second `AppLayout`); `1726ec87` removes a duplicate banner.
+The release also carries `38f71683` (Platform Usage Report no longer selects `profiles.plan_tier` →
+the long-standing 400 is gone), topic-progress/module-creator fixes and `ai-content` /
+`generate-trainer-curriculum` function edits (no new env reads, no direct-provider calls).
+
+**Migrations:** none pending. All three SWOT files were already applied (20 `swot_*` tables, 3
+`menu_access_controls` rows, 3 `rbac_role_permissions` rows). Upstream edited
+`20261016123000_learning_swot_analytics.sql` in place after it was applied: (1) unique index
+`rbac_role_permissions_role_code_menu_key_key` — already present on UAT; (2) a **student `metabase`
+"BI Dashboard" menu row** — deliberately NOT applied: unrelated to SWOT, it grants a new student menu
+entitlement, and UAT's Metabase views are revoked. Its `ON CONFLICT DO UPDATE SET label` would also
+revert the renamed SWOT labels if the file were replayed — never replay it verbatim.
+
+**Verification:** new `node ~/banking-checks/swotadmin.cjs` (admin login → SWOT Analytics → main
+content must contain the SWOT page, zero page errors / API ≥400) — passes with readiness cards,
+intervention queue and quadrants. `admcrawl.cjs` cannot catch this class of bug: its blank test reads
+`#root`, which includes the sidebar. Also passed: admin login 5/5, `swot.cjs` (persistence +
+isolation), admin crawl with zero failing destinations, `mobile-admin-reset.cjs`.
+Snapshot: `~/banking-sb/snapshots/20261016T131035Z`.
