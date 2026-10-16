@@ -121,9 +121,8 @@ not taken from the model's own numbers.
 
 The corporate v2 assessment detail page (roster, Fitness column + filter, the
 fitness doughnut, the Strong Fit KPI) now shows all four verdicts —
-**Strong Fit / Fit / Borderline / Not Fit** — and supersedes the three-band
-roster wording in the section below for that page only (reports, PDF and admin
-exports are unchanged).
+**Strong Fit / Fit / Borderline / Not Fit**. Reports, PDFs and Admin exports
+also preserve these four labels as of the October 16 correction below.
 
 - corporate-node `aiInterviewFitness` returns `strong | fit | medium | weak`
   (= Strong Fit / Fit / Borderline / Not Fit). The **stored verdict wins** —
@@ -140,20 +139,22 @@ exports are unchanged).
 - Commits: corporate-node DEV `c279ff02` / UAT `7b72493c`; corporate-react-v2
   DEV `951e18a` / UAT `37ea8c1`.
 
-### AI Interview fitness display (DEV + UAT, 2026-09-18; PROD pending)
+### AI Interview fitness display (DEV + UAT, 2026-10-16; PROD pending)
 
-AI Interview verdicts use **Fit / Borderline / Not Fit** across the corporate
-roster and Fitness filter, corporate/institute embedded reports, downloaded PDF,
-Admin recruiter report, Admin session-lookup report, and Admin Excel export.
+AI Interview reports and exports preserve **Strong Fit / Fit / Borderline /
+Not Fit**, matching the corporate v2 roster. A supported stored `Strong Fit`
+at a displayed score of 80 stays **Strong Fit** in report-v2 JSON,
+corporate/institute embedded reports, downloaded PDFs, Admin report payloads
+and Admin Excel exports. This replaces the September 18 presentation rule
+that collapsed `Strong Fit` into `Fit`.
 
 | Stored AI verdict | Display label |
 |---|---|
-| `Fit` or `Strong Fit` | **Fit** |
+| `Strong Fit` | **Strong Fit** |
+| `Fit` | **Fit** |
 | `Borderline` | **Borderline** |
 | `Not Fit` | **Not Fit** |
 
-This supersedes the September 17 Strong/Weak display wording. There is no
-**Medium** option and no separate **Strong Fit** display band for AI Interview.
 The roster uses the most recent interview session and its most recent score,
 matching the report. The stored AI verdict remains authoritative; the report's
 rounded-score fallback applies only when a recognized verdict is absent.
@@ -162,29 +163,31 @@ column uses its AI Interview result rather than the average across types.
 
 Numeric scores, stored verdicts and scoring thresholds are unchanged. Other
 assessment types and ATS role-fit categories retain their existing bands. The
-report-v2 JSON `overall.verdict` contains the display label while `verdict_key`
-retains the existing canonical key for compatibility. Admin reports and Excel
-retain their defensive score ceiling before collapsing `Strong Fit` to `Fit`.
-The corporate embedded report also maps its verdict key to these same labels.
+report-v2 JSON `overall.verdict` contains the preserved verdict, with the
+canonical `verdict_key` (`strong-fit` for `Strong Fit`). The PDF template uses
+the same resolved verdict directly, and the corporate report chip renders
+`strong-fit` as `Strong Fit`.
 
-Implementation: corporate-react-v2 DEV `4426ec7`, UAT `19f4e4f`;
-student-node DEV `b5d745ed`, UAT `266c55ba`;
-admin-node DEV `d413e79`, UAT `06602fc`;
-admin-react DEV `f6794f27`, UAT `0991ee78`.
-The corporate-node roster mapping from September 17 remains unchanged
-(DEV `df40c0c2`, UAT `cbf6421d`). No database migration.
+Admin reports and Excel retain their defensive score ceiling: a stored verdict
+above the rounded score's band is lowered, while a recognized verdict below
+that ceiling is retained. Scores of 80 and 79.5 (displayed as 80) support
+`Strong Fit`; an explicit lower stored verdict is not promoted. Unscored
+reports remain unscored and do not acquire a verdict.
 
-Validation: 18 focused tests passed on each environment branch, and corporate
-TypeScript checking passed. UAT was rebuilt on its own server; its executable
-frontend bundles passed the DEV-URL scan. Authenticated UAT browser checks
-verified all three Fitness options, three embedded reports, and a downloaded
-PDF with no page errors. DEV browser checks also verified all three Fitness
-options, two available scored reports and a downloaded PDF with no page errors.
-Both Admin sign-in redirects loaded successfully without page errors. The DEV
-corporate release is `3e834ea` (includes the label correction plus subsequent
-assessment changes); all four affected services are running in each environment.
-Admin lint retains 27 pre-existing findings, with no new findings introduced by
-this change.
+Implementation: corporate-react-v2 DEV `5bbddb0`, UAT `14c3c87`;
+student-node DEV `61511ae0`, UAT `f0604c17`;
+admin-node DEV `eee626d`, UAT `ae7b97f`.
+No database migration, score recalculation or stored-data backfill is required.
+
+Validation: 44 focused checks passed on each current environment branch,
+covering rounded score boundaries, lower stored verdicts, unscored reports,
+PDF HTML, JSON mapping, the corporate report chip and real Excel cell output.
+On DEV and UAT, a browser-only synthetic score-80 report from each deployed
+backend's mapper rendered `Strong Fit` in the live corporate frame and in
+PDF text from both the frame and the backend template. Page/chunk checks
+passed. The UAT frontend was rebuilt on UAT from its `UAT` branch; its
+executable client bundles contained no DEV URLs. All three affected services
+were running without restarts at verification.
 
 ### Why these bands — rationale
 
