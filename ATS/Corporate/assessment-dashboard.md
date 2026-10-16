@@ -822,6 +822,9 @@ to PROD, or every roster read fails on the missing table).
       count the scored `fit`.
     - **Candidate drawer**: amber "Verdict changed to <verdict>" note above
       General Details with the comment and "Changed by <name>, <date time>".
+      The AI Interview / Complete AI Interview Overview also shows the saved
+      verdict on its score card, with "Changed from <original verdict>"
+      underneath (corporate-react-v2 DEV `d3fef44`, UAT `6002f76`).
     - **PDF** (AI Interview, AI_Interview_v2, Role Based): corporate-node's
       `/candidates/report/download` passes `verdict_override { label, reason,
       changedBy, changedAt }` to student-node `generatePDFReport`, which prints
@@ -936,6 +939,30 @@ Older drawer reports refresh reading presentation through the authenticated
 student-node report endpoint; saved integrity scores and bands are preserved.
 See [Report-Only Proctoring](../../Assessment/proctoring.md) for counters,
 verification, legacy fallbacks and release commits. PROD pending.
+
+### Candidate report drawer audio and verdict presentation (DEV + UAT, 2026-10-16)
+
+corporate-react-v2 DEV `d3fef44`, UAT `6002f76`. PROD pending.
+
+- **Full interview audio** plays inline above the candidate's responses and
+  stays visible while scrolling. It replaces the Full Interview modal action.
+  Q labels seek to each spoken question; their tooltips render outside the
+  player container so they are not clipped. The player appears only when the
+  report carries `recording`; phone interviews retain Full call recording.
+- **Candidate's Response** is a collapsed accordion styled like General
+  Details. A separator and extra spacing precede Parameter scoring.
+- **Overview fitness** uses the candidate table's verdict design and colour
+  swatches, with white text on the dark score card. A saved override becomes
+  the displayed verdict, with the original scored verdict in a single-line
+  amber "Changed from …" tag beneath it. Points to Note precedes Executive
+  summary and uses the report's existing partial-interview / language-switch
+  observations.
+
+No new backend deployment, endpoint or schema change: student-node already
+provides `recording { src, duration_s, peaks }` and `transcript[].start_s` through
+report-v2; corporate-node returns both `fit` and `verdictOverride` on roster
+rows. Pending, failed or purged recordings remain unavailable under the existing
+recording pipeline.
 
 ### Sprint 42 parity: Institute v2 + Admin v1 (DEV + UAT, 2026-10-14)
 

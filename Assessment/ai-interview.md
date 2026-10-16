@@ -309,10 +309,13 @@ student-node 4171c570 + d4bf551e (UAT 7e22e69e, e808a947; UAT also needed
 the on-call report b61c9164 → 5eabed47). corporate-react-v2 d753b9f (UAT
 bfb24af). No schema change.
 
-- **What the recruiter sees:** a "Full Interview" button in the AI Interview
-  report's transcript header opens one waveform player for the whole web
-  interview, with Q1…Qn dividers (hover shows the question; click jumps to
-  it). The button only appears when the report carries `recording`.
+- **What the recruiter sees:** an inline waveform player for the whole web
+  interview above the collapsed **Candidate's Response** accordion. It stays
+  visible while scrolling, with Q1…Qn dividers (hover shows the question in an
+  unclipped tooltip; click jumps to it). The player only appears when the
+  report carries `recording`. This replaced the Full Interview modal action
+  in Corporate v2 on 2026-10-16 (DEV `d3fef44`, UAT `6002f76`); the existing
+  backend recording pipeline and fields are unchanged.
 - **Report fields** (`mapAiInterview`, v1 and AI_Interview_v2; corporate-node
   passes them through unchanged): `recording { src, duration_s, peaks[120] }`
   (signed like answer clips) and `transcript[i].start_s` on spoken turns.
