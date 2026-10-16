@@ -22,7 +22,7 @@ tags: [service, frontend, uat, supabase, lovable]
 
 ## Why it's off the standard deploy path
 
-This app (and its sibling `ailearning.uat.pluginlive.com`) came in as a Lovable-generated SPA cloned straight into the UAT box's home directory, not under `~/frontend/`. It is **not managed by `auto_deploy.sh`** — deploys are manual.
+This app (and its sibling `ailearning.uat.pluginlive.com`) came in as a Lovable-generated SPA cloned straight into the UAT box's home directory, not under `~/frontend/`. Full Banking releases use `~/banking-sb/deploy.sh`. Since 2026-10-16, `~/auto_deploy.sh banking-functions` dispatches to `~/banking-sb/sync-functions.sh` for functions-only releases (repo functions plus the UAT overlay, then an edge-runtime restart); it does not pull, migrate or rebuild the frontend. Snapshot and review overlay changes first.
 
 ## Deploying (frontend)
 
@@ -934,6 +934,8 @@ Also note the earlier inventory table in this doc that lists only four patch fil
 predates the `mcp/index.ts` entry. The authoritative list is the one above.
 
 ## 2026-08-28 — admin "Reset Password" bricked every mobile/OTP account (fixed, `3a4d977`)
+
+**Historical behavior:** mobile-backed admins can now reset passwords and use Admin Login; the UAT fix on 2026-10-16 below supersedes the blanket refusal. Mobile candidate/trainer accounts still use OTP.
 
 **The bug.** Candidates and trainers sign in with mobile + OTP on a screen that has **no password
 field** — `src/lib/candidateMobileAuth.ts` calls `signInWithPassword` with a password *derived from
@@ -2943,3 +2945,17 @@ Upstream: `generate-assessment-questions` fallback hardened and bulk fallback qu
 migrations, no new env/provider calls). Verified: admin 5/5, Coding Challenges 375, Save Module, Student Tier search, admin crawl 42 ✓ 0 ✗,
 3-role e2e ×2 — only API error is the known `profiles.plan_tier` 400 on the admin Platform Usage Report (deliberately not "fixed" by adding
 the column; see 2026-10-16 entry). Snapshot `~/banking-sb/snapshots/20261016T064946Z`.
+
+## 2026-10-16 — mobile admin password reset fixed on UAT (`03bfb448`, functions only)
+
+The reported failure was **Admin → User Management → All Users → Reset Password** for a mobile-backed admin (`<mobile>@bankready.app`). Both `admin-user-actions` and its directly callable fallback `admin-reset-password` still carried the 08-28 blanket OTP-account refusal, although Admin Login has a password field and candidate/trainer OTP now uses a server-issued magic link.
+
+Both reset endpoints now read the target's **database `user_roles`** before changing its password. A target with `admin` or `super_admin` can reset a mobile-backed account, then sign in at `/login/admin` using the ten-digit mobile as User ID and the new password. Ordinary mobile candidate/trainer targets remain refused with OTP guidance; neither client-supplied roles nor `user_metadata.role` can bypass the check. Password strength and caller-admin checks remain enforced.
+
+Successful admin resets atomically store the password and service-managed `app_metadata.admin_password_set=true`, preserving existing app metadata. `candidate-otp-login` preserves that password only while this marker is a boolean true **and the current database role is still admin/super_admin**. Other OTP accounts still rotate their internal password. The previous rotation generated a 77-byte password that UAT GoTrue rejected (72-byte bcrypt ceiling), silently continuing with the old credential; passwords now use one random UUID plus the strength suffix (40 bytes), and a rotation failure aborts the login. No existing user passwords were changed by the release; legacy credentials rotate when those accounts next complete OTP sign-in.
+
+Deployment scope: the frontend/main checkout remains `f23f2035`; no migrations, frontend build, new config or provider calls. Fix commits `8906ce2e` + `03bfb448` are saved on DEV branch `fix/mobile-admin-password-reset` and the **local UAT repo branch** `uat/mobile-admin-password-reset` (not pushed to GitHub main). Four persistent UAT overlays are installed under `~/banking-sb/function-fixups/`: `_shared/otp-login.ts`, `admin-user-actions/index.ts`, `admin-reset-password/index.ts`, `candidate-otp-login/index.ts`. Future releases must compare/rebase these whole-file overlays when upstream edits them.
+
+Deployed through `~/auto_deploy.sh banking-functions`; only `banking-sb-functions` restarted. Snapshot: `~/banking-sb/snapshots/20261016T071114Z-mobile-admin-reset` (DB, prior live functions, prior overlay tree, deploy entry point and release record). Rollback restores the saved overlay tree and re-runs the function sync; no DB restore is needed for this code change.
+
+Verification: **46/46 focused unit checks**, both live reset endpoints, rejected old password after reset, successful new password before/after OTP, preserved app metadata, rejected anonymous/non-admin callers, weak-password validation, mobile-student refusal despite forged user metadata, normal email-account resets, and OTP rotation for the non-admin account. `~/banking-checks/mobile-admin-reset.cjs` also reproduces the exact All Users dialog in Chromium and confirms a successful reset with zero page errors. All disposable auth users were removed (verified zero remaining); the reported account still has its existing admin role and its password was not changed by testing. Admin login 5/5; all 42 admin sidebar destinations load without page errors; candidate/trainer/admin reach their home pages; Coding Challenges 375, Save Module and Student Tier search pass. The previously documented `profiles.plan_tier` report 400 remains separate from this reset fix. No edge-runtime boot errors or password-rotation failures after the final deploy.

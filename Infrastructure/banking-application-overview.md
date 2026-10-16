@@ -29,7 +29,7 @@ It is **separate from the main PluginLive stack**. It has no Node/Prisma service
 | Backend | Supabase: 261 SQL migrations, **92 Deno edge functions** + `_shared/`, RLS on every table, pgvector for RAG |
 | UAT | `https://banking.uat.pluginlive.com/`, with a self-hosted Supabase stack at `/sb` (containers `banking-sb-{db,rest,auth,storage,functions,realtime,gateway}`, DB `banking_uat`, 171 public tables) |
 | PROD / hosted | Lovable-hosted Supabase project `kbwjokmmzkgjwiqelrdc`. We have **no** service-role or DB access, and fixes made on UAT are not applied there |
-| Deploy | Manual, on the UAT box: `~/banking-sb/deploy.sh` (migrations via fixups → grants → `sync-functions.sh` → `vite build`). See the deploy doc |
+| Deploy | On UAT: `~/banking-sb/deploy.sh` for full releases; `~/auto_deploy.sh banking-functions` for reviewed functions-only releases. See the deploy doc |
 
 ## Roles and login
 
@@ -41,18 +41,13 @@ The roles live in `user_roles` (enum `app_role`): `candidate`, `student`, `train
 |---|---|---|
 | `/login/candidate` | candidates and students | mobile + OTP screen |
 | `/login/trainer` | trainers | mobile + OTP screen |
-| `/login/admin` | admins | email + password. The console is **only** at `/admin/dashboard` |
+| `/login/admin` | admins | email/User ID (including ten-digit mobile) + password. The console is **only** at `/admin/dashboard` |
 
-**How the OTP login works.** An OTP account is a GoTrue user with the email `<10-digit-mobile>@bankready.app`.
-Its password is *derived* from the mobile number: `Otp_<mobile>_1234`, with a legacy `otp_` variant
-(`src/lib/candidateMobileAuth.ts`, `supabase/functions/_shared/otp-login.ts`). The login screen calls
-`signInWithPassword` with that derived value. Two things follow from this:
-- The derived password is the account's **only** credential. An admin "Reset Password" bricks the
-  account, so it is now guarded (`3a4d977`, 2026-08-28).
-- ⚠ **Security gap (open):** the formula ships in the client bundle. Anyone who knows a candidate's or
-  trainer's mobile number can sign in as them without an OTP, straight against `/auth/v1/token`. The real
-  fix is server-side OTP verification that mints the session (or random per-user passwords). As of
-  `dff50a1` this is not fixed.
+**How OTP login works on UAT (2026-10-16).** `candidate-otp-login` verifies the mobile/OTP server-side and returns a magic-link token for `auth.verifyOtp`; browser login no longer depends on a mobile-derived password. Mobile-backed GoTrue accounts commonly use `<10-digit-mobile>@bankready.app`, though linked accounts can use real emails. Temporary OTP is configured in SMS Gateway settings and remains enabled on UAT.
+
+Internal OTP-account passwords are random and rotate on successful OTP sign-in, including older derived credentials. The UAT fix `03bfb448` keeps generated passwords below GoTrue's 72-byte limit and fails the login if rotation fails. It does not bulk-rotate users who have not signed in.
+
+**Admin password reset on UAT:** both reset endpoints permit mobile-backed targets whose database role is admin/super_admin, and record `app_metadata.admin_password_set=true`. Those passwords work on Admin Login and survive subsequent OTP login while the target retains an admin role. Mobile candidates/trainers continue to use OTP and are refused a password reset; user-editable metadata cannot enable this exception. This is a UAT overlay, not a GitHub main/hosted release; see the deployment log for its four overlay files.
 
 Route guards: `ProtectedRoute` (any signed-in user), `TrainerRoute`, `InstituteRoute` and `AdminRoute`
 (`allowTaxonomyEditor` lets taxonomy editors into `/admin`). New sign-ups that need approval land on
@@ -137,9 +132,9 @@ messages like "Persistence Disabled" or "Module catalog migration required". See
 - `release:supabase:verify` checks the schema and edge-function contract before DB-backed flags are turned on.
 - PluginLive's own UAT checks live in `~/banking-checks` on the DEV box.
 
-## Known risks (as of 2026-10-08)
+## Known risks (authentication updated 2026-10-16)
 
-1. **Mobile-derived passwords.** Account takeover is possible with just a phone number (see *Roles and login*).
+1. **Legacy credentials and temporary OTP.** Older accounts rotate away derived passwords at their next successful OTP sign-in; this release performs no bulk rotation. Temporary OTP remains enabled on UAT (see *Roles and login*).
 2. **Hosted PROD drifts from UAT.** UAT fixes (the 409 on plan upgrade, grants, fixups) are not on `kbwjokmmzkgjwiqelrdc`.
 3. **Lovable regenerates code.** Upstream commits have deleted data, pointed queries at missing columns,
    and re-introduced security regressions. Review every pull; never deploy blind.
