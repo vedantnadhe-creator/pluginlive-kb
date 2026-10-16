@@ -794,8 +794,13 @@ to PROD, or every roster read fails on the missing table).
 - **Change Fitness Verdict** (bulk bar, single-type AI Interview /
   AI_Interview_v2 / Role Based floats, permission `changeFitnessVerdict`):
   per selected candidate a new verdict (Strong Fit / Fit / Borderline / Not
-  Fit) with a **compulsory reason**. Only candidates whose every part is
-  COMPLETED and scored are offered or accepted.
+  Fit) with a **compulsory reason**. Only candidates with a scored attempt
+  are offered or accepted: every part COMPLETED **or DROPOUT** (dropped off),
+  and at least one score. A drop-off with no score has nothing to override and
+  is skipped (toast: "Only candidates with a scored attempt (completed or
+  dropped off) have a verdict to change."). Drop-offs allowed since
+  2026-10-16 — corporate-node 448c2e12 (UAT ef81dba2), corporate-react-v2
+  9f87681 (UAT 416b63d); DEV + UAT, PROD pending.
   - `POST /corporates/:cid/assessments/v2/:id/candidates/verdict`
     `{ changes: [{ email, verdict: strong|fit|medium|weak, reason (1–1000) }] }`,
     BFF `/api/assessments/[id]/candidates/verdict`. corporate-node re-checks the
