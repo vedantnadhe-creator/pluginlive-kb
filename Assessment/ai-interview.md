@@ -158,8 +158,13 @@ that collapsed `Strong Fit` into `Fit`.
 The roster uses the most recent interview session and its most recent score,
 matching the report. The stored AI verdict remains authoritative; the report's
 rounded-score fallback applies only when a recognized verdict is absent.
-Unscored interviews show no fitness verdict. For a mixed assessment, the Fitness
-column uses its AI Interview result rather than the average across types.
+Unscored interviews show no fitness verdict. In Mix & Match, each interview
+part displays its own **score · fitness** in that part's column, with no separate
+Fitness column. The candidates API supplies `byType[].fit`, so a stored
+recommendation is preserved even when it differs from the score band. Role-Based
+parts keep their existing 75 / 60 bands; AI Interview keeps 80 / 50 / 40. The
+single-type Fitness column and the candidate's overall API `fit` remain available.
+See the [corporate dashboard release notes](../ATS/Corporate/assessment-dashboard.md#mix--match-score-and-fitness-compact-transcript-dev--uat-2026-10-16).
 
 Numeric scores, stored verdicts and scoring thresholds are unchanged. Other
 assessment types and ATS role-fit categories retain their existing bands. The

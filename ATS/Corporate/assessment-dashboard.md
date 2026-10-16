@@ -812,8 +812,9 @@ to PROD, or every roster read fails on the missing table).
     `corporate_id`, so the name comes from the auth service.
   - Roster rows carry `verdictOverride { verdict, reason, changedAt,
     changedBy } | null` (newest row); `fit` stays the scored verdict. The row
-    shows the override with a "changed" marker; tooltip "Changed by <name>,
-    <date time>: <reason>". History stays in the table (no UI reads it yet).
+    shows the override with a "changed" marker. Its tooltip shows **Original
+    verdict** above **Reason**, followed by the changer's name and timestamp.
+    History stays in the table (no UI reads it yet).
   - **Where the change shows (2026-10-16, DEV + UAT, PROD pending):**
     - **Fitness filter** matches and counts on the changed verdict
       (`effectiveFit()` in `lib/assessments/verdictOverrides.ts` = override,
@@ -892,6 +893,31 @@ The Reopen dialog's date pickers start at today (`min`), and a start date still
 seeded from the closed window must be moved before Reopen enables ("Choose a
 start date from today onwards."). corporate-react-v2 ee5441a (UAT d1c28e6).
 The end-in-future check (2eff07a) is unchanged.
+
+### Mix & Match score and fitness, compact transcript (DEV + UAT, 2026-10-16)
+
+- Each Role-Based and AI Interview part (including Complete AI Interview) shows
+  its own **score · fitness** in one roster column. The separate Fitness column
+  remains on single-type interview assessments. Sorting stays in column headers;
+  score/fitness gaps and separator margins use `--space-1` (4px).
+- `GET /corporates/:cid/assessments/v2/:id/candidates` adds `byType[].fit`.
+  AI Interview uses the latest scored session's stored recommendation first,
+  falling back to its rounded-score bands at 80 / 50 / 40. Role-Based keeps its
+  existing rounded-score bands at 75 / 60. Column legends match the part's rules.
+  Other scored types return `fit: null`; unscored parts have no verdict. The BFF
+  forwards the field, and the browser renders it without deriving a new verdict
+  from the part's score or the candidate's overall fitness.
+- The AI Interview transcript uses the shared native accordion, closed by
+  default, without the explanatory subtitle. Recording actions remain available
+  outside the accordion. Printing opens the full transcript and restores the
+  previous open/closed state afterward.
+- Changed-verdict tooltips show **Original verdict** above **Reason**, retaining
+  the changer's name and timestamp. The original API `fit` remains separate
+  from `verdictOverride`.
+
+No new endpoint, table or migration. Backend deploys before frontend. Commits:
+corporate-node DEV `8ef907d2`, UAT `3ed16fd4`; corporate-react-v2 DEV `11b2e04`
++ `52e3565`, UAT `e065752` + `54af8b6`. PROD pending.
 
 ### Suspected reading and integrity prominence (DEV + UAT, 2026-10-16)
 
