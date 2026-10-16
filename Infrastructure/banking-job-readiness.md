@@ -2908,3 +2908,31 @@ Upstream closes most P1s from the 10-15 E2E QA (see `~/banking-qa-20261015` repo
 Verified: admin 5/5, Coding Challenges 375, Save Module, Student Tier search, admin crawl 42 ✓ 0 ✗, 3-role e2e ×2 (candidate OTP login
 works after password rotation); candidate×module 1,700 / ×assessment 2,459 unchanged. Snapshot `~/banking-sb/snapshots/20261015T164830Z`.
 Still open from QA: trainer module scoping (older FOR ALL staff policies), JDoodle/Metabase config.
+
+## 2026-10-16 — redeployed to `fef5fe39` then `9968cc19` (27 commits since `04130d70`; 3 migrations + drizzle 0005)
+
+Upstream: advanced simulation task workspaces with a code/SQL execution ledger (`sim_execution_runs`, own-or-staff read;
+Judge0 via optional `JUDGE0_URL`/`JUDGE0_API_KEY` — unset on UAT → runs report "unavailable"), financial-modelling solver,
+trainer visibility of modules granted directly to their institute's students and to the trainer (by module or group,
+`user_module_access` "Trainers can view own mapped content"), subscription entitlement/plan display fixes, trainer crash fixes,
+transient module-catalog read retry. Domains list made private (drizzle `0005_keep_domains_private`, applied by hand, copy in
+`~/banking-sb/drizzle-applied/`; supersedes 0004): readable by signed-in users only — no logged-out page reads it.
+Notification gateway settings now persist (UAT `.env`: `VITE_NOTIFICATION_GATEWAY_PERSISTENCE_ENABLED=true`,
+`VITE_NOTIFICATION_GATEWAY_SCHEMA_VERSION=20261015160000`). `mcp` overlay rebased (upstream rename).
+
+**UAT fixup** `20261015200000_trainer_direct_group_module_visibility`:
+1. `admin_modules.source_module_id` is uuid on UAT → compared/matched as text.
+2. **Content-entitlement leak closed:** upstream now builds the trainer scope from the caller's profile for ANY user, and
+   "Scoped admin module topic reads" calls `trainer_can_access_admin_module` for every role, so a candidate would have read the admin
+   topics of every module granted to classmates in their institute (rehearsed over 30 candidates: 3,849 → 16,257 rows). Both trainer
+   functions now return false unless the caller holds trainer/teacher/institute. Rehearsed after fix: candidates 3,849 (unchanged),
+   trainers modules 793 → 800 (the intended widening), candidate×module 1,714 / ×assessment 2,507 unchanged.
+
+**Known gap, not fixed on purpose:** the admin Platform Usage Report (admin dashboard + Coding Challenges page) selects
+`profiles.plan_tier`, a column UAT doesn't have (no upstream migration creates it) → 400, report shows no profile names/institutes.
+Do NOT just add the column: the app takes the highest of `subscription_tier` and `plan_tier` (`resolveEffectiveSubscriptionTier`) and
+`prevent_client_identity_control_mutation` does not guard `plan_tier`, so a candidate could self-upgrade by PATCHing it. Upstream should
+drop `plan_tier` from the select, or add the column together with the trigger guard (check hosted for the same hole).
+
+Verified: admin 5/5, Coding Challenges 375, Save Module, Student Tier search, admin crawl 42 ✓ 0 ✗, 3-role e2e ×2 (only API error = the
+plan_tier 400). Snapshots `~/banking-sb/snapshots/20261016T040345Z`, `20261016T040813Z`.
