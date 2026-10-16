@@ -166,7 +166,7 @@ Voice turns by the AI Interview scorer; Role Based questions by the Role Based p
 marks — otherwise right picks ÷ correct options, e.g. 1 of 2 correct = 50; since 2026-10-15, older attempts not
 re-scored); task steps
 by fastapi `POST /ai-interview-v2/score-answers` (spoken → transcript + judge; translation vs reference; written;
-code judged against the task in its language). A judged step mapped to **several parameters** sends them to
+code judged against the task in its language). One request carries every task answer of the attempt: up to **1,000 items** (was 60 until 2026-10-16, which failed scoring for a 77-answer interview on UAT), graded **24 at a time** so a long interview does not flood the LLM gateway / STT (DEV + UAT 2026-10-16, PROD pending). A judged step mapped to **several parameters** sends them to
 score-answers and gets `parameterScores` (id → 0–100; a **required** schema field, so the OpenAI fallback keeps
 strict json_schema and cannot drop it), so each parameter is credited with its own score (an omitted or
 unknown id falls back to the step's overall score; older stored results and choice / Role Based steps keep one
