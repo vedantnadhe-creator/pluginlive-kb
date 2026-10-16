@@ -893,6 +893,19 @@ seeded from the closed window must be moved before Reopen enables ("Choose a
 start date from today onwards."). corporate-react-v2 ee5441a (UAT d1c28e6).
 The end-in-future check (2eff07a) is unchanged.
 
+### Suspected reading and integrity prominence (DEV + UAT, 2026-10-16)
+
+The corporate Proctoring drawer puts **Integrity score first**, with a highlighted
+background. Mix & Match retains each part's own score. The **Suspected reading**
+metric, timeline labels and AI Interview question tags use one vocabulary:
+verified audio reading and device-reference detections merge per question,
+without counting the same question twice. Unverified pace signals stay hidden.
+Question tags appear for recorded and written/task answers, including the PDF.
+Older drawer reports refresh reading presentation through the authenticated
+student-node report endpoint; saved integrity scores and bands are preserved.
+See [Report-Only Proctoring](../../Assessment/proctoring.md) for counters,
+verification, legacy fallbacks and release commits. PROD pending.
+
 ### Sprint 42 parity: Institute v2 + Admin v1 (DEV + UAT, 2026-10-14)
 
 Corporate behaviour ported to the other two dashboards — institute-react-v2
