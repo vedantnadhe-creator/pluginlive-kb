@@ -896,17 +896,22 @@ The end-in-future check (2eff07a) is unchanged.
 
 ### Mix & Match score and fitness, compact transcript (DEV + UAT, 2026-10-16)
 
-- Each Role-Based and AI Interview part (including Complete AI Interview) shows
-  its own **score · fitness** in one roster column. The separate Fitness column
-  remains on single-type interview assessments. Sorting stays in column headers;
-  score/fitness gaps and separator margins use `--space-1` (4px).
-- `GET /corporates/:cid/assessments/v2/:id/candidates` adds `byType[].fit`.
-  AI Interview uses the latest scored session's stored recommendation first,
-  falling back to its rounded-score bands at 80 / 50 / 40. Role-Based keeps its
-  existing rounded-score bands at 75 / 60. Column legends match the part's rules.
-  Other scored types return `fit: null`; unscored parts have no verdict. The BFF
-  forwards the field, and the browser renders it without deriving a new verdict
-  from the part's score or the candidate's overall fitness.
+- Mixed assessments containing interview parts show **one Fitness column** after
+  Candidate, with the combined interview score and one verdict. Role-Based and
+  AI Interview columns contain their own scores. Fitness is no longer repeated
+  beside each type. Header sorting uses the combined score, with missing results
+  last in both directions; gaps and separator margins use `--space-1` (4px).
+- `GET /corporates/:cid/assessments/v2/:id/candidates` returns `fitnessScore`
+  alongside `fit`. It is the equal-weight mean of the displayed Role-Based and
+  AI Interview scores (including Complete AI Interview), rounded to the nearest
+  integer. Multiple interview parts use the four bands at 80 / 50 / 40. For
+  example, Role-Based 24% plus AI Interview 40% produces **32% · Not Fit**.
+  Aptitude, Communication, Custom and Behavior do not enter this calculation.
+- Every interview part must be scored before a combined fitness is displayed;
+  otherwise `fitnessScore` is null and `fit` is `notAttempted`. A sole interview
+  part retains its own rubric and stored recommendation. Individual reports and
+  the backward-compatible `byType[].fit` retain each part's own verdict.
+  Fitness filters use the combined API `fit`; the BFF forwards both fields.
 - The AI Interview transcript uses the shared native accordion, closed by
   default, without the explanatory subtitle. Recording actions remain available
   outside the accordion. Printing opens the full transcript and restores the
@@ -915,9 +920,9 @@ The end-in-future check (2eff07a) is unchanged.
   the changer's name and timestamp. The original API `fit` remains separate
   from `verdictOverride`.
 
-No new endpoint, table or migration. Backend deploys before frontend. Commits:
-corporate-node DEV `8ef907d2`, UAT `3ed16fd4`; corporate-react-v2 DEV `11b2e04`
-+ `52e3565`, UAT `e065752` + `54af8b6`. PROD pending.
+No new endpoint, table or migration. Backend deploys before frontend. Combined
+fitness correction: corporate-node DEV `ece9a6f9`, UAT `5da2f777`;
+corporate-react-v2 DEV `97fed13`, UAT `d5767b2`. PROD pending.
 
 ### Suspected reading and integrity prominence (DEV + UAT, 2026-10-16)
 

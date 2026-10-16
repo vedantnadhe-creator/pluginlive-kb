@@ -158,12 +158,16 @@ that collapsed `Strong Fit` into `Fit`.
 The roster uses the most recent interview session and its most recent score,
 matching the report. The stored AI verdict remains authoritative; the report's
 rounded-score fallback applies only when a recognized verdict is absent.
-Unscored interviews show no fitness verdict. In Mix & Match, each interview
-part displays its own **score · fitness** in that part's column, with no separate
-Fitness column. The candidates API supplies `byType[].fit`, so a stored
-recommendation is preserved even when it differs from the score band. Role-Based
-parts keep their existing 75 / 60 bands; AI Interview keeps 80 / 50 / 40. The
-single-type Fitness column and the candidate's overall API `fit` remain available.
+Unscored interviews show no fitness verdict. Mix & Match shows **one Fitness
+column** containing `fitnessScore · fitness`, separate from the individual type
+scores. `fitnessScore` is the rounded mean of all Role-Based and AI Interview
+part scores; when several interview parts exist, the combined verdict uses
+80 / 50 / 40 bands. Thus 24% Role-Based plus 40% AI Interview gives **32% · Not
+Fit**. Every interview part must be scored before that result appears. Other
+assessment types do not contribute to fitness. The API's top-level `fit` and
+the Fitness filter use this combined verdict; `byType[].fit` and each report
+retain their individual verdicts. A sole interview part retains its own
+stored verdict and rubric (Role-Based 75 / 60, AI Interview 80 / 50 / 40).
 See the [corporate dashboard release notes](../ATS/Corporate/assessment-dashboard.md#mix--match-score-and-fitness-compact-transcript-dev--uat-2026-10-16).
 
 Numeric scores, stored verdicts and scoring thresholds are unchanged. Other
