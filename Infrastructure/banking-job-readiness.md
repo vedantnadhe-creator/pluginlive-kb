@@ -3083,3 +3083,33 @@ intervention queue and quadrants. `admcrawl.cjs` cannot catch this class of bug:
 `#root`, which includes the sidebar. Also passed: admin login 5/5, `swot.cjs` (persistence +
 isolation), admin crawl with zero failing destinations, `mobile-admin-reset.cjs`.
 Snapshot: `~/banking-sb/snapshots/20261016T131035Z`.
+
+## 2026-10-16 (eve) — AI Generated Videos reach the selected length (`3fd2dc48`, no migrations)
+
+Reported: every topic in the admin **AI Generated Videos** drawer ended as "Preview — needs assembly" with the toast *"Provider returned
+a 8s preview; the requested 4 minute lesson is not complete"*. Cause: Veo, Runway and the generic providers render **one 8 s clip**, and nothing
+built the 4/8/12-minute lesson from it (`compose-video` is a re-upload placeholder, there is no ffmpeg on the edge). The narration also read only
+the topic description (a few seconds). Learners only see `topic_videos.status = 'ready'`, so they saw nothing. Upstream `bb7f18d8` (same day)
+only re-labelled the preview as success; `3fd2dc48` supersedes it.
+
+Current `generate-video` flow:
+1. Storyboard (LLM) — each scene's `narration` is the exact voiceover, sized at ~2.4 words/s, so the whole script fits the target.
+2. **Narration first** (cheap): whole script → ElevenLabs (`mp3_44100_128`, ≤4500-char chunks in parallel, `previous_text`/`next_text`) or
+   Sarvam (≤2500-char chunks, WAVs stitched by `_shared/narration-audio.ts`). Non-English scripts go through Sarvam Translate first (all chunks now,
+   was capped at 5×900 chars). Duration = bytes/16000 (MP3 CBR) or PCM bytes/byteRate (WAV).
+3. Length gate **before paying for visuals**: 4 → 180–300 s, 8 → 300–600 s, 12 → 600–900 s (the bands in the dropdown). Outside → 422 with
+   "Narration came out at Ns…"; the row is marked failed.
+4. One visual clip from the chosen provider (fallback order as before). If all visual providers fail, the lesson is saved audio-only and the panel
+   shows a warning with the provider errors.
+5. Result is **ready**: `topic_videos.video_path` = clip, `generation_metadata.narration_url` = narration, `duration_seconds` = narration length.
+   `video_projects` gets `video_url` + `audio_url`, `params_json.assembly = "visual-loops-under-narration"`.
+
+Narration is now **required** (ElevenLabs or Sarvam key) — without one the call is 409, never a silent 8 s clip.
+Learner player (`ModuleVideosPanel`): when `narration_url` exists, the audio element is the control (play/pause/seek, "watched" at 90 %) and the
+clip loops muted behind it. Known limit: the same 8 s visual repeats for the whole lesson; upgrade = one clip per storyboard scene (≈30 Runway
+clips per 4-min lesson — cost and the 240 s budget rule it out today). Pre-fix rows with `status = 'preview'` show "Incomplete — regenerate" and are
+picked by "Select all missing". Also fixed: the 240 s time budget was stamped at worker boot, starving later requests on a warm worker.
+
+Deployed via `deploy.sh` (snapshot `~/banking-sb/snapshots/20261016T151842Z`, bundle `index-BKZoFW55.js`). Verified: function live (input
+validation responds), new chunks in `dist`, admin login 5/5, every admin page passes admcrawl. **Not yet verified with a real generation**
+(costs ~$1 of Runway credits + ElevenLabs).
