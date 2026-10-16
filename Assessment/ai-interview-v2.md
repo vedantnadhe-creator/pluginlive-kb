@@ -63,18 +63,60 @@ questions) and pre-fills the corporate wizard.
   (`coding`, with `answer.codeLanguage`, e.g. `"R"`) or `PerQuestion` (`per_question`); never a bare `ChoiceAnswer`.
 - Question blocks carry `transition` (one spoken line) and **`howTo`** (2–4 sentences, interview language, how to
   attempt the row — e.g. "these questions can have more than one correct answer"). **Voice** rows carry neither: the
-  interviewer just asks. A **task** row's `howTo` is one sentence on what the task is about; each task phase carries
-  its own **`say`** — what the interviewer says as that step opens (never step counts). A blank `say` on any task
+  interviewer starts with the question or current activity instruction. Other **task** rows' `howTo` describes the task;
+  each task phase carries its own **`say`** — what the interviewer says as that step opens (never step counts). A blank `say` on any task
   phase is a validation error (passage-/audio-only steps would otherwise open in silence), so the planner retries.
 - Content (`slot_content.py`) is sized to the step: the prompt states the minutes the part allows, one focused problem,
   ≤2 deliverables, ≤5 named columns; problem statements 40–120 words. Hard caps (passage 180, prompt 150, audio 200
   words) send content back to be shortened.
 
+### Recorded activities in Voice response rows
+
+**DEV + UAT, 2026-10-16; PROD pending.** A recruiter can choose **Voice response → Instructions** on a row
+after the fixed Introduction and describe an interviewer-led activity. The instructions describe the activity;
+the recruiter does not have to author each question. Supporting content and the sequence of stages are planned
+once per job, then executed through the existing task runner.
+
+- A `voice` row with nonblank instructions becomes `kind: "task", rowType: "voice"`. Voice rows without instructions
+  remain live conversational blocks. The fixed first Voice row remains the **Introduction**, even when it has
+  instructions: admin-node derives `isIntroduction` from the row position when building the skeleton request,
+  including for jobs queued before this flag existed.
+- Count is the number of **activity repetitions**, not the number of sub-steps. Set it to **1** for one activity;
+  an omitted count defaults to one. The wizard may prefill a count, so check it explicitly.
+- The interviewer speaks every stage's `say`, asks the generated question, and coordinates the existing passage,
+  audio, instruction and question-list components. All answering stages collect recordings: `VoiceAnswer`,
+  `VideoAnswer` when a filmed response is requested, or `PerQuestion` with only `voice` questions. Typed answers,
+  clickable choices and code editors are rejected for these Voice activities. Content-only preparation can have
+  no answer; a separate welcome/overview phase is rejected, and the block's `transition` / `howTo` are empty.
+- A generated question/scenario can use an `Instruction` pointing to a `prompt` ref with empty `text`. The runner
+  speaks that item's actual prompt after `say`. A voice question list advances one question at a time, speaking
+  each actual question, including later questions in the list. Supporting passages and hidden/blurred prompts
+  are not read by the interviewer. The current stage's instruction stays visible while the candidate answers.
+- **Reading → Translation → Summary** is one supported case: show the paragraph and record reading aloud; keep it
+  visible and record translation into the secondary language; blur it and record a summary from memory. There
+  are three answering stages and three separate answer slots/recordings, with no extra activity introduction.
+  Scenario responses and listening followed by recorded comprehension questions use the same general mechanism.
+- Grading and reports retain the stage's spoken instruction and generated prompt. Translation grading retrieves
+  the reference translation from the source passage shown in that stage, rather than from its separate answer
+  slot; multiple passage refs are supported. Per-question recordings respect the phase's answer language.
+  Reports label Voice activities as **Task**, with a transcript and playable clip for each recorded answer.
+- Existing floated papers and already stored plans keep their saved flow. Create a new assessment to use the new
+  planning behavior. Other row types and their answer formats are unchanged. No database migration, new gateway
+  task or wizard package update is required.
+
+UAT release commits: fastapi-ai-engine `aa21215`, admin-node `6aee9f3`, student-node `2867b2ae`,
+assessment-react-v2 `afdcd4a`. DEV commits: `e2286cf`, `cf182f3`, `c020f776`, `3f0cc86`, respectively.
+
+Release verification: 120 focused checks passed against the UAT code. The candidate app was rebuilt on UAT
+with UAT configuration, with no DEV URLs in its static bundle or browser script errors in the public-page
+smoke check. A live UAT skeleton request preserved the Introduction and produced three recorded-answer
+stages for reading, translation and summary, with the passage blurred for the summary.
+
 ## Candidate (assessment-react-v2 `/assessment/take`)
 - One `start` creates the voice session (re-used on reload / later voice blocks); the runner walks the skeleton block
   by block. Progress (`POST /students/mix-match/ai-interview-v2/:id/progress`) lets a fresh browser resume.
 - No briefing screens. A step opens on the interviewer **speaking** its instruction in place (TTS, same voice): a
-  questions part says its transition + how-to once; a task says the transition before its first step, then each
+  questions part says its transition + how-to once; a task says its transition (if any) before its first step, then each
   step's own `say`. The step's questions / passage / answer surface — and its timer — appear when she finishes or the
   candidate presses Continue. Voice parts are not announced. Papers without `howTo`/`say` get a code-built line.
   A **proctoring warning holds all of it** (`lib/aiInterviewV2/instructionGate.ts`): the voice pauses (even if the
