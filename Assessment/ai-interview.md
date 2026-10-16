@@ -1035,6 +1035,25 @@ or reporting.
 (worst 10, confidence < 0.75) on both the live Deepgram stream and the batch
 `POST /ai-interview/delivery-telemetry` pass, so both STT paths emit an identical payload.
 
+**Pause and filler counts (DEV + UAT, 2026-10-16; PROD pending).** Live and batch telemetry use the
+same word-timing calculation. `pauseCount` counts inter-word gaps **≥ 0.8 seconds**;
+`shortPauseCount` counts gaps **≥ 0.3 and < 0.8 seconds**. Gaps are rounded to six decimals before
+threshold comparisons. Leading/trailing silence is not an inter-word pause. The existing long-pause
+threshold used for fluency scoring is unchanged; short pauses add reporting detail without a new
+score penalty. Native English filler spellings, including `mhmm`, `mm-mm`, `uh-uh`, `uh-huh` and
+`nuh-uh`, are included. Provider filler detection is English-only: unsupported languages or missing
+recognition return `null`, never a fabricated zero.
+
+Session totals retain counts from answers under 15 words even though those answers are not scored
+for fluency. Reports recompute from stored conversational telemetry and recorded v2 task evidence,
+falling back to the saved profile when no raw evidence is available. The profile exposes
+`totalPauseCount`, `totalShortPauseCount` and `hasPartialCounts`; missing counts keep the partial
+indicator even when every spoken answer has timing measurements. The corporate report-v2 payload
+keeps `speech.pause_count` (long count), `short_pause_count`, and `pause_rate_per_100` (long pauses
+per 100 measured words) separate. The UI labels short and long counts explicitly, shows the rate
+separately and explains that vocal fillers are measured in English answers. See
+[AI Interview v2 recorded-answer measurements](ai-interview-v2.md#speech-measurements) for task coverage.
+
 The four recruiter-facing sub-competencies are:
 
 | Sub-competency | Source / formula |

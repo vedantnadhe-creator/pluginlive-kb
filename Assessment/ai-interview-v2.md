@@ -137,6 +137,36 @@ Type `AI Interview v2`, the AI Interview report shape. Fixed steps follow the vo
 `answer_mode` (`recorded` → transcript + its own clip, `written`, `code` → code) and task kind (`reading`, `listening`,
 `custom` shown as "Task").
 
+### Speech measurements
+
+**DEV + UAT, 2026-10-16; PROD pending.** Speech measurements cover conversational answers and
+recorded fixed steps, including translation tasks. During fixed-step scoring, student-node requests
+`include_delivery` from the AI engine and reuses the same downloaded recording for transcription
+and delivery telemetry. The result is stored under
+`section_scores.aiInterviewV2.steps[questionId:phaseId].delivery` and combined with conversational
+`ai_evaluation.delivery` when building the session speech profile. Written and choice answers do
+not enter spoken-word totals. A telemetry failure preserves the transcript and task grade, with
+partial measurement coverage.
+
+The report distinguishes **short pauses (0.3 ≤ gap < 0.8 seconds)** and **long pauses (gap ≥ 0.8
+seconds)** from the long-pause rate per 100 words. Counts also include short answers that are too
+brief for fluency scoring. English vocal fillers are measured where supported; a Tamil or other
+unsupported filler count stays unavailable. `hasPartialCounts` and report-v2's `partial_coverage`
+make that limitation visible. No database migration or new short-pause grading penalty is required.
+
+Historical recordings need telemetry reprocessing to recover counts that were never stored;
+reopening an old report alone cannot recover them. The reported UAT QA interview was refreshed
+from its three retained recordings: **212 measured words, 9 short pauses, 1 long pause**, and **0.47
+long pauses per 100 words**. All grades, scores, feedback and the verdict were preserved. Timing
+coverage is now full; filler coverage remains partial because two recordings are in Tamil.
+
+Fix commits (DEV / UAT): fastapi-ai-engine `cb2576a` / `3652e07`;
+student-node `ac7093d1` / `0569e670`; assessment-react-v2 `f80eda2` / `90237f7`;
+corporate-react-v2 `86bb844` / `729adac`. Both frontends were rebuilt for their own environment;
+UAT bundles were checked for DEV URLs. The corporate UAT runtime also includes the subsequent
+`14c3c87` verdict-label fix. The real report-v2 API and the deployed corporate renderer were checked
+for separate short/long counts and rate, with no browser script errors.
+
 ### PDF download
 student-node `generatePDFReport` → `generateAIInterviewV2Report` (before 2026-10-15 it threw
 `Unsupported assessment type: ai_interview_v2`, so every corp v2 download / bulk zip failed). Same
