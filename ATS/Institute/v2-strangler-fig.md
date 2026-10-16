@@ -926,6 +926,16 @@ assessment, Export selection calls the existing admin-node
 `POST /assessment/exportStudentData` endpoint with the assessment-institute map
 ID and `selectedEmails`, retaining the legacy Assessment Results workbook format.
 
+**Diagnosis-only schedules remain recurring (2026-10-16; DEV + UAT; PROD pending).**
+`getStudents` uses the stored `is_diagnosis` flag as
+well as `schedule_id`, matching the report endpoint. Before a schedule's first
+regular run, Export selection therefore downloads the schedule workbook with the
+Diagnosis pair average, rather than exporting one diagnosis map through the
+one-time route. The Diagnosis drawer's raw percentage, report timeline's Diagnosis
+percentage, and workbook `AVG SCORE` use the same canonical attempt scores. See
+[Diagnosis Excel/API parity](../../Assessment/institute.md) for score sources,
+retake deduplication, incomplete-pair handling, and regression coverage.
+
 **Student-wise is paged and searched on the server, unlike the rest of v2.** A
 single institute already carries 10k students on DEV, so the "fetch everything,
 filter in the browser" pattern used elsewhere would ship megabytes and render

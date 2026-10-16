@@ -487,6 +487,33 @@ For **Aptitude** the type-specific block opens with **Time Taken** (`mm:ss`) bef
 
 **Diagnosis workbook shows the raw average, not NPS (2026-09-16, DEV + UAT; PROD pending):** the Diagnosis sheet from `exportExcelOfDiagnosisDataForASchedule` (schedule workbook / Diagnosis export) was briefly switched to the curved `npsScore` under `SCORE` on 2026-09-15; product asked for the **average score** in the sheet instead. The column is now `AVG SCORE` and holds `totalAvgScore` — the plain mean of the two Diagnosis papers — written as-is (e.g. `73.6`, not `_roundScore`d), `-` when the pair is incomplete. The on-screen Diagnosis tables keep curved NPS under `SCORE`, so the grid and the workbook intentionally disagree for Diagnosis: screen = NPS, Excel = raw average. Regression: `test/diagnosisExcelExport.spec.js`.
 
+**V2 diagnosis Excel/API parity (2026-10-16; DEV + UAT; PROD pending):**
+The student-wise roster treats a group containing `is_diagnosis` maps as recurring
+even before its first regular run exists. Export selection therefore calls
+`exportSchedule/:scheduleId` with selected emails, and its Diagnosis sheet exports
+the pair's `AVG SCORE`; it no longer routes to admin's single-paper Assessment
+Results workbook via `notifyMapId`. The Diagnosis drawer's `rawScore` keeps the
+same canonical per-attempt percentages as the report timeline.
+
+Student-node selects the pair with `AssessmentAssignedStudent.isDiagnosis = true`,
+scoped to the institute and assessment type. Communication uses
+`calculateCommunicationDashboardScore`: stored scores, enabled-section weighting,
+the assigned writing variant, and the preferred retake set. Duplicate section
+rows within that set use `MAX(score)`, matching institute-node's report SQL and
+making query order irrelevant. Answer metadata is not used to reconstruct marks.
+Aptitude's overall percentage reads `aptitude_scores.gained_score / total_score`,
+clamped to 0–100; `statistics.categories` still supplies its section breakdown.
+Both diagnosis papers must be submitted, not flagged as uncalculated, and have
+score rows before the workbook publishes their average. Missing/incomplete pairs remain `-`.
+Raw diagnosis percentages and NPS are separate metrics. For completed pairs, compare drawer
+`rawScore`, report `timeline[kind=diagnosis].score`, and workbook `AVG SCORE`;
+the Overview sheet's NPS retains whole-number rounding.
+
+Regression coverage: institute-node `test/assessmentDetailScheduleType.spec.js`,
+student-node `test/diagnosisExcelExport.spec.js` and
+`test/communicationDashboardScore.spec.js`, and institute-react-v2
+`tests/assessment-export.test.ts`.
+
 > Two columns are deliberately **not** rounded: AI Interview parameter columns are on a **0–5** scale, where rounding destroys the resolution, and the NPS improvement delta (`+3.4 pts`) is a difference, which would collapse small gains to `+0 pts`. The on-screen tables still show 2dp — the workbooks match the PDF, not the grid.
 
 ### `getStudentListForCorporateAssessment()` (Corporate method, lines ~2237-2658)
