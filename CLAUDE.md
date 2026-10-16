@@ -21,7 +21,7 @@ When working on a feature, check the relevant file here **before asking the user
 - `Obsidian.md` — Obsidian knowledge base tool: setup, pricing, plugins, team collaboration, vault structure
 
 **Infrastructure & DevOps:**
-- `Infrastructure/gcp-prod-migration.md` — **GCP PROD copy on `*.v2.pluginlive.com`** (app VM + DB VM in `pl-prod-511404`): infra, DB restore, compose generator, what is switched off (WhatsApp/SMS/email/call-interview), hand-off + cutover steps
+- `Infrastructure/gcp-prod-migration.md` — **GCP PROD copy on `*.v2.pluginlive.com`** (app VM + DB VM in `pl-prod-511404`): infra, DB restore, compose generator, Phone Interview and messaging test restrictions, Question Manager, performance fixes and cutover steps
 - `Infrastructure/github-access.md` — GitHub credentials for every checkout (fine-grained PAT, ≤90-day expiry, rotation steps) — **read this on any `git` 403**
 - `Infrastructure/README.md` — server access overview (Dev, UAT, Prod)
 - `Infrastructure/servers.md` — all servers, ports, services, systemd units

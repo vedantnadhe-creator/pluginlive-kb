@@ -2,8 +2,9 @@
 
 Status as of **2026-10-16**. PROD is still served from OCI (OKE k8s + `pl-prod-pg16`). A full copy of PROD
 runs on Google Cloud for testing at `*.v2.pluginlive.com`; cutover (real DNS → GCP) has **not** happened.
-Plan owner: Mariselvan. Approach: "lift" PROD onto two VMs (no Cloud Run, no code changes); email and
-object storage stay on OCI.
+Plan owner: Mariselvan. Approach: lift PROD onto two VMs (no Cloud Run); email and object storage stay
+on OCI. The GCP copy now has isolated integration and performance fixes described below. Live OCI
+PROD and DEV application deployments were not changed during this work.
 
 ## Infrastructure (GCP project `pl-prod-511404`, Mumbai `asia-south1-c`)
 
@@ -44,13 +45,16 @@ object storage stay on OCI.
 
 ## Application stack (app VM)
 
-- Code: `~/repositories/{api,frontend}/*` — the 23 repos PROD's builder uses, on PROD's branches
-  (`~/repositories/repos.txt`, refresh with `~/repositories/clone.sh`). Git auth = the org fine-grained PAT in
+- Code: `~/repositories/{api,frontend}/*` — the 23 repos PROD's builder uses, initially on PROD's branches;
+  three now have local GCP integration branches (see below). The original release manifest is
+  `~/repositories/repos.txt`; preserve local fixes before running `clone.sh`. Git auth = the org fine-grained PAT in
   `~/.git-credentials` (**rotate it here too** — see `github-access.md`).
 - PROD config: `~/prod-config/` (k8s deploy/configmap/secret/ingress exports + builder `envs/`), mode 0700.
 - Generator **`~/gen-v2.py`** turns that into `~/pl-v2/` (docker-compose, `env/`, `files/`, `ports.txt`);
   **`~/pl-v2/nginx_gen.py`** writes `/etc/nginx/sites-available/pl-v2` from `ports.txt`. Always re-run both
-  together (ports renumber when services are added). Never hand-edit `env/` or `files/`. Run-book: `~/pl-v2/README.md`.
+  together. Existing localhost ports are now preserved when services are added (fixed 2026-10-16),
+  so adding a service no longer requires recreating every container. Never hand-edit `env/` or `files/`.
+  Run-book: `~/pl-v2/README.md`.
 - Rewrites applied by the generator: DB host/creds → GCP DB; `<host>.pluginlive.com` → `<host>.v2.pluginlive.com`;
   `*.prod.pluginlive.com` → `*.v2.pluginlive.com`; k8s service DNS → compose `service:port`.
 - Local deviations from PROD: x86 (PROD is ARM) — `student-node` builds from an untracked `Dockerfile.amd64`
@@ -66,60 +70,131 @@ Frontends: `auth`, `admin` (+`/v2`), `corporate` (+`/v2`), `institute` (+`/v2`),
 `api-corp`, `api-inst`, `api-fast`, `search`, `parser`, `llma-api`, `ai-gateway`, `vector-search`, `data-normalization`.
 Logins = PROD logins (users were copied). JWT secrets/issuer are PROD's, so a PROD token is also valid on `.v2`.
 
-## Deliberately OFF on `.v2` (real PROD data — must not reach real people or PROD resources)
+## Integration state on `.v2` (updated 2026-10-16)
 
-| Item | How it is switched off | Where |
+| Item | Current control | Where |
 |---|---|---|
-| WhatsApp + SMS (all go through auth-node) | `WHATSAPP_DISABLED=true`, `SMS_ENABLED=false` | `OUTBOUND` dict in `~/gen-v2.py` → `files/auth-node/app/.env` |
+| WhatsApp + SMS | Provider switches are on (`WHATSAPP_DISABLED=false`, `SMS_ENABLED=true`), but an **empty required phone allowlist blocks every recipient** before contacting MSG91 or the legacy SMS Lambda | auth-node `OUTBOUND_ALLOWED_PHONE_NUMBERS`, populated from `~/pl-v2/test-recipients.env` by the generator |
 | Corporate v2 reminders | `REMINDER_ENABLED=false` | → corporate-node-v2 (+ worker) `.env` |
 | Slack activity alerts | `SLACK_ACTIVITY_WEBHOOK_URL=` (blank), `SLACK_ACTIVITY_ENV=gcp-v2` | → admin-node `.env` |
-| Email to candidates | mail-server `MAIL_ALLOWED_RECIPIENT_DOMAINS=pluginlive.com`, `MAIL_SUBJECT_TAG=[GCP-V2]` (non-pluginlive recipients dropped) | → `env/mail-server.env` |
-| Phone AI Interview worker | `call-interview` **not built/deployed** (nginx returns 503 on `call-interview.v2`) | — |
+| Email to candidates | Restricted to `@pluginlive.com`; subject tag `[GCP-V2]`; relay environment label `gcp-v2` | → `env/mail-server.env` |
+| Automatic assessment reminders | `assessment_auto_reminder=false` in the GCP copy's `assessment.cron_config` | Disabled 2026-10-16 before enabling provider switches |
+| Automatic phone dispatch | `ai_interview_call_dispatch=false` in the GCP copy's `assessment.cron_config` | Worker is deployed; dispatch stays off pending an internal test number |
+| Phone dialing | Worker `CALL_ALLOWED_NUMBERS` is present and empty, so `/dial`, `/dial/assessment`, and the carrier call function reject all numbers | Same `V2_TEST_PHONE_NUMBERS` setting in `~/pl-v2/test-recipients.env` |
 | FDN Drive cron + worker | containers not started (would read PROD's Google Drive change feed) | — |
-| question-manager | stopped — its "PROD" target writes to live `api-admin.pluginlive.com` | — |
 
-Running: all other backends incl. `corporate-node-ai-match-worker` (CV/JD match) and `corporate-node-v2-worker`.
+Running: 32 containers, including `call-interview`, `question-manager`, `corporate-node-ai-match-worker`
+(CV/JD match), and `corporate-node-v2-worker`. An unused compose one-off admin container
+(`pl-v2-admin-node-run-e724e98f426f`, no published port or service alias) was stopped on 2026-10-16;
+it had been running a second scheduler since setup.
 
-## Next session — hand-off
+### Phone AI Interview
 
-### A. Phone AI Interview (`call-interview`) on `.v2`
-- Source: `fastapi-ai-engine` repo, `call_interview/Dockerfile`; PROD image tag `…-hotfix-3-oncall-64898cd`
-  (branch `release-v1.41-hotfix-3-oncall`). Port **8021**, PROD memory limit 2Gi.
-- Env: secret `call-interview-env` (keys: `PLIVO_AUTH_ID/AUTH_TOKEN/FROM_NUMBER`, `DEEPGRAM_API_KEY`,
-  `ELEVENLABS_API_KEY`, `AZURE_SPEECH_KEY/REGION`, `CALL_STT`, `CALL_INTERVIEW_SECRET`, `DIAL_TOKEN`, `PUBLIC_BASE`,
-  `TYPESAFE_API_KEY`) + plain `ENGINE_URL`, `STUDENT_API_URL`, `ADMIN_API_URL`. The generator already rewrites
-  `PUBLIC_BASE` and the k8s URLs; add a `BUILD` entry in `~/gen-v2.py`, rebuild, re-run nginx_gen (route already
-  defined: `call-interview.v2`, 3600 s timeouts, websocket upgrade).
-- Plivo answer/stream URLs come from `PUBLIC_BASE` per call, so `.v2` calls should use `call-interview.v2`; confirm
-  nothing on the Plivo account is pinned to `call-interview.prod.pluginlive.com`.
-- Calls cost money and ring real phones: test only with internal numbers; admin-node's `ai_interview_call_dispatch`
-  cron dials scheduled slots from the copied PROD data — check for pending slots before enabling.
-- Known PROD issue: worker sometimes receives zero caller audio after days up → redeploy (see memory/KB notes on the worker).
+- Deployed at `https://call-interview.v2.pluginlive.com`; `/health` returns
+  `ok:true`, `telephony:plivo`, `assessment:true`. Unauthenticated dialing returns 401; a valid token
+  with an unlisted number returns 403 before brief generation, TTS or carrier access.
+- Source: exact PROD `fastapi-ai-engine` commit **`64898cd`**, archived into
+  `~/repositories/extra/call-interview-build`, plus the environment phone allowlist guard.
+  The running FastAPI checkout is on a different release; do not silently substitute it for this worker.
+- Port 8021 in the container; localhost 30008; nginx has TLS, WebSocket upgrade and 3600-second timeouts.
+  Sessions persist in the compose `call-sessions` volume.
+- Existing PROD credentials were copied through the generator, never committed. `PUBLIC_BASE` is
+  `https://call-interview.v2.pluginlive.com`; engine, student and admin URLs use compose service names.
+  Current STT selection is `scribe`. Plivo account authentication passed.
+- **47 offline conversation/allowlist tests passed. No real phone call was made.** Internal test number
+  and authorization for one call are still needed. Check copied slots before enabling the dispatch cron;
+  at setup all four existing slots were already COMPLETED/DROPPED.
+- Add approved full country-code numbers to `V2_TEST_PHONE_NUMBERS` in
+  `~/pl-v2/test-recipients.env`, re-run the generator, then recreate `auth-node` and `call-interview`.
+  An empty list means **block all**. Removing the environment variable entirely means unrestricted
+  sending; reserve that for an authorized cutover.
 
-### B. Real WhatsApp / SMS / email to candidates
-- Flip the switches in the table above (edit `OUTBOUND` in `~/gen-v2.py`, re-run gen, `docker compose up -d --no-build`
-  the affected services). Do this **only at cutover** or with a test allow-list: the DB holds real PROD candidates,
-  and admin-node/student-node schedulers send reminders/invites on their own.
-- MSG91 delivery webhooks are configured once per account and point at PROD — `.v2` sends would show
-  "Processing" (see `whatsapp-messaging.md`). Email delivery tracking goes OCI logs → Connector Hub → webhook.
-- Email itself stays on OCI Email Delivery (same credentials) — no GCP change needed.
+### WhatsApp, SMS and email
 
-### C. Cutover (not started)
-Freeze PROD writes → fresh dump/restore (~20 min for 12 GB) → set OUTBOUND to PROD values, start FDN cron/worker,
-question-manager, call-interview → switch Route 53 records to 35.244.18.184 and re-issue certs for real hostnames →
-give partners the new egress IP (app VM 35.244.18.184; DB VM uses Cloud NAT) → keep OCI PROD as fallback.
+- WhatsApp uses the existing MSG91 configuration. Template API authentication passed (HTTP 200).
+  SMS template details also loaded through MSG91's `getTemplateVersions` API. OCI SMTP `/ready`
+  authenticated successfully without sending email.
+- Phone restrictions cover all three auth-node sending paths: WhatsApp, MSG91 SMS OTP, and legacy
+  Lambda SMS. A mixed batch containing an unlisted recipient is rejected as a whole. Empty-list and
+  mixed-batch checks passed before deployment.
+- **No test WhatsApp, SMS, email or call was sent during this integration session.** End-to-end delivery
+  checks still need an approved internal phone number and mailbox. Candidate-wide sending stays restricted.
+- WhatsApp delivery: the shared MSG91 webhook still serves OCI PROD. Do not add/reorder/disable it for
+  `.v2` tests: MSG91 has historically delivered to only one destination per event. Instead, GCP runs
+  `gcp-v2-delivery-sync.timer` every two minutes. `~/pl-v2/delivery_sync.py` reads pending `.v2` send IDs,
+  fetches MSG91 delivery reports, and posts matching IDs only to the `.v2` receiver. It makes no provider
+  request when nothing is pending. The lookup is bounded to two days and 20 pages; older sends need
+  manual reconciliation. It cannot send messages and rejects a live-PROD webhook destination.
+  Inspect with `journalctl -u gcp-v2-delivery-sync.service`; four focused checks passed.
+- Email delivery: a **separate ACTIVE CUSTOM_HTTPS subscription** was added to the existing
+  `pl-email-delivery-prod` OCI Notifications topic for the `.v2` email receiver. The original PROD
+  subscription remains active. The new subscription confirmed itself through the GCP handler.
+  Resource ID is in `~/pl-v2/changes/20261016/oci-email-subscription.json` on GCP.
+- Both `.v2` delivery receivers returned 200 to authenticated empty batches. Callback settings are
+  stored privately at `~/pl-v2/provider-webhooks.txt`; do not put their secrets or tokenized URLs in the KB.
 
-## Performance work done on the copy (2026-10-15)
+### Question Manager
+
+- Running at **`https://question.v2.pluginlive.com`**. Its environment selector contains only **GCP v2**;
+  API requests use same-origin `/questionManager/`, proxied by nginx to the GCP admin service.
+  The bundle contains no DEV/UAT/live-PROD admin API targets, and invalid old saved environment
+  selections are discarded.
+- Independent login: username `gcp-v2-admin`; password is only in
+  `~/pl-v2/question-manager-login.env` on the GCP app VM (0600), injected by the generator.
+  Login, authenticated cron listing and question listing returned HTTP 200.
+- A headless browser completed environment selection, login and question loading with no JavaScript
+  errors; all observed Question Manager API requests stayed on `question.v2.pluginlive.com`.
+- Generation/review cron flags remain disabled; enabling the UI does not enable generation jobs.
+- FastAPI's `DATABASE_URL_ASSESSMENT` was corrected **on GCP only** through `SERVICE_OVERRIDES` in
+  the generator. It now points to `10.20.0.20/prod_pluginlive`, not UAT. FastAPI was recreated and
+  `/health/ready` reports the face model ready. Live OCI PROD's original setting remains unchanged.
+
+## Performance work on the copy
+
+### Indexes (2026-10-15)
+
 - 9 missing indexes added on the copy; scripts in DB-Scripts `Assessment Performance Indexes/`
   (`20261015T033232Z__proctoring_and_resume_lookup_indexes.sql`, `…__job_role_institute_map_and_ingestion_fk_indexes.sql`) —
   **UAT and PROD pending** (the first is also on DEV).
-- Role-float eligibility queries are slow on PROD too (8–23 s): cost is the PL/pgSQL
-  `check_eligibility_criteria_role_float` / `are_mandatory_skills_present` per candidate — code, not indexes.
+
+### Proctoring and role-float fixes (2026-10-16)
+
+- **Proctoring loop fixed on GCP:** the sweeper finds unfinished older sessions, but the worker formerly
+  finalized only the newest session. The worker now checks evidence across all ended sessions, validates
+  each unfinished session, emits its events, then builds the combined report once. Report failures are
+  propagated for retry. Five worker checks passed, including a multi-session regression. The backlog
+  fell to **zero**, and repeated sweeper ticks now show `snapshots=0 finalizations=0`.
+- **Role-float CPU reduced:** both `student` and `corporate` versions of
+  `check_eligibility_criteria_role_float` now use native PL/pgSQL JSON iteration instead of repeated SQL
+  subqueries and no longer emit debug NOTICEs for every candidate. Eligibility rules are preserved.
+  **73,500 comparisons had zero mismatches**; two captured real queries returned identical candidate sets.
+  On the same GCP DB, query 1 was **11.119 s → 5.329 s**, query 2 **1.409 s → 0.873 s**. This does not
+  establish a latency guarantee for every assessment screen.
+- Migration + commented rollback pushed to DB-Scripts, commit **`d907a69`**:
+  `Assessment Performance Indexes/20261016T083555Z__optimize_role_float_eligibility_functions.sql`.
+  **DEV, UAT and live PROD remain pending.** No additional index was needed for these two fixes.
+- Original function definitions and trial/regression logs are in `~/gcp-v2-performance/` on the **DB VM**.
+  App VM changes, rollback image tags and runnable checks are under `~/pl-v2/changes/20261016/`.
+- Source changes are committed **locally on GCP**, branch `gcp-v2/integrations-20261016` in three repos:
+  auth-node **`69be867`**, student-node **`9fb8d3d4`**, question-manager **`ec66aff`**. They were not pushed
+  to DEV/UAT/PROD release branches. Preserve/cherry-pick these commits before refreshing those checkouts
+  with `clone.sh`. Phone worker allowlist source is in the separate build context above.
+
+## Cutover (not started)
+
+Freeze PROD writes → take a fresh dump/restore → reapply **both the indexes and the function migration**
+and re-check disabled cron flags (a restore overwrites them) → deploy/promote the reviewed source fixes →
+configure messaging and explicitly remove test-only phone/domain restrictions → enable the dispatch and
+reminder jobs, FDN cron/worker and other required services → switch Route 53 to 35.244.18.184 and issue
+certificates for real hostnames → give partners the GCP egress IPs → verify end to end. Keep OCI as fallback.
+After the production webhook hostname reaches GCP, disable the temporary WhatsApp reconciliation timer
+and remove the extra GCP email subscription if the original subscription already feeds the same backend.
 
 ## PROD bugs found during the migration (exist on live PROD; not fixed)
-- `fast-api` PROD config `DATABASE_URL_ASSESSMENT` points at the **UAT** DB (140.238.245.202:5441).
-- Proctoring sweeper (`student-node script/processProctoringCron.js`) re-queues attempts with several proctoring
-  sessions forever (finalizer only sets `is_valid` on the latest log) — ~400 extra finalizations per attempt per 6 h.
+- `fast-api` live PROD config `DATABASE_URL_ASSESSMENT` points at the **UAT** DB (140.238.245.202:5441);
+  fixed only on the GCP copy.
+- Live PROD still has the multi-session proctoring requeue bug described above; the source fix currently
+  exists only on the GCP branch.
 - Student resume education update returns 400 "Body/CurrentCourse/Specialisation Must Be String" when no
   specialisation is selected (`student-react` EducationalDrawer sends `null`; `student-node` schema requires string).
 - `Resume_parser` repo commits an OCI private key (`USING API/oci_api_key.pem`) — rotate and remove.

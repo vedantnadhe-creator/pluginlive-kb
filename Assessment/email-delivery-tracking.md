@@ -515,6 +515,15 @@ outbound webhook OFF → PROD gets updates; DEV + UAT get none. Lasting fix (not
 one webhook → a receiver that forwards each callback to DEV, UAT and PROD (each env
 already ignores ids it doesn't own).
 
+**GCP migration copy, 2026-10-16:** `.v2` has a separate ACTIVE CUSTOM_HTTPS subscription on
+`pl-email-delivery-prod` for email status; the existing OCI PROD subscription is unchanged. WhatsApp
+status uses a GCP-only two-minute reconciliation timer that reads provider reports for pending `.v2`
+send IDs and calls only the `.v2` receiver. The shared MSG91 webhook was not changed. This is a testing
+arrangement; the current phone allowlist is empty, email is restricted to `@pluginlive.com`, and no
+end-to-end send was performed in that session. See
+[GCP PROD migration](../Infrastructure/gcp-prod-migration.md#whatsapp-sms-and-email) for configuration,
+logs, limits and cutover cleanup.
+
 ## Known gaps
 
 - ~~**`delivered` / `bounced` are never written.**~~ **Closed 2026-08-20** by the
