@@ -867,6 +867,16 @@ to PROD, or every roster read fails on the missing table).
   - Overview: `completed` = finished **with** a report; new `preparing` =
     finished without one. Status and `completionPct` still count every
     finisher; the Completion Rate card adds "N preparing report".
+  - **Complete AI Interview (`AI_Interview_v2`, DEV + UAT, 2026-10-16):**
+    voice-only and Role Based marks remain hidden until student-node has
+    saved the combined score and set `scores_calculated = true`. The shared
+    score joins, roster fitness verdict and report availability all wait for
+    that flag, so a finished candidate stays **Preparing Report** instead of
+    showing a partial score followed by a different final score. Pending
+    marks do not enter averages. Only legacy `AI_Interview` can render a
+    report from an existing score row before the flag is set. Corporate-node
+    DEV `f9576df2` / UAT `9cbd84cb`; student-node DEV `e8455c13` / UAT
+    `2464366f`. PROD pending.
 - **Live roster** (no backend): while the tab is visible the detail page
   re-reads roster page 1 + overview every 30 s; new submitters are highlighted
   at the top, or counted on a "N new candidate responses received." pill when

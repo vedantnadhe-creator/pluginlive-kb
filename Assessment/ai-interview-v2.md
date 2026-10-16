@@ -1,6 +1,6 @@
 # Complete AI Interview (AI_Interview_v2)
 
-> **State (2026-10-15):** LIVE on **DEV + UAT**. **PROD pending** (needs the DB script, the three gateway tasks,
+> **State (2026-10-16):** LIVE on **DEV + UAT**. **PROD pending** (needs the DB script, the three gateway tasks,
 > and every service below). Corporate floats only (the report lives in the corporate portal, not the institute one).
 
 AI Interview and Role Based merged into one assessment: the recruiter builds an **Interview Flow** of ordered rows
@@ -113,6 +113,24 @@ unknown id falls back to the step's overall score; older stored results and choi
 score). Combined per parameter → one row in `ai_interview_scores`, verdict
 bands 80/50/40. **Abandoned attempts:** the drop-off cron finalizes the v2 session (`ABANDONED`, reason `dropout`) and
 scores it with the same combined scorer.
+
+### Scores appear only after combined scoring finishes
+
+The voice score and Role Based marks are intermediate results, not a finished v2 score. `AIInterviewV2.scoreRoleBased`
+calls `Assessment.calculateRoleBasedScore` with `{ markCalculated: false }`, passed through to
+`RoleBasedCalculations.storeRoleBasedScores`. Normal Role Based assessments keep the default `true`. The v2 scorer
+sets `scores_calculated = true` only after `writeCombinedScore` succeeds; a scoring failure leaves it `false` so the
+calculation worker can retry.
+
+Corporate v2's shared score SQL withholds both the AI Interview and Role Based score rows for a v2 attempt until
+that flag is true. The roster's AI fitness verdict and report availability follow the same rule. A completed attempt
+therefore shows **Preparing Report** while scoring is running, without exposing the temporary voice-only score
+(e.g. 26 followed by the combined 40). Unfinished marks do not enter score averages. After 15 minutes without a
+score the existing status becomes **Report Delayed**. Only legacy `AI_Interview` retains its report fallback based on
+the existence of a score row.
+
+Released on **DEV + UAT**, runtime files verified 2026-10-16: student-node `e8455c13` / UAT `2464366f`;
+corporate-node `f9576df2` / UAT `9cbd84cb`. No DB migration or frontend change is required. PROD pending.
 
 ## Report (student-node `reportV2` → corporate-node → corporate-react-v2 drawer)
 Type `AI Interview v2`, the AI Interview report shape. Fixed steps follow the voice turns; each task step carries
