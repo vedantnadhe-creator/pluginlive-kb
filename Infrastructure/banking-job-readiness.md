@@ -3142,3 +3142,45 @@ live_sessions, playground). It fails on any page error, error-boundary text, or 
 **Verification:** journeytabs 6/6, admin login 5/5, `swotadmin.cjs`, admin crawl 43/43, Coding Challenges,
 Save Module, Student Tier search, and candidate/trainer/admin home pages with zero page/API errors.
 Snapshot: `~/banking-sb/snapshots/20261017T022817Z`.
+
+## 2026-10-17 — UAT `0ec72eb8`: AI content maker/checker pipeline, topic persistence, simulation gating
+
+UAT advanced `0ea7f583` → `0ec72eb8` (4 commits): `29d7918e` simulations published through module access,
+`c4ad6494` edited topic content visibility, `e048e4b6` AI content quality maker/checker pipeline,
+`0ec72eb8` role journey navigation + assessment loading.
+
+**Current behavior**
+- **Simulations / Robo Play (candidate):** a sim is listed only if the candidate can access the pack's
+  parent module (`user_can_access_module`) AND their plan passes the student `module_simulation` menu row
+  (UAT: free=false, beginner=false, advanced/enterprise=true). Legacy `sim_assignments` alone no longer
+  grant access. On UAT 47/89 candidates can reach a sim module; 53 are Free. Demo candidate 9100000021
+  now sees "No simulations are published for the modules you can access yet" — expected.
+- **Topic edits:** Admin topic save writes `content`/`learning_outcome` (`src/lib/topicPersistence.ts`);
+  migration backfilled 118 topics whose body lived only in `description`.
+- **generate-topics** (new function): maker = LLM via `installLlmFetchFallback` (the hard-coded
+  `ai.gateway.lovable.dev` URL is intercepted and routed through UAT's LLM Config providers — no Lovable key
+  needed); checker = deterministic `topic-quality.ts`. Writes an evidence pack + `ai_generation_runs` audit
+  row. Audit label says `lovable-gateway` even though the call went to the configured provider (cosmetic).
+  Measured 68 s for 3 topics. `ai-video-suggest` gains regional video candidates + verification rows.
+- **Admin AI Quality Review** reads/updates `video_verification_results` (admin-only UPDATE).
+
+**Migrations (2 upstream, 2 UAT fixups in `~/banking-sb/fixups/`)**
+- `20261017130000_topic_content_persistence_repair` — upstream.
+- `20261017143000_admin_topic_student_content_visibility` — **fixup**: upstream regex
+  `source_module_id ~* '…'` fails on UAT (`uuid ~* unknown`; column is uuid here) → `coalesce(source_module_id, id)`.
+  Also keeps the pre-existing direct `private.user_can_access_module(auth.uid(), module_id)` path: upstream
+  dropped it and the rehearsal showed 10 candidates losing 9 topics each (topics whose module has no
+  `admin_modules` row). After fixup: identical counts for all 89 candidates.
+- `20261017150000_ai_topic_video_quality_pipeline` — **fixup**: `ai_generation_runs` already existed (09-25
+  shape: actor_id, approval_status, quality_status…) so `create table if not exists` skipped it; fixup adds
+  the 13 columns generate-topics inserts (maker_provider, status, response_payload, evidence_pack_id…).
+  Without it every audit insert fails (warn only). Note: new policy lets trainers/teachers read all runs.
+- `20261017160000_ai_quality_review_controls` — upstream (`quality_score` already numeric → skipped).
+- Archived in DB-Scripts *Banking Supabase to Postgres* `20261017T12290{1..4}Z__banking_*` (UAT applied, PROD pending).
+
+**Verification:** rolled-back rehearsal `~/banking-checks/dryrun_20261017.sh` (per-candidate topic visibility
+before/after, core reads per role, candidate writes blocked, service audit insert). Live: new
+`node ~/banking-checks/topicgen.cjs` (anon reads of 4 new tables = 0 rows; admin generate-topics 200 with
+LLM topics, audit row with evidence pack; test rows deleted), journeytabs 6/6, admin login 5/5,
+swotadmin, admin crawl 43/43, Coding Challenges, Save Module, Tier search, candidate/trainer/admin homes —
+zero page/API errors. Snapshot: `~/banking-sb/snapshots/20261017T121846Z`.
