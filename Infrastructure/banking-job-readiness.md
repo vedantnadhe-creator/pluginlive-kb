@@ -3126,3 +3126,19 @@ no new `VITE_*` gates, lockfile unchanged.
 the rest restart, not reproducible), `swotadmin.cjs` pass, admin crawl 43/43, Coding Challenges, Save
 Module, Student Tier search, and candidate/trainer/admin home pages with zero page errors / API errors.
 Snapshot: `~/banking-sb/snapshots/20261016T182515Z`.
+
+## 2026-10-17 — UAT `0ea7f583`: student journey runtime fix
+
+UAT advanced `d705561f` → `0ea7f583` (1 commit). `TechStudentJourney.tsx` used `useMemo` without importing
+it after the 10-16 journey redesign (`5303bcfb`); upstream's fix adds the import. The rest of the commit
+is e2e test fixtures only (adds the existing `learning-swot` row to the student menu-access fixture). No
+migrations, function changes, `VITE_*` gates or lockfile changes.
+
+**Gap closed in our checks:** the 10-16 verification only opened `/candidate/home`, which never mounts
+`TechStudentJourney`. New `node ~/banking-checks/journeytabs.cjs` logs in as demo candidate 9100000021
+and opens every `/journey/student/tech?tab=…` (module_groups, modules, simulations, robo_assistant,
+live_sessions, playground). It fails on any page error, error-boundary text, or an empty `main`.
+
+**Verification:** journeytabs 6/6, admin login 5/5, `swotadmin.cjs`, admin crawl 43/43, Coding Challenges,
+Save Module, Student Tier search, and candidate/trainer/admin home pages with zero page/API errors.
+Snapshot: `~/banking-sb/snapshots/20261017T022817Z`.
