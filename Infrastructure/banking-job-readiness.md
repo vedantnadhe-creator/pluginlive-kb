@@ -3266,3 +3266,28 @@ showing 3 packs (baseline run `20261018T065433Z-6fe374a1` showed "No simulations
 `ai-video-suggest` with exhausted quota → 1 search call + the quota message. journeytabs 6/6, admin crawl and
 candidate/trainer/admin logins — zero errors. Snapshots: `~/banking-sb/snapshots/20261018T073432Z`,
 `20261018T073651Z`.
+
+## 2026-10-18 — UAT `a25cd761`: Robo Play "malformed JSON" and "More YouTube videos" always failing
+
+UAT advanced `02e792ec` → `a25cd761` (1 commit, functions only; no migrations, `VITE_*` or lockfile changes).
+
+- **Robo Play / simulation turns failed with "The AI returned malformed JSON".** UAT has no `LOVABLE_API_KEY`, so
+  `_shared/sim-ai.ts` uses the configured providers. Of those only **Gemini `gemini-3.6-flash`** works (openai `gpt-5`
+  rejected every call, nvidia 403, deepseek 401, glm 401 — keys to fix in Admin → LLM Settings). It is a thinking
+  model: hidden reasoning counts against `max_tokens`, and at 320 the persona reply stopped mid-JSON
+  (`finish_reason: length`, ~12 visible tokens). Configured-path caps are now persona 2048 / default 4096 /
+  debrief 6000 (the Lovable path keeps 320/1200/1800). `_shared/llm.ts` sends `max_completion_tokens` instead of
+  `max_tokens` to the `openai` provider, so the gpt-5 fallback works (verified directly: ~12 s, valid JSON).
+- **"More YouTube videos" → "No public, embeddable, topic-relevant videos passed verification".** Search worked,
+  but `checkVideoEvidence` (`_shared/topic-quality.ts`) demanded ~50% of up to 32 concepts from the topic's whole
+  content paragraph in a video's title + description; every candidate scored 7–36 vs a 45 pass mark. Without a
+  transcript it now scores against the topic **title's** concepts and passes at **30** (`ponytail:` note) —
+  calibrated on 516 audited linked videos: passes 86% of directly relevant ones, but also ~half of loosely related
+  ones (token overlap is weak; captions or an LLM judge are the upgrade).
+
+**Verification:** `sim-attempt` turns (2) and `sim-voice` turns (3, the screenshot's "yes", "yes" sequence) as QA
+candidate `9302610153` all returned in-character replies in ~4–6 s; `llm_usage_logs` since deploy: 6 success,
+0 error. Jev on the Robo Play text screen: persona replied (Jev then mis-navigated → BLOCKED, run
+`20261018T090201Z-be01c4b5`, shot `005`). `ai-video-suggest` (bulk) for "Wealth Management RM sales mindset:
+Regulatory and Risk Context" returned 2 videos with 3 search calls. Vitest (sim/robo/llm/video/topic/module):
+696 pass. journeytabs 6/6, admin crawl 43/43. Snapshot: `~/banking-sb/snapshots/20261018T090015Z`.
