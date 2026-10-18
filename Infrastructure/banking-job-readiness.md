@@ -3184,3 +3184,31 @@ before/after, core reads per role, candidate writes blocked, service audit inser
 LLM topics, audit row with evidence pack; test rows deleted), journeytabs 6/6, admin login 5/5,
 swotadmin, admin crawl 43/43, Coding Challenges, Save Module, Tier search, candidate/trainer/admin homes —
 zero page/API errors. Snapshot: `~/banking-sb/snapshots/20261017T121846Z`.
+
+## 2026-10-18 — UAT `38f9f6f2`: live sessions scoped to mapped learners, evidence-grounded video quizzes
+
+UAT advanced `0ec72eb8` → `38f9f6f2` (6 commits: bulk video discovery persistence, student YouTube discovery
+fallback, Admin journey transactions/analytics, Trainer lazy-route retry (`lazyWithRetry`), student AI video
+schema compatibility, live sessions scoped to mapped learners). No new `VITE_*` gates, lockfile unchanged, no
+direct-provider calls added.
+
+**Current behavior**
+- **Live sessions (candidate):** visible only if admin, own trainer/requester, the candidate has a non-declined
+  RSVP, or the session is `scheduled`/`live`, not a `candidate_request`, and for a module the candidate can access
+  (`public.live_session_module_visible` → `private.user_can_access_module`). On UAT 76/89 candidates went from
+  2 sessions to 1. **Non-admin trainers now see only their own sessions** (before: all scheduled sessions).
+- **Video quizzes:** `video_lessons` / `video_lesson_questions` carry caption/evidence/checker fields; MCQs are
+  grounded in an evidence quote (`_shared/video-evidence.ts`); learners get key takeaways.
+
+**Migrations:** `20261017120000_video_quiz_evidence_grounding` (upstream, additive; dated before the 10-17
+files but new to UAT). `20261018120000_live_session_module_visibility` — **UAT fixup**: upstream's policy
+reads `live_session_rsvps` inline while the rsvps policies read `module_live_sessions` →
+`infinite recursion detected in policy` on every read (caught in rehearsal; would have 500'd Live Sessions for
+all users). Own-RSVP check moved to SECURITY DEFINER `private.has_live_session_rsvp(session_id, user_id)`.
+Both functions: anon EXECUTE false, authenticated true (verified after 03_grants). Archived in DB-Scripts
+`20261018T03390{1,2}Z__banking_*` (UAT applied, PROD pending). **Upstream / hosted needs the same fix.**
+
+**Verification:** `~/banking-checks/dryrun_20261018.sh` (reads both live tables as candidate/trainer/admin,
+per-candidate session counts). Live: journeytabs 6/6 (now also fails on API ≥400), admin login 5/5, swotadmin,
+admin crawl 43/43, Coding Challenges, Save Module, Tier search, candidate/trainer/admin homes — zero page/API
+errors. Snapshot: `~/banking-sb/snapshots/20261018T033155Z`.

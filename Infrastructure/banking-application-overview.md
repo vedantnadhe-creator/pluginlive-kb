@@ -6,7 +6,7 @@ tags: [service, frontend, supabase, lovable, banking, overview]
 # Banking Job Readiness — Application Overview
 
 > **Start here.** This page explains what the app is and how it is built. It describes the code
-> at Banking `main` **`0ec72eb8`** (2026-10-17), which UAT runs with the documented
+> at Banking `main` **`38f9f6f2`** (2026-10-18), which UAT runs with the documented
 > self-hosted compatibility overlays.
 > The deploy log, every incident and the local-patch inventory are in
 > `Infrastructure/banking-job-readiness.md`. The self-hosted Supabase stack on UAT is in
