@@ -3227,3 +3227,42 @@ UAT advanced `38f9f6f2` → `cc737e85` (2 commits). No migrations, `VITE_*` gate
 **Verification:** `ai-quiz` with a malformed module id → 400; candidate `/quiz` loads with no page/API errors;
 journeytabs 6/6, admin login 5/5, swotadmin, admin crawl 43/43, Coding Challenges, Save Module, Tier search,
 candidate/trainer/admin homes — zero errors. Snapshot: `~/banking-sb/snapshots/20261018T055952Z`.
+
+## 2026-10-18 — UAT `02e792ec`: Simulations / Robo Play visible to candidates, video quiz 422, YouTube quota
+
+UAT advanced `cc737e85` → `02e792ec` (4 commits: `0a1122dd` Robo Play sprints 1–6, `d9e947f3` Robo Play plan
+entitlement, `1652bb95`, `02e792ec`). Migrations applied: `20261018120000_robo_sprint1_voice_usage_events`,
+`20261018130000_robo_sprints5_6_pilot_feedback`, `20261018140000_private_schema_service_role_access`
+(rehearsed in BEGIN…ROLLBACK first, `~/banking-checks/dryrun_20261018c.sh`). No `VITE_*` or lockfile changes.
+
+- **Published Simulations / Robo Play were empty for every non-staff candidate.** Two causes, both in
+  `sim-attempt` → `_shared/sim-core.ts`:
+  1. The plan check selected `profiles.plan_tier`, which does not exist on UAT → PostgREST 42703 → profile read
+     as `free` → `module_simulation` is off for free → `{items: []}`. It now selects `*` (keeps the
+     highest-of-two-projections rule from `d9e947f3`) and throws if the profile read fails.
+  2. Edge functions run as `service_role`, but schema `private` was granted only to `authenticated`, so
+     `user_can_access_module` (a wrapper over `private.user_can_access_module`) failed with "permission denied
+     for schema private" and every open pack was skipped. Migration `20261018140000` grants `service_role`
+     USAGE on `private` + EXECUTE on its functions. This also unblocks any other edge function that calls a
+     private-backed RPC with the service client. **PROD (hosted) likely has the same gap — pending.**
+- **Video "Generate quiz" returned 422** ("No captions or usable description"): `generate-lesson-video-quiz`
+  read the YouTube key from env only, but on UAT it lives in Admin → LLM Settings (`llm_provider_configs`,
+  provider `youtube`), so the description was never fetched (YouTube's `timedtext` caption list returns empty,
+  so description is the only evidence). New `_shared/youtube-key.ts` (`getYouTubeApiKey`, LLM Settings first,
+  env fallback) is now used by `generate-lesson-video-quiz`, `generate-video-mcqs`, `ai-coach` (video mode) and
+  `generate-section-content`. `InModuleVideoQuiz` shows the function's reason instead of the generic non-2xx toast.
+- **"Fetch more videos" burned the YouTube quota and showed the wrong error.** The Banking Google project's
+  `search.list` limit is **99 calls/day** (`defaultSearchListPerDayPerProject`). `ai-video-suggest` ran 3 queries
+  × 9 region tiers (27 searches) per request, and its quota `throw` was caught by the loop's own `catch`, so users
+  saw "No YouTube videos found for generated queries". It now stops at the first tier with candidates, caps a
+  request at 8 search calls (`MAX_SEARCH_CALLS`, `ponytail:` note), logs `YouTube search calls used: N`, and
+  returns "YouTube daily search limit reached… resets at midnight Pacific" when exhausted. More than ~12–30
+  fetches/day needs a Google quota increase.
+
+**Verification:** `sim-attempt list` for QA candidate `9302610153` (advanced) 0 → 3 items; Jev goal runs on
+UAT PASS for My Simulations (`20261018T074006Z-3bc9828f`) and My Robo Play (`20261018T074006Z-8fb17fcd`), each
+showing 3 packs (baseline run `20261018T065433Z-6fe374a1` showed "No simulations are published…").
+`generate-lesson-video-quiz` for `aMJtqLjAJ24` → HTTP 200, 10 questions, evidence = description (~110 s).
+`ai-video-suggest` with exhausted quota → 1 search call + the quota message. journeytabs 6/6, admin crawl and
+candidate/trainer/admin logins — zero errors. Snapshots: `~/banking-sb/snapshots/20261018T073432Z`,
+`20261018T073651Z`.

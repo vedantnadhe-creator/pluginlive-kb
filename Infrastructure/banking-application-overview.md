@@ -70,8 +70,12 @@ domains (19) → module_groups (22) → admin_modules (70) → admin_module_topi
   **only** from the trainer's own files (`curriculum_resources`) by `build-curriculum-from-content`.
   Student access goes through `student_has_curriculum`. Module documents live in the private
   `module-resources` bucket, and `extract-resource` turns them into `module_resource_chunks`.
-- Topic videos: `ai-video-suggest` / `youtube-search` link YouTube videos (YouTube Data API key,
-  10k units/day, and it runs out). `suggested_videos` holds *search queries*, not URLs.
+- Topic videos: `ai-video-suggest` / `youtube-search` link YouTube videos. The YouTube key is read from
+  Admin → LLM Settings (`llm_provider_configs`, provider `youtube`) via `_shared/youtube-key.ts`, env
+  `YOUTUBE_API_KEY` only as fallback. The project allows **99 `search.list` calls/day**; one fetch uses at most
+  8 (stops at the first region tier with results) and reports "YouTube daily search limit reached" when spent.
+  `suggested_videos` holds *search queries*, not URLs. Video quizzes (`generate-lesson-video-quiz`) use the
+  video description as evidence (YouTube caption lists come back empty) and refuse with 422 without it.
 
 ## Feature map
 
@@ -86,6 +90,9 @@ domains (19) → module_groups (22) → admin_modules (70) → admin_module_topi
   transcribes, then gives AI feedback), Resume Analyzer, Banking Knowledge, a RAG chat over uploaded docs.
 - Scenario simulations: versioned packs (`sim_packs` → immutable approved `sim_pack_versions`). They run only
   through `sim-attempt`, which keeps the persona state and rubric on the server.
+  The candidate list (My Simulations, Robo Play, module tabs) = assigned packs + open published packs for
+  modules the learner can access (`user_can_access_module`, called as `service_role`, which needs USAGE on
+  schema `private`), gated by the `module_simulation` menu control for the learner's `subscription_tier`.
 - **My SWOT Analytics** (`/learning-swot`): deterministic readiness, competency gaps, four SWOT quadrants
   and action plans from assessment, quiz, coding-practice and completed simulation history. Content
   exposure does not create mastery. Reports are saved in `swot_reports`; AI narratives are not enabled.
