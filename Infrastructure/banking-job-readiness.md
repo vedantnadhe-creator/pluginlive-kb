@@ -3212,3 +3212,18 @@ Both functions: anon EXECUTE false, authenticated true (verified after 03_grants
 per-candidate session counts). Live: journeytabs 6/6 (now also fails on API ≥400), admin login 5/5, swotadmin,
 admin crawl 43/43, Coding Challenges, Save Module, Tier search, candidate/trainer/admin homes — zero page/API
 errors. Snapshot: `~/banking-sb/snapshots/20261018T033155Z`.
+
+## 2026-10-18 — UAT `cc737e85`: quiz module-access guard, Robo Play voice diagnostics
+
+UAT advanced `38f9f6f2` → `cc737e85` (2 commits). No migrations, `VITE_*` gates, lockfile or provider changes.
+- **AI Quiz (`/quiz`, `ai-quiz`):** candidates can only pick and generate quizzes for modules assigned to them
+  (`useAssignedModuleIds`); admins see all published modules. The function now rejects a non-UUID `moduleId`
+  (400), inactive accounts (`coach_actor_active_v1` → 403), and modules the caller cannot access
+  (`user_can_access_module` → 403); a failed check returns 503 rather than generating. Both RPCs exist on UAT
+  and are executable by `authenticated` (verified before deploy).
+- **Robo Play voice (`sim-voice`):** failures log a request id + action + DB error shape; missing voice tables/
+  columns return "Robo Play voice storage is not ready…" instead of a generic error.
+
+**Verification:** `ai-quiz` with a malformed module id → 400; candidate `/quiz` loads with no page/API errors;
+journeytabs 6/6, admin login 5/5, swotadmin, admin crawl 43/43, Coding Challenges, Save Module, Tier search,
+candidate/trainer/admin homes — zero errors. Snapshot: `~/banking-sb/snapshots/20261018T055952Z`.
