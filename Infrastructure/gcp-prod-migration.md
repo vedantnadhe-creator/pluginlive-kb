@@ -1,6 +1,6 @@
 # GCP PROD migration — PROD copy on `*.v2.pluginlive.com`
 
-Status as of **2026-10-16**. PROD is still served from OCI (OKE k8s + `pl-prod-pg16`). A full copy of PROD
+Status as of **2026-10-19**. PROD is still served from OCI (OKE k8s + `pl-prod-pg16`). A full copy of PROD
 runs on Google Cloud for testing at `*.v2.pluginlive.com`; cutover (real DNS → GCP) has **not** happened.
 Plan owner: Mariselvan. Approach: lift PROD onto two VMs (no Cloud Run); email and object storage stay
 on OCI. The GCP copy now has isolated integration and performance fixes described below. Live OCI
@@ -57,6 +57,12 @@ PROD and DEV application deployments were not changed during this work.
   Run-book: `~/pl-v2/README.md`.
 - Rewrites applied by the generator: DB host/creds → GCP DB; `<host>.pluginlive.com` → `<host>.v2.pluginlive.com`;
   `*.prod.pluginlive.com` → `*.v2.pluginlive.com`; k8s service DNS → compose `service:port`.
+- Rewrites only reach values that PROD actually sets. A URL that exists only as a **code default** is invisible
+  to them, and on the copy it silently calls live PROD. Add such keys to `CODE_DEFAULT_OVERRIDES` in `gen-v2.py`
+  (applied to every container of the named deployment, even when PROD env lacks the key). Current entry:
+  form-data-normalization `BASE_URL=https://api-stud.v2.pluginlive.com` (default in `config/settings.py` is
+  `https://api-stud.pluginlive.com`). A grep of every backend repo on 2026-10-19 found no other active code default
+  pointing at a PROD API. Re-run that check after pulling new code.
 - Local deviations from PROD: x86 (PROD is ARM) — `student-node` builds from an untracked `Dockerfile.amd64`
   (`FROM arm64v8/` stripped); `fast-api` image is ~17 GB (CUDA torch on x86); LiteLLM = `ghcr.io/berriai/litellm:v1.90.1`
   (PROD's version); sql-sandbox = `postgres:16-alpine`; one replica per service, so memory limits are raised
@@ -81,12 +87,43 @@ Logins = PROD logins (users were copied). JWT secrets/issuer are PROD's, so a PR
 | Automatic assessment reminders | `assessment_auto_reminder=false` in the GCP copy's `assessment.cron_config` | Disabled 2026-10-16 before enabling provider switches |
 | Automatic phone dispatch | `ai_interview_call_dispatch=false` in the GCP copy's `assessment.cron_config` | Worker is deployed; dispatch stays off pending an internal test number |
 | Phone dialing | Worker `CALL_ALLOWED_NUMBERS` is present and empty, so `/dial`, `/dial/assessment`, and the carrier call function reject all numbers | Same `V2_TEST_PHONE_NUMBERS` setting in `~/pl-v2/test-recipients.env` |
-| FDN Drive cron + worker | containers not started (would read PROD's Google Drive change feed) | — |
+| FDN Drive cron | container not started (would consume PROD's Google Drive change feed) | — |
+| FDN normalization worker | **running since 2026-10-19**; posts students to `api-stud.v2` via `CODE_DEFAULT_OVERRIDES`. Writes only the copy DB; no email, no Drive | `form-data-normalization-worker` |
 
-Running: 32 containers, including `call-interview`, `question-manager`, `corporate-node-ai-match-worker`
+Running: 32 containers (plus `form-data-normalization-worker` since 2026-10-19), including `call-interview`, `question-manager`, `corporate-node-ai-match-worker`
 (CV/JD match), and `corporate-node-v2-worker`. An unused compose one-off admin container
 (`pl-v2-admin-node-run-e724e98f426f`, no published port or service alias) was stopped on 2026-10-16;
 it had been running a second scheduler since setup.
+
+### Form data normalization and the shared Google Drive (2026-10-19)
+
+- **Symptom:** admin Analytics → Candidates Raw stayed at "Pending", and candidates who applied through a role's
+  form never appeared under Applied Students. Ingest only loads sheet rows; the normalization worker creates the
+  student and the role link, and it had not been started on `.v2`.
+- **Incident:** when the worker was first started (06:32 UTC), it sent 36 `POST /students/create-full` calls to
+  **live PROD** because of the `BASE_URL` code default described above. It was stopped at about 07:00 UTC.
+  Read-only check on PROD: all 34 real candidates (anand group, knack rcm, yes securities) already existed with
+  the same role links from PROD's own pipeline, and no profile or role link changed. Those calls had no data
+  effect beyond possible duplicate CV copies in object storage. The worker log is at `~/fdn-worker-20261019.log`
+  on the app VM.
+- **Fix:** `CODE_DEFAULT_OVERRIDES` added, config regenerated (only the three FDN env files changed), and the
+  FDN API and worker recreated. The 36 rows were set back to pending and re-run: every call went to `api-stud.v2`
+  (35×201, 1×200). Config backups: `~/gen-v2.py.bak-20261019`, `~/pl-v2-backup-20261019.tgz`.
+- **Shared Drive (accepted):** `.v2` corporate-node uses PROD's `GOOGLE_DRIVE_FOLDER_ID` and service account,
+  so every role response sheet created on `.v2` is also seen by **PROD's** FDN Drive cron. PROD then ingests it
+  and creates a PROD student and a role link to a role ID that exists only on `.v2`. This happened for
+  `PIL Demo Corporate - QA Engineer` (`7b934204…`, 10-14) and `QA engineer senior v2` (`ee28a238…`, 10-19).
+  Decision on 2026-10-19: keep the same Drive. Consequences:
+  - Create `.v2` roles with application forms for **internal test candidates only**. A real candidate applying
+    to a `.v2`-only role would get a PROD student record.
+  - After each test, clean PROD: find links with
+    `select * from student.student_role_mapping where role_id not in (select id from corporate.job_roles)`
+    (plus `student.drive_role_candidate_map` rows referencing them), back them up, then delete them.
+  - Cleaned 2026-10-19: 2 `student_role_mapping` rows for `prabha+sampelyyij@pluginlive.com`
+    (`5d497b61…`, `e3ca3f3d…`). No dependent `drive_role_candidate_map` rows. Backup on the PROD builder at
+    `~/backups/v2-leak-20261019/`. The PROD student, ingested sheet and raw rows remain. They are test data.
+- At cutover, change the override to the real student API or delete it: `api-stud.v2` will no longer be the
+  production hostname.
 
 ### Phone AI Interview
 
@@ -189,6 +226,8 @@ reminder jobs, FDN cron/worker and other required services → switch Route 53 t
 certificates for real hostnames → give partners the GCP egress IPs → verify end to end. Keep OCI as fallback.
 After the production webhook hostname reaches GCP, disable the temporary WhatsApp reconciliation timer
 and remove the extra GCP email subscription if the original subscription already feeds the same backend.
+Update or remove `CODE_DEFAULT_OVERRIDES` (`BASE_URL` points at `api-stud.v2`), and start the FDN Drive cron only
+after OCI PROD's FDN cron is stopped. Otherwise both environments ingest the same Drive.
 
 ## PROD bugs found during the migration (exist on live PROD; not fixed)
 - `fast-api` live PROD config `DATABASE_URL_ASSESSMENT` points at the **UAT** DB (140.238.245.202:5441);
