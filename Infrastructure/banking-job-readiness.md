@@ -3348,3 +3348,25 @@ UAT advanced `7566a275` → `2b2d6411` (3 commits, `ai-video-suggest` only; no m
 Vitest (video/youtube/sim/robo/llm/topic/module, 737 tests): only the 3 failures that also fail on `7566a275`
 (`curriculumTaxonomyVideoGeneration` bulk discovery, 2× `roboHandsFree`). journeytabs 6/6. Snapshot
 `~/banking-sb/snapshots/20261019T030237Z`.
+
+## 2026-10-19 — UAT `a48ed9d8`: 12–15 minute AI lesson videos failed (storyboard timeout, short script)
+
+UAT advanced `2b2d6411` → `a48ed9d8` (functions only; no migrations). Admin → Modules → AI Generated Videos at
+"12-15 minutes" failed with 422 for both Wealth Management topics:
+- **"Storyboard quality gate failed"**: the whole 15-minute storyboard was one LLM call. Gemini (only live provider)
+  hit the 45 s per-provider timeout, OpenAI `gpt-5` rejected `temperature: 0.2`, so the deterministic fallback
+  storyboard was used and the gate rejected it.
+- **"Narration came out at 626s; needs 720–900s"**: the prompt assumed 2.4 words/s (ElevenLabs actually ~2.0,
+  measured on 4 lessons) and the model writes 15–40% fewer words than asked; the check ran only after narration
+  had been paid for.
+
+Now (`generate-video/index.ts`): an outline call (`sceneCount = max(4, round(targetSeconds/75))`) then parallel
+part calls of ~`STORYBOARD_PART_SECONDS` = 240 s each; `NARRATION_WORDS_PER_SECOND = 2.0`; one retry when a
+storyboard reply is not valid JSON; the script is word-checked against the band minimum (×0.95) **before**
+narration ("Script is N words; about M are needed…"). `_shared/llm.ts` drops `temperature`/`top_p` for OpenAI
+reasoning models (`gpt-5*`, `o*`). Logged: `video storyboard: <source> <scenes> scenes, <words> words for <s> s`.
+
+**Verification:** UAT rehearsal of the storyboard steps (Gemini, real topic content, 900 s): Foundations 1,667 words
+(~834 s), Core Processes 1,674 words (~837 s); outline 12–15 s, 4 parallel parts ~15–16 s. Live: function boots
+(400 on invalid duration), journeytabs 6/6, admin crawl 43/43. A full paid generation (ElevenLabs + Runway) was
+not run. Visuals are still one 8 s provider clip looping under the narration. Snapshot `20261019T143739Z`.
