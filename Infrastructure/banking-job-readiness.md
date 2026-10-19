@@ -3321,3 +3321,30 @@ app uses). `20261018170000_traceable_youtube_transcripts`. Archived in DB-Script
 reads of quality/transcript tables, admin review update). Live: anon REST reads of the new tables = `[]`, anon
 `save-video-transcript` 401; journeytabs 6/6, admin login 5/5, swotadmin, admin crawl 43/43, Coding Challenges, Save
 Module, Tier search, candidate/trainer/admin homes — zero page/API errors. Snapshot `~/banking-sb/snapshots/20261019T022330Z`.
+
+## 2026-10-19 — UAT `2b2d6411`: "More YouTube videos" checker-agent rescue
+
+UAT advanced `7566a275` → `2b2d6411` (3 commits, `ai-video-suggest` only; no migrations).
+
+- **Why it failed again after `a25cd761`:** `8ae6dab8` ("Harden media verification", 2026-10-18 19:02 IST) set
+  `relevanceGating: true` in `checkYouTubeVideo`, so the validator's "Topic relevance score N is below 35" gate (off since
+  2026-09-07) stacked on the topic-evidence gate. Long editorial topic titles ("Wealth Management RM sales mindset: Core
+  Processes and Workflows") dilute both word-overlap scores: all 49 candidates in the 4 fetches of 2026-10-19 were rejected
+  (11–34). The message became "No public, embeddable, topic-relevant videos passed metadata verification".
+- **Fix:** both gates stay. When they reject everything, the checker agent (`llmPickVideo`, configured providers via
+  `installLlmFetchFallback` — Gemini on UAT) reviews the top 5 playable, hallucination-flag-free candidates against the
+  topic title, learning outcome and a 1,200-char content excerpt using `RESCUE_CHECKER_SYSTEM_PROMPT` (useful
+  *supplementary* video; partial coverage OK; promos, motivation and personal-finance tips rejected). Approved →
+  `verification.checker = "llm-video-quality-checker-rescue"`; otherwise the rejection stands. Logged as
+  `Video checker rescue: N candidates; approved=…`. The normal path and `AI_VIDEO_LLM_CHECKER` are unchanged; the original
+  strict prompt is `CHECKER_SYSTEM_PROMPT`.
+- **Replay evidence (real 10-18/19 pools, Gemini, 3 runs each):** Foundations pool → approved "Wealth Management Industry
+  Overview" 3/3; Core Processes pool → approved "Selling to Wealthy Clients"/"Industry Overview" 3/3; pool of negotiation /
+  CRM / money-habits / myths videos → rejected 3/3. The strict prompt rejected all three pools.
+- **Live:** the rescue ran on UAT (3 candidates, correctly rejected as negotiation/CRM content) before the YouTube quota ran
+  out. **YouTube quota:** key in LLM Settings now belongs to project `641154247196` (changed 2026-10-18 08:31 UTC);
+  122 fetches / 185 search calls since the 10-18 reset exhausted both projects' 99/day `search.list` allowance.
+
+Vitest (video/youtube/sim/robo/llm/topic/module, 737 tests): only the 3 failures that also fail on `7566a275`
+(`curriculumTaxonomyVideoGeneration` bulk discovery, 2× `roboHandsFree`). journeytabs 6/6. Snapshot
+`~/banking-sb/snapshots/20261019T030237Z`.
