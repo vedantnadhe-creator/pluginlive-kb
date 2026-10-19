@@ -249,6 +249,24 @@ is replaced when fixed steps were answered. A recorded step whose clip was store
 `recording_submitted: true` (also in `reportV2`) and prints "Recorded response submitted; transcript unavailable."
 instead of "No answer given". Commits: DEV c4838165, UAT dc7f8a55 (2026-10-15).
 
+## QA fixes (Jershini, 2026-10-16 → DEV + UAT 2026-10-19; PROD pending)
+
+| # | Behaviour now | Where (DEV / UAT) |
+|---|---|---|
+| Report delay | A completed AI Interview / Complete AI Interview score is released as soon as the proctoring report exists and reading analysis is not pending/running (`helpers/scoreRelease.js`). Before, AI interviews never closed their proctoring log, so every score waited for the 900 s sweeper (~16 min → "Report Delayed"). The 15-min timeout stays as a backstop. | student-node f6484128 / dccf51da |
+| Answer language | Every answering step's spoken `say` names the answer language; in a two-language interview a step that does not gets "Please answer in X." appended in code. Summary defaults to the primary language unless the recruiter's instructions say otherwise. | fastapi 58ac82e / d7bcb2e |
+| Reading stage scored | A reading stage in any task row (e.g. Read → Translate → Summary) is a **recorded read-aloud** step (`scorer=spoken`), graded for accuracy against the passage and fluency. A recruiter who wants silent reading must say "read silently". | fastapi 58ac82e / d7bcb2e |
+| Executive summary | `combinedSummary` (helpers/aiInterviewV2.js) never names one parameter as both strongest and weakest: one assessed parameter → "…based on X (N), the only parameter this interview assessed"; ties → "Every assessed parameter scored N"; lists not-assessed parameters. Applies when a score is written (old rows keep old text). | student-node e780158a / efa84235 |
+| Min recording | Recorded steps need ≥ 5 s; the recorder enforces it ("Speak for at least 0:05") and always offers "Record again" for a short take (before: stop at 0:01 → Submit disabled until the timer ran out). | assessment-react-v2 1fa0533 / e03a615 |
+| Progress counter | Header counts **questions** (voice turns, per-question stops, answering task steps), 1-based — not blocks. | assessment-react-v2 1fa0533 / e03a615 |
+| Candidate label | Candidate pages and invite emails say **"Complete AI Interview"** (type value unchanged). Reminder emails for multi-part sittings still say "AI Interview v2". | runner 1fa0533 / e03a615, admin-node e782e23 / a0aa8cb |
+| Candidate instructions | Send-step "Additional Instructions" are written to the part's instructions row at float (async Role Based too). The settings-panel **Additional Inclusions → Additional instructions** text (also given to the AI interviewer) is read at display time and shown as the **last bullets** (one per line) of the candidate instructions screen — so existing floats show it too. | admin-node e782e23 / a0aa8cb, student-node 1fe67120 / 0ae2d085 (`MixMatchJourney.js`) |
+| Manage drawer | admin-node `getAssessmentConfiguration` has an AI_Interview_v2 branch reading the job's stored config (role, flow rows with instructions, parameters, languages, voice, extras; read-only). | admin-node d588c85 / 7fb758c, corporate-react-v2 698ab2a / 7a7b0c4 |
+| Duplicate count | Duplicate pre-fill derives Question count from the flow rows (`flowTotals`), not the wizard default 8. | corporate-react-v2 698ab2a / 7a7b0c4 |
+| Scroll bounce | Corp detail page KPI row and institute student-report drawer stat grid stay collapsed while there is nothing left to scroll (a short roster could never reach its last row); wheel-up at top restores them. | corporate-react-v2 bcd20c5 / eaa692d, institute-react-v2 43b4279 / 93a7fde |
+
+Already-floated papers keep their saved plan (silent reading, no language in `say`) — float a new one to see those two.
+
 ## Code runner
 R answers can use **ggplot2, dplyr, tidyr, readr** (Debian `r-cran-*` in `student-node/code-runner/Dockerfile`).
 DEV `code-runner:r-tidyverse`, UAT `pl-code-runner:c4d07afe`; previous containers kept stopped as

@@ -818,8 +818,10 @@ to PROD, or every roster read fails on the missing table).
   - **Where the change shows (2026-10-16, DEV + UAT, PROD pending):**
     - **Fitness filter** matches and counts on the changed verdict
       (`effectiveFit()` in `lib/assessments/verdictOverrides.ts` = override,
-      else scored `fit`). KPI cards ("Strong Fit") and the pipeline chart still
-      count the scored `fit`.
+      else scored `fit`). The **"Strong Fit" KPI card** counts the changed
+      verdict too (2026-10-19, DEV + UAT; before, it counted the scored `fit`, so a
+      candidate changed to Strong Fit left the tile at 0). The pipeline chart still
+      counts the scored `fit`.
     - **Candidate drawer**: amber "Verdict changed to <verdict>" note above
       General Details with the comment and "Changed by <name>, <date time>".
       The AI Interview / Complete AI Interview Overview also shows the saved
