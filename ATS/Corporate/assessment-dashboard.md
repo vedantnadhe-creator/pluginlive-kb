@@ -711,7 +711,7 @@ Sources, all nullable so the UI shows a dash rather than an invention:
 | location | `corr_city` + `corr_state` |
 | qualification | `current_course.degree` + `department` |
 | graduationYear | `current_course.ended_on` |
-| proctoring | `assessment.proctoring_reports` (band, score, summary, timeline) |
+| proctoring | `assessment.proctoring_reports` (summary, timeline, per-part bands) + verdict band/score from `assessment.proctoring_assessment_reports` on multi-part floats — one verdict for the whole assessment, same as the roster column (see [Proctoring → Whole-assessment verdict](../../Assessment/proctoring.md)) |
 | proctoring.snapshots / snapshotStats / snapshotsPending | every `proctoring_snapshots` row of every attempted part, via student-node `POST /students/assessments/proctoring/snapshots` (see below) |
 
 **Coverage is genuinely sparse and that is the honest picture** — UAT: mobile
