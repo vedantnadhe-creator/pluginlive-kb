@@ -80,13 +80,13 @@ Logins = PROD logins (users were copied). JWT secrets/issuer are PROD's, so a PR
 
 | Item | Current control | Where |
 |---|---|---|
-| WhatsApp + SMS | Provider switches are on (`WHATSAPP_DISABLED=false`, `SMS_ENABLED=true`), but an **empty required phone allowlist blocks every recipient** before contacting MSG91 or the legacy SMS Lambda | auth-node `OUTBOUND_ALLOWED_PHONE_NUMBERS`, populated from `~/pl-v2/test-recipients.env` by the generator |
+| WhatsApp + SMS | Provider switches are on (`WHATSAPP_DISABLED=false`, `SMS_ENABLED=true`), and a required phone allowlist of **6 internal test numbers** (set 2026-10-19) blocks every other recipient before contacting MSG91 or the legacy SMS Lambda | auth-node `OUTBOUND_ALLOWED_PHONE_NUMBERS`, populated from `~/pl-v2/test-recipients.env` by the generator |
 | Corporate v2 reminders | `REMINDER_ENABLED=false` | → corporate-node-v2 (+ worker) `.env` |
 | Slack activity alerts | `SLACK_ACTIVITY_WEBHOOK_URL=` (blank), `SLACK_ACTIVITY_ENV=gcp-v2` | → admin-node `.env` |
 | Email to candidates | Restricted to `@pluginlive.com`; subject tag `[GCP-V2]`; relay environment label `gcp-v2` | → `env/mail-server.env` |
 | Automatic assessment reminders | `assessment_auto_reminder=false` in the GCP copy's `assessment.cron_config` | Disabled 2026-10-16 before enabling provider switches |
 | Automatic phone dispatch | `ai_interview_call_dispatch=false` in the GCP copy's `assessment.cron_config` | Worker is deployed; dispatch stays off pending an internal test number |
-| Phone dialing | Worker `CALL_ALLOWED_NUMBERS` is present and empty, so `/dial`, `/dial/assessment`, and the carrier call function reject all numbers | Same `V2_TEST_PHONE_NUMBERS` setting in `~/pl-v2/test-recipients.env` |
+| Phone dialing | Worker `CALL_ALLOWED_NUMBERS` holds the same 6 internal numbers (2026-10-19); `/dial`, `/dial/assessment` and the carrier call function reject all others. `ai_interview_call_dispatch` stays off | Same `V2_TEST_PHONE_NUMBERS` setting in `~/pl-v2/test-recipients.env` |
 | FDN Drive cron | container not started (would consume PROD's Google Drive change feed) | — |
 | FDN normalization worker | **running since 2026-10-19**; posts students to `api-stud.v2` via `CODE_DEFAULT_OVERRIDES`. Writes only the copy DB; no email, no Drive | `form-data-normalization-worker` |
 
@@ -154,6 +154,9 @@ it had been running a second scheduler since setup.
 - Phone restrictions cover all three auth-node sending paths: WhatsApp, MSG91 SMS OTP, and legacy
   Lambda SMS. A mixed batch containing an unlisted recipient is rejected as a whole. Empty-list and
   mixed-batch checks passed before deployment.
+- 2026-10-19: `V2_TEST_PHONE_NUMBERS` set to 6 internal numbers (the list itself is only in
+  `~/pl-v2/test-recipients.env`); auth-node and call-interview recreated. In-container check: listed numbers in
+  any format (`+91 …`, 10-digit) are allowed; an unlisted number or a mixed batch returns `OUTBOUND_RECIPIENT_BLOCKED`.
 - **No test WhatsApp, SMS, email or call was sent during this integration session.** End-to-end delivery
   checks still need an approved internal phone number and mailbox. Candidate-wide sending stays restricted.
 - WhatsApp delivery: the shared MSG91 webhook still serves OCI PROD. Do not add/reorder/disable it for
