@@ -18,6 +18,44 @@
 
 ---
 
+## Listening/dictation player never hangs; Try again re-signs the link (DEV + UAT, 2026-10-19)
+
+assessment-react-v2 `AudioPrompt.tsx` (+ the same-origin proxy
+`src/app/api/assessment/media/audio/route.ts`). PROD pending.
+
+**Why:** 2026-10-17 PROD (Amity Lucknow) — a candidate's listening clip sat on
+"Playing" for 11 min with every control locked (`sealedListening` + `busy`);
+the old player had no timeout, no stall detection and no `pause` handler, and
+the proxy's upstream `fetch` had no timeout. Signed links are valid 7 days, so
+expiry was not the cause there.
+
+**Player behaviour now:**
+- No sound within **10 s** of pressing play, a position that does not move for
+  **10 s** mid-play, or an OS pause (call, headset unplug, backgrounding) →
+  "This recording could not be played." + **Try again** (+ **Continue without
+  it** for listening). A failed play is **not** counted — only `ended` spends one.
+- **Try again** probes the proxy (`Range: bytes=0-1`). 200/206 → plays the same
+  link (device/stall). Anything else (403/404/5xx/timeout) → fetches a freshly
+  signed link by re-reading the part's questions
+  (`freshQuestionAudioUrl` → `GET /students/mix-match/assessment/:id/questions`;
+  the start guard treats an INPROGRESS part as a resume, so no clock moves) and
+  plays that. "Reloading the recording…" shows meanwhile.
+- If the browser refuses play after the async retry (`NotAllowedError`, mostly
+  iOS Safari) the play button comes back — one more tap, not an error.
+
+**Proxy:** 10 s timeout on upstream *headers* only (the body streams for the
+whole clip), one retry on network error/5xx, upstream 401/403 → **403** ("link
+expired"), 404 → 404, timeout → **504**; every failure is logged as
+`[media/audio] upstream refused|did not respond` in the
+`candidate-assessment-journey-v2` container — the logs that were missing for the
+10-17 investigation.
+
+**Known limits:** an interruption restarts the clip from 0 without spending a
+play. AI Interview audio gets the timeout/Try again but not the re-sign step.
+The Video Response dead-end found in the same incident (a too-short re-record
+overwrites a valid take and hides the record button; attempt state is in
+localStorage so a refresh does not help) is **not** fixed yet.
+
 ## US listening accent = English-only evaluation (DEV + UAT, 2026-10-14)
 
 In the shared create wizard, choosing the **US** listening accent sets the
