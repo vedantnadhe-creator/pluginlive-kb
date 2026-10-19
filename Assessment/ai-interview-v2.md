@@ -153,10 +153,30 @@ stages for reading, translation and summary, with the passage blurred for the su
   `enabledWhen`. Applies to standard MCQ, multi-select, subjective and coding steps (whose planner buttons are
   ungated, `enabledWhen ""`) and to task steps; a list of questions on one screen needs every one answered. Answered =
   an option picked / ≥1 tick, non-blank text, code edited (untouched starter code does not count), a recording.
-  There is no Skip. A step with nothing to answer (read the passage, listen to the clip) is never held, and a phase
+  There is no Skip (voice activities excepted, see below). A step with nothing to answer (read the passage, listen to the clip) is never held, and a phase
   with its own `timeLimitSec` still auto-submits whatever it has when the clock ends. Runner-only, so it applies to
   already-floated papers. Gotcha: answers live in per-step state, so a reload mid-step shows an empty answer and the
   candidate must answer that question again.
+- **Voice activities run hands-free, like a voice turn** (2026-10-19, DEV 167c8ff / UAT e38fd0a; PROD pending). In a
+  task block with `rowType: "voice"` (Read → Translate → Summary, listening + questions, scenarios):
+  - every spoken answer — a `VoiceAnswer`/`VideoAnswer` step or a per-question `voice` question
+    (`flow.ts` `isHandsFreeRecording`) — **starts recording by itself 2 s after the interviewer's line**
+    (`V2_HANDS_FREE_START_SEC`, shown as "Recording begins in 0:02"). The recorder shows no Start / Stop / Re-record
+    (only "Try again" after a microphone error);
+  - the bar has a single **Submit response**, which stops the take and moves on. It runs the planner's own `next`
+    button actions, so lock/blur still apply. As in a simple voice turn there is **no minimum length and no mandatory
+    answer**: an empty or short take moves on, and the backend scores it 0 ("No answer was given");
+  - the take also ends and submits itself at the step's recording limit (`maxSeconds`, recorder default 120 s) or its
+    `timeLimitSec`. Both are still chosen by the planner per step from the recruiter's instructions; there is no fixed
+    per-stage time;
+  - a clip-only step (`AudioPlayer`, answer `None`) **plays the clip by itself, once**, and moves on when it ends. If the
+    browser blocks autoplay, the play button remains. When questions follow, the step's line gets "It plays once, and
+    then I'll ask you some questions about it." appended (`briefing.ts`), unless it already mentions questions;
+  - per-question steps after the clip (or after any earlier step) speak **only the question**, not the step's
+    "answer each question…" line.
+
+  This is a runner-only change in `useV2Step.ts`, `RecordingAnswer` (`autoStartAfterSec` / `stopRef`, opt-in) and
+  `AudioPrompt` (`autoPlay`, opt-in), so it applies to already-floated papers. Other assessment types are unchanged.
 - Finishing completes the session (`complete`) and lands on the done screen; a reload submits the attempt from the
   guard screen and completes the session directly.
 
@@ -257,7 +277,7 @@ instead of "No answer given". Commits: DEV c4838165, UAT dc7f8a55 (2026-10-15).
 | Answer language | Every answering step's spoken `say` names the answer language; in a two-language interview a step that does not gets "Please answer in X." appended in code. Summary defaults to the primary language unless the recruiter's instructions say otherwise. | fastapi 58ac82e / d7bcb2e |
 | Reading stage scored | A reading stage in any task row (e.g. Read → Translate → Summary) is a **recorded read-aloud** step (`scorer=spoken`), graded for accuracy against the passage and fluency. A recruiter who wants silent reading must say "read silently". | fastapi 58ac82e / d7bcb2e |
 | Executive summary | `combinedSummary` (helpers/aiInterviewV2.js) never names one parameter as both strongest and weakest: one assessed parameter → "…based on X (N), the only parameter this interview assessed"; ties → "Every assessed parameter scored N"; lists not-assessed parameters. Applies when a score is written (old rows keep old text). | student-node e780158a / efa84235 |
-| Min recording | Recorded steps need ≥ 5 s; the recorder enforces it ("Speak for at least 0:05") and always offers "Record again" for a short take (before: stop at 0:01 → Submit disabled until the timer ran out). | assessment-react-v2 1fa0533 / e03a615 |
+| Min recording | Recorded steps outside voice activities need ≥ 5 s (voice activities have no minimum since 2026-10-19, see Candidate); the recorder enforces it ("Speak for at least 0:05") and always offers "Record again" for a short take (before: stop at 0:01 → Submit disabled until the timer ran out). | assessment-react-v2 1fa0533 / e03a615 |
 | Progress counter | Header counts **questions** (voice turns, per-question stops, answering task steps), 1-based — not blocks. | assessment-react-v2 1fa0533 / e03a615 |
 | Candidate label | Candidate pages and invite emails say **"Complete AI Interview"** (type value unchanged). Reminder emails for multi-part sittings still say "AI Interview v2". | runner 1fa0533 / e03a615, admin-node e782e23 / a0aa8cb |
 | Candidate instructions | Send-step "Additional Instructions" are written to the part's instructions row at float (async Role Based too). The settings-panel **Additional Inclusions → Additional instructions** text (also given to the AI interviewer) is read at display time and shown as the **last bullets** (one per line) of the candidate instructions screen — so existing floats show it too. | admin-node e782e23 / a0aa8cb, student-node 1fe67120 / 0ae2d085 (`MixMatchJourney.js`) |
