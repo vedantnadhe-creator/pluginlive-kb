@@ -3291,3 +3291,33 @@ candidate `9302610153` all returned in-character replies in ~4–6 s; `llm_usage
 `20261018T090201Z-be01c4b5`, shot `005`). `ai-video-suggest` (bulk) for "Wealth Management RM sales mindset:
 Regulatory and Risk Context" returned 2 videos with 3 search calls. Vitest (sim/robo/llm/video/topic/module):
 696 pass. journeytabs 6/6, admin crawl 43/43. Snapshot: `~/banking-sb/snapshots/20261018T090015Z`.
+
+## 2026-10-19 — UAT `7566a275`: traceable YouTube transcript evidence, admin-only video QA, Robo Play hardening
+
+UAT advanced `a25cd761` → `7566a275` (7 commits: Robo Play voice turns + JSON output hardening (`_shared/sim-json.ts`),
+simulation auth/logout fixes, topic-grounded AI video generation, traceable YouTube transcript evidence, media
+verification hardening, admin video QA aligned to the scoped payload). No `VITE_*` gates, lockfile unchanged.
+
+**Current behavior**
+- **Video discovery audit** (`ai-video-suggest`) writes evidence pack + run + candidates + checks atomically through
+  `public.persist_video_quality_audit(jsonb)` (SECURITY DEFINER; EXECUTE only `service_role` — anon/authenticated false,
+  verified after 03_grants).
+- **AI-quality tables are admin/super_admin only:** `topic_evidence_packs`, `video_candidates`,
+  `video_verification_results` (trainers/teachers lost read; on 10-17 they could read). `ai_generation_runs`: admins
+  all, other users only their own rows (09-25 actor policy still present on UAT).
+- **Transcript evidence:** new `save-video-transcript` function (verify_jwt) stores staff-attested / owner-OAuth /
+  caption-file transcripts in `video_transcript_evidence` (service-role only; no RLS policies → 0 rows to clients).
+- **compose-video** is a stub that returns 501 until a real long-form assembly worker exists (fake assembly disabled).
+- **Known gap (pre-existing, not introduced here): `generate-video` has no caller check.** It validates the body and
+  then uses the service client + paid providers; the anon key passes the gateway JWT check (see the `main` overlay
+  comment), so an anonymous caller with a valid `topicId` can start a paid generation. Needs a staff check
+  (`is_curriculum_staff`) upstream or as an overlay.
+
+**Migrations (both upstream verbatim):** `20261018160000_video_quality_audit_atomic_and_scoped` — its guarded
+`review_status` CHECK is skipped on UAT because the same-named 10-17 constraint exists (`…deferred`, which is what the
+app uses). `20261018170000_traceable_youtube_transcripts`. Archived in DB-Scripts `20261019T02310{1,2}Z__banking_*`.
+
+**Verification:** rolled-back `~/banking-checks/dryrun_20261019.sh` (RPC as service_role, candidate RPC blocked, role
+reads of quality/transcript tables, admin review update). Live: anon REST reads of the new tables = `[]`, anon
+`save-video-transcript` 401; journeytabs 6/6, admin login 5/5, swotadmin, admin crawl 43/43, Coding Challenges, Save
+Module, Tier search, candidate/trainer/admin homes — zero page/API errors. Snapshot `~/banking-sb/snapshots/20261019T022330Z`.
