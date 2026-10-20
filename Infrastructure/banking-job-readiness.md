@@ -3370,3 +3370,17 @@ reasoning models (`gpt-5*`, `o*`). Logged: `video storyboard: <source> <scenes> 
 (~834 s), Core Processes 1,674 words (~837 s); outline 12–15 s, 4 parallel parts ~15–16 s. Live: function boots
 (400 on invalid duration), journeytabs 6/6, admin crawl 43/43. A full paid generation (ElevenLabs + Runway) was
 not run. Visuals are still one 8 s provider clip looping under the narration. Snapshot `20261019T143739Z`.
+
+## 2026-10-20 — UAT `6f17f057`: every route lazy-loads with stale-chunk recovery (frontend only)
+
+UAT advanced `a48ed9d8` → `6f17f057` (8 Lovable commits). No migrations, functions, `VITE_*` gates or
+`package-lock.json` changes (`bun.lock` only; not used by the UAT build).
+- **Routes:** `src/App.tsx` and the journey pages (Admin, Trainer, Institute, TechStudent, PilFeatureMerge) now
+  wrap every lazy page in `lazyWithRetry` (generic over the component type; route key defaults to the current
+  path). After a deploy, a browser still on the old manifest that hits a missing chunk reloads once per route
+  (sessionStorage `lazy-chunk-retry:<route>`), and only errors if the retry fails too.
+- `types.ts` gains `trainer_can_access_admin_module` / `trainer_can_access_module` RPC types; both functions
+  already exist on UAT and are executable by `authenticated` (no frontend caller yet).
+
+**Verification:** journeytabs 6/6, admin login 5/5, swotadmin, admin crawl 43/43, Coding Challenges, Save Module,
+Tier search, candidate/trainer/admin homes — zero page/API errors. Snapshot `~/banking-sb/snapshots/20261020T164405Z`.
