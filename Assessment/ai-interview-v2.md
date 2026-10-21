@@ -1,7 +1,7 @@
 # Complete AI Interview (AI_Interview_v2)
 
 > **State (2026-10-16):** LIVE on **DEV + UAT**. **PROD pending** (needs the DB script, the three gateway tasks,
-> and every service below). Corporate floats only (the report lives in the corporate portal, not the institute one).
+> and every service below, plus the `/ai-interview-v2/` ingress path; see *Proxy timeout* below). Corporate floats only (the report lives in the corporate portal, not the institute one).
 
 AI Interview and Role Based merged into one assessment: the recruiter builds an **Interview Flow** of ordered rows
 (voice, subjective, single choice, multiple choice, coding, custom task), an LLM plans
@@ -47,6 +47,33 @@ with one combined score and one report.
    (passages, TTS audio, questions), authored questions as written. Every **answering step of a task gets its own
    answer row** (`content[block].items[n]["@answer:<phaseId>"]`), so a task may have any number of steps.
 5. Candidates are assigned and invited when the paper exists.
+
+### Proxy timeout for `/ai-interview-v2/` (infra, every env)
+
+`generate-slots` is **one LLM call plus one TTS call per spoken item, run one after another**
+(`slot_content.py` `render()` → `speak()`), so a big voice block runs past 60 s. A 12-question
+Communication & Language block on UAT took ~49 s for the LLM call alone (2026-10-21). admin-node waits
+**300 s** (`FastAPIService.js`, `timeout: 300000`); the proxy in front of fast-api must wait at least that long.
+
+- **Symptom:** the float stays in `preparing` with 0 assigned; admin-node logs
+  `prepare-set <n> failed (attempt k/8): Request failed with status code 504` at **exactly 60 s**. fast-api logs the LLM
+  `200 OK` but never the `generate-slots` access line, because nginx dropped the connection mid-TTS. Each retry
+  regenerates from scratch, so retries never help. Small blocks finish under 60 s, which hides the problem.
+- **Cause (DEV + UAT):** `/etc/nginx/sites-enabled/fast-api.conf` had a long-timeout block for `/ai-interview/` (v1)
+  only. `/ai-interview-v2/` fell through to `location /` → nginx default `proxy_read_timeout 60s`.
+- **Fix (DEV + UAT, applied 2026-10-21):** added `location /ai-interview-v2/` (connect 300, send/read/send_timeout 600,
+  `client_max_body_size 50M`, `proxy_pass http://localhost:8011`), `nginx -t`, `systemctl reload nginx`. Backups:
+  `/etc/nginx/fast-api.conf.bak.<UTC-ts>` (kept outside `sites-enabled/` so they are not loaded). No fast-api restart.
+  Stuck `preparing` jobs resume on the next retry or reconciler pass with no reset needed.
+- **PROD (k8s, checked read-only 2026-10-21):** `api-fast.pluginlive.com` has no `/ai-interview-v2/` path.
+  It falls to `fast-api-prod-ingress` `/`, which sets `proxy-read-timeout: 300` and `proxy-send-timeout: 300`. That
+  equals the admin-node client timeout, so the 60 s failure does not happen on PROD. **When v2 ships to PROD**, add
+  `/ai-interview-v2/` to the `fast-api-ai-interview` ingress (already 600 s, same host) so nginx never cuts the call
+  before the client does:
+  `kubectl -n api patch ingress fast-api-ai-interview --type=json -p '[{"op":"add","path":"/spec/rules/0/http/paths/-","value":{"path":"/ai-interview-v2/","pathType":"Prefix","backend":{"service":{"name":"fast-api","port":{"number":80}}}}}]'`
+  (on the PROD builder, `export PATH=$HOME/bin:$PATH` first).
+- **Any new fast-api route prefix doing LLM/TTS/STT work needs its own long-timeout block on DEV/UAT nginx.** Same
+  failure as the `/hinglish/` 504 → stored `0` (see [communication.md](communication.md)).
 
 **Duplicate** rebuilds a v2 part from the config stored on its assignment job (flow rows, instructions, authored
 questions) and pre-fills the corporate wizard.
