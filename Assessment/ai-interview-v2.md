@@ -256,6 +256,43 @@ the existence of a score row.
 Released on **DEV + UAT**, runtime files verified 2026-10-16: student-node `e8455c13` / UAT `2464366f`;
 corporate-node `f9576df2` / UAT `9cbd84cb`. No DB migration or frontend change is required. PROD pending.
 
+### Parameter mapping and per-parameter scores (DEV + UAT 2026-10-21, PROD pending)
+
+**Who maps what.** The planner LLM (`pl/interview-skeleton`) maps every Interview Flow row (or task step) to the
+parameters it measures, with a weight split per row; the validator only checks ids and that every parameter is mapped
+somewhere. All questions of a row share the row's mapping. Inside the voice interview, code (`apportionByWeight`)
+splits the voice question budget across the voice parameters by weight and tags each turn with its parameter id.
+
+**Voice question budget covers every voice parameter.** admin-node `withVoiceCoverage`
+(`helpers/aiInterviewV2SetBuilder.js`) tops the last voice block's `questionCount` up to 1 (warm-up) + one question per
+voice role parameter (`voiceParameters`: the role parameters mapped to voice rows, or all of them when none are), and
+`max_questions` follows. Before this, a 2-question voice row for 3 role parameters asked one of them and the others
+read "Not assessed" (UAT 57e74d08, c83ed529). Applies to sets generated after the deploy only.
+
+**Voice scores count for role parameters.** The voice scorer (`score-final`) returns role parameters as a 0–5
+`rating` with no `score`; until 2026-10-21 `scoreVoice` dropped every entry without a numeric `score`, so no v2
+attempt ever got role-parameter evidence from the voice interview (0 of 41 on UAT). Now `voiceParameterScore`
+reads `rating × 20`; a parameter the scorer flags `not_assessed` **or** labels `rating_label: "Not Assessed"` (its
+rating is an inferred average) carries no evidence. `section_scores.aiInterviewV2.voiceVersion = 2` marks rows
+combined with this rule; re-scoring an older combined row re-runs the voice scorer without writing a row
+(`runScoringForAssignment({ returnReport: true })`), because the original role ratings were overwritten.
+
+**How a parameter's score is derived** (`combineScores`, `helpers/aiInterviewV2.js`): average per row first (each row
+= the mean of its questions for that parameter; a voice row = the session's voice score for it), then the weighted
+mean of the rows by each row's weight for the parameter. A row's question count is not its weight (3 MCQs are one
+row, not 3 votes). Overall = parameters weighted by the recruiter's weights; a parameter with no evidence is
+"Not assessed" and left out. Unanswered questions score 0.
+
+**Report shows what assessed each parameter.** Each parameter row in `parameter_scores` carries
+`evidence: [{blockId, title, score, questions}]` and its `analysis` starts "Scored N/100 from: Voice interview 60;
+Troubleshooting 0 (3 questions)." Each fixed (non-voice) transcript turn's `dimension` is
+`<row title> — <parameter names>` with `parameters: [{id, name, score}]` (this answer's score per parameter); voice
+turns already show their parameter. Corporate/institute v2 and the PDF render `dimension` unchanged.
+
+Commits: student-node DEV `5c4b3a5a` + `feec8e7c` / UAT `3db2a3f0` + `febe0eac`; admin-node DEV `b3640d6` / UAT
+`2d7b9d1`. Existing attempts keep their old scores until re-scored (`new AIInterviewV2().calculateScore(id)` in the
+student container).
+
 ## Report (student-node `reportV2` → corporate-node → corporate-react-v2 drawer)
 Type `AI Interview v2`, the AI Interview report shape. Fixed steps follow the voice turns; each task step carries
 `answer_mode` (`recorded` → transcript + its own clip, `written`, `code` → code) and task kind (`reading`, `listening`,
