@@ -911,8 +911,13 @@ The end-in-future check (2eff07a) is unchanged.
   recommendation when present, with the existing score fallback otherwise.
 - `GET /corporates/:cid/assessments/v2/:id/candidates` adds `byType[].fit`.
   AI Interview uses the latest scored session's stored recommendation first,
-  falling back to its rounded-score bands at 80 / 50 / 40. Role-Based keeps its
-  existing rounded-score bands at 75 / 60. Column legends match the part's rules.
+  falling back to its rounded-score bands at 80 / 50 / 40. Role-Based (no stored
+  verdict) uses the same 80 / 50 / 40 four bands — Strong Fit / Fit / Borderline /
+  Not Fit — via `aiInterviewFitness(score, null)`, and also sets the row's
+  top-level `fit` (was 75 / 60 three-band `fitOf` until 2026-10-21, which put a
+  57% Role-Based at Not Fit while the distribution bar used the AI bands). The
+  "Score bands" key shows the four AI Interview bands for both types. The
+  assessments LIST `industryFit` / fit filter still use 75 / 60 for every type.
   Other scored types return `fit: null`; unscored parts have no verdict. The BFF
   forwards the field, and the browser renders it without deriving a new verdict
   from the part's score or the candidate's overall fitness.
