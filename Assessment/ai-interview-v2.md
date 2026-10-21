@@ -19,8 +19,8 @@ with one combined score and one report.
 
 ## Float (creation)
 
-1. **Wizard** (corporate-react-v2 wizard `0.1.2-bugfix.21` DEV / `0.1.2-bugfix.21-uat` UAT; admin-react-v2 wizard
-   `0.1.16-custom.12` DEV / `0.1.12-custom.9` UAT). Role, skills, JD, evaluation parameters (Communication fixed 20%),
+1. **Wizard** (corporate-react-v2 wizard `0.1.2-bugfix.22` DEV / `0.1.2-bugfix.22-uat` UAT; admin-react-v2 wizard
+   `0.1.16-custom.13` DEV / `0.1.12-custom.10` UAT). Role, skills, JD, evaluation parameters (Communication fixed 20%),
    languages, voice, and the Interview Flow rows. **The question-type dropdown no longer offers Reading task or
    Listening task** (removed 2026-10-14/15 in both wizards, `FLOW_TYPE_OPTIONS` in
    `assessmentWizardConfigOptions.ts`). The `reading` / `listening` types, placeholders and payload mapping are kept,
@@ -33,10 +33,16 @@ with one combined score and one report.
    instructions + every hand-written choice question with its options, `lib/interviewFlowContext.ts`), sent as
    `interviewInstructions` to `suggest-parameters` (BFF → admin-node → fastapi `interview_instructions`). Bank headings
    come back first as the parameters, under the recruiter's names. Skipped when the flow text is unchanged or the
-   recruiter already edited the suggested parameters; a failure keeps the earlier suggestion. See *Question banks*.
+   recruiter already edited the suggested parameters. A failure is shown on Evaluation Parameters with **Try again**.
+   A loaded / duplicated config (provenance unknown) is never re-suggested automatically: when its flow instructions
+   changed, Evaluation Parameters shows "The Interview Flow's instructions changed since these parameters were set."
+   with a **Suggest from the Interview Flow** button. The corporate BFF returns all five suggestions (no 4-cap); the
+   package drops Communication first and then keeps four, so a fifth bank heading is not lost. See *Question banks*.
 2. **Float route** sends `assessmentType: "AI_Interview_v2"` with `interviewConfig.flow`.
 3. **admin-node** `AIInterviewV2AssignmentService` only **validates** the flow and registers the Role Based async
-   job — the float returns at once (~0.7 s); the creator is told invites follow paper generation. An omitted
+   job — the float returns at once (~0.7 s). The Voice rows' counts are summed (Introduction included, Auto = 1) and
+   the float is refused with a 400 above **50** (`MAX_VOICE_QUESTIONS`, the runner limit); the builder re-checks the
+   planned total; the creator is told invites follow paper generation. An omitted
    `interviewDuration` is normalised to 30 min at validation, so the invite, the planner target and the runner
    deadline all use one value. **One set generator per job plans**: it claims planning on the job row
    (`config_snapshot.aiInterviewV2PlanClaim`, epoch seconds, 240 s TTL so a dead claimer is taken over; released on
@@ -53,7 +59,11 @@ with one combined score and one report.
    (fewer than 2 options or no answer marked) is completed, not refused**: the float only requires its text; at build
    fastapi `POST /ai-interview-v2/complete-choices` adds options after the recruiter's (to 4) and picks the answer.
    Recruiter text, options and marked answers are kept (enforced in code; on multiple choice an added option the model
-   marks correct is added to the answer). Once per cohort (in-process cache); a 422 fails the paper. Blank builder
+   marks correct is added to the answer). Once per job: the paper that claims planning runs the completion and stores it with the plan
+   (`config_snapshot.aiInterviewV2Plan.completedChoices`), every paper on any pod reuses it (fallback: in-process cache
+   that also holds in-flight calls). A 422 fails the paper. The endpoint accepts **only admin-node's service token**
+   (`user {role:"system", _id:"system"}`, else 403) and bounds input (job role 200, text 4000, option 1000 chars, ≤6
+   options, ≤50 questions). Blank builder
    options are dropped. The planner also gets each row's hand-written questions inside its `instructions`. Every **answering step of a task gets its own
    answer row** (`content[block].items[n]["@answer:<phaseId>"]`), so a task may have any number of steps.
 5. Candidates are assigned and invited when the paper exists.
@@ -175,29 +185,42 @@ bank, exactly like AI Interview (v1) recruiter questions. Instructions that desc
 recorded activity (above); a row without instructions keeps the fully generated conversation.
 
 - **Detection** (fastapi `QuestionGeneration/AIInterviewV2/question_bank.py`, skeleton time, task
-  `pl/interview-skeleton`): ≥3 non-blank lines → one model call splits the text into items `{section, kind:
-  question | customer_line | scenario, …}`. Every item must be ≥80% the recruiter's own words or it is dropped; <3
-  items = not a bank. A failed extraction fails the plan (never silently planned as an activity). Customer lines are
+  `pl/interview-skeleton`): every voice row with instructions → one model call classifies it and splits a bank into
+  items `{section, kind: question | customer_line | scenario, …}`. Every item, recall question and heading must match
+  **one contiguous run of the recruiter's words** (normalised), and the items must cover ≥half the instruction words
+  and every line with a `?` or a quote. A bank may be **one question**. A bank whose items fail these checks raises
+  `BankInvalid` → retried once, then the plan fails (422) — never silently planned as an activity. Customer lines are
   stored as `A customer says: "…" How will you respond?`. A scenario keeps `narration` (the customer's words) and
   `recall` (its questions). The voice block carries `bank`; `candidateBlock` strips it from the candidate app.
 - **Count**: the recruiter's row count; Auto = 8 (AI Interview's default), split across parameters by weight. v2
   follows row counts past v1's 15-question cap (up to 50).
-- **Mapping**: admin-node writes the bank questions to `ai_interview_config.sample_questions` and now runs the v1
-  question→parameter map (`refreshQuestionParameterMap`) **in the set job, before invites** (v2 never mapped at
-  creation before). `map-questions` gets each question's heading (`sections`); a heading that matches a parameter
+- **Mapping**: admin-node writes the bank questions to `ai_interview_config.sample_questions` and computes the v1
+  question→parameter map (`computeQuestionParameterMap`) **as part of building the paper**, in the same `Promise.all`
+  as the other model calls; `completeSet` stores `question_parameter_map` in the same transaction as the config. A
+  mapper failure fails the paper before anything is saved (5xx/timeout retried by the queue, 4xx fails the job), so a
+  set never goes out without its map. `map-questions` gets each question's heading (`sections`); a heading that matches a parameter
   name maps like a recruiter label (`source: "label"`), the rest go to the model with the heading as a hint. Papers
-  of a cohort reuse the computed map (in-process, by fingerprint). Communication & Language still owns no question
-  (scored from the whole interview), so questions under that heading map to the closest role parameter.
+  of a cohort reuse the computed map (in-process, by fingerprint — which includes the normalised **job role**, so a
+  map is never reused across roles; `MAP_VERSION` 6). Questions under a **Communication & Language** heading map
+  deterministically to the Communication parameter (`source: "heading"`); student-node (`mappedCommunication`) serves
+  them labelled Communication without using any role parameter's allowance, never probes them, and Communication is
+  still scored from the whole interview (zero per-question weight).
 - **Asking**: the unchanged v1 planner (tiers, per-interview shuffle, twins, max 2 probes, max 2 language drills,
   live generation once the bank is used). New: **one listening scenario per interview**, served via
   `must_ask_narration` — the interviewer says "Let me play a customer. Please listen carefully.", reads the
-  customer's words verbatim, then asks the recall questions in one request (English turns that retell the words are
-  rebuilt in code; non-English turns keep the customer's words as written). Never probed, and no probe after it.
+  customer's words verbatim, then asks the recall questions in one request (a scenario-length override is the last
+  prompt rule, so it beats the Hinglish "<25 words" reminder; in **every language** the numbers and mid-sentence
+  capitalised names of the scenario must appear in both `question` and `speech_text`, else the turn is rebuilt by the
+  English fallback; English also keeps its 85% word check). Never probed, and no probe after it.
 - Several bank rows pool into one interview-wide plan (v1 behaviour), so a row-2 question can be asked during row 1.
 
 Commits — DEV: fastapi `186c447` `971663a`, admin-node `ede1b51` `ab03381`, student-node `cf7c2c08`,
 corporate-react-v2 `3841d62` `f919b19`, admin-react-v2 `f4e722f` `17245c3`. UAT: fastapi `54532d4`, admin-node
-`66639cd`, student-node `66e983d3`, corporate-react-v2 `b462e01`, admin-react-v2 `07597ab`. Wizard source branches
+`66639cd`, student-node `66e983d3`, corporate-react-v2 `b462e01`, admin-react-v2 `07597ab`. Review fixes (2026-10-21) — DEV: fastapi `fa1871b`
+`4c076ef` `4936ff8`, admin-node `dfa4757`, student-node `9036e139`, corporate-react-v2 `e3e23bd`, admin-react-v2
+`eef4569`. UAT: fastapi `0ac7e02` `a4e13d5` `f4f0a09`, admin-node `b937c5b`, student-node `fbac368e`,
+corporate-react-v2 `a3e35a2`, admin-react-v2 `dc7f20d`. Existing v2 configs are re-mapped on next save
+(`script/backfillAIInterviewQuestionMap.js --remap` for all at once — not run). Wizard source branches
 (design-system, local only): `feat/aiv2-bank-parameters-0.1.2` (d164500), `feat/aiv2-bank-parameters-0.1.16`
 (f4a779f), `uat/aiv2-bank-parameters` (d11e7d7), `uat/aiv2-bank-parameters-admin` (c91c36e).
 
