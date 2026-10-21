@@ -515,6 +515,14 @@ outbound webhook OFF → PROD gets updates; DEV + UAT get none. Lasting fix (not
 one webhook → a receiver that forwards each callback to DEV, UAT and PROD (each env
 already ignores ids it doesn't own).
 
+**Auto-pause, 2026-10-19:** MSG91 auto-pauses a webhook after repeated non-2xx/no-response
+deliveries ("Critical Alert: Webhook Auto-Paused" email to support@). `pl-prod-wa-outbound-report`
+was paused at 14:33:56Z, so every PROD WhatsApp sent on 10-20 sat at `accepted` ("Processing").
+Resumed in the panel 2026-10-21; the 78 stuck rows since 10-12 were replayed the same way as above
+(72 updated; 6 still `sent` at MSG91). Replay gotcha: `/report/logs/wa` always returns a
+`paginationToken` — stop when the rows read reach `metadata.total`, or the loop never ends.
+If Processing recurs, first check the panel for a paused webhook.
+
 **GCP migration copy, 2026-10-16:** `.v2` has a separate ACTIVE CUSTOM_HTTPS subscription on
 `pl-email-delivery-prod` for email status; the existing OCI PROD subscription is unchanged. WhatsApp
 status uses a GCP-only two-minute reconciliation timer that reads provider reports for pending `.v2`
