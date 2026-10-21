@@ -333,6 +333,9 @@ bfb24af). No schema change.
   across pods). Opening a report whose session has no `fullRecording`
   re-queues the build (other writers read-spread-write `session_metadata` and
   can drop the key). Sunset purge clears the pointer.
+- **AI_Interview_v2 task items (2026-10-21, DEV + UAT; PROD pending):** the
+  listening paragraph is now in the recording, and each task item gets its own
+  marker. Details are in `ai-interview-v2.md` → "Interview audio".
 - **Backfill:** `node script/backfillAiInterviewFullRecording.js --from
   YYYY-MM-DD [--to …] [--apply] [--tts]` (dry run by default). DEV: 9c74da01…
   built from the session file (266.7 s) on 2026-10-14; not run on UAT.

@@ -184,6 +184,29 @@ stages for reading, translation and summary, with the passage blurred for the su
   with its own `timeLimitSec` still auto-submits whatever it has when the clock ends. Runner-only, so it applies to
   already-floated papers. Gotcha: answers live in per-step state, so a reload mid-step shows an empty answer and the
   candidate must answer that question again.
+- **Interview audio holds the listening paragraph and marks every task item** (2026-10-21, DEV + UAT; PROD pending).
+  Before this, the report's "Interview audio" (the full-session recording, see `ai-interview.md` → Full Interview
+  recording) was **silent while a listening clip played**. The session recorder mixes only the mic and the
+  interviewer's Web Audio voice, and `AudioPrompt` plays the clip through a plain `<audio>` element, which never reaches
+  that mix; browser echo cancellation also strips it from the mic. Example: UAT attempt `fa1ea26d…` (Jershini): all 13
+  answer clips and the 715 s MP3 were stored, but the paragraph windows measured about −48 dB (room noise).
+  The waveform also showed only Q1, because only voice turns carried section markers.
+  - **Runner** (assessment-react-v2 DEV `29b2eff`, UAT `97893f3`): `sessionRecorder.mirrorIntoSession(element)` plays a
+    decoded copy of the clip into the recording mix only (never to the speakers), starting from the element's position
+    on its first `playing`. It stops with the element. It is best-effort: if fetch or decode fails, the clip is missing
+    from the recording as before. `createMediaElementSource` is deliberately not used. `useAiInterviewV2Session`
+    pushes a chapter `{kind: "step", interactionId: "step:<blockId>:<itemIndex>", offsetMs}` when each task item starts.
+    This needs a running session recording, which starts with the first voice segment: a task block before any voice
+    segment is neither recorded nor marked.
+  - **student-node** (DEV `c04a8aff`, UAT `5af6caa4`): `fixedStepTurns` tags each item's first turn with `chapter_id`.
+    `withRecordingStarts` (report-v2 `ai_interview_v2` branch) sets `start_s` on it from `fullRecording.offsets`,
+    drops starts that go backwards or run past the end, and strips `chapter_id`. `buildAiReadingAnswers` skips `step`
+    chapters so voice chapters still line up with interactions by position (reading analysis).
+  - **corporate-react-v2 UAT `74c5e16`:** waveform markers are numbered like "Candidate's Response" (a task item is
+    one question, titled with the task) via `transcriptItems`. DEV has no task grouping yet, so markers there follow
+    the transcript rows.
+  - Attempts taken before this deploy cannot be fixed: the paragraph's play time was never recorded. Their paragraph
+    and each answer clip still play from the per-question players.
 - **Voice activities run hands-free, like a voice turn** (2026-10-19, DEV 167c8ff / UAT e38fd0a; PROD pending). In a
   task block with `rowType: "voice"` (Read → Translate → Summary, listening + questions, scenarios):
   - every spoken answer — a `VoiceAnswer`/`VideoAnswer` step or a per-question `voice` question
