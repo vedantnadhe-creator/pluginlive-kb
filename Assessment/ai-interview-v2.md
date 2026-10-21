@@ -193,18 +193,30 @@ stages for reading, translation and summary, with the passage blurred for the su
   The waveform also showed only Q1, because only voice turns carried section markers.
   - **Runner** (assessment-react-v2 DEV `29b2eff`, UAT `97893f3`): `sessionRecorder.mirrorIntoSession(element)` plays a
     decoded copy of the clip into the recording mix only (never to the speakers), starting from the element's position
-    on its first `playing`. It stops with the element. It is best-effort: if fetch or decode fails, the clip is missing
-    from the recording as before. `createMediaElementSource` is deliberately not used. `useAiInterviewV2Session`
-    pushes a chapter `{kind: "step", interactionId: "step:<blockId>:<itemIndex>", offsetMs}` when each task item starts.
-    This needs a running session recording, which starts with the first voice segment: a task block before any voice
-    segment is neither recorded nor marked.
+    on its first `playing`. It stops with the element. The clip is fetched and decoded when its `AudioPrompt` mounts
+    (`preloadSessionClip`, one decoded clip cached at a time, cleared on teardown), so the copy starts with the
+    element and the recording keeps the clip's opening seconds. It is best-effort: if fetch or decode fails, the clip
+    is missing from the recording as before. `createMediaElementSource` is deliberately not used.
+    `useAiInterviewV2Session` pushes a chapter `{kind: "step", interactionId: "step:<blockId>:<itemIndex>", offsetMs}`
+    when each task item starts.
+  - **The session recording starts when the interview loads** (DEV `5405b85`, UAT `466a41d`), before the opening note,
+    from `useAiInterviewV2Session` on the page's shared camera/mic stream — not when the first voice segment mounts
+    (whose `startSessionRecording` is now a no-op). Task-only interviews and interviews that open with a task are
+    recorded whole. While no voice panel is mounted the hook ships a partial every `SESSION_AUDIO_FLUSH_MS` and the
+    tail on `pagehide`; it stands down while a panel is mounted (the panel does it) and once `finish` claims the
+    final cut. Without a shared stream it falls back to the old behaviour (recording from the first voice segment).
   - **student-node** (DEV `c04a8aff`, UAT `5af6caa4`): `fixedStepTurns` tags each item's first turn with `chapter_id`.
     `withRecordingStarts` (report-v2 `ai_interview_v2` branch) sets `start_s` on it from `fullRecording.offsets`,
-    drops starts that go backwards or run past the end, and strips `chapter_id`. `buildAiReadingAnswers` skips `step`
+    drops starts outside the file, and strips `chapter_id`. Starts are **not** required to ascend (DEV `8f77d1ca`, UAT
+    `b61663d6`): the transcript lists voice turns before tasks, so a task that ran first has an earlier start. `buildAiReadingAnswers` skips `step`
     chapters so voice chapters still line up with interactions by position (reading analysis).
+  - **Full recording build** (`AIInterviewFullRecording.build`, same commits): a completed session with **no live
+    interactions** (task-only v2) is built from its session-audio upload; it is skipped (`"nothing recorded"`) only when
+    there is neither an upload nor an interaction.
   - **corporate-react-v2 UAT `74c5e16`:** waveform markers are numbered like "Candidate's Response" (a task item is
     one question, titled with the task) via `transcriptItems`. DEV has no task grouping yet, so markers there follow
-    the transcript rows.
+    the transcript rows. Both sort markers by `start` (DEV `700cdb3`, UAT `8258939`): `MatteScrubSlider` finds the active
+    section with `findLastIndex(start <= now)`, which needs ascending markers.
   - Attempts taken before this deploy cannot be fixed: the paragraph's play time was never recorded. Their paragraph
     and each answer clip still play from the per-question players.
 - **Voice activities run hands-free, like a voice turn** (2026-10-19, DEV 167c8ff / UAT e38fd0a; PROD pending). In a
