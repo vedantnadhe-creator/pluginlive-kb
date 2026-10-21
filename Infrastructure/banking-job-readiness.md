@@ -3402,3 +3402,46 @@ AQM - Full Stack Developer (Tech), AQM - Retail Banking (Domain)); `user_module_
 **Verification:** as trainer Mahalakshmi Prakash in a rolled-back transaction — insert without `granted_by` → the RLS
 error; with it → accepted. Served chunk `TrainerModuleCatalog-*.js` contains `granted_by`; journeytabs 6/6, admin crawl
 43/43; `tsc` 0 errors. Snapshot `~/banking-sb/snapshots/20261021T051722Z`.
+
+## 2026-10-21 — UAT `7cd1d8ac`: `feature/ffmpeg-long-form-render` merged into main (25 commits, 9 migrations)
+
+Merged by us on request (GitHub main `12371cef` + branch `11559c7f` → merge `7cd1d8ac`). Conflicts: `src/App.tsx`,
+`src/pages/TrainerJourney.tsx` (kept main's `lazyWithRetry` on every route + branch route keys `admin`/`admin-journey`
+and its new `ModulesAndVideos` import) and `supabase/functions/ai-video-suggest/index.ts` (kept main's checker/rescue
+prompts + branch `moduleDescription` param). Pre-push: vite build OK, 44/44 tests in 7 key suites.
+`subscription/validity-v1` was NOT merged (582 commits behind main; needs a rebase first).
+
+**What the release adds:** long-form video render jobs (`topic_video_render_jobs`; FFmpeg worker via
+`VIDEO_RENDER_WORKER_URL/TOKEN` — **not configured on UAT**, so long-form assembly stays off), YouTube discovery
+operations (quota/day + cache + bulk jobs, `manage-youtube-discovery-settings`, `video-bulk-jobs`), YouTube OAuth
+caption import (`youtube-oauth-start/-callback`, `youtube-caption-import` — **no OAuth client on UAT**; status call
+returns 503 "not configured", the settings card shows not connected; `youtube-oauth-callback` is `verify_jwt=false`
+upstream but stays blocked by the UAT gateway allowlist until OAuth is configured), curriculum-grounded topic
+generation, scoped trainer curriculum assessments + attempts, spreadsheet module resources (xls/xlsx/csv),
+`job_roles.competencies`, tenant-scoped `public_payment_instructions` (learners read active global/own-institute
+rows; admin-only writes).
+
+**Access model change (`20261020120000_trainer_module_content_scope`):** `admin_modules`, `topics`,
+`admin_module_topics`, `module_questions`, `module_resources(_chunks)`, `topic_videos`, `admin_section_content` and the
+`module-resources` storage bucket now use `can_manage_module_content` (admin/taxonomy_editor, or trainer/teacher with
+`trainer_can_access_module`/`trainer_can_access_admin_module`) and `module_content_visible_to` (adds learner access via
+`private.user_can_access_module` on the module id or the admin module's source module). **Non-admin trainers now see
+only modules they manage** (UAT sample trainer: admin_modules 71→63, topics 851→630, admin_module_topics 597→544).
+Candidate visibility unchanged in the sample (direct module_id path kept upstream). The 10-17 UAT fixup on the
+`admin_module_topics` read policy is superseded. Old open `USING (true)` policies on `curriculum_assessments` removed.
+
+**UAT fixup:** `20261020120000` — `module_resources`/`module_resource_chunks`/`topic_videos.module_id` are TEXT on UAT →
+wrapped in new `private.uuid_or_null(text)`; `admin_section_content.module_id` is UUID on UAT while section helpers take
+text → `module_id::text`. Upstream verbatim failed with `function can_manage_module_content(uuid, text) does not exist`.
+The two in-place edits to applied migrations (10-14, 10-15) only add uuid/text casts UAT already had via fixups.
+
+**Performance regression (open):** per-row RLS helpers are slower. Candidate Modules tab: `topics?select=*` 3.6 s,
+`admin_module_topics?select=*` 2.5 s (was ~1.2 s for topic RLS on 10-08). Rehearsal sample (count of 4 content tables):
+candidate 1.7 s → 4.9 s, trainer 0.24 s → 6.5 s. A full per-user rehearsal over 89 candidates + trainers did not finish
+in 10 min and was cancelled (it holds DDL locks — **cap rehearsal statements with `statement_timeout`**).
+
+**Verification:** live role probes (anon reads 0 on all new tables, no anon EXECUTE on new helpers, candidate cannot
+write admin_modules/topics/curriculum_assessments/payment instructions, trainer cannot update unmanaged modules or
+payment rows); journeytabs 6/6, admin login 5/5, swotadmin, admin crawl 42/43 (only the expected OAuth-status 503),
+Coding Challenges, Save Module, Tier search, candidate/trainer/admin homes. DB-Scripts `20261021T13000{1..9}Z__banking_*`.
+Snapshot `~/banking-sb/snapshots/20261021T125057Z`. Scripts: `~/banking-checks/dryrun_20261021.sh`, `timing_20261021.sh`.
