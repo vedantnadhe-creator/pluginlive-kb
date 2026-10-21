@@ -19,8 +19,8 @@ with one combined score and one report.
 
 ## Float (creation)
 
-1. **Wizard** (corporate-react-v2 wizard `0.1.2-bugfix.19` DEV / `0.1.2-bugfix.19-uat` UAT; admin-react-v2 wizard
-   `0.1.16-custom.10` DEV / `0.1.12-custom.8` UAT). Role, skills, JD, evaluation parameters (Communication fixed 20%),
+1. **Wizard** (corporate-react-v2 wizard `0.1.2-bugfix.21` DEV / `0.1.2-bugfix.21-uat` UAT; admin-react-v2 wizard
+   `0.1.16-custom.12` DEV / `0.1.12-custom.9` UAT). Role, skills, JD, evaluation parameters (Communication fixed 20%),
    languages, voice, and the Interview Flow rows. **The question-type dropdown no longer offers Reading task or
    Listening task** (removed 2026-10-14/15 in both wizards, `FLOW_TYPE_OPTIONS` in
    `assessmentWizardConfigOptions.ts`). The `reading` / `listening` types, placeholders and payload mapping are kept,
@@ -29,6 +29,11 @@ with one combined score and one report.
    `InterviewFlowTable.tsx`, 2026-10-15) — before that it rendered as "Select question type" and Enter re-typed it to
    Subjective. Reading / Listening / Custom
    rows **require instructions** (they describe the task). Single/multiple choice rows may carry hand-written questions. Count blank = "Auto".
+   **Interview Flow → Next re-suggests the Evaluation Parameters** from everything written in the flow (every row's
+   instructions + every hand-written choice question with its options, `lib/interviewFlowContext.ts`), sent as
+   `interviewInstructions` to `suggest-parameters` (BFF → admin-node → fastapi `interview_instructions`). Bank headings
+   come back first as the parameters, under the recruiter's names. Skipped when the flow text is unchanged or the
+   recruiter already edited the suggested parameters; a failure keeps the earlier suggestion. See *Question banks*.
 2. **Float route** sends `assessmentType: "AI_Interview_v2"` with `interviewConfig.flow`.
 3. **admin-node** `AIInterviewV2AssignmentService` only **validates** the flow and registers the Role Based async
    job — the float returns at once (~0.7 s); the creator is told invites follow paper generation. An omitted
@@ -44,7 +49,12 @@ with one combined score and one report.
    failure. Jobs queued before this change carry their plan on `spec.payload.skeleton`.
 4. **Paper generation** (assignment worker, set generator `ai-interview-v2-generate`): Role Based questions for
    subjective / single choice / coding rows, fastapi `POST /ai-interview-v2/generate-slots` for task content
-   (passages, TTS audio, questions), authored questions as written. Every **answering step of a task gets its own
+   (passages, TTS audio, questions), authored questions as written — **an incomplete hand-written choice question
+   (fewer than 2 options or no answer marked) is completed, not refused**: the float only requires its text; at build
+   fastapi `POST /ai-interview-v2/complete-choices` adds options after the recruiter's (to 4) and picks the answer.
+   Recruiter text, options and marked answers are kept (enforced in code; on multiple choice an added option the model
+   marks correct is added to the answer). Once per cohort (in-process cache); a 422 fails the paper. Blank builder
+   options are dropped. The planner also gets each row's hand-written questions inside its `instructions`. Every **answering step of a task gets its own
    answer row** (`content[block].items[n]["@answer:<phaseId>"]`), so a task may have any number of steps.
 5. Candidates are assigned and invited when the paper exists.
 
@@ -156,6 +166,40 @@ Release verification: 120 focused checks passed against the UAT code. The candid
 with UAT configuration, with no DEV URLs in its static bundle or browser script errors in the public-page
 smoke check. A live UAT skeleton request preserved the Introduction and produced three recorded-answer
 stages for reading, translation and summary, with the passage blurred for the summary.
+
+### Question banks in Voice response rows (DEV + UAT 2026-10-21; PROD pending)
+
+A Voice response row (not the Introduction) whose instructions are a **question bank** — questions, customer lines and
+listening scenarios, usually under headings that name what they test — stays a **live conversation** asked from the
+bank, exactly like AI Interview (v1) recruiter questions. Instructions that describe an activity still become a
+recorded activity (above); a row without instructions keeps the fully generated conversation.
+
+- **Detection** (fastapi `QuestionGeneration/AIInterviewV2/question_bank.py`, skeleton time, task
+  `pl/interview-skeleton`): ≥3 non-blank lines → one model call splits the text into items `{section, kind:
+  question | customer_line | scenario, …}`. Every item must be ≥80% the recruiter's own words or it is dropped; <3
+  items = not a bank. A failed extraction fails the plan (never silently planned as an activity). Customer lines are
+  stored as `A customer says: "…" How will you respond?`. A scenario keeps `narration` (the customer's words) and
+  `recall` (its questions). The voice block carries `bank`; `candidateBlock` strips it from the candidate app.
+- **Count**: the recruiter's row count; Auto = 8 (AI Interview's default), split across parameters by weight. v2
+  follows row counts past v1's 15-question cap (up to 50).
+- **Mapping**: admin-node writes the bank questions to `ai_interview_config.sample_questions` and now runs the v1
+  question→parameter map (`refreshQuestionParameterMap`) **in the set job, before invites** (v2 never mapped at
+  creation before). `map-questions` gets each question's heading (`sections`); a heading that matches a parameter
+  name maps like a recruiter label (`source: "label"`), the rest go to the model with the heading as a hint. Papers
+  of a cohort reuse the computed map (in-process, by fingerprint). Communication & Language still owns no question
+  (scored from the whole interview), so questions under that heading map to the closest role parameter.
+- **Asking**: the unchanged v1 planner (tiers, per-interview shuffle, twins, max 2 probes, max 2 language drills,
+  live generation once the bank is used). New: **one listening scenario per interview**, served via
+  `must_ask_narration` — the interviewer says "Let me play a customer. Please listen carefully.", reads the
+  customer's words verbatim, then asks the recall questions in one request (English turns that retell the words are
+  rebuilt in code; non-English turns keep the customer's words as written). Never probed, and no probe after it.
+- Several bank rows pool into one interview-wide plan (v1 behaviour), so a row-2 question can be asked during row 1.
+
+Commits — DEV: fastapi `186c447` `971663a`, admin-node `ede1b51` `ab03381`, student-node `cf7c2c08`,
+corporate-react-v2 `3841d62` `f919b19`, admin-react-v2 `f4e722f` `17245c3`. UAT: fastapi `54532d4`, admin-node
+`66639cd`, student-node `66e983d3`, corporate-react-v2 `b462e01`, admin-react-v2 `07597ab`. Wizard source branches
+(design-system, local only): `feat/aiv2-bank-parameters-0.1.2` (d164500), `feat/aiv2-bank-parameters-0.1.16`
+(f4a779f), `uat/aiv2-bank-parameters` (d11e7d7), `uat/aiv2-bank-parameters-admin` (c91c36e).
 
 ## Candidate (assessment-react-v2 `/assessment/take`)
 - One `start` creates the voice session (re-used on reload / later voice blocks); the runner walks the skeleton block
