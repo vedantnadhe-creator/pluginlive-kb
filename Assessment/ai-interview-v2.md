@@ -207,6 +207,23 @@ stages for reading, translation and summary, with the passage blurred for the su
 - Finishing completes the session (`complete`) and lands on the done screen; a reload submits the attempt from the
   guard screen and completes the session directly.
 
+### Question count: a task is one question (UAT 2026-10-21; DEV + PROD pending)
+The candidate intro ("YOUR ASSESSMENT · N questions") and the corp Manage panel ("Question types … Total") use the same
+rule. student-node `MixMatchJourney.getSummary` counts an AI_Interview_v2 part with `candidateQuestionCount(skeleton)`
+(helpers/aiInterviewV2.js), reading `stage_config.aiInterviewV2.skeleton`:
+- `voice_interview` block → its `questionCount`
+- `questions` block → the sum of its `questions` refs' `questionCount` (× `repeat`)
+- `task` block → **1 per `repeat`**, however many steps it has (listen → recall ×6, read → translate → summarise)
+
+Before this, it counted `COUNT(DISTINCT assessment_question_map.question_id) + max_questions`. That counted every
+task sub-question **and the task's stimulus rows** (the audio script / passage are stored as question rows). Example:
+UAT corp assessment 270ff468 ("check that data in the mw"): Manage panel showed 8, candidate showed 17 (now 8). Checked
+against all 44 UAT papers: matches the creator's flow total on 43. The other one has a task row with count "AI decides";
+the Manage panel leaves it out of the total, while the candidate count includes it as 1.
+Papers without a skeleton keep the old SQL count.
+**Not changed:** the in-test header "Question N of M" (assessment-react-v2 `lib/aiInterviewV2/flow.ts` `questionProgress`)
+still counts every answering step (15 for 270ff468).
+
 ## Scoring (student-node `models/AIInterviewV2.js`)
 Voice turns by the AI Interview scorer; Role Based questions by the Role Based pipeline; choices computed
 (`choiceScore`: single = 100/0; multiple = **0 if any wrong option is picked** — so ticking every option never earns
@@ -243,6 +260,11 @@ corporate-node `f9576df2` / UAT `9cbd84cb`. No DB migration or frontend change i
 Type `AI Interview v2`, the AI Interview report shape. Fixed steps follow the voice turns; each task step carries
 `answer_mode` (`recorded` → transcript + its own clip, `written`, `code` → code) and task kind (`reading`, `listening`,
 `custom` shown as "Task").
+Every step of one task item carries `task_id` (`<blockId>:<itemIndex>`) and `task_title`. The corp drawer's
+"Candidate's Response" (`TranscriptPanel` + `_lib/transcriptItems.ts`) shows a task as **one numbered question**:
+the passage or clip once, then Step 1…N, each with its answer. Turns without `task_id` (older reports) render one
+per question as before. UAT 2026-10-21 (student-node cdcbfe3b, corporate-react-v2 5955c31); DEV + PROD pending.
+Institute v2 is unchanged (it has the older plain AI Interview transcript).
 
 ### Speech measurements
 
@@ -290,8 +312,9 @@ only (nothing marked Correct or red); the corp drawer reads a missing `correct` 
 (all assessment types) is still open — callers include admin/institute/student/assessment React apps directly.
 
 **PDF counts cover every step.** "Questions answered: N of M" and the not-completed banner add the fixed steps to the
-voice session counters (`combinedAnswerTotals`: each fixed step = one expected question; if the voice expected count
-is unknown the total stays unknown). A fixed-only attempt no longer reads 0, and the "No answers were captured" reason
+voice session counters (`combinedAnswerTotals`: each fixed question = one expected question, and the steps of one
+task (same `taskId`) count as one, answered once any step is (UAT 2026-10-21); if the voice expected count is unknown,
+the total stays unknown). The PDF transcript still lists task steps one by one. A fixed-only attempt no longer reads 0, and the "No answers were captured" reason
 is replaced when fixed steps were answered. A recorded step whose clip was stored but has no transcript carries
 `recording_submitted: true` (also in `reportV2`) and prints "Recorded response submitted; transcript unavailable."
 instead of "No answer given". Commits: DEV c4838165, UAT dc7f8a55 (2026-10-15).
