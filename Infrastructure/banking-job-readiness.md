@@ -3384,3 +3384,21 @@ UAT advanced `a48ed9d8` → `6f17f057` (8 Lovable commits). No migrations, funct
 
 **Verification:** journeytabs 6/6, admin login 5/5, swotadmin, admin crawl 43/43, Coding Challenges, Save Module,
 Tier search, candidate/trainer/admin homes — zero page/API errors. Snapshot `~/banking-sb/snapshots/20261020T164405Z`.
+
+## 2026-10-21 — UAT `12371cef`: trainer "Assign module" (Module Builder) blocked by RLS
+
+UAT advanced `6f17f057` → `12371cef` (frontend only; no migrations, functions unchanged). Trainer Portal → Module
+Builder → **Assign to students → Assign module** failed for every trainer with *"new row violates row-level security
+policy for table user_module_access"*. `TrainerModuleCatalog.assignModule` inserted `{user_id, module_id}` without
+`granted_by` (NOT NULL, no default); the only trainer write policy, **"Staff manage mapped student access"**, requires
+`granted_by = auth.uid()` and `private.staff_can_manage_student(auth.uid(), user_id)`. Rows now carry
+`granted_by: user.id` (session-expired guard added). Admin mapping screens already set it.
+
+Notes: students without a sign-in account (`students.user_id` null, shown as "no login yet") are skipped by design.
+Of the 71 `admin_modules`, 4 have no same-id row in `modules` (AUTOMOBILE INSURANCE, Banking app testing,
+AQM - Full Stack Developer (Tech), AQM - Retail Banking (Domain)); `user_module_access.module_id` references
+`modules(id)`, so direct per-student assignment of those 4 would fail on the FK until they are mirrored.
+
+**Verification:** as trainer Mahalakshmi Prakash in a rolled-back transaction — insert without `granted_by` → the RLS
+error; with it → accepted. Served chunk `TrainerModuleCatalog-*.js` contains `granted_by`; journeytabs 6/6, admin crawl
+43/43; `tsc` 0 errors. Snapshot `~/banking-sb/snapshots/20261021T051722Z`.
