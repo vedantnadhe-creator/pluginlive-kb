@@ -3584,3 +3584,20 @@ Remaining failure mode: the model truncates a topic on both attempts → 422 "AI
 content response"; clicking Generate again usually works. Thin sources (e.g. Credit Card, 52 chars, no uploads) still
 yield <3 topics → add a real description or upload curriculum. Probe: `node ~/banking-checks/topicsgen.cjs <id> "<desc>" "<title>"`.
 `llmFallbackCoverage` has 1 pre-existing failure on main (expects an older prompt phrase).
+
+## 2026-10-22 (late) — UAT `8a915934`: ffmpeg round 5 merged; topic generation now 3/3
+
+`45377ff7` merges branch `4d50d7b9` (module generation + OAuth setup diagnostics): shared
+`_shared/module-content-quality.ts` `checkRichLearningContent` replaces ai-content's local case-study check (accepts any
+`##`–`######` heading, with or without the "Case Study" prefix, exactly one of each required type); we carried the "&"→"and"
+tolerance into it. Provider failures now return per-provider diagnostics (`summarizeProviderFailures`); LLM Settings and
+YouTube Discovery settings show OAuth setup diagnostics, and `youtube-oauth-start` no longer 503s the admin LLM page
+(admin crawl 43/43 again). Kept from main: 150 s ai-content deadline, retry-once, heading + title prompt rules.
+
+`8a915934`: after the merge 4/4 attempts failed "three to eight topics" — the Life Insurance source has 10 numbered sections and
+the model returned >8. The `topics` tool schema now has `minItems: 3, maxItems: 8` and the prompt says to merge related sections
+when the source lists more than 8. **Result: 3/3 Life Insurance runs succeed in ~68 s, first attempt, no retries.**
+
+**Verification:** topicsgen 3/3; journeytabs 6/6, admin login 5/5, assesslist ✓, swotadmin ✓, admin crawl **43/43**, Coding
+Challenges, Save Module, Tier search. 31/31 tests in the touched suites (incl. `llmFallbackCoverage`, fixed on the branch).
+Snapshot `~/banking-sb/snapshots/20261022T152444Z`.
