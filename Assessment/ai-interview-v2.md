@@ -217,12 +217,27 @@ recorded activity (above); a row without instructions keeps the fully generated 
   them labelled Communication without using any role parameter's allowance, never probes them, and Communication is
   still scored from the whole interview (zero per-question weight).
 - **Asking**: the unchanged v1 planner (tiers, per-interview shuffle, twins, max 2 probes, max 2 language drills,
-  live generation once the bank is used). New: **one listening scenario per interview**, served via
-  `must_ask_narration` — the interviewer says "Let me play a customer. Please listen carefully.", reads the
-  customer's words verbatim, then asks the recall questions in one request (a scenario-length override is the last
-  prompt rule, so it beats the Hinglish "<25 words" reminder; in **every language** the numbers and mid-sentence
-  capitalised names of the scenario must appear in both `question` and `speech_text`, else the turn is rebuilt by the
-  English fallback; English also keeps its 85% word check). Never probed, and no probe after it.
+  live generation once the bank is used).
+- **Listening scenarios → their own listen → answer task (DEV + UAT 2026-10-22; PROD pending).** Planning
+  (`listening_scenarios.split_scenarios`, called from `assemble_skeleton`) moves a bank's scenarios out of the voice
+  block into a **derived task block** right after it: `id "<voice id>-listening"`, same `rowId`, `derivedFrom`,
+  `rowType "voice"` (so the candidate app runs it hands-free like the Meesho listen → recall activities), `repeat 1`,
+  `scenarios: [{narration, recall}]`. Screen 1 = `AudioPlayer` (plays once) + **Proceed to Questions** after
+  `audio.ended`; screen 2 = each recall question on its own (`perQuestion`, voice, 60 s). Scored `per_question` on the
+  parameter the scenarios' heading names (else a parameter named *listen…*, else the voice row's); that parameter is
+  **removed from the voice block's scoring**, so the interviewer never plans listening questions itself, and the voice
+  block's `questionCount` drops by 1. The validator's one-block-per-row and row-count checks skip `derivedFrom` blocks.
+  Paper writing (`slot_content.scenario_content`) picks the set's scenario (set *n* → scenario *n*, cycling) and in
+  **one** `pl/interview-slot` call adds: a frame line ("You are a customer-care executive at <brand>…" — the product's
+  brand, never the shop), any fact a recall question needs that the customer never says (≤40 new words), and an
+  expected answer per question. Code checks: every recruiter sentence kept word for word, and no number or name in a
+  factual answer that the call does not say; 2 attempts, then the recruiter's words with a generic frame and **no**
+  answer key. Clip = frame + customer's words (TTS once per set, as for any task audio); the questions are stored with
+  the answer as `explanation`, which student-node now sends to the scorer as `reference`. `candidateBlock` strips
+  `scenarios`. Only **new papers** get the task — configs planned before this keep the old in-conversation scenario turn
+  (`must_ask_narration`, still served by student-node/fastapi for them); re-float to switch.
+  Commits — DEV: fastapi `172e542`, student-node `45d9264f` (DEV built from git archive). UAT: fastapi `6651fd0`
+  (overlay on `9323a64`), student-node `253435dc`.
 - Several bank rows pool into one interview-wide plan (v1 behaviour), so a row-2 question can be asked during row 1.
 
 Commits — DEV: fastapi `186c447` `971663a`, admin-node `ede1b51` `ab03381`, student-node `cf7c2c08`,
