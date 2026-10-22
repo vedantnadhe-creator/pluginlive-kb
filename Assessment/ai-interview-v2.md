@@ -448,7 +448,7 @@ the passage or clip once, then Step 1…N, each with its answer. Turns without `
 per question as before. UAT 2026-10-21 (student-node cdcbfe3b, corporate-react-v2 5955c31); DEV + PROD pending.
 Institute v2 is unchanged (it has the older plain AI Interview transcript).
 
-**Every recorded answer has its own audio; each parameter lists its questions** (2026-10-22, DEV + UAT; PROD pending).
+**Every recorded answer has its own audio; each parameter lists its questions** (2026-10-22, UAT; DEV follow-up pending; PROD pending).
 - **Bug fixed:** the answers to a listening clip's questions (a `perQuestion` phase, task kind `custom`/`listening`)
   came back with `recording_submitted: true` but **no `media_href`**. `recordedTaskAnswers` only covered a task
   phase's own `VoiceAnswer`/`VideoAnswer`, so `reportTurns` never signed them. It now also returns every question
@@ -456,18 +456,32 @@ Institute v2 is unchanged (it has the older plain AI Interview transcript).
   per-question branch of `fixedStepTurns` sets `media_href`. Example: UAT `3675cc56…` showed 7 listening answers
   without audio; after the deploy, all 13 turns have audio.
 - **Full Interview recording fallback:** when the browser's session upload is missing, `AIInterviewFullRecording`
-  rebuilds from turns (`source: "turns"`). That rebuild now appends each v2 task item after the voice turns: its clip
-  (`signInterviewV2Audio`), then its recorded answers 0.7 s apart, chaptered `step:<blockId>:<itemIndex>`. The helper
-  is `aiInterviewV2.recordingTaskItems(paper)`. Task-only papers are built from task audio too. Session-upload
-  recordings (all 55 completed UAT v2 sessions in the last 30 days) already contain the clip and the answers.
-  Checked on `3675cc56…`: the clip sits at 161.3 s of the 247.8 s file.
+  rebuilds from turns (`source: "turns"`). The rebuild follows the **paper's block order**: voice turns and v2 task
+  items interleave as asked. Each task item contributes the interviewer's instructions, its clip
+  (`signInterviewV2Audio`), a voice task's spoken questions, then the recorded answers 0.7 s apart, chaptered
+  `step:<blockId>:<itemIndex>`. A listening clip with no answers stays in. The helper is
+  `aiInterviewV2.recordingTaskItems(paper)`; task-only papers are built from task audio too. Decodes and TTS run at
+  most 3 at a time (`mapLimit`). Session-upload recordings (all 55 completed UAT v2 sessions in the last 30 days)
+  already contain the clip and the answers. Checked on `3675cc56…`: the clip sits at 161.3 s of the 247.8 s file.
+- **Rebuilt-file versioning:** a turns build stores `buildVersion` (`TURNS_BUILD_VERSION`, now 2),
+  `sourcesFingerprint` (the answer files it was cut from) and `sourceQuestionIds` (its task answers). Opening the
+  report (`_signFullRecording`) queues a rebuild, which skips cheaply when version and fingerprint match. So older or
+  out-of-date builds upgrade lazily, with no backfill. Checked on UAT `b22d7d54…` (built 10-16, no version) →
+  rebuilt to v2 on the first report open; the second open skipped.
+- **Retention:** report task-answer links are not signed once the answer row has `purged_at` (the S3 object
+  outlives `purged_at` by a grace period). A turns recording is not served if any of its `sourceQuestionIds` answers
+  is purged (builds older than `sourceQuestionIds` are judged by every answer of the attempt). `purgeExpiredAssetsCron`
+  retires a rebuilt file along with its task answers.
 - **corporate-react-v2:** every Parameter scoring card has a closed-by-default "N questions scored for this
-  parameter" list (`_lib/parameterTurns.ts`): question, the answer's own `AudioPlayer` beside its transcript, and the
-  step score (`outcome`); a listening clip shows once at the top. Turns match by `parameters[].name` (task steps) or
-  `dimension` (voice turns). A parameter with speech metrics (Communication) that nothing names lists every spoken
-  answer. "Candidate's Response" is unchanged.
-- Commits: student-node DEV `0f6c968e` / UAT `e66d8ea6`; corporate-react-v2 DEV `e1546bf` / UAT `f26ce62`.
-  Deploy student-node before the FE (the FE list still works without `media_href`; it just has no player).
+  parameter" list (`_lib/parameterTurns.ts`): question, the answer's own `AudioPlayer` beside its transcript, and
+  **that answer's own score** for the parameter (not the parameter total). Turns match by **parameter id**
+  (`parameters[].id` from report rows; voice turns carry `parameterId` → `transcript[].parameters[].id`), so renamed
+  or duplicate names don't misattribute. A listening clip shows once at the top. A parameter with speech metrics
+  (Communication) that nothing names lists every spoken answer. "Candidate's Response" is unchanged.
+- Commits: student-node DEV `0f6c968e` + `91e1104e` / UAT `e66d8ea6` + `5a22161d`; corporate-react-v2 DEV
+  `e1546bf` + `d0e0a7d` / UAT `f26ce62` + `85b41af`. Deploy student-node before the FE (the FE list still works
+  without `media_href`; it just has no player). UAT live 2026-10-22; the DEV follow-up (`91e1104e`/`d0e0a7d`) is
+  pushed but not yet running on DEV.
 
 ### Speech measurements
 
