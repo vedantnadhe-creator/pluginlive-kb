@@ -448,6 +448,27 @@ the passage or clip once, then Step 1…N, each with its answer. Turns without `
 per question as before. UAT 2026-10-21 (student-node cdcbfe3b, corporate-react-v2 5955c31); DEV + PROD pending.
 Institute v2 is unchanged (it has the older plain AI Interview transcript).
 
+**Every recorded answer has its own audio; each parameter lists its questions** (2026-10-22, DEV + UAT; PROD pending).
+- **Bug fixed:** the answers to a listening clip's questions (a `perQuestion` phase, task kind `custom`/`listening`)
+  came back with `recording_submitted: true` but **no `media_href`**. `recordedTaskAnswers` only covered a task
+  phase's own `VoiceAnswer`/`VideoAnswer`, so `reportTurns` never signed them. It now also returns every question
+  of a per-question phase in any non-voice block (signed only when the answer row has an `object_key`), and the
+  per-question branch of `fixedStepTurns` sets `media_href`. Example: UAT `3675cc56…` showed 7 listening answers
+  without audio; after the deploy, all 13 turns have audio.
+- **Full Interview recording fallback:** when the browser's session upload is missing, `AIInterviewFullRecording`
+  rebuilds from turns (`source: "turns"`). That rebuild now appends each v2 task item after the voice turns: its clip
+  (`signInterviewV2Audio`), then its recorded answers 0.7 s apart, chaptered `step:<blockId>:<itemIndex>`. The helper
+  is `aiInterviewV2.recordingTaskItems(paper)`. Task-only papers are built from task audio too. Session-upload
+  recordings (all 55 completed UAT v2 sessions in the last 30 days) already contain the clip and the answers.
+  Checked on `3675cc56…`: the clip sits at 161.3 s of the 247.8 s file.
+- **corporate-react-v2:** every Parameter scoring card has a closed-by-default "N questions scored for this
+  parameter" list (`_lib/parameterTurns.ts`): question, the answer's own `AudioPlayer` beside its transcript, and the
+  step score (`outcome`); a listening clip shows once at the top. Turns match by `parameters[].name` (task steps) or
+  `dimension` (voice turns). A parameter with speech metrics (Communication) that nothing names lists every spoken
+  answer. "Candidate's Response" is unchanged.
+- Commits: student-node DEV `0f6c968e` / UAT `e66d8ea6`; corporate-react-v2 DEV `e1546bf` / UAT `f26ce62`.
+  Deploy student-node before the FE (the FE list still works without `media_href`; it just has no player).
+
 ### Speech measurements
 
 **DEV + UAT, 2026-10-16; PROD pending.** Speech measurements cover conversational answers and
