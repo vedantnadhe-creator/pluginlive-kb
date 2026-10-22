@@ -3563,3 +3563,24 @@ status success) after the function had already aborted at 45 s.
 - **Not a bug:** modules with a very thin source (e.g. Credit Card, 52-char description, no uploads) make the grounded prompt
   return fewer than 3 topics → 422 "empty or unrecognized content response". Add a real description or upload curriculum.
 - Probe: `node ~/banking-checks/topicsgen.cjs <moduleId> "<description>" "<title>"` (read-only).
+
+## 2026-10-22 (night, later) — UAT `a61c7014`: Admin "Generate Topics with AI" now completes (4 fixes)
+
+Pushed to main and deployed, verified on the Life Insurance module (`modules` b898449f…, 4,821-char source):
+1. **Routing (config):** `llm_provider_configs` row `litellm` / `application_feature='ai-content'` / `gemini-2.5-flash` /
+   priority 1 → ai-content goes through the central LiteLLM gateway first (gemini-3.8-flash tried: no better, 149 s — reverted).
+2. **`373d1441` per-feature provider deadline:** `providerTimeoutMs("ai-content")` = 150 s (default 45 s unchanged). A
+   grounded 3-8 topic set is ~18k completion tokens = 60-90 s; the old 45 s aborted successful gateway calls.
+3. **`bf08e20f` case-study headings:** the validator (`ensureRichContent`) requires `### Case Study 1: Foundation`,
+   `### Case Study 2: Workplace Application`, `### Case Study 3: Exception and Risk` but no prompt said so → prompts and
+   tool schema now state the exact headings; label check accepts "&".
+4. **`ae5bd9d8` retry once:** a rejected response (model truncates one topic's content mid-sentence — observed 579 words,
+   one case study) is retried once while < 140 s elapsed, so two calls fit the 300 s worker. 502/503 still return at once.
+5. **`a61c7014` title rule:** `checkGeneratedModuleTopics` rejects the whole set unless every title has >60% (and ≥2) of its
+   words verbatim in the source; the prompt only said "specific" → prompt + schema now state the rule.
+
+**Result:** 0/5 → 2/3 successful runs; successful runs take 160-200 s when the retry is needed (UI spinner the whole time).
+Remaining failure mode: the model truncates a topic on both attempts → 422 "AI provider returned an empty or unrecognized
+content response"; clicking Generate again usually works. Thin sources (e.g. Credit Card, 52 chars, no uploads) still
+yield <3 topics → add a real description or upload curriculum. Probe: `node ~/banking-checks/topicsgen.cjs <id> "<desc>" "<title>"`.
+`llmFallbackCoverage` has 1 pre-existing failure on main (expects an older prompt phrase).
