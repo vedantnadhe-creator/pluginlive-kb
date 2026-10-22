@@ -3525,3 +3525,20 @@ pre-selected — the Track dropdown defaults to **All Tracks** and is an optiona
 **Verification:** new `node ~/banking-checks/assesslist.cjs` (candidate /assessments lists cards, Track = All Tracks, no
 errors); journeytabs 6/6, admin login 5/5, swotadmin, admin crawl 42/43 (expected OAuth 503), Coding Challenges, Save Module,
 Tier search, all home pages. Snapshot `~/banking-sb/snapshots/20261022T044328Z`.
+
+## 2026-10-22 (eve) — UAT `5fc5b48f`: readable labels, trainer module titles, topic video batches (ffmpeg round 4)
+
+main `62ae1d0c` (2 commits pushed by the team: readable module/student labels, module titles in trainer progress) +
+merge of `feature/ffmpeg-long-form-render` `e1d1ec50` (4 commits: trainer module topic video batches, bulk video discovery
+limited to confirmed batches, admin AI topic-generation diagnostics). Clean merge, build OK, 28/28 tests in 7 suites.
+No migrations. `video-bulk-jobs` now allows **trainers** (was admin-only) but only for modules they can access
+(`trainer can access` check per selected module → 403); anon → 401.
+
+**Open regression (upstream `62ae1d0c`):** `ActivityTimeline`, `StudentOverview`, `StudentProfilePage`,
+`LearningAnalytics` query `modules?select=id,title,source_module_id`; **`modules.source_module_id` does not exist**
+(only `admin_modules` has it; no migration adds it) → 400 on UAT, so labels for `modules`-table modules fall back to ids.
+Pages still render. Fix = select `id,title` from `modules` (or add the column via a migration if hosted relies on it).
+
+**Verification:** assesslist ✓ (All Tracks), journeytabs 5/6 (playground: the 400 above, repeatable), admin login 5/5,
+swotadmin, admin crawl 42/43 (expected OAuth 503), Coding Challenges, Save Module, Tier search, all home pages.
+Snapshot `~/banking-sb/snapshots/20261022T115213Z`.
