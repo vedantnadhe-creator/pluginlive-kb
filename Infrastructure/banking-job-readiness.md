@@ -3542,3 +3542,24 @@ Pages still render. Fix = select `id,title` from `modules` (or add the column vi
 **Verification:** assesslist ✓ (All Tracks), journeytabs 5/6 (playground: the 400 above, repeatable), admin login 5/5,
 swotadmin, admin crawl 42/43 (expected OAuth 503), Coding Challenges, Save Module, Tier search, all home pages.
 Snapshot `~/banking-sb/snapshots/20261022T115213Z`.
+
+## 2026-10-22 (night) — UAT `37ef5db4`: modules label query fixed; admin topic generation diagnosed
+
+**`37ef5db4` (deployed, pushed to main):** `ActivityTimeline`, `StudentOverview`, `StudentProfilePage`, `LearningAnalytics`
+now select `id,title` from `modules` (the column `source_module_id` exists only on `admin_modules`) → the 400 is gone;
+journeytabs 6/6 again, admin login 5/5, assessesslist ✓. Snapshot `~/banking-sb/snapshots/20261022T122751Z`.
+
+**Admin → Modules → "Generate Topics with AI" → "The configured AI providers did not return grounded content" (503).**
+`ai-content` (`type: module_topics`) tries providers in `llm_provider_configs` order with a fixed **45 s per-provider
+deadline** (`LLM_PROVIDER_TIMEOUT_MS`, `_shared/llm.ts`). On UAT: `lovable` has no key; the `litellm` (central gateway) row was
+scoped to `bulk-export-worker` only; `openai` gpt-5 and `gemini` gemini-3.6-flash time out; `nvidia`/`deepseek`/`glm` keys invalid.
+A grounded 3-8 topic answer is ~18k completion tokens: the gateway (gemini-2.5-flash) **completed it in 85 s** (spend log
+status success) after the function had already aborted at 45 s.
+- **Applied (config, live):** new `llm_provider_configs` row `provider=litellm, application_feature='ai-content', priority 1`
+  (copy of the bulk-export-worker row) → ai-content now goes through the gateway first.
+- **Prepared, NOT deployed:** `373d1441` on UAT-checkout branch `fix/ai-content-provider-timeout` — per-feature deadline
+  (`ai-content` 150 s; default 45 s; worker limit 300 s) + `src/test/llmProviderTimeout.test.ts`. Needed for long sources
+  (e.g. "Test Engineer - Product-Level Knowledge - Life Insurance", 4,821-char description).
+- **Not a bug:** modules with a very thin source (e.g. Credit Card, 52-char description, no uploads) make the grounded prompt
+  return fewer than 3 topics → 422 "empty or unrecognized content response". Add a real description or upload curriculum.
+- Probe: `node ~/banking-checks/topicsgen.cjs <moduleId> "<description>" "<title>"` (read-only).
