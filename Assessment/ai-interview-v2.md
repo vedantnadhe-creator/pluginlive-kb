@@ -225,19 +225,25 @@ recorded activity (above); a row without instructions keeps the fully generated 
   `scenarios: [{narration, recall}]`. Screen 1 = `AudioPlayer` (plays once) + **Proceed to Questions** after
   `audio.ended`; screen 2 = each recall question on its own (`perQuestion`, voice, 60 s). Scored `per_question` on the
   parameter the scenarios' heading names (else a parameter named *listen…*, else the voice row's); that parameter is
-  **removed from the voice block's scoring**, so the interviewer never plans listening questions itself, and the voice
-  block's `questionCount` drops by 1. The validator's one-block-per-row and row-count checks skip `derivedFrom` blocks.
+  **removed from the voice block's scoring**, so the interviewer never plans listening questions itself (when it was
+  the voice block's only parameter, the voice block is scored on Communication instead; with no parameter at all the
+  scenarios stay in the bank), and the voice block's `questionCount` drops by 1. The validator's one-block-per-row and row-count checks skip `derivedFrom` blocks.
   Paper writing (`slot_content.scenario_content`) picks the set's scenario (set *n* → scenario *n*, cycling) and in
   **one** `pl/interview-slot` call adds: a frame line ("You are a customer-care executive at <brand>…" — the product's
   brand, never the shop), any fact a recall question needs that the customer never says (≤40 new words), and an
-  expected answer per question. Code checks: every recruiter sentence kept word for word, and no number or name in a
-  factual answer that the call does not say; 2 attempts, then the recruiter's words with a generic frame and **no**
-  answer key. Clip = frame + customer's words (TTS once per set, as for any task audio); the questions are stored with
+  expected answer per question. Code checks: every recruiter sentence kept word for word; the frame names nothing the
+  call does not; a factual answer names no number or name the call does not say **and** uses at most a third of
+  content words the call never says (an answer about a different call is rejected). Only a modal before "you"
+  ("What will / would / should you…") marks a question as open (no fact check); "Did you hear…" is a fact.
+  **Fails closed:** 3 attempts, then `422` and admin-node's prepare-set queue retries — no paper ships the
+  recruiter's words with unanswerable questions and no key. `/generate-slots` accepts **only admin-node's service
+  token** (else 403) and refuses request scenarios beyond 1..20 scenarios, narration 3,000 chars, 1..20 recall
+  questions of ≤400 chars; one scenario per paper whatever `repeat` says. Clip = frame + customer's words (TTS once per set, as for any task audio); the questions are stored with
   the answer as `explanation`, which student-node now sends to the scorer as `reference`. `candidateBlock` strips
   `scenarios`. Only **new papers** get the task — configs planned before this keep the old in-conversation scenario turn
   (`must_ask_narration`, still served by student-node/fastapi for them); re-float to switch.
-  Commits — DEV: fastapi `172e542`, student-node `45d9264f` (DEV built from git archive). UAT: fastapi `6651fd0`
-  (overlay on `9323a64`), student-node `253435dc`.
+  Commits — DEV: fastapi `172e542` + Rivet fixes `14a1a60`, student-node `45d9264f` (DEV built from git archive).
+  UAT: fastapi `6651fd0` (overlay on `9323a64`) + `c162fff` (overlay on `f47c589`), student-node `253435dc`.
 - Several bank rows pool into one interview-wide plan (v1 behaviour), so a row-2 question can be asked during row 1.
 
 Commits — DEV: fastapi `186c447` `971663a`, admin-node `ede1b51` `ab03381`, student-node `cf7c2c08`,
