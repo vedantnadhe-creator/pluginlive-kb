@@ -3486,3 +3486,24 @@ visibility fix.
 **Verification:** journeytabs 6/6, admin login 5/5, swotadmin, admin crawl 42/43 (expected OAuth-status 503), Coding
 Challenges, Save Module, Tier search, candidate/trainer/admin homes — zero page/API errors.
 Snapshot `~/banking-sb/snapshots/20261022T033500Z`. PilVidya: no new upstream commits (stays `9c3faa77`).
+
+## 2026-10-22 — migration completeness check on UAT `d048aa34`
+
+`~/banking-sb/reconcile.py` (expected objects from all 344 migration files vs live catalog). **Tool fix:** it read
+`information_schema.columns/views` as `banking_owner`, which hides objects that role holds no privileges on (every table
+the deploy creates as `postgres`) → 1,238 false "missing". Now reads `pg_attribute`/`pg_class`. Result: **159 missing,
+all explained — no migration left unapplied:**
+- 110 policies — upstream policies UAT deliberately replaced or skipped (e.g. `20260911130000_security_rls_fix` 18,
+  `20260928150000_fix_profiles_rls_recursion` 10 — skipped pending team decision, USING(true) on profiles).
+- `20260923000000_repair_missing_modules` (4 tables + columns) — **skipped by design**: PilVidya file leaked into this
+  repo, invalid SQL, references PilVidya tables; nothing in Banking uses them.
+- `staff_can_manage_student` — lives at `private.staff_can_manage_student(_staff, _student_user, _student_id)` (10-07 fixup);
+  the 2 policies using it resolve.
+- 11 columns from 07-10/08-11 files whose tables pre-existed with another shape; 3 timestamp/created_by columns on
+  live_session_rsvps / module_prerequisites / curriculum_videos (fixup-shaped tables; no frontend reference);
+  1 `pg_temp` helper (never persistent).
+- drizzle: 0001/0002/0003/0005 applied; 0000 superseded by UAT's scoped `storage_assessment_uploads_*` policies; 0004's
+  anon grant on `domains` superseded by 0005 (03_grants re-adds the anon GRANT each deploy, but the only read policy is
+  `TO authenticated` → anon reads 0 rows).
+- 38 tables have RLS on with zero policies — all service-role-only internals (`coach_*`, `swot_*` internals,
+  `youtube_*`, `video_bulk_*`, `video_transcript_evidence`); none is read directly by `src/`.
