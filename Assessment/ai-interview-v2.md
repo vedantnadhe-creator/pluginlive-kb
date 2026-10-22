@@ -29,26 +29,37 @@ with one combined score and one report.
    `InterviewFlowTable.tsx`, 2026-10-15) — before that it rendered as "Select question type" and Enter re-typed it to
    Subjective. Reading / Listening / Custom
    rows **require instructions** (they describe the task). Single/multiple choice rows may carry hand-written questions. Count blank = "Auto".
-   **Interview Flow → Next re-suggests the Evaluation Parameters** from everything written in the flow (every row's
-   instructions + every hand-written choice question with its options, `lib/interviewFlowContext.ts`), sent as
-   `interviewInstructions` to `suggest-parameters` (BFF → admin-node → fastapi `interview_instructions`). Bank headings
-   come back first as the parameters, under the recruiter's names. Skipped when the flow text is unchanged or the
-   recruiter already edited the suggested parameters. A failure is shown on Evaluation Parameters with **Try again**.
-   A loaded / duplicated config (provenance unknown) is never re-suggested automatically: when its flow instructions
-   changed, Evaluation Parameters shows "The Interview Flow's instructions changed since these parameters were set."
-   with a **Suggest from the Interview Flow** button. The corporate BFF returns all five suggestions (no 4-cap); the
-   package drops Communication first and then keeps four, so a fifth bank heading is not lost. See *Question banks*.
-   **Only assessable parameters (2026-10-22, corp wizard 0.1.2-bugfix.24 / .24-uat, admin 0.1.16-custom.14 /
-   0.1.12-custom.11):** this flow re-suggest also sends `interviewFlow` (`[{type, count|null, instructions}]`,
-   `suggestionFlowRows`) plus `primaryLanguage` / `secondaryLanguage`; admin-node trims them (≤30 rows, count 0–100,
-   instructions ≤20k) into fastapi `interview_flow` / `primary_language` / `secondary_language`. With a flow, fastapi
-   returns **role parameters only** (Communication & Language is the wizard's fixed parameter), between 2 and
-   (scored answers − 1) where scored answers = sum of row counts (blank count = 1), max 4; each carries `rows`
-   (1-based rows that measure it). A code check then drops any parameter with no valid row, and any translation
-   parameter when there is no second language, and re-sums weights to 100; fewer than 2 left → 502 (wizard shows
-   Try again). Why: UAT `faac4db5` had "Reading and Translation" at 25% with no secondary language — the planner
-   dropped the translation step and pinned the parameter to the read-aloud, scoring it on reading alone. The first
-   role-only suggestion (no flow yet) and older callers keep the old "exactly 5" contract.
+   **Interview Flow → Next re-suggests the Evaluation Parameters** from the flow: every row's
+   instructions + every hand-written choice question with its options (`lib/interviewFlowContext.ts`) go as
+   `interviewInstructions`, and the rows themselves (`interviewFlow` = `[{type, count|null, instructions}]`,
+   `suggestionFlowRows`) with `primaryLanguage` / `secondaryLanguage` (BFF → admin-node → fastapi
+   `interview_instructions` / `interview_flow` / `primary_language` / `secondary_language`). Bank headings come back
+   as the parameters, under the recruiter's names. **When it re-suggests:** the wizard keeps a signature of the
+   flow rows (type, count, instructions) + both languages (`suggestionFlowSignature`); Next refits when that
+   signature changed since the parameters were set — a count/type-only edit or a language change counts, not just
+   instruction text — and the recruiter has not edited the parameters. The flow laid out from the first role-only
+   suggestion is stored as the baseline, so an untouched generated flow is not refit. A failure is shown on
+   Evaluation Parameters with **Try again**. A loaded / duplicated config (provenance unknown) is never refit
+   automatically: when its flow or languages changed, Evaluation Parameters shows "The Interview Flow changed since
+   these parameters were set." with a **Suggest from the Interview Flow** button. (Wizard corp 0.1.2-bugfix.25 /
+   .25-uat, admin 0.1.16-custom.15 / 0.1.12-custom.12.) The corporate BFF returns all suggestions (no 4-cap); the
+   package drops any name containing "communication" and keeps four. See *Question banks*.
+   **`suggest-parameters` is authenticated:** admin-node route is `isPrivate` (any signed-in admin / corporate /
+   institute JWT; all BFFs and admin-react v1 send one) and calls fastapi with its **minted service token**; fastapi
+   verifies it (`_verify`, needs iss/aud). Unauthenticated → 401 at both. Flow text is capped at 60k chars total
+   (422), `interview_instructions` at 60k; admin-node trims ≤30 rows, count 0–100, instructions ≤20k per row.
+   **Only assessable parameters:** with a flow, fastapi returns **role parameters only** (Communication & Language is
+   the wizard's fixed parameter, scored on every answer), between 2 and min(4, sum of row counts); a row on Auto does
+   not limit the cap. Fewer than 2 explicit answers → **422** "The Interview Flow needs at least 2 answers…" (no
+   floor that over-parameterises). Each parameter carries `rows` (1-based rows that measure it) and
+   `needs_second_language`. A code check drops: no valid row (non-list/bool rows tolerated), any name containing
+   "communication" (before the minimum count, since the wizard drops it too), and second-language skills
+   (`needs_second_language: true` or name with translat/interpret/bilingual — not the description) when there is no
+   second language; weights re-summed to 100; fewer than 2 left → 502 (wizard shows Try again). Why: UAT
+   `faac4db5` had "Reading and Translation" at 25% with no secondary language — the planner dropped the translation
+   step and pinned the parameter to the read-aloud. `rows` is **not** persisted: the BFFs keep name/description/
+   weight only, and the skeleton planner re-maps parameters to rows itself (binding enforcement is an open item).
+   The first role-only suggestion (no flow yet) and older callers keep the old "exactly 5" contract.
 2. **Float route** sends `assessmentType: "AI_Interview_v2"` with `interviewConfig.flow`.
 3. **admin-node** `AIInterviewV2AssignmentService` only **validates** the flow and registers the Role Based async
    job — the float returns at once (~0.7 s). The Voice rows' counts are summed (Introduction included, Auto = 1) and
