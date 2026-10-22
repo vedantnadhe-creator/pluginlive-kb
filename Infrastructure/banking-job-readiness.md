@@ -3601,3 +3601,16 @@ when the source lists more than 8. **Result: 3/3 Life Insurance runs succeed in 
 **Verification:** topicsgen 3/3; journeytabs 6/6, admin login 5/5, assesslist ✓, swotadmin ✓, admin crawl **43/43**, Coding
 Challenges, Save Module, Tier search. 31/31 tests in the touched suites (incl. `llmFallbackCoverage`, fixed on the branch).
 Snapshot `~/banking-sb/snapshots/20261022T152444Z`.
+
+## 2026-10-22 (night) — UAT `0b5521b0`: YouTube bulk jobs pause on quota exhaustion (ffmpeg round 6)
+
+Merged branch `e2548bf4` (2 commits: pause YouTube bulk jobs on quota exhaustion; harden Admin and Trainer bulk YouTube
+generation). Clean merge, build OK, 30/30 tests. Migration `20261022130000_youtube_bulk_quota_pause` (applied, rehearsed in
+rollback first) replaces `public.claim_video_bulk_job_item(uuid)`: failed items are **never auto-reclaimed** (only the explicit
+retry action re-queues them), so a provider/quota failure ends the run instead of burning the remaining daily YouTube budget
+(99 search calls/day on UAT); a job with failed-but-retryable items becomes `paused`; worker leases expire after 3 min and items
+stop after 4 attempts. Still `service_role`-only (anon/authenticated EXECUTE false). Functions changed:
+`video-bulk-jobs`, `generate-trainer-curriculum`, `_shared/video-discovery-policy.ts`.
+
+**Verification:** journeytabs 6/6, admin login 5/5, assesslist ✓, swotadmin ✓, admin crawl 43/43, Coding Challenges, Save Module,
+Tier search, anon `video-bulk-jobs` 401. Snapshot `~/banking-sb/snapshots/20261022T172955Z`.
