@@ -3471,3 +3471,18 @@ student AI chat entry (playground removed), BankReady assistant branding removed
 **Verification:** rehearsal `~/banking-checks/dryrun_20261022.sh`; journeytabs 6/6, admin login 5/5, swotadmin,
 swot.cjs isolation, admin crawl 42/43 (expected OAuth-status 503), Coding Challenges, Save Module, Tier search,
 candidate/trainer/admin homes. Snapshot `~/banking-sb/snapshots/20261022T004338Z`.
+
+## 2026-10-22 (later) — UAT `d048aa34`: ffmpeg branch round 3 (6 commits, frontend only)
+
+Merged by us (main `f9457aee` + branch `fc13a267`). Conflict only in `TrainerJourney.tsx`: the branch re-formatted the
+lazy imports as plain multi-line `lazy(...)`; kept main's `lazyWithRetry` block. Build OK, 39/39 tests in 7 suites.
+No migrations, functions, gates, lockfile or config changes.
+
+**What changed:** learning reminders load correctly with right category counts; trainer dashboard metrics wired to
+real data; dashboard metric scope/calculation fixes (+ Playwright `tests/e2e/dashboard-metrics.spec.ts`, new
+`npm run test:e2e:dashboard-metrics`); "Modules Coach" removed from student modules; student curriculum content
+visibility fix.
+
+**Verification:** journeytabs 6/6, admin login 5/5, swotadmin, admin crawl 42/43 (expected OAuth-status 503), Coding
+Challenges, Save Module, Tier search, candidate/trainer/admin homes — zero page/API errors.
+Snapshot `~/banking-sb/snapshots/20261022T033500Z`. PilVidya: no new upstream commits (stays `9c3faa77`).
