@@ -3507,3 +3507,21 @@ all explained — no migration left unapplied:**
   `TO authenticated` → anon reads 0 rows).
 - 38 tables have RLS on with zero policies — all service-role-only internals (`coach_*`, `swot_*` internals,
   `youtube_*`, `video_bulk_*`, `video_transcript_evidence`); none is read directly by `src/`.
+
+## 2026-10-22 (later) — UAT `6e0757f5`: candidate Assessments page no longer empty (hidden track filter removed)
+
+**Symptom (reported):** candidate Himanshu Bhagat (enterprise, tracks {domain,tech}, `profiles.preferred_journey_track =
+tech`) saw "No assessments available yet" although the DB granted 18 (all Domain-track). **Cause:** `5df5e0ef` (deployed in
+`f9457aee`) added a hidden filter in `src/pages/Assessments.tsx` that dropped every assessment not matching the profile's
+preferred track, before the Track dropdown — so choosing "Domain" could not bring them back. 5 candidates prefer Tech
+(would see nothing; only 2 published Tech assessments exist), 13 prefer Domain (lost the Tech ones).
+**Fix (upstream `e564b3c6`):** `filterAssessmentsByStudentModuleAccess` only; the preferred track is no longer applied or
+pre-selected — the Track dropdown defaults to **All Tracks** and is an optional filter.
+
+**Still stricter than the DB (open, upstream decision):** the page's client-side module check
+(`useAssignedModuleIds` + `expandAssignedModuleAliases`) only counts direct `user_module_access` + group mappings, while
+`private.user_can_access_assessment` also grants via other module-access paths. Himanshu: DB 18, page 5.
+
+**Verification:** new `node ~/banking-checks/assesslist.cjs` (candidate /assessments lists cards, Track = All Tracks, no
+errors); journeytabs 6/6, admin login 5/5, swotadmin, admin crawl 42/43 (expected OAuth 503), Coding Challenges, Save Module,
+Tier search, all home pages. Snapshot `~/banking-sb/snapshots/20261022T044328Z`.
