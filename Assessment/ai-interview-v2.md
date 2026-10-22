@@ -38,6 +38,17 @@ with one combined score and one report.
    changed, Evaluation Parameters shows "The Interview Flow's instructions changed since these parameters were set."
    with a **Suggest from the Interview Flow** button. The corporate BFF returns all five suggestions (no 4-cap); the
    package drops Communication first and then keeps four, so a fifth bank heading is not lost. See *Question banks*.
+   **Only assessable parameters (2026-10-22, corp wizard 0.1.2-bugfix.24 / .24-uat, admin 0.1.16-custom.14 /
+   0.1.12-custom.11):** this flow re-suggest also sends `interviewFlow` (`[{type, count|null, instructions}]`,
+   `suggestionFlowRows`) plus `primaryLanguage` / `secondaryLanguage`; admin-node trims them (≤30 rows, count 0–100,
+   instructions ≤20k) into fastapi `interview_flow` / `primary_language` / `secondary_language`. With a flow, fastapi
+   returns **role parameters only** (Communication & Language is the wizard's fixed parameter), between 2 and
+   (scored answers − 1) where scored answers = sum of row counts (blank count = 1), max 4; each carries `rows`
+   (1-based rows that measure it). A code check then drops any parameter with no valid row, and any translation
+   parameter when there is no second language, and re-sums weights to 100; fewer than 2 left → 502 (wizard shows
+   Try again). Why: UAT `faac4db5` had "Reading and Translation" at 25% with no secondary language — the planner
+   dropped the translation step and pinned the parameter to the read-aloud, scoring it on reading alone. The first
+   role-only suggestion (no flow yet) and older callers keep the old "exactly 5" contract.
 2. **Float route** sends `assessmentType: "AI_Interview_v2"` with `interviewConfig.flow`.
 3. **admin-node** `AIInterviewV2AssignmentService` only **validates** the flow and registers the Role Based async
    job — the float returns at once (~0.7 s). The Voice rows' counts are summed (Introduction included, Auto = 1) and
