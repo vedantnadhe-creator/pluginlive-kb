@@ -3445,3 +3445,29 @@ write admin_modules/topics/curriculum_assessments/payment instructions, trainer 
 payment rows); journeytabs 6/6, admin login 5/5, swotadmin, admin crawl 42/43 (only the expected OAuth-status 503),
 Coding Challenges, Save Module, Tier search, candidate/trainer/admin homes. DB-Scripts `20261021T13000{1..9}Z__banking_*`.
 Snapshot `~/banking-sb/snapshots/20261021T125057Z`. Scripts: `~/banking-checks/dryrun_20261021.sh`, `timing_20261021.sh`.
+
+## 2026-10-22 — UAT `f9457aee`: ffmpeg branch round 2 (12 commits, 3 migrations) — assessments follow module assignment
+
+Merged by us (main `7cd1d8ac` + branch `1291bf40`); conflict only in `TechStudentJourney.tsx` (kept main's
+`lazyWithRetry`, dropped `AIPlayground` which the branch removed). Pre-push: build OK, 78/78 tests in 16 suites.
+
+**Behaviour change — candidate assessment visibility (`private.user_can_access_assessment`):** published assessments
+are visible when the candidate has an explicit override, OR one of the assessment's `selected_modules` / `module_id`
+is accessible via `private.user_can_access_module`, OR the assessment is **unlinked** (no modules) and
+`metadata.student_visible = true`. `student_visible` no longer opens a module-linked assessment to everyone.
+UAT: visible candidate×assessment pairs **2,706 → 1,003**; all 89 candidates lost some (e.g. NISM VIII, Test Engineer
+series, Functional Tester); none gained. Deployed as upstream intends (two branch commits + e2e
+`student-mapped-assessments`); the 10-07 reverse fix is superseded. To restore old behaviour, re-add the
+`student_visible` branch for linked assessments in that function.
+
+Other: student analytics report exports, assessment report list/role-access fixes, SWOT intervention labels, single
+student AI chat entry (playground removed), BankReady assistant branding removed, student report tables
+(`project_assignments`, `student_project_progress`, `proctoring_*`) now owner(auth uid or students.id)/admin only via
+`private.current_user_owns_student_id(text)` — trainers no longer read candidates' proctoring rows directly.
+
+**UAT fixup:** `20261021160000_student_report_identity_access` — `project_assignments.student_id` and
+`student_project_progress.student_id` are UUID on UAT → `student_id::text`. DB-Scripts `20261022T*__banking_*` (3 files).
+
+**Verification:** rehearsal `~/banking-checks/dryrun_20261022.sh`; journeytabs 6/6, admin login 5/5, swotadmin,
+swot.cjs isolation, admin crawl 42/43 (expected OAuth-status 503), Coding Challenges, Save Module, Tier search,
+candidate/trainer/admin homes. Snapshot `~/banking-sb/snapshots/20261022T004338Z`.
