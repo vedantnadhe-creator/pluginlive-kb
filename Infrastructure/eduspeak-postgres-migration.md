@@ -1822,3 +1822,48 @@ which never reaches an existing DB) — required, because the new resolver selec
 UPDATE switches `assessment_overdue` and `fees` channels to include email/WhatsApp.
 Grants 03 → 05 → 06 (regenerated) → 07; anon stays revoked on all 7 new tables.
 Verified: logins.cjs 10/10, parent.cjs (all functions 200), e2e.cjs 0 page errors / 0 failed requests, no function boot errors.
+
+## 2026-10-22 — PilVidya UAT `9c3faa77` (47 commits, Sprint 8-17, 26 new migrations)
+
+`8c223082` → `9c3faa77`. Applied per file (`rw-query.sh uat`, one txn each), then 03 → 05 → gen06 → 06 → 07, then
+`deploy-frontend.sh` (functions rsync + image `eduspeakreact:9c3faa77`). DB backup before apply:
+`~/pilvidya-data-import/snapshots/eduspeak_uat_20261022T010049Z.dump` (DEV box). Working dir
+`~/pilvidya-data-import/newmigs/20261022T005212Z/` (`up/` upstream, `uat/` deviations, `impersonate.sql`, `policydiff.sql`).
+
+**What shipped:** realtime connections/events/topic comments, Sprint 9 video analytics, multi-language resources + user
+language prefs, API documentation + developer API keys (self-managed), feature flags (+overrides, audit events),
+data-retention policies/runs, production-readiness + disaster-recovery + system-health tables, FL CEFR thresholds /
+placement / spaced-repetition review items, trainer curricula (+lessons/quizzes/resources/assignments),
+**subscription validity core** (`subscriptions`, `subscription_events`, `subscription_settings` — enforcement_mode `off`,
+scheduler disabled), `notification_log`, `report_exports`, ~25 new edge functions (all refuse anon except
+`curriculum-learn-data`, which trusts body `student_profile_id` like other device-session student functions).
+
+**All 26 applied verbatim except:**
+- `20261016020000_sprint16_production_correctness_fixes` — **skipped 3 `CREATE POLICY`** (`Staff can manage ai_video_assets`,
+  `nova_labs staff manage`, `ar_explainers staff manage`): bare `has_role(admin|teacher)` FOR ALL = any teacher of any
+  school. UAT keeps its school-scoped write policies (`can_access_sprint_school`, `current_teacher_school_id`).
+- UAT tail `zz_20261022_uat_tighten_new_table_writes`: upstream let ANY signed-in user (students/parents) INSERT/UPDATE
+  `language_resources`, `production_readiness_checklist` and INSERT `video_candidates`, `video_verification_results`,
+  `video_language_metadata`, `topic_evidence_pack`, `ai_generation_runs`, `provider_performance_metrics`, `backup_logs`;
+  any teacher (`is_staff`) could change global `feature_flags`. Narrowed to `is_staff` / `security_is_platform_admin`.
+  No frontend code writes these tables (edge functions use service_role).
+- UAT tail `zz_20261022_uat_revoke_anon_new_tables`: new tables got anon SELECT via default privileges → revoked.
+
+**Deploy-order gotcha (new):** `gen_06_upstream_anon_revokes.sh` reads the UAT checkout's migrations — **fast-forward the
+checkout BEFORE regenerating 06**, else today's REVOKEs are missed. First pass left 8 functions anon-executable incl.
+`run_retention_policy` and `run_subscription_validity_sweep`; fixed by ff → regen → re-apply 06.
+
+**Verification:** impersonation diff (18 users × 6 roles, 320 existing tables): no change to any existing table; new
+readable config: CEFR thresholds (all), `subscription_settings` (all), `data_retention_policies` (staff). Write probes:
+student self-grant admin / insert verification results / language resources → 42501; teacher cross-school nova_labs /
+ar_explainers / ai_video_assets / feature flags → 0 rows; parent insert subscriptions → 42501. Live: anon EXECUTE on
+upstream-revoked functions none; anon privileges on new tables none; logins.cjs 10/10, parent.cjs (functions 200),
+students.cjs (session survives reload), e2e 0 page errors / 0 failed requests. DB-Scripts
+`EduSpeak Postgres Migration/20261022T*__pilvidya_*` (28 files).
+
+**Open / known:** `subscription_access_snapshot(uuid)` has no caller check (any signed-in user can read any student's
+plan + valid_till). `security_is_platform_admin` = `is_admin_user` = admin OR **principal** (upstream design) — principals
+can write `subscriptions`/notification/report tables for all schools. `health-check` reports "unhealthy" because it
+only reads env vars (YouTube key + extra LLM providers live in DB config on UAT); DB check is healthy.
+`calculate-skill-growth` still 500 (table absent, dead upstream). 47 already-applied migrations were edited upstream
+(DROP POLICY guards, has_role text overload, is_staff/is_admin_user incl. hod/principal) — UAT already equivalent, not replayed.
