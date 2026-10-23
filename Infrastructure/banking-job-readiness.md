@@ -3635,3 +3635,15 @@ consolidated; ~1,000 lines removed). No backend, migration or config changes.
 
 **Verification:** homepage at 1440 px and 390 px: no page errors, no failed requests, no horizontal overflow; admin login 5/5,
 journeytabs 6/6, assesslist ✓, candidate/trainer/admin homes clean. Snapshot `~/banking-sb/snapshots/20261023T065605Z`.
+
+## 2026-10-23 — UAT `f5d01e5e`: simulation generation fallback + trainer module scope (ffmpeg round 9)
+
+Merged branch `8b520206` (3 commits; `_shared/sim-ai.ts`, `sim-generate-pack`). Clean merge, build OK, 81/81 tests. No migrations.
+- **Simulation AI fallback:** credit, transient gateway (502), stream, empty-output and format failures on the Lovable Responses
+  call get one fallback through the configured providers (`aiJsonViaConfiguredProviders` → `_shared/llm.ts`, i.e. LiteLLM on UAT);
+  402/429 from that chain are passed through, anything else → 502 "temporarily unavailable; no simulation draft was created".
+  Never a fabricated simulation. UAT has no Lovable key, so it already uses the configured-provider path.
+- **Trainer module scope:** `sim-generate-pack` now only lets a trainer generate packs for modules they can access. Anon → 401.
+
+**Verification:** admin login 5/5, journeytabs 6/6, assesslist ✓, candidate/trainer/admin homes clean, no function boot errors.
+Snapshot `~/banking-sb/snapshots/20261023T082343Z`.
