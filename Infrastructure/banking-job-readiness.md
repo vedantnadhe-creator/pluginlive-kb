@@ -3658,3 +3658,19 @@ video jobs show clearer failure/retry recovery; Trainer journey surfaces video-d
 Clean merge, build OK, 15/15 tests. No migrations or function changes.
 
 **Verification:** admin login 5/5, journeytabs 6/6, assesslist ✓, admin crawl 43/43. Snapshot `~/banking-sb/snapshots/20261023T090757Z`.
+
+## 2026-10-23 — UAT `39a51f5d`: Admin "Generate a simulation" 502 fixed
+
+**Symptom:** Admin → Modules → AI Simulations → Generate → `sim-generate-pack` 502 ("The AI returned no response twice" /
+"invalid response twice ($.title is required)"). UAT has no Lovable key, so `_shared/sim-ai.ts` uses the configured-provider path
+(`callLlmChatCompletion`, feature **`simulation`**), which had no gateway route → global `openai gpt-5` (reasoning used the whole
+4096-token budget → empty content) then `gemini-3.6-flash` (truncated).
+1. **Config (live):** `llm_provider_configs` row `litellm` / `application_feature='simulation'` / `gemini-2.5-flash` / priority 1
+   (same gateway route as `ai-content`). Also covers candidate persona turns and debriefs.
+2. **`39a51f5d`:** configured-provider output cap raised from 4096 to **12000** for pack/section generation (persona_turn 2048 and
+   debrief 6000 unchanged). A pack spec is ~10 KB JSON; the gateway stopped at 4082/4320 tokens → truncated object → parser fell
+   back to an inner object without `title`. A full pack used 8,465 completion tokens.
+
+**Verification:** `node ~/banking-checks/simgen.cjs <moduleId> <topicId> "<topic title>"` (creates a DRAFT pack — delete after):
+2/2 Life Insurance topics → 200 in 28-38 s (was 502 after 105 s); test drafts deleted (sim_pack_versions + sim_packs, owner =
+admin@bankready.app). journeytabs simulations/robo ✓, admin login 5/5, admin crawl 43/43. Snapshot `20261023T102043Z`.
