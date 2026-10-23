@@ -1886,8 +1886,12 @@ works); admin Content Approval & Media, Students, Subscriptions, Admin Users loa
 `planRouteGuard.regression` + `roleNavigation` pass; `commercialPlanMenus` 4 failures are pre-existing on `9c3faa77`.
 
 **Open (found, not fixed):** `video_candidates` SELECT policy is `auth.uid() IS NOT NULL` (any signed-in user reads all
-rows incl. answers); plan gating is UI-only; functions container has no `APP_ORIGIN`/`SITE_URL` (corsHeadersFor falls
-back to localhost — harmless only because the gateway overrides ACAO to `*`).
+rows incl. answers); plan gating is UI-only; functions container has no `APP_ORIGIN`/`SITE_URL`.
+**Correction (2026-10-23):** that CORS fallback is NOT harmless — POST replies from functions using `corsHeadersFor()` carry
+`Access-Control-Allow-Origin: http://localhost:5173`, so on **aividya.si** (cross-origin to the API) the browser rejects them
+(student register → "password not synced", login → "Failed to fetch"). Only preflight/`corsHeaders`-constant functions get `*`.
+Proposed fix: gateway `/sb/` echoes allowed origins (map) — not yet applied. Onboarding analysis + redesign doc:
+pl-uat-public-docs/pilvidya-student-onboarding-solution-20261023-b71e4c/index.html
 
 ## 2026-10-23 (later) — deployed `63936bf9` (upstream release + QA fixes)
 
