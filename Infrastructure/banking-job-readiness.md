@@ -3649,3 +3649,12 @@ Merged branch `8b520206` (3 commits; `_shared/sim-ai.ts`, `sim-generate-pack`). 
 
 **Verification:** admin login 5/5, journeytabs 6/6, assesslist ✓, candidate/trainer/admin homes clean, no function boot errors.
 Snapshot `~/banking-sb/snapshots/20261023T082343Z`.
+
+## 2026-10-23 — UAT `c759687c`: bulk-video failure recovery + Trainer video discovery errors (ffmpeg round 10)
+
+On top of `94012d3f` (deployed separately: View Results 406 fix, Learning Tracker trainer filter, trainer module-group
+delete, live mic wave for video answers; 3 migrations). Merged branch `f3c83dd4` (2 commits, frontend + e2e only): Admin bulk
+video jobs show clearer failure/retry recovery; Trainer journey surfaces video-discovery errors instead of failing silently.
+Clean merge, build OK, 15/15 tests. No migrations or function changes.
+
+**Verification:** admin login 5/5, journeytabs 6/6, assesslist ✓, admin crawl 43/43. Snapshot `~/banking-sb/snapshots/20261023T090757Z`.
