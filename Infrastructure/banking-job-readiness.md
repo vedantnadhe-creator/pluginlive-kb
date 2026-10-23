@@ -3625,3 +3625,13 @@ Merged branch `4009587a` (3 commits). Clean merge, build OK, 20/20 tests. No mig
 
 **Verification:** admin login 5/5 ×2, journeytabs 6/6, assesslist ✓, swotadmin ✓, admin crawl 43/43, Coding Challenges, Save Module,
 Tier search, candidate/trainer/admin homes. Snapshot `~/banking-sb/snapshots/20261023T044442Z`.
+
+## 2026-10-23 — UAT `2501259f`: homepage repositioned as an AI-powered LMS (ffmpeg round 8)
+
+Merged branch `4c85a90e` (3 commits, `src/pages/Home.tsx` + `tests/e2e/home-requirements.spec.ts` only). Public homepage now
+positions PluginLive as an AI-powered LMS for four audiences — Corporate Learning & Development, Institutes & Universities,
+Hire · Train · Deploy, Software & Testing Teams — with Solutions / Capabilities / Learning journey / FAQ sections (capabilities
+consolidated; ~1,000 lines removed). No backend, migration or config changes.
+
+**Verification:** homepage at 1440 px and 390 px: no page errors, no failed requests, no horizontal overflow; admin login 5/5,
+journeytabs 6/6, assesslist ✓, candidate/trainer/admin homes clean. Snapshot `~/banking-sb/snapshots/20261023T065605Z`.
