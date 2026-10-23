@@ -3614,3 +3614,14 @@ stop after 4 attempts. Still `service_role`-only (anon/authenticated EXECUTE fal
 
 **Verification:** journeytabs 6/6, admin login 5/5, assesslist ✓, swotadmin ✓, admin crawl 43/43, Coding Challenges, Save Module,
 Tier search, anon `video-bulk-jobs` 401. Snapshot `~/banking-sb/snapshots/20261022T172955Z`.
+
+## 2026-10-23 — UAT `1227b08a`: admin login diagnostics, YouTube key test without quota (ffmpeg round 7)
+
+Merged branch `4009587a` (3 commits). Clean merge, build OK, 20/20 tests. No migrations.
+- **Admin login diagnostics:** new `src/lib/adminAuth.ts` + `Login.tsx` show clearer reasons when admin sign-in fails. `AuthContext`
+  untouched — the `rolesUserId` role-race gate is intact (admin5 10/10).
+- **LLM Settings → YouTube provider "Test":** `manage-llm-providers` no longer spends YouTube search quota on a key test and
+  de-duplicates repeated test requests. Function stays admin-only (`requireAdmin`; anon rejected — returns 500 not 401, pre-existing).
+
+**Verification:** admin login 5/5 ×2, journeytabs 6/6, assesslist ✓, swotadmin ✓, admin crawl 43/43, Coding Challenges, Save Module,
+Tier search, candidate/trainer/admin homes. Snapshot `~/banking-sb/snapshots/20261023T044442Z`.
