@@ -1867,3 +1867,24 @@ can write `subscriptions`/notification/report tables for all schools. `health-ch
 only reads env vars (YouTube key + extra LLM providers live in DB config on UAT); DB check is healthy.
 `calculate-skill-growth` still 500 (table absent, dead upstream). 47 already-applied migrations were edited upstream
 (DROP POLICY guards, has_role text overload, is_staff/is_admin_user incl. hod/principal) — UAT already equivalent, not replayed.
+
+## 2026-10-23 — QA P1 fixes on UAT (`e849a53f`, branch `uat/qa-p1-fixes-20261023` on top of `9c3faa77`)
+
+Three P1s from the 2026-10-22 QA rerun, fixed on UAT. Upstream `main` had moved to `fc90dcd5` (391 files) and was
+**not** pulled; the fix commit sits on a local branch in the UAT checkout. Before the next upstream deploy:
+`git checkout main && git merge --ff-only origin/main`, then re-apply or drop the branch depending on upstream.
+
+| P1 | Root cause | Fix |
+|---|---|---|
+| Plan lock only in the sidebar (Free student opened Foreign Languages / Report Cards / Community / Fees by URL or dashboard card) | Plan access is client-side and only `RoleNavSidebar` consulted it. | `PlanRouteGuard` inside `AppLayout`: `planGatedItemForPath(role, pathname)` (roleNav) + `usePlanAccess().isEnabled` — same keys/exemptions as the sidebar; locked routes render a "not included in your current plan" page. Whole-page routes only; `#hash` sections are gated by their own pages. Still client-side (data APIs not plan-gated). |
+| My Portal spinner forever | `student-360` wrapped `response.body` in a new `Response` in its `Deno.serve`. On our self-hosted **edge-runtime v1.58 that never completes** — every call hung (even `{}`), probes: re-wrap 20 s timeout vs `await r.text()` 35 ms. `admin-manage-users` and `admin-subscriptions` had the same `withRequestCors` pattern → also hung on UAT. | Set CORS headers on the response we built (`response.headers.set`) and return it. `virtual-tutor` re-wraps a **fetch** stream (SSE) — different case, left alone. **Rule: never `new Response(otherResponse.body, …)` in functions for this runtime.** |
+| UAT DB behind frontend (4 objects) | `20260922150000_foreign_language_gamification` never applied; `video_candidates.status/score/updated_at/rejection_reason/override_reason/school_id` are in **no** upstream migration (hosted-only). | DB-Scripts `…__pilvidya_fl_gamification_and_video_candidates_columns.sql`: achievements staff read scoped by `can_access_sprint_school` (upstream used unscoped `is_staff`), `record_fl_activity` XP clamped 0..100. |
+
+**Verified (browser, test-login set):** Free student → all 4 routes + dashboard card show the locked page; My Portal
+`portal_dashboard` 200 in 4.8 s with lessons; student `daily_goal_xp` / achievements / `record_fl_activity` 200 (XP cap
+works); admin Content Approval & Media, Students, Subscriptions, Admin Users load; 0 API errors. Vitest:
+`planRouteGuard.regression` + `roleNavigation` pass; `commercialPlanMenus` 4 failures are pre-existing on `9c3faa77`.
+
+**Open (found, not fixed):** `video_candidates` SELECT policy is `auth.uid() IS NOT NULL` (any signed-in user reads all
+rows incl. answers); plan gating is UI-only; functions container has no `APP_ORIGIN`/`SITE_URL` (corsHeadersFor falls
+back to localhost — harmless only because the gateway overrides ACAO to `*`).
