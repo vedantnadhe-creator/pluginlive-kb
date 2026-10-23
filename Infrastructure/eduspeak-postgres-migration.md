@@ -1870,7 +1870,7 @@ only reads env vars (YouTube key + extra LLM providers live in DB config on UAT)
 
 ## 2026-10-23 — QA P1 fixes on UAT (`e849a53f`, branch `uat/qa-p1-fixes-20261023` on top of `9c3faa77`)
 
-Three P1s from the 2026-10-22 QA rerun, fixed on UAT. Upstream `main` had moved to `fc90dcd5` (391 files) and was
+Three P1s from the 2026-10-22 QA rerun, fixed on UAT. **Pushed to GitHub `main` as `42c27584`** (cherry-picked onto upstream `84413dbb`, fast-forward, tests pass), so the next upstream deploy already contains it — the local UAT branch can simply be dropped. Upstream `main` had moved to `fc90dcd5` (391 files) and was
 **not** pulled; the fix commit sits on a local branch in the UAT checkout. Before the next upstream deploy:
 `git checkout main && git merge --ff-only origin/main`, then re-apply or drop the branch depending on upstream.
 
