@@ -1888,3 +1888,40 @@ works); admin Content Approval & Media, Students, Subscriptions, Admin Users loa
 **Open (found, not fixed):** `video_candidates` SELECT policy is `auth.uid() IS NOT NULL` (any signed-in user reads all
 rows incl. answers); plan gating is UI-only; functions container has no `APP_ORIGIN`/`SITE_URL` (corsHeadersFor falls
 back to localhost — harmless only because the gateway overrides ACAO to `*`).
+
+## 2026-10-23 (later) — deployed `63936bf9` (upstream release + QA fixes)
+
+UAT moved from `9c3faa77` (+ QA-fix branch) to GitHub `main`. Upstream shipped **School SWOT** (`/swot`),
+**Metabase Dashboards** (`/dashboards`), and the **subscription validity go-live layer** (institute mapping,
+`subscription-reports` function, reporting views, enforcement impact). Retired functions `topic-content-checker` /
+`topic-content-maker` were removed by the rsync. `migration/sql-editor` changes were header renumbering only.
+
+| Upstream migration | UAT action |
+|---|---|
+| `20261022004000_metabase_and_swot_tables` | **Adapted.** Upstream read policy `can_access_school()` also admits the school's students + parents → every classmate could read a student's SWOT; writes allowed any teacher of any school. UAT: per-student rows read via `can_access_student(student_id)`, writes = admin or same-school teacher, exports staff-only. |
+| `20261022007000_swot_metabase_menus_and_seed` | As shipped (5 menus enabled on every plan + starter dashboard). |
+| `20261022110000_subscription_institute_mapping_and_reporting` | As shipped + `subscription_access_snapshot` / `institute_coverage` ACL restored (DROP/CREATE reset it to PUBLIC) + anon revoked on new tables. Backfill mapped 14/54 students, 14/25 teachers (exact name matches). |
+| `20261022120000_subscription_enforcement_impact` | As shipped + anon/PUBLIC revoked on `enforcement_impact()`. |
+| `20261023103734_seed_operational_subscription_setup` | **Skipped — needs an Ops/product decision.** Written for a 2-student DB: on UAT it would map **every** student and teacher to one "Demo Institute" with a School-plan subscription (upgrading everyone), set enforcement to `dry_run`, activate `subscription-validity-daily`, and email ops@/finance@ report packs. `enforcement_mode` stays `off`. |
+
+**Grant steps: `07_drizzle_revokes.sql` now also re-closes** the `rpt_*` views (03_grants gave `authenticated`
+SELECT; `rpt_student_access` lists every student's name + mobile) and the three subscription SECURITY DEFINER
+functions (03 gave anon EXECUTE). Order stays 03 → 05 → 06 → 07.
+
+**Build:** upstream added `jspdf` / `jspdf-autotable` to `frontend/package.json` without updating
+`package-lock.json` (their CI uses `bun.lock`), so `npm ci` refused. `Dockerfile.uat-build` now falls back to
+`npm install` (ponytail; upgrade = bun --frozen-lockfile).
+
+**Plan guard regression found + fixed (`63936bf9`, pushed to main):** upstream `805bdc84` moved Foreign Languages,
+lessons, practice, mock tests, tutor etc. from `AppLayout` to `SubscriptionGuarded` (renders without AppLayout),
+so the route plan lock no longer applied — a Free student could open Foreign Languages again. `SubscriptionGuarded`
+now wraps `PlanRouteGuard` (resolves the nav role itself); a regression test asserts every plan-gated menu route is
+wrapped by AppLayout or SubscriptionGuarded (verified it fails without the fix).
+
+**Verified:** 13 test-set + 10 demo logins land correctly with 0 errors; Free student sidebar vs route lock agree on
+all 24 student menu pages; My Portal 0.6 s; FL gamification/achievements 200; `/swot` and `/dashboards` load for
+student/teacher/admin; admin Subscriptions / Content Approval / Admin Users load; student gets 403 on
+`rpt_student_access`; e2e.cjs 0 page errors / 0 failed requests; bundle has no DEV / supabase.co hosts.
+
+**Open:** `frontend/src/lib/schoolScope.ts` selects `parent_profiles.school_id`, which no migration creates → 400
+on admin pages (harmless fall-through) and parents' SWOT/Dashboards cannot scope to their child's school.
