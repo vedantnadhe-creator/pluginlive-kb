@@ -6,7 +6,7 @@ tags: [service, frontend, supabase, lovable, banking, overview]
 # Banking Job Readiness — Application Overview
 
 > **Start here.** This page explains what the app is and how it is built. It describes the code
-> at Banking `main` **`03cb8c37`** (2026-10-24), which UAT runs with the documented
+> at Banking `main` **`68a98e61`** (2026-10-24), which UAT runs with the documented
 > self-hosted compatibility overlays.
 > The deploy log, every incident and the local-patch inventory are in
 > `Infrastructure/banking-job-readiness.md`. The self-hosted Supabase stack on UAT is in
@@ -97,6 +97,9 @@ domains (19) → module_groups (22) → admin_modules (70) → admin_module_topi
   and action plans from assessment, quiz, coding-practice and completed simulation history. Content
   exposure does not create mastery. Reports are saved in `swot_reports`; AI narratives are not enabled.
   Evidence is versioned (coach skill graphs → `swot_coach_skill_maps` → `swot_competencies`).
+- **BI Dashboard** (`?tab=metabase`, menu_key `metabase`): role-scoped Metabase embed (`metabase-embed-token`) in the
+  student, trainer/teacher and admin journeys on every plan (plan-configurable in `menu_access_controls`). UAT has no
+  Metabase instance or `METABASE_*` secrets, so the tab shows a "Metabase is ready to connect" card.
 - Leaderboard, progress, reminders, daily practice plan, live-session RSVP, and credits / plan upgrade
   (`student_credits`, `payment_requests`; upgrades are requested and then approved by an admin).
 

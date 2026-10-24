@@ -3710,3 +3710,19 @@ needs it: functions call `http://gateway:80`, and browsers come through the host
 
 **Verification:** admin login 5/5, journeytabs 6/6, assesslist ✓, swotadmin ✓ (93 learners in scope), admin crawl ✓,
 e2e users ✓, cc/mod/tier ✓, trainermods/trainersearch/resultspage ✓. Snapshots `20261024T083745Z`, `20261024T084528Z`.
+
+## 2026-10-24 — UAT `68a98e61`: BI Dashboard in every journey + SWOT gateway retries (ffmpeg round 12)
+
+Merged branch `3cd93aea` (4 commits) into `03cb8c37`; clean merge. Build OK. vitest 1877/1879 after the fix below; the
+4 failures already on `main` remain.
+- **BI Dashboard:** migration `20261024170000_metabase_bi_dashboard_menu_access` (DB-Scripts `20261024T094520Z`, PROD pending).
+  It adds menu_key `metabase` for student/trainer/teacher/admin on all plans, and appends `metabase` to all 27 admin tab
+  lists and all 152 candidate menu lists (plus the column defaults). `metabase-embed-token` requires a JWT (anon → 401).
+  **UAT has no Metabase** (no container, no `METABASE_*` in `functions-secrets.env`, no `VITE_METABASE_ENABLED`), so students
+  see "Metabase is ready to connect — Configure VITE_METABASE_ENABLED…" (a graceful card, no errors).
+- **SWOT:** `learning-swot-report` retries transient gateway failures (`_shared/swot-db-retry.ts`) and contains session
+  verification failures. The UAT 16k header-buffer fix from round 11 still applies.
+- The merge commit adds `metabase: "BI Dashboard"` to `src/test/adminTabsAccessDenied.test.tsx` TAB_LABELS (the test failed upstream).
+
+**Verification:** admin login 5/5, journeytabs 6/6 + metabase tab ✓, assesslist ✓, swotadmin ✓ (93 learners).
+Snapshot `~/banking-sb/snapshots/20261024T094102Z`.
