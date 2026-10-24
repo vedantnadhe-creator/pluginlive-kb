@@ -6,7 +6,7 @@ tags: [service, frontend, supabase, lovable, banking, overview]
 # Banking Job Readiness — Application Overview
 
 > **Start here.** This page explains what the app is and how it is built. It describes the code
-> at Banking `main` **`39a51f5d`** (2026-10-23), which UAT runs with the documented
+> at Banking `main` **`03cb8c37`** (2026-10-24), which UAT runs with the documented
 > self-hosted compatibility overlays.
 > The deploy log, every incident and the local-patch inventory are in
 > `Infrastructure/banking-job-readiness.md`. The self-hosted Supabase stack on UAT is in
@@ -96,6 +96,7 @@ domains (19) → module_groups (22) → admin_modules (70) → admin_module_topi
 - **My SWOT Analytics** (`/learning-swot`): deterministic readiness, competency gaps, four SWOT quadrants
   and action plans from assessment, quiz, coding-practice and completed simulation history. Content
   exposure does not create mastery. Reports are saved in `swot_reports`; AI narratives are not enabled.
+  Evidence is versioned (coach skill graphs → `swot_coach_skill_maps` → `swot_competencies`).
 - Leaderboard, progress, reminders, daily practice plan, live-session RSVP, and credits / plan upgrade
   (`student_credits`, `payment_requests`; upgrades are requested and then approved by an admin).
 
@@ -103,6 +104,12 @@ domains (19) → module_groups (22) → admin_modules (70) → admin_module_topi
 and quizzes with AI, approves simulation packs, runs live sessions, bulk-imports, exports CSVs
 (`trainer-export-*`), and sees their own cohorts. The RBAC Trainer filter limits them to assigned candidates.
 SWOT Analytics permits reports for assigned learners and filters the trainer intervention queue to that scope.
+Learner data RLS (2026-10-24): `student_module_progress`, `student_module_topic_progress`, `student_assessment_scores`,
+`assessment_attempts` and `assessment_responses` are readable only by the learner, an admin, or a trainer/teacher/institute user
+whose institute or `trainer_students` assignment covers the learner (`private.trainer_can_view_student_data`). Learners write their
+own progress/attempts; attempt and response grading needs the admin `grading` tab; clients cannot write assessment scores.
+Trainers can assign admin-owned module groups to their candidates but cannot change their own approval status or tier,
+and a non-admin client cannot change `profiles.role` (trigger `trg_prevent_client_profile_role_escalation`).
 
 **Institute** (`/journey/institute`): an institute-scoped workspace (programs, locations, mapped
 modules and assessments). 3 institutes on UAT.

@@ -3674,3 +3674,39 @@ Clean merge, build OK, 15/15 tests. No migrations or function changes.
 **Verification:** `node ~/banking-checks/simgen.cjs <moduleId> <topicId> "<topic title>"` (creates a DRAFT pack — delete after):
 2/2 Life Insurance topics → 200 in 28-38 s (was 502 after 105 s); test drafts deleted (sim_pack_versions + sim_packs, owner =
 admin@bankready.app). journeytabs simulations/robo ✓, admin login 5/5, admin crawl 43/43. Snapshot `20261023T102043Z`.
+
+## 2026-10-24 — UAT `03cb8c37`: Metabase role dashboards, SWOT evidence pipeline, learner-data RLS hardening (ffmpeg round 11)
+
+Merged branch `a26aa150` (11 commits) into `main 39a51f5d`; clean merge. The merge commit also updates the
+`roboSprint34Contracts` assertion to the 12000 sim token cap. Build OK. vitest 1867/1872: the same 5 tests already fail on `main` and the branch
+(mediaReleaseVerification, roboHandsFree ×2, simulationAuthAndLogoutRegression, plus the fixed roboSprint34 one).
+
+**Migrations (9):** trainer_admin_group_assignment, metabase_role_dashboard_enrichment, learning_swot_evidence_pipeline,
+metabase_assessment_score_accuracy, metabase_student_activity_metric_accuracy, metabase_admin_coverage_accuracy,
+metabase_trainer_reporting_accuracy, trainer_student_data_rls_hardening, admin_profile_role_escalation_guard.
+DB-Scripts `20261024T085749Z`…`T085757Z` (PROD pending).
+- **UAT fixups** for `20261023130000_metabase_role_dashboard_enrichment` and `20261024120000_metabase_student_activity_metric_accuracy`:
+  drop `m.track::text` (UAT `modules` has no `track`; `track` lives on `domains`) and `aa.updated_at` (UAT `assessment_attempts`
+  has no `updated_at`). The COALESCE falls back to `metadata->>'track'` / `started_at`.
+- **`~/banking-sb/sql/03_grants.sql`:** the hard-coded 6-view Metabase revoke is now a DO block revoking ALL from
+  PUBLIC/anon/authenticated on **every** `public` view/matview named `metabase%` (15 views now). Verified: anon REST → 401/42501.
+- **RLS rehearsal (rolled back):** candidate `profiles.role` escalation BLOCKED, candidate score insert BLOCKED, trainer
+  self-approve BLOCKED, admin grading update OK, cross-user attempt updates 0 rows, candidate own profile update OK.
+- **Cost:** full-table reads of `student_module_progress` went from 16–27 ms to 0.6–1.6 s (admin/candidate/trainer).
+  `private.trainer_can_view_student_data` runs once per row, which matters for unfiltered admin/trainer scans. Filtered
+  learner reads stay fast. If trainer/admin progress pages slow down as data grows, rewrite the policy as
+  `student_id = any((select visible_student_ids()))` (one initplan).
+
+**`learning-swot-report` overlay retired.** The 10-16 whole-file overlay (`function-fixups/learning-swot-report`) predated
+upstream's rewrite and crashed (`toFixed` of undefined). Moved to `~/banking-sb/function-fixups-retired/learning-swot-report-20261024`.
+Upstream no longer reads `students.target_role` / `learning_simulation_attempts.student_id`. 3 overlays remain.
+
+**Gateway header buffer (new, both layers).** Admin SWOT then failed with `profiles: 502 Bad Gateway`. Upstream batches
+100 ids into `user_id=in.(...)` (~3.7 KB URL). PostgREST echoes the query in `Content-Location`, and nginx's 4 KB
+`proxy_buffer_size` gave "upstream sent too big header". 80 ids passed and 100 failed. Fix: `proxy_buffer_size 16k; proxy_buffers 8 16k;`
+in `~/banking-sb/gateway.conf` (server level; reloaded with `nginx -s reload`) **and** in the host
+`/etc/nginx/sites-available/banking-react.conf` banking 443 server block (backups `*.bak-20261024T-hdrbuf`). Each layer
+needs it: functions call `http://gateway:80`, and browsers come through the host nginx.
+
+**Verification:** admin login 5/5, journeytabs 6/6, assesslist ✓, swotadmin ✓ (93 learners in scope), admin crawl ✓,
+e2e users ✓, cc/mod/tier ✓, trainermods/trainersearch/resultspage ✓. Snapshots `20261024T083745Z`, `20261024T084528Z`.
