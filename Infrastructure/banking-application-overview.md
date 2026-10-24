@@ -98,8 +98,9 @@ domains (19) → module_groups (22) → admin_modules (70) → admin_module_topi
   exposure does not create mastery. Reports are saved in `swot_reports`; AI narratives are not enabled.
   Evidence is versioned (coach skill graphs → `swot_coach_skill_maps` → `swot_competencies`).
 - **BI Dashboard** (`?tab=metabase`, menu_key `metabase`): role-scoped Metabase embed (`metabase-embed-token`) in the
-  student, trainer/teacher and admin journeys on every plan (plan-configurable in `menu_access_controls`). UAT has no
-  Metabase instance or `METABASE_*` secrets, so the tab shows a "Metabase is ready to connect" card.
+  student, trainer/teacher and admin journeys on every plan (plan-configurable in `menu_access_controls`). UAT runs
+  Metabase v0.64 (`banking-sb-metabase`, `https://banking.uat.pluginlive.com/metabase/`) with dashboards Student #2
+  (locked `student_id`), Trainer #3 (locked `trainer_id`), Admin #4; see banking-job-readiness.md 2026-10-24 (Metabase).
 - Leaderboard, progress, reminders, daily practice plan, live-session RSVP, and credits / plan upgrade
   (`student_credits`, `payment_requests`; upgrades are requested and then approved by an admin).
 

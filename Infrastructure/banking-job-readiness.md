@@ -3726,3 +3726,46 @@ Merged branch `3cd93aea` (4 commits) into `03cb8c37`; clean merge. Build OK. vit
 
 **Verification:** admin login 5/5, journeytabs 6/6 + metabase tab ✓, assesslist ✓, swotadmin ✓ (93 learners).
 Snapshot `~/banking-sb/snapshots/20261024T094102Z`.
+
+## 2026-10-24 — UAT: Metabase BI Dashboard live for admin, trainer and student (config only, no code change)
+
+**Symptom:** every journey's BI Dashboard showed "Metabase is ready to connect — Configure VITE_METABASE_ENABLED…".
+The repo ships the views, the `metabase-embed-token` function and `docs/METABASE_DASHBOARDS.md`; the Metabase server,
+its dashboards and the secrets are external configuration that UAT never had.
+
+**What runs now (UAT box):**
+- **Container `banking-sb-metabase`.** It is a new service in `~/banking-sb/docker-compose.yml` (backup `.bak-20261024T-metabase`).
+  Image `metabase/metabase@sha256:7804ce4e…` (v0.64.3.4), `127.0.0.1:8210`, `mem_limit 2g`, `-Xmx1g`, `restart: unless-stopped`.
+  Start/recreate it with `cd ~/banking-sb && set -a && . ./.env && . ./metabase.env && set +a && docker compose up -d metabase`.
+- **App DB:** database `metabase_app`, owner role `metabase_app`, on `banking-sb-db`.
+- **Reporting connection:** role `metabase_readonly`. It has `default_transaction_read_only=on` and `statement_timeout=60s`, with SELECT
+  on the 15 `public.metabase%` views only (no tables). `~/banking-sb/sql/03_grants.sql` now re-grants SELECT on every
+  `metabase%` view to it on each deploy, so recreated views keep working. Anon/authenticated stay revoked.
+- **Public path:** host nginx `location /metabase/ → 127.0.0.1:8210/` in `/etc/nginx/sites-available/banking-react.conf`
+  (backup `.bak-20261024T-metabase`); `MB_SITE_URL=https://banking.uat.pluginlive.com/metabase/`. Embeds are same-origin.
+- **Secrets:** `~/banking-sb/metabase.env` (chmod 600) holds the app DB password, read-only password, Metabase admin
+  (`metabase-admin@bankready.app`) password and the embedding secret. `functions-secrets.env` now has `METABASE_URL`,
+  `METABASE_JWT_SECRET`, `METABASE_{STUDENT,TRAINER,ADMIN}_DASHBOARD_ID=2/3/4`. Changing `functions-secrets.env` needs
+  `docker compose up -d functions` (env_file is read at create, not restart). `~/bankingjobreadiness/.env` has
+  `VITE_METABASE_ENABLED=true`, baked into the bundle by `deploy.sh`.
+- **Dashboards** (collection "BI Dashboards", native SQL cards, created by `~/banking-sb/metabase-setup.py`, idempotent by name):
+  - Student #2 — assigned/completed modules, average progress, study hours, module progress, weekly effort,
+    assessment results, competency readiness. Locked `student_id`.
+  - Trainer #3 — assigned/active learners, completion rate, graded average, learner progress,
+    weekly active learners, needs-attention list, readiness gaps. Locked `trainer_id`.
+  - Admin #4 — overview KPIs, outcomes by institute, weekly active learners, assessments and proctoring,
+    curriculum coverage, AI operations daily/by feature, YouTube quota.
+  - Every Student/Trainer card uses `WHERE <id> = CAST({{param}} AS uuid)` outside optional brackets, so a token
+    without the signed ID errors ("You must specify a value for :student_id in the JWT"). It never returns all rows.
+    A URL attempt to override a locked value is rejected.
+  - Both IDs are auth user ids. The embed function signs `user.id`, matching `metabase_student_dashboard.student_id`
+    (3863/3863 rows) and `metabase_trainer_dashboard.trainer_id` (`trainers.user_id`).
+
+**Verification:** `node ~/banking-checks/metabase.cjs` (admin via sidebar "BI Dashboard" → `/admin?tab=metabase`; candidate
+`?tab=metabase`; trainer sidebar). The iframe renders cards for all 3 roles with no API ≥400 or page errors. Admin shows 122 users /
+116 candidates / 20 trainers / 105 published modules. A direct signed-token test for a 190-module student returned exactly 190 rows.
+admin5 5/5, journeytabs 6/6. Metabase uses ~1.25 GiB.
+
+**For PROD:** run Metabase (or a managed instance) with its own app DB, create `metabase_readonly` with the same view-only
+grants, build the dashboards with `metabase-setup.py` (adjust host/URL), then set the 5 secrets and `VITE_METABASE_ENABLED=true`.
+The Metabase login page is reachable at `/metabase/`; only the admin account exists.
