@@ -1929,3 +1929,34 @@ student/teacher/admin; admin Subscriptions / Content Approval / Admin Users load
 
 **Open:** `frontend/src/lib/schoolScope.ts` selects `parent_profiles.school_id`, which no migration creates → 400
 on admin pages (harmless fall-through) and parents' SWOT/Dashboards cannot scope to their child's school.
+
+## 2026-10-26 — PilVidya UAT: DB + functions at `5114b6e9`, frontend at `2d4a22c5` (upstream `main` does not build)
+
+43 upstream commits (Sprints 1–17, 10-23 → 10-26). Working files: `/home/ubuntu/pilvidya-data-import/newmigs/20261026T014425Z` on the DEV box
+(`*.upstream.sql` / `*.uat.sql` / `SKIPPED.md` / `dryrun.sql`). Applied one transaction per file, then 03 → 05 → gen_06/06 → 07.
+DB-Scripts `EduSpeak Postgres Migration/20261026T015827Z…T015842Z` (16 files, PROD pending).
+
+| Upstream migration | UAT action |
+|---|---|
+| `20261023000000_gap_fixes`, `000001_parent_consents_reconcile`, `000002_co_parent_invites`, `140000_create_app_events`, `150000_add_parent_student_menu_and_dashboards`, `160000_sprint2_quiz_persistence`, `20261024000001_teacher_grade_entry`, `020000_orphan_cleanup` (0 orphan rows on UAT), `070000_offline_outbox` | As shipped. `app_events` seeds 7 pending events; they are inert because `subscription-validity-daily` is inactive (and `SUBSCRIPTION_CRON_SECRET` is not set). Student/parent Dashboards + parent My SWOT menus enabled on every plan. |
+| `20261024050000_student_learning_tracking` | Badge `category` CHECK also allows `completion` (upstream's own seed violated it). |
+| `20261024000000_atomic_lesson_progress` | **Adapted.** `save_lesson_progress_atomic` is SECURITY DEFINER and took any `p_student_profile_id` → any signed-in user could write any student's progress. Now EXECUTE for **service_role only** (its only caller, `student-360`, uses the service-role client; also enforced in `07_drizzle_revokes.sql` because 03 re-grants). Fixed upstream bugs: status text selected into an int (2nd save errored), insert into non-existent `source_type/source_id/last_activity_at` (13 cols / 12 values), `student_progress.user_id` (FK → auth.users) given the profile id. Rehearsed: 3 saves keep the best score and never un-complete. |
+| `20261024030000_sprint5_ai_media_operations` | Teacher write on `pronunciation_scores` limited to `is_teacher_for_student` (upstream: any teacher, any school, FOR ALL incl. read); `function_capacity_warnings` is `security_invoker`. |
+| `20261024040000_teacher_assigned_assessments` | Only `assessment_assignments.due_at` + indexes. Its policies let any teacher read/update/delete every school's assignments; UAT keeps the `*_scoped` policies. |
+| `20261024050000_sprint10_competition_engine` | Tables + **read** policies only. Writes go through `competition-manager` (service role, checks school + role); upstream client policies let any teacher create competitions for any school and students update their own score/rank. Its `DROP FUNCTION current_*_profile_id()` fails (104/23 dependent policies) and is dropped; UAT versions are equivalent. |
+| `20261024080000_sprint9_parent_teacher_communication` | `parent_messages` / `ptm_sessions` scoped to the parent's verified child or the teacher's own student (with WITH CHECK). `school_announcements` read = `can_access_school` (upstream join let any parent read every school and hid them from the school's teachers); write = creator teacher in own school. |
+| `20261024999999_uat_new_tables_revoke_anon` (UAT-only) | pluatadmin's default ACL grants anon SELECT on new tables; revoked on the 17 new tables. |
+| **Skipped:** `20260420085445` (rewritten April llm_config), `20261022110000` (upstream replaced it with the literal `... (full SQL content)`), `20261022120000` (rewrite references undeclared `v_today` in a view), `20261023170000` (teacher_content `OR has_role(teacher)` widening; `teacher_best_scores` view can't take RLS, unused), `20261024010000` (`institute_users` policy self-references → infinite recursion; opens institutes to all users), `20261024060000` (columns UAT lacks; UAT already scoped). | |
+
+**Frontend held at `2d4a22c5` (Sprint 4, 10-24).** Upstream `main` fails `vite build`: 15 pages added in Sprints 5–17
+don't parse (AdminTransportManagement, AdminSystemHealth, AdminPaymentManagement, AdminSubscriptionManagement,
+AdminProductionReadiness, AdminRateLimitConfig, AdminAnnouncementAnnouncements, CompetitionList/Detail/Leaderboard,
+FunctionCapacity, Gradebook, ParentCommunicationHub, TeacherLiveClassManagement…). An esbuild parse of every changed
+file per commit shows `2d4a22c5` is the newest clean commit; it contains the 10-23 plan-guard fix (`63936bf9`).
+It was built from a worktree (`git worktree add /tmp/pv2d4 2d4a22c5`); `deploy-frontend.sh` always builds HEAD.
+Edge functions are at `5114b6e9` (additive). Redeploy the frontend from `main` once upstream fixes the pages.
+
+**Verified:** 13/13 test accounts (admin, counselor, teacher×2, student×4+, parent×2) land with 0 errors / 0 5xx;
+e2e.cjs 0 page errors / 0 failed requests / 0 /sb ≥400; students.cjs + parent.cjs function calls all 200; bundle has no
+DEV / supabase.co hosts. Post-grant checks: anon on new tables 0, `save_lesson_progress_atomic` not executable by
+authenticated/anon, `rpt_student_access` still service-role only.
