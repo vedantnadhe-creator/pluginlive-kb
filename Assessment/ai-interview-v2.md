@@ -403,6 +403,14 @@ calls `Assessment.calculateRoleBasedScore` with `{ markCalculated: false }`, pas
 sets `scores_calculated = true` only after `writeCombinedScore` succeeds; a scoring failure leaves it `false` so the
 calculation worker can retry.
 
+**One unscorable answer blocks the whole report.** `scoreRemote` retries failed score-answers items once, then throws;
+the calculation worker retries the attempt 3× and sets `calculation_error = true` — no report. Since 2026-10-26 an
+**empty or undecodable recording** (STT `422 Could not decode audio`, e.g. a 110-byte header-only webm when the mic
+captured nothing) is scored like a missing recording — **0, "No answer was given."** — instead of erroring
+(`answer_scoring._transcribe`). Other STT/LLM errors still fail the item. Stuck attempts: `GET /assessment/calc/failed`
+lists them; re-score with `new AIInterviewV2().calculateScore(<assessment_assigned_id>)` in the student-node container.
+fastapi DEV 148b8ef / UAT 58451dc; PROD pending.
+
 Corporate v2's shared score SQL withholds both the AI Interview and Role Based score rows for a v2 attempt until
 that flag is true. The roster's AI fitness verdict and report availability follow the same rule. A completed attempt
 therefore shows **Preparing Report** while scoring is running, without exposing the temporary voice-only score
