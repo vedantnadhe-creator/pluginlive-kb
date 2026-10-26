@@ -3771,3 +3771,29 @@ admin5 5/5, journeytabs 6/6. Metabase uses ~1.25 GiB.
 **For PROD:** run Metabase (or a managed instance) with its own app DB, create `metabase_readonly` with the same view-only
 grants, build the dashboards with `metabase-setup.py` (adjust host/URL), then set the 5 secrets and `VITE_METABASE_ENABLED=true`.
 The Metabase login page is reachable at `/metabase/`; only the admin account exists.
+
+## 2026-10-26 — UAT: BI Dashboard period / comparison / Combined-Domain-Tech filters enabled (config only)
+
+**Symptom:** after rounds 13–14 (`e8330a6b`), every BI Dashboard showed "Some dashboard filters need Metabase setup".
+The embed function only offers the period, comparison and track controls when `METABASE_DATE_FILTER_ENABLED`,
+`METABASE_COMPARISON_FILTER_ENABLED` and `METABASE_TRACK_FILTER_ENABLED` are `true`. Per `docs/METABASE_DASHBOARDS.md`,
+those may only be set once the `date_range`, `comparison_date_range` and `journey_track` dashboard parameters exist.
+
+**Fix:** `~/banking-sb/metabase-filters.py` (idempotent; rewrites card SQL by name). It adds the 3 parameters as **locked**
+embedding params to dashboards 2/3/4 and wires each compatible card through a text variable in an optional clause.
+A JWT value of `[]` (All time / Combined) means no filter.
+- `date_range` (`YYYY-MM-DD~YYYY-MM-DD`): events → `occurred_at`, assessments → `completed_at`, SWOT → `snapshot_at`,
+  AI ops → `report_date`, YouTube quota → `quota_date`.
+- `journey_track` (`domain`/`tech`): every card on `metabase_student_dashboard`, `metabase_trainer_dashboard`,
+  learning-event views and `metabase_module_catalog`.
+- New card "This period vs comparison period" on each dashboard. It shows the selected-period row, plus a
+  comparison row when `comparison_date_range` is set.
+- Not filtered: cohort KPIs are track-only (no date: they count assigned modules/learners). Admin overview KPIs
+  (`metabase_admin_overview`) stay platform totals.
+- Flags set in `~/banking-sb/functions-secrets.env` (backup `.bak-20261026T-mbfilters`), applied with
+  `docker compose up -d functions`.
+
+**Verified:** signed-token tests for all 3 dashboards (all-time/combined, 30 days + tech + comparison, domain); every card
+returns data. Student 95 modules = tech 27 + domain 68; curriculum 107 = 28 + 79; the comparison card has 2 rows only when
+comparison is on. `node ~/banking-checks/metabase.cjs` (now also asserts no setup warning and the period/compare controls):
+admin, candidate and trainer ✓.
