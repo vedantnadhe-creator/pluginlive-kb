@@ -190,6 +190,48 @@ Two further v1 rules changed with it:
 - Regular assessments lock while *a diagnosis of that type is still
   outstanding*, rather than while *fewer than 2 of that type are completed*.
   The old rule locked a student who was never assigned a diagnosis at all.
+  Since 2026-10-26 that decision is the **server's** — see *Diagnosis gate*
+  below; the v1 list-derived check is only a second guard.
+
+### Diagnosis gate — enforced by student-node (2026-10-26; DEV + UAT, PROD pending)
+
+**Rule:** a *scheduled* institute Communication/Aptitude assignment
+(`schedule_id` set, not one-time, not practice, not itself a diagnosis) cannot
+be started while the same student has a diagnosis of the **same type at the
+same institute** (`is_diagnosis = true`, non-practice) that is `PENDING` or
+`INPROGRESS`, whose map window is open and not cancelled. A diagnosis is never
+`DROPOUT` — the dropout cron resets an abandoned one to `PENDING` (see
+[attempt-expiry.md](attempt-expiry.md)) — so those two statuses are the whole
+"outstanding" set. An expired, cancelled or other-institute diagnosis never
+locks anyone out.
+
+**Why it moved server-side:** the lock used to exist only in v1's
+`AssessmentTable.isAssessmentDisabled`, computed from the active list *on
+screen*. The deadline filter (`duration=lt3|lt5|gt10`) and search are applied
+**in student-node's query**, so whenever they hid the diagnosis rows (a
+diagnosis window runs ~10 years, so "Less than 3 days" always hides it) the
+lock vanished. PROD 2026-10-25: a student filtered on "Less than 3 days" and
+sat scheduled Communication run #1 with both diagnosis papers untouched
+(6 students affected across PROD). v2 never had the lock at all.
+
+**Where it is enforced** (`student-node/app/helpers/diagnosisGate.js`):
+
+| Surface | Behaviour |
+|---|---|
+| `getAssessmentQuestions` (v1 runner, invite links, Mix & Match/v2 parts — every start goes through it) | `409 DIAGNOSIS_PENDING` on a `PENDING` start, before the PENDING→INPROGRESS claim, so nothing is written. Resumes of an `INPROGRESS` row are not gated. |
+| `POST /students/assessments/:id/session` (v1 → v2 handoff) | same 409, so v2 refuses at *open* rather than mid-start |
+| `getActiveAssessments` | per-card `diagnosisLocked`, from **one** query over the student's full record (never the filtered list) |
+
+Message: *"Please complete your {type} diagnosis assessments before starting
+this assessment."* — v1 shows it in the existing "Assessment unavailable"
+modal and disables the card; v2 (`lib/attemptConflict.ts`) shows the
+**"Complete your diagnosis first"** blocked screen.
+
+Progression is unaffected: `progression_history` treats the **first two
+eligible papers in the chain** as the diagnosis (`index <= 1`), regardless of
+which map they came from — the gate only stops the order being skipped.
+Tests: `student-node/test/diagnosisGate.spec.js`,
+`assessment-react-v2/src/lib/attemptConflict.test.ts`.
 
 The Communication pair now derives its written format from the pair itself
 (`student-node/app/helpers/diagnosisPair.js`): a sitting serves whichever format
