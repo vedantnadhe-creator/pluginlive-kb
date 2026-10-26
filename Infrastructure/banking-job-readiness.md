@@ -3797,3 +3797,9 @@ A JWT value of `[]` (All time / Combined) means no filter.
 returns data. Student 95 modules = tech 27 + domain 68; curriculum 107 = 28 + 79; the comparison card has 2 rows only when
 comparison is on. `node ~/banking-checks/metabase.cjs` (now also asserts no setup warning and the period/compare controls):
 admin, candidate and trainer ✓.
+
+**2026-10-26 — Metabase setup now in the repo:** Banking `main` `71a40a63` adds `deploy/metabase/`. It has the compose
+service, nginx location, `readonly_role.sql`, `metabase.env.example`, `metabase_setup.py` and `metabase_filters.py`
+(env-configurable via `METABASE_API`, `METABASE_ENV_FILE`, `MB_REPORT_DB_*`), plus a README with the PROD steps.
+The `~/banking-sb/metabase-*.py` copies on UAT are superseded. No app code changed; the next `deploy.sh` fast-forwards
+the UAT checkout to include it.
