@@ -3803,3 +3803,23 @@ service, nginx location, `readonly_role.sql`, `metabase.env.example`, `metabase_
 (env-configurable via `METABASE_API`, `METABASE_ENV_FILE`, `MB_REPORT_DB_*`), plus a README with the PROD steps.
 The `~/banking-sb/metabase-*.py` copies on UAT are superseded. No app code changed; the next `deploy.sh` fast-forwards
 the UAT checkout to include it.
+
+## 2026-10-26 — UAT `efc7756d`: BI goal/readiness views + learner-owned learning paths (ffmpeg round 15)
+
+Merged branch `3d97c789` (5 commits) into `main 71a40a63`; clean. Build OK; vitest 1901/1905 (the 4 known upstream failures).
+6 migrations; DB-Scripts `716d6b5…b1ac726` (PROD pending).
+- **Fixup `20261026120000_metabase_student_goal_progress_display`:** upstream's `metabase_student_competency_readiness_display`
+  selects `target_role/target_score/target_date` from `metabase_student_competency_readiness`, which (20261025130000) has no
+  goal columns → 42703 on any database. UAT joins the `swot_student_goals` row active at each `evidence_as_of` (the view's stated
+  intent); the columns are appended, so `CREATE OR REPLACE` keeps the existing view.
+- **Fixup `20261026170000_candidate_learning_path_owner_rls`:** upstream + drops `candidate_learning_paths/_modules
+  "authenticated read|write"` (`USING (true)`, from `20260710120000_pil_feature_merge_compat`). OR'd with the new owner
+  policy, they let any user read and rewrite every learner's path. **Upstream/hosted still has them.** Now: learner reads own
+  (by auth uid or `students.id`), admin manages; generation stays server-side (`generate-candidate-path`).
+- Rehearsed: candidate sees 0 others' paths and cannot insert; a candidate-only owner sees 1 path / 10 modules; admin delete OK;
+  core RLS probes unchanged. 66 `metabase%` views: anon/auth 0, `metabase_readonly` all.
+- The new goal views (`metabase_student_goal_progress[_display]`, trainer goal progress, admin readiness aggregates) are
+  not yet on the UAT dashboards (`deploy/metabase/metabase_filters.py` / `metabase_setup.py` own the card list).
+
+**Verification:** admin5 5/5, journeytabs ✓, assesslist ✓, swotadmin ✓, metabase.cjs admin/candidate/trainer ✓. The check now waits
+for the iframe swap: the page re-signs the embed once filters resolve. Snapshot `20261026T085836Z`.
