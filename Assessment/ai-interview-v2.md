@@ -294,6 +294,18 @@ corporate-react-v2 `a3e35a2`, admin-react-v2 `dc7f20d`. Existing v2 configs are 
   with its own `timeLimitSec` still auto-submits whatever it has when the clock ends. Runner-only, so it applies to
   already-floated papers. Gotcha: answers live in per-step state, so a reload mid-step shows an empty answer and the
   candidate must answer that question again.
+- **Interview audio keeps the candidate after a fullscreen exit / tab switch** (2026-10-26, DEV + UAT; PROD pending).
+  Before this, the report's full Interview audio went **digitally silent on the candidate side** from the moment the
+  candidate left fullscreen or the tab and clicked "Return to assessment". Only the interviewer's voice remained
+  after that point. Each answer's own Recorded answer clip was fine, so QA saw the answers under each task but not in
+  the full audio (UAT `b835b68d…`, prabha+images890: `fullscreen_exit` at 713 s, silence from 713 s to 941 s, which
+  covered the Reading, Translation & Explanation task). The cause: the return button calls proctoring `resumeMedia()`,
+  which stops every camera/mic track and opens a new stream. Answer recorders call `getSharedMediaStream()` per take, so
+  they pick up the new stream. The session recorder kept tapping the ended mic track.
+  Fix (assessment-react-v2 DEV `b0ecc1c`, UAT `eaddb43`): `sessionRecorder.followSessionMic(stream)` connects the new
+  mic into the same mix and disconnects the old one. `useProctoring.getMediaStream` calls it whenever it acquires a
+  stream, which covers re-entry and the iOS dead-stream re-acquire. It does nothing when no recording is running.
+  Attempts recorded before this keep the gap, because the mic audio was never captured.
 - **Interview audio holds the listening paragraph and marks every task item** (2026-10-21, DEV + UAT; PROD pending).
   Before this, the report's "Interview audio" (the full-session recording, see `ai-interview.md` → Full Interview
   recording) was **silent while a listening clip played**. The session recorder mixes only the mic and the
