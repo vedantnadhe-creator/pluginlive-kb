@@ -133,11 +133,21 @@ score landed, so dashboards/ATS showed a "final" result while the report was sti
 - Held rows are never re-claimed for scoring (`scoresHeldAt: null` in the claim/sweeper).
   Every re-score reset must also set `scores_held_at = NULL`; a retake (newer `submitted_at`)
   drops a stale hold automatically. A late recording on a held row still re-scores.
+- **Readiness has one owner (2026-10-27, DEV + UAT; PROD pending):** report availability uses
+  `isResultReleased` (student-node `scoreRelease.js`) and corporate-node `RESULT_RELEASED_SQL`
+  (`assessmentScoreSql.js`, which drives corp v2 `getReportTargets.renderable`). Before this, both had a
+  private "AI Interview + score row exists" fallback that ignored the hold, so a PDF downloaded in the
+  minute between score and proctoring report had no proctoring section. The legacy fallback is
+  now `AI_Interview` only, and never applies to a held row.
+- **Calculators never ping the ATS (2026-10-27):** every scoring run (calc worker, legacy score cron,
+  AI Interview drop-off cron) ends with `holdScoresUntilProctored`, which owns the ping.
+  `holdScoresUntilProctored` defaults `finalizeReport`, so every caller writes the camera-off
+  `no_data` report. Checklist for new types: `new-assessment-type-checklist.md`.
 - The corporate ATS ping moves to the release; the progression job re-delays itself
   (`DelayedError`, 30 s) while the row is held, since progression reads only
   `scores_calculated=true` rows. The progression gate treats a held row as in-flight.
 - Gotcha: Postgres keeps µs, JS Date ms — match a hold on its millisecond, never exact equality.
-- Only the async (`CALCULATION_ASYNC=true`) path holds; the legacy inline cron is unchanged.
+- Both the async (`CALCULATION_ASYNC=true`) worker and the legacy inline score cron hold (the cron since 2026-10-27).
 - Schema: `assessment_assigned_students.scores_held_at timestamptz` + partial index
   `aas_scores_held_at_idx` (DB-Scripts `Aptitude Proctoring Report/*__scores_held_at_proctoring_gate.sql`).
   DEV ✅ · UAT ✅ · PROD pending — apply before deploying the code.

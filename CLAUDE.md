@@ -14,6 +14,7 @@ When working on a feature, check the relevant file here **before asking the user
 - `Assessment/custom.md` — custom question assessments
 - `Assessment/rolebased.md` — role-based assessment scoring and calculations
 - `Assessment/ai-interview-v2.md` — Complete AI Interview (AI_Interview_v2): Interview Flow planning, per-step task answers, spoken step instructions, per-parameter task scores, combined scoring, report, Feature Access
+- `Assessment/new-assessment-type-checklist.md` — **read before adding an assessment type or a scoring path**: the result-final rule (`scores_calculated` + proctoring hold), the single readiness predicate, ATS ping ownership, report/score plumbing
 - `Assessment/schedule.md` — assessment scheduling and cron jobs
 - `Assessment/admin.md` — admin panel, assessment management, TPO/corporate flows
 - `Assessment/admin-frontend.md` — admin-react Assessment module (UnifiedAssessmentTable, StudentReport, subscription filtering, heading display)
