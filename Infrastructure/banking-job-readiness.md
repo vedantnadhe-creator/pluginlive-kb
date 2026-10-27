@@ -3858,3 +3858,19 @@ mailbox. Then `git reset --hard origin/main` in `~/bankingjobreadiness` and run 
 
 **Verification:** student journey tabs (OTP 1234) ✓, trainer pages ✓, admin5 5/5, assesslist ✓, BI admin/candidate/trainer ✓,
 `temporary_otp` columns intact, anon on credentials table false. Snapshot `20261027T054319Z`.
+
+## 2026-10-27 — UAT `2258b4d4`: "Couldn't build topics from your documents" (private attachments bucket)
+
+**Symptom:** Admin → Modules → *NISM Equity Derivative Dealer* → Generate Topics with AI → `ai-content` 422 "Uploaded
+curriculum is present but has no readable extracted text or saved extraction chunks".
+**Cause:** the module's PDF is a `topic_attachments` row (no `module_resources`). `extractFileText()` fetched `file_url`
+anonymously. `TopicAttachments.tsx` stores `getPublicUrl()` links, but the `attachments` bucket is **private** (09-23
+security remediation; older rows were converted to bare object paths), so storage answered 404 "Bucket not found",
+nothing was extracted, and the function refused to use the description instead.
+**Fix (`main` 2258b4d4):** `fetchAttachment()` in `ai-content` downloads objects in the `attachments` bucket (public-style
+URL or bare path) with the service-role client; other URLs are fetched as before. Test `src/test/aiContentPrivateAttachments.test.ts`.
+**Verified:** `USE_ATTACHMENTS=1 node ~/banking-checks/topicsgen.cjs <moduleId> "<description>" "<title>"` (Node ≥22; read-only)
+→ 200, 8 topics in 113 s. Full vitest: only the 4 known upstream failures.
+**Still open:** attachment *links* shown in the UI use the same public URLs, so opening an attachment in the browser
+also gets "Bucket not found". Fix = signed URLs (`createSignedUrl`) in `TopicAttachments.tsx`. The NISM module's PDF is
+*NISM-Series-IV Interest Rates Derivatives*, not the Equity Derivatives (Series VIII) syllabus the module describes.
