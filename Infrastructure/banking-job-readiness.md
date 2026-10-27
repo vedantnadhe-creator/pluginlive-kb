@@ -3823,3 +3823,37 @@ Merged branch `3d97c789` (5 commits) into `main 71a40a63`; clean. Build OK; vite
 
 **Verification:** admin5 5/5, journeytabs ✓, assesslist ✓, swotadmin ✓, metabase.cjs admin/candidate/trainer ✓. The check now waits
 for the iframe swap: the page re-signs the embed once filters resolve. Snapshot `20261026T085836Z`.
+
+## 2026-10-27 — UAT `1118f2c5` on branch `uat/banking-otp-fallback` (round 16; email-OTP login held back)
+
+`main` = `91b5da46` (merge of branch `0145f035`, 12 commits): email OTP login for students/trainers, configurable email
+providers (Resend/Outlook/Google/Zoho/SMTP, encrypted credentials), password-reset email, curriculum video analysis,
+scoped trainer curriculum access, onboarding identity alignment.
+
+**Why UAT is not on `main`:** `20261026180000_email_login_otp` drops `sms_gateway_settings.temporary_otp`, the shared code
+every UAT student/trainer login uses (no SMS provider on UAT). The new login then requires `request-login-otp` to send the
+code through an admin-configured provider (credentials in `email_provider_credentials`, plus `EMAIL_CREDENTIALS_ENCRYPTION_KEY`).
+UAT has none of these (gateway provider `generic`), so every student/trainer login would fail with "Login email delivery is
+not configured".
+
+**`uat/banking-otp-fallback` (GitHub) = `main` + one commit.** It restores the `efc7756d` login path (Login.tsx,
+candidateMobileAuth, SMS settings UI, candidate-otp-login, _shared/otp-login, update-sms-gateway, send-test-otp,
+bulk-create-users, trainer-bulk-import, trainer-csv-schema and their tests), removes `request-login-otp`, and drops
+`20261026180000`. Everything else in round 16 is live. vitest: the 4 known upstream failures, plus 3 source-contract tests
+for the held-back email-OTP code. The old flow still blocks deactivated accounts and does not reactivate profiles.
+
+**Deploying while this lasts:** `DEPLOY_REF=origin/<uat branch> bash ~/banking-sb/deploy.sh`. `deploy.sh` now reads
+`REF=${DEPLOY_REF:-origin/main}`. Each new round: merge the branch into `main` as usual, then rebuild the UAT branch as
+`main` + the same restore commit (re-check the restored files against upstream edits). A plain `deploy.sh` will refuse
+(`--ff-only` from the UAT branch).
+**To go back to `main`:** configure an email provider in Admin (and `EMAIL_CREDENTIALS_ENCRYPTION_KEY`) and test a code.
+Note that real-looking addresses get emails (72/113 students, 16/20 trainers); `@bankready.app` test accounts have no
+mailbox. Then `git reset --hard origin/main` in `~/bankingjobreadiness` and run `deploy.sh`; that applies `20261026180000`.
+
+**Migrations applied (3):** `20261026190000_trainer_curricula_table_privileges` (no-op on UAT; policies already scoped),
+`20261027120000_login_otp_notification_setting`, `20261027130000_email_provider_configuration`. DB-Scripts `a129a9f…b888ce0`
+(PROD pending). `03_grants.sql` tail now revokes `email_provider_credentials` and `auth_login_otp_*` from anon/authenticated
+(the blanket grants had re-opened them).
+
+**Verification:** student journey tabs (OTP 1234) ✓, trainer pages ✓, admin5 5/5, assesslist ✓, BI admin/candidate/trainer ✓,
+`temporary_otp` columns intact, anon on credentials table false. Snapshot `20261027T054319Z`.
