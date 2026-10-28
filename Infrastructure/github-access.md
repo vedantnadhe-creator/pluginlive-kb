@@ -4,7 +4,7 @@ How the DEV / UAT / PROD boxes authenticate to `github.com/PluginLive-Technologi
 Read this when a `git pull`/`git push` on any box returns **403**, or when a deploy script fails
 at its `git fetch` step.
 
-## Current credential (as of 2026-07-30)
+## Current credential (as of 2026-10-28)
 
 | | |
 |---|---|
@@ -12,26 +12,21 @@ at its `git fetch` step.
 | GitHub account | **RajPluginLive** |
 | Resource owner | `PluginLive-Technologies` (the org — *not* a personal account) |
 | Permissions | `Contents: Read and write`, `Metadata: Read` |
-| Expiry | ≤ 90 days — **it will expire and break every box** |
+| Expiry | **2026-11-27** — it will expire and break every box |
 | Where the value lives | `~/.git-credentials` on each box (mode 600). Never committed here. |
 
 Installed on **DEV**, **UAT** (`uat.pluginlive.com`) and **PROD** (`140.245.25.134`).
 
-## Status 2026-10-28 — org credential expired, replacement token does NOT reach the org
+## Status 2026-10-28 — rotated
 
-- The org token in `~/.git-credentials` on DEV (`x-access-token` and `Alex-PluginLive` lines) returns
-  **Bad credentials** — expired. Every `git fetch`/`push` to `PluginLive-Technologies/*` from DEV fails.
-- A replacement fine-grained token was supplied on 2026-10-28: account **RajPluginLive**, expires
-  **2027-01-26**. Checked before installing it:
-  - `vedantnadhe-creator/pluginlive-kb` → push OK (Raj is a collaborator; this repo already works with
-    the vedantnadhe-creator credential anyway).
-  - `PluginLive-Technologies/student-node`, `DB-Scripts` → `remote: Write access to repository not granted`;
-    `GET /user/repos` lists **no** org repos.
-  - A second token supplied the same day (also RajPluginLive, expires 2027-01-26) failed identically.
-  - Cause: the token's **Resource owner is the personal account, not `PluginLive-Technologies`** (or an org
-    approval is still pending). It was therefore **not** installed on any box.
-- Fix: regenerate per *Rotating the token* below with **Resource owner = `PluginLive-Technologies`**,
-  get it approved if the org gates fine-grained tokens, then install it on DEV, UAT, PROD and the GCP VM.
+- The old org token expired on 2026-10-28 (`Bad credentials` on every box).
+- Three RajPluginLive tokens failed first with `Write access to repository not granted` — they had
+  **Resource owner = the personal account**. The fourth, created with **Resource owner =
+  `PluginLive-Technologies`**, works (`push: true` on student-node, admin-node, DB-Scripts).
+- Installed 2026-10-28: **DEV** (565 embedded origins), **UAT** (39), **PROD builder** (36), credential
+  store + origins, all verified with `git ls-remote`. **GCP VM `pl-prod-app-01` NOT done** — SSH to
+  35.244.18.184 timed out; rotate it when reachable.
+- Expires **2026-11-27** (30 days). Next time create it with 90 days.
 - Check any candidate token without printing it:
   `git ls-remote https://x-access-token:$TOKEN@github.com/PluginLive-Technologies/student-node.git HEAD`
 
