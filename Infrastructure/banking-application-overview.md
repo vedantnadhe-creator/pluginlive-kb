@@ -74,7 +74,20 @@ domains (19) → module_groups (22) → admin_modules (70) → admin_module_topi
   Admin → LLM Settings (`llm_provider_configs`, provider `youtube`) via `_shared/youtube-key.ts`, env
   `YOUTUBE_API_KEY` only as fallback. The project allows **99 `search.list` calls/day**; one fetch uses at most
   8 (stops at the first region tier with results) and reports "YouTube daily search limit reached" when spent.
-  `suggested_videos` holds *search queries*, not URLs. Video quizzes (`generate-lesson-video-quiz`) use the
+  `suggested_videos` holds *search queries*, not URLs.
+  **How a topic's video is chosen (maker-checker, since 2026-10-28):** (1) **maker** (LLM Settings feature
+  `ai-video-suggest`, UAT row → OpenAI `gpt-5`) writes 3 search queries; (2) YouTube search across the locale
+  tiers + deterministic gates (public, embeddable, lesson length, relevance ≥ 35, topic evidence); (3) only when
+  the gates reject everything, the maker may pick a *near-miss* from a pool limited to primary-language results,
+  score ≥ 15 and no "metadata does not match the topic" flag (`ai-video-suggest/video-pick-policy.ts`);
+  (4) **checker** (feature `ai-video-checker`, UAT row → Gemini `gemini-2.5-pro`) judges every shortlisted video
+  (best + bulk alternatives) for core-concept fit, the module's learner (gets the module description), the
+  module's language, and educational content. Only approved videos are assigned; if the checker cannot run,
+  only gate-approved videos survive (a maker-only pick is never published). Without a feature row a role uses
+  the global chain (UAT: Lovable key invalid → GPT-5). `verification.maker_model` / `checker_model` and
+  `ai_generation_runs.maker_model` / `checker_model` record what actually ran. Expect more topics to show the
+  "Search YouTube" fallback than before — narrow topics (8–10 per module) match far better than 5 broad ones.
+  Video quizzes (`generate-lesson-video-quiz`) use the
   video description as evidence (YouTube caption lists come back empty) and refuse with 422 without it.
 
 ## Feature map
