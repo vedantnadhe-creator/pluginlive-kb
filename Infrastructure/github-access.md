@@ -27,6 +27,7 @@ Installed on **DEV**, **UAT** (`uat.pluginlive.com`) and **PROD** (`140.245.25.1
     the vedantnadhe-creator credential anyway).
   - `PluginLive-Technologies/student-node`, `DB-Scripts` → `remote: Write access to repository not granted`;
     `GET /user/repos` lists **no** org repos.
+  - A second token supplied the same day (also RajPluginLive, expires 2027-01-26) failed identically.
   - Cause: the token's **Resource owner is the personal account, not `PluginLive-Technologies`** (or an org
     approval is still pending). It was therefore **not** installed on any box.
 - Fix: regenerate per *Rotating the token* below with **Resource owner = `PluginLive-Technologies`**,
