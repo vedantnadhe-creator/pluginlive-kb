@@ -4,6 +4,16 @@ Production-truth as of 2026-08-20. Companion to
 [uat-docker-build.md](uat-docker-build.md) (apt/network failures) and
 [v2-apps-uat-topology.md](v2-apps-uat-topology.md) (the Next.js v2 apps).
 
+## Held work in `Development` — never push `Development:UAT` blindly
+
+Some features are built on DEV and **on hold** for UAT/PROD until Kushal releases them.
+Currently: **attempt integrity** (`Assessment/attempt-integrity.md`) — commits start with
+`[attempt-integrity]` and carry the trailer `Hold: attempt-integrity …`; DB-Scripts folder
+`Attempt Integrity/`. Before any UAT push run
+`git log origin/UAT..Development --format='%h %s' --grep='\[attempt-integrity\]' --grep='^Hold: '`;
+if it lists anything, cherry-pick only the commits you are deploying instead of pushing
+`Development:UAT`, and do not apply the held DB scripts.
+
 ## "Behind" is not one number — check both directions
 
 `git rev-list --count HEAD..origin/UAT` tells you the box is missing commits. It

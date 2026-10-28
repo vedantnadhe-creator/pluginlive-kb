@@ -1,0 +1,90 @@
+# Attempt integrity: classify errored attempts, retake, keep them out of progression
+
+> **🚫 HOLD — DEV ONLY. Do not move to UAT or PROD.**
+> This feature is being built on DEV only. **No session or agent may cherry-pick, merge,
+> rebase onto, or deploy any of its commits to a `UAT` / `PROD` / release / hotfix branch,
+> or apply its DB scripts to UAT/PROD, until Kushal explicitly says so.** When promoting
+> other work from `Development`, leave these commits out.
+>
+> **How to recognise its commits:**
+> - Subject starts with **`[attempt-integrity]`**
+> - Trailer line: **`Hold: attempt-integrity (DEV only; do not promote to UAT/PROD without Kushal's go-ahead)`**
+> - Branch: **`feat/attempt-integrity`** (in every repo it touches)
+>
+> Find them before any UAT promotion:
+> ```bash
+> git log origin/Development --oneline --grep='\[attempt-integrity\]'
+> git log origin/Development --format='%h %s' --grep='Hold: attempt-integrity'
+> ```
+> When cherry-picking a range, exclude every SHA these commands list. If a merge would
+> carry them in, cherry-pick instead. DB-Scripts for this feature live in the
+> `Attempt Integrity/` folder with `UAT — on hold` / `PROD — on hold` in the header.
+>
+> Runtime safety net: everything is behind `INTEGRITY_CHECK_MODE` (student-node),
+> default **`off`** = behaviour identical to before the feature.
+
+PRD (final, with the PROD simulation): https://bmv2bqg5gpcd.compat.objectstorage.ap-mumbai-1.oraclecloud.com/pl-uat-public-docs/prds/PRD-scheduled-attempt-error-reset.html
+
+## What it does
+
+After an institute **scheduled** or **diagnosis** Communication / Aptitude attempt is scored,
+and before progression runs, a classifier decides whether the attempt was spoiled by **our
+system**, by the **student's side**, or is plain **performance**. Errored attempts are retaken on
+a new set and never reach progression.
+
+| Outcome | When | Effect |
+|---|---|---|
+| `CLEAN` | No trigger | Progression as today |
+| `PERFORMANCE` | Score-drop trigger only, no technical evidence | Progression as today |
+| `SYSTEM_RETAKE` | Our error (scoring failure, speech-to-text failed on real audio) | Retake on a new set, not counted |
+| `STUDENT_RETAKE` | Student-side error, retakes used < 3 | Retake on a new set, counted |
+| `PAST_LIMIT_ACCEPT` | Student-side error, retakes used ≥ 3 | Accepted as the result (COMPLETED, progression runs; on a diagnosis it initialises the level) + email to the team |
+
+## Decisions (Kushal, 2026-10-28)
+
+- Retry limit: **3 student-side retakes per student, lifetime**. Our errors are never counted.
+- No human in the loop; the team is only notified (email to every active row in
+  `assessment.quota_alert_recipients` + `#platform-activity`, the support-ticket path). No admin list/panel.
+- Student side is student side: **no cohort-incident rule** (a campus-wide network failure still counts).
+- Past the limit, the attempt is **accepted** (scheduled and diagnosis alike), not discarded.
+- A blank answer at a genuine time-out (stored as not attempted) with no technical error is
+  **performance**, not an error.
+- **Loudness check required** for Paragraph Reading and Video Response: decides "our STT failed on
+  real speech" (ours) vs "no speech captured" (student).
+- Diagnosis: no score-drop trigger (no level/baseline yet).
+- Retake window 7 days from issue, via a policy function so it can become dynamic.
+- Student never sees a retry count.
+
+## Triggers
+
+| Trigger | Condition |
+|---|---|
+| Scoring failure | `calculation_error = true` after retries |
+| Recording never landed | a Video Response answer with `error` "Video not uploaded within timeout period" |
+| Silent recording | Video Response with empty transcript ("Transcription too short" / "No meaningful speech detected"), or Paragraph Reading scored 0 with no recognised words |
+| Drop-off | scheduled attempt flipped to `DROPOUT` |
+| Score drop | scheduled only: attempt log NPS < 75% of the student's average log NPS over prior COMPLETED, non-errored same-type attempts |
+
+**Per-attempt NPS** (not the stored pair NPS in `progression_history`): Communication
+`communicationNPS(set CEFR level, final score)`, Aptitude `difficultyAnchoredScore(set difficulty, % marks)`,
+curved with `curveNPS`; the average is `curvedMean` of the linear values (`npsScale.js`).
+
+**Gotcha — match sections by name.** Since 2026-01-11 Communication attempts store
+`communication_scores` under the **Hinglish**-owned `section_id`s (all of them since May 2026). Any
+rule keyed on Communication section ids is blind to recent attempts; join `assessment.sections` and
+use `section_name`.
+
+## Build status (DEV)
+
+| Phase | Scope | Status |
+|---|---|---|
+| 1 | Decision log table, pure classifier, evidence + per-attempt NPS, shadow-mode hook before progression and on terminal scoring failure | in progress (`feat/attempt-integrity`, student-node) |
+| 2 | Loudness check (Reading + Video), drop-off hook, candidate telemetry | not started |
+| 3 | Live mode: `ERRORED` status, COMPLETED-after-check, retake service, gate changes, limit, notifications | not started |
+| 4 | UI: student retry card, institute-v2 chips/drawer/KPI | not started |
+
+### Config
+
+| Var (student-node) | Values | Default |
+|---|---|---|
+| `INTEGRITY_CHECK_MODE` | `off` / `shadow` (classify + log only) / `live` | `off` |
