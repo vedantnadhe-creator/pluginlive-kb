@@ -17,6 +17,23 @@ at its `git fetch` step.
 
 Installed on **DEV**, **UAT** (`uat.pluginlive.com`) and **PROD** (`140.245.25.134`).
 
+## Status 2026-10-28 — org credential expired, replacement token does NOT reach the org
+
+- The org token in `~/.git-credentials` on DEV (`x-access-token` and `Alex-PluginLive` lines) returns
+  **Bad credentials** — expired. Every `git fetch`/`push` to `PluginLive-Technologies/*` from DEV fails.
+- A replacement fine-grained token was supplied on 2026-10-28: account **RajPluginLive**, expires
+  **2027-01-26**. Checked before installing it:
+  - `vedantnadhe-creator/pluginlive-kb` → push OK (Raj is a collaborator; this repo already works with
+    the vedantnadhe-creator credential anyway).
+  - `PluginLive-Technologies/student-node`, `DB-Scripts` → `remote: Write access to repository not granted`;
+    `GET /user/repos` lists **no** org repos.
+  - Cause: the token's **Resource owner is the personal account, not `PluginLive-Technologies`** (or an org
+    approval is still pending). It was therefore **not** installed on any box.
+- Fix: regenerate per *Rotating the token* below with **Resource owner = `PluginLive-Technologies`**,
+  get it approved if the org gates fine-grained tokens, then install it on DEV, UAT, PROD and the GCP VM.
+- Check any candidate token without printing it:
+  `git ls-remote https://x-access-token:$TOKEN@github.com/PluginLive-Technologies/student-node.git HEAD`
+
 ## Why classic PATs stopped working
 
 On **2026-07-30** the org enabled a policy that rejects classic PATs with a lifetime > 90 days:
