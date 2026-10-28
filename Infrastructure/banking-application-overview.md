@@ -82,7 +82,13 @@ domains (19) → module_groups (22) → admin_modules (70) → admin_module_topi
   score ≥ 15 and no "metadata does not match the topic" flag (`ai-video-suggest/video-pick-policy.ts`);
   (4) **checker** (feature `ai-video-checker`, UAT row → Gemini `gemini-2.5-pro`) judges every shortlisted video
   (best + bulk alternatives) for core-concept fit, the module's learner (gets the module description), the
-  module's language, and educational content. Only approved videos are assigned; if the checker cannot run,
+  module's language, and educational content. **Language gates (since 2026-10-28 eve):** before any AI step a
+  candidate whose YouTube `defaultAudioLanguage` differs from the first search tier's language (en on UAT) is
+  rejected (`zxx`/`und`/`mul` = unknown, not a mismatch); then **Gemini listens** (`ai-video-suggest/video-listen.ts`,
+  LLM Settings feature `ai-video-listen`, UAT row → `gemini-2.5-flash`) to a 60 s clip (0:30–1:30) of each shortlisted
+  video straight from its YouTube URL — nothing is downloaded, ~6.2k tokens ≈ $0.002, ~9 s, in parallel — and drops
+  other spoken languages; the checker also gets what was heard. Titles are often English on Hindi-spoken videos
+  (25 of 73 UAT candidates carried an `hi` tag), so text alone is not enough. Only approved videos are assigned; if the checker cannot run,
   only gate-approved videos survive (a maker-only pick is never published). Without a feature row a role uses
   the global chain (UAT: Lovable key invalid → GPT-5). `verification.maker_model` / `checker_model` and
   `ai_generation_runs.maker_model` / `checker_model` record what actually ran. Expect more topics to show the
