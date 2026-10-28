@@ -3888,3 +3888,28 @@ URL or bare path) with the service-role client; other URLs are fetched as before
 **Still open:** attachment *links* shown in the UI use the same public URLs, so opening an attachment in the browser
 also gets "Bucket not found". Fix = signed URLs (`createSignedUrl`) in `TopicAttachments.tsx`. The NISM module's PDF is
 *NISM-Series-IV Interest Rates Derivatives*, not the Equity Derivatives (Series VIII) syllabus the module describes.
+
+## 2026-10-28 — UAT `8bd7e61c`: module quiz 500 on admin-built modules; video quiz grounded in the lesson
+
+**Symptoms (trainer Jershini, candidate Renisha, module *Micro Finance Loan Operations*):** module/topic AI Quiz →
+"Edge Function returned a non-2xx status code"; lesson-video quiz said ~10 questions but produced 4, sometimes
+"No questions passed evidence validation", and took ~3.5 min. (Trainer dashboard 0 of 676 candidates was fixed
+upstream in `33e74f34` — `src/lib/inChunks.ts` batches roster `.in()` lists; nginx 1.18 resets the whole HTTP/2
+connection on a ~25 KB URL, so every parallel dashboard request failed.)
+**Causes:** (1) `coach_quiz_sessions.module_id` and `quiz_attempts.module_id` had FKs to `modules` only; modules made
+in the admin builder live in `admin_modules`, so `ai-quiz` generated questions (~70 s) and then failed the insert.
+(2) YouTube answers server-side caption requests with `LOGIN_REQUIRED` (timedtext list returns empty), so
+`generate-lesson-video-quiz` had only the video description (200–1,500 chars); the evidence checker rejected most
+questions and the function retried 3 × ~70 s.
+**Fix:** migration `20261028190000_quiz_module_fk_any_catalog` drops both FKs (access still enforced by
+`user_can_access_module`). `generate-lesson-video-quiz`: when there are no captions, evidence = description + the
+module's `admin_module_topics` lesson text (topic whose title matches the video, else all topics), `evidence_source =
+'lesson'`; stops retrying when an attempt adds no new valid question; sets built from `lesson` are cached even below
+10. UI copy "up to 10 questions"; toast explains a smaller set.
+**Verified on UAT:** module quiz 200 with session (72 s); video *Microfinance Survey* 0 → 10 questions (67 s),
+*Customer Sourcing* 4 → 10 (75 s); second open served from cache in 0.2 s; Jershini dashboard shows 676 candidates.
+Checks: `~/banking-checks/fncall.cjs <uid> <fn> '<json>'` (call any function as a user) and
+`~/banking-checks/asuser.cjs <uid> <path>` (open a page as a user — OTP login is real now, so `1234`-based checks such
+as journeytabs.cjs no longer log in).
+**Still open:** quiz generation latency is the model (`gemini-3.6-flash` direct, ~70 s per 10-MCQ call); real video
+captions need a transcript provider that works from servers.
