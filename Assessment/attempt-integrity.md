@@ -78,10 +78,18 @@ use `section_name`.
 
 | Phase | Scope | Status |
 |---|---|---|
-| 1 | Decision log table, pure classifier, evidence + per-attempt NPS, shadow-mode hook before progression and on terminal scoring failure | in progress (`feat/attempt-integrity`, student-node) |
+| 1 | Decision log table, pure classifier, evidence + per-attempt NPS, shadow-mode hook before progression and on terminal scoring failure | **done on branch** `feat/attempt-integrity` (student-node `9c20b0d8`, worktree `~/api/_wt-attempt-integrity`, not pushed / not merged to Development); table applied on DEV DB; DB-Scripts `1525de1` |
 | 2 | Loudness check (Reading + Video), drop-off hook, candidate telemetry | not started |
 | 3 | Live mode: `ERRORED` status, COMPLETED-after-check, retake service, gate changes, limit, notifications | not started |
 | 4 | UI: student retry card, institute-v2 chips/drawer/KPI | not started |
+
+### Code map (student-node)
+
+- `app/helpers/attemptIntegrity.js` — pure rules: mode flag, scope, per-attempt NPS, triggers, cause, outcome. Spec: `test/attemptIntegrity.spec.js`.
+- `app/models/AttemptIntegrity.js` — evidence (sections by name), prior NPS history (last 20 valid same-type attempts), chronological retake count (only attempts taken before this one, same mode), idempotent upsert into `assessment.attempt_integrity_decisions`.
+- `app/queues/calculationWorker.js` — `runIntegrityCheck` after a successful score (before the progression job) and on a terminal scoring failure; errors are logged, never thrown. Stage is `drop_off` for a DROPOUT row.
+- Async calc path only (`CALCULATION_ASYNC=true`); the legacy inline cron is not hooked.
+- `live` currently behaves as `shadow` (no ERRORED/retake/notify yet).
 
 ### Config
 
