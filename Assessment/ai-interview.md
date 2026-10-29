@@ -364,6 +364,29 @@ your answer"), never the words being transcribed: assessment-react-v2 21964aa
 interview panel 69d06c0 (UAT 756bd73). The transcript is still captured and
 sent for scoring exactly as before.
 
+### Role-play scenes (DEV + UAT, 2026-10-29; PROD pending)
+
+**Opt-in, strict.** A recruiter question becomes a role-play scene **only if it starts with `Role-play:`** (also `Roleplay:` / `Role play:`, any case). Everything else — "Imagine I am a shopkeeper…", "5. Roleplay: …", "(Roleplay) …", "A customer says X, how will you respond?" — stays an ordinary question, exactly as before. PROD scan 2026-10-29: 0 of 336 configs used the marker, 14 had role-play-style questions written other ways (unaffected). Plain-line instructions (no `Q:` markers) pick up a `Role-play:` line as a question even though it ends in "." (admin-node + student-node `isQuestionLine`, kept identical).
+
+**Recruiter writes:** `Role-play: Imagine I am a shopkeeper and you have come to my shop to open a savings account. I tell you: "I already have an account and I'm happy with it." Speak to me as the customer.` No character names needed.
+
+**Save time (fastapi `map-questions`, `utils/role_play.py`).** A third pass (alongside the twins pass) runs **only on marked questions** — no model call when there are none — and writes, per scene, `opening` + `character` + `candidate_role`; admin-node stores it as `question_parameter_map.mappings[].rolePlay` (null elsewhere). Opening shape (Kushal's review): three short sentences, the interviewer IS the person, no "I'll play the customer", no quotes — *"Imagine I'm a shopkeeper whose last bank cut five hundred rupees for minimum balance without telling me. I ask you why I should trust your bank. What will you say to me?"* Always ends "What will you say to me?" ("What will you do?" invites describing). Openings never say "another / one more" (question order is shuffled per candidate). `tidy_opening` fixes punctuation in code (no quotes/dashes/markdown, spacing, comma before "but/so", question marks, one apostrophe style). Existing configs get scenes only after their questions are re-saved.
+
+**Interview time (student-node `aiInterviewRolePlay.js` + `aiInterviewHandler.js`).**
+- The opening is served **word for word in English** (other languages go through the must-ask translation with a role-play rule) and starts with **`Role-play: `** in text and speech; follow-ups do not.
+- After each reply fastapi (`role_play_scene` in `generate-question`) labels it `narrated` (described what they *would* say) / `open` / `closed` / `disengaged`. narrated or open → the customer carries on in character, reacts and raises **one new objection** (no "don't tell me what you would…" — it read as scolding); closed or disengaged → scene ends, the planned question is asked.
+- **Up to 3 turns per scene** (`MAX_SCENE_TURNS`, opening + 2), only while `room > pending role-play openings` (a later scene always keeps its opening turn). Scene turns are tagged `questionMetadata.rolePlay {sceneKey, turn, action, replyType}`, are `isFollowUp`, do **not** count toward the generic `MAX_PROBES = 2`, and generic probing is off inside a scene. Nothing is folded into a scene (no companions).
+- Scene follow-up lines get the same punctuation clean-up (`tidy_spoken`).
+
+**Scoring (fastapi `score-final`).** Transcript turns carry `role_play`; when any are present the prompt marks them `ROLE-PLAY` and adds rules: a scene is rated once as a conversation; a scene where the candidate never spoke to the customer directly (only described) is capped at 2 for its parameter.
+
+**Gotchas.**
+- Do not re-save an assessment's questions while someone is mid-interview: queued question keys change and the next scene can open with live wording (seen on DEV 2026-10-29).
+- The interview greets by student-profile name; a candidate with no `student_personal_profile` is greeted by email (`resolveCandidateIdentity`).
+- Each scene ending costs one extra model call (~1–2 s).
+
+**Commits.** fastapi `e7ddd50 … e78ecd9` (UAT `7c701cb`), student-node `f1b68034 … 9d9dd02e` (UAT `56f2ad30`), admin-node `545cb00`, `50acf9b` (UAT `c0ca809`). Related candidate-app fix: the device check's network row now recovers on the browser's `online` event instead of staying "You're offline" (assessment-react-v2 `a012f54`, UAT `726d422`).
+
 ## End-to-End Flow
 
 1. **Admin assigns AI Interview**: Specifies job role, skills, seniority, industry domain, optional JD, interview duration, follow-up enabled
