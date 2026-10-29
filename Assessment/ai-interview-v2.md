@@ -364,6 +364,31 @@ corporate-react-v2 `a3e35a2`, admin-react-v2 `dc7f20d`. Existing v2 configs are 
 - Finishing completes the session (`complete`) and lands on the done screen; a reload submits the attempt from the
   guard screen and completes the session directly.
 
+### The interviewer's voice after a block change (DEV df020cd / UAT e999a84, 2026-10-29; PROD pending)
+
+Reported on PROD (sailesh+apple5/6, Windows Chrome 156): **Coding → second Voice interview block** showed the first
+question with no narration although `/ai-interview/tts` returned 200 at the block change. Moving between blocks
+happens inside the interview, so before this fix nothing re-woke the shared AudioContext. Only the page's module
+hand-over (`page.tsx` `commitModule`) and Begin assessment did that. Playback could also hang or play silently,
+and the turn's guards then revealed the question unspoken. Runner-only fix (`assessment-react-v2`):
+
+- **Every click that moves the interview on primes the audio inside the gesture** (`primeTtsAudio()`): form-step
+  buttons (`V2FormStep`), Submit response / Record answer / Resume assessment (`AIInterviewPanel`), Continue and play
+  it again (`StepInstruction`).
+- **Web Audio steps are time-limited** (`lib/ttsPlayback.ts`): `decodeAudioData` 4 s, `resume()` 1.5 s
+  (WebKit leaves both pending on an interrupted session), then the same clip plays on an `<audio>` element.
+- **Stuck output clock:** a started voice whose `context.currentTime` has not moved after 1.5 s
+  (`TTS_CLOCK_CHECK_MS`; for example the output device changed) is stopped and replayed on the element.
+- **TTS retry:** `interviewSpeech` retries once on a network error or 5xx (not on a 4xx). The panel's 12 s guard
+  now covers only the network wait; it no longer cuts in while the delivered audio is being decoded.
+- **Still hands-free:** if a step instruction cannot be spoken, its caption is held for reading time
+  (`readingTimeMs`: ~3 words/s, at least 3 s) and the step opens by itself. Voice turns still open the mic
+  automatically after the question.
+- **Telemetry:** PostHog `assessment_interview_voice` `{outcome: played | blocked | unspoken, where: turn | step,
+  reason}`. The server only sees the TTS request, so this event is the only record of whether a line was heard.
+- Not covered: a recorded clip (`AudioPrompt`, a listening call) on iPhone/Safari still needs the Play tap if Safari
+  refuses autoplay after the async step change (the element cannot be unlocked in advance).
+
 ### Question count: a task is one question (UAT 2026-10-21; DEV + PROD pending)
 The candidate intro ("YOUR ASSESSMENT · N questions") and the corp Manage panel ("Question types … Total") use the same
 rule. student-node `MixMatchJourney.getSummary` counts an AI_Interview_v2 part with `candidateQuestionCount(skeleton)`
