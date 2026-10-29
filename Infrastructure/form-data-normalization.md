@@ -674,7 +674,7 @@ to catch any re-linked rows: `WHERE source='TALLY_FORM' AND institute_campus_id 
 
 ### Fixed bug — a Tally push detached EXISTING college students (Jul 2026; fixed 2026-07-17)
 
-Before `31e1dabe` (student-node, 2026-07-17, on PROD since `release-v1.42`), `create-full` →
+Before `31e1dabe` (student-node, 2026-07-17; verified present in PROD `release-v1.42-hotfix-2`), `create-full` →
 `updateExistingStudentData` (`app/handlers/common.js`) spread the normalization `student` block onto
 ANY existing student. That block is built for *new* Tally students (`source: "TALLY_FORM"`,
 `instituteCampusId: ""`, a degree id as `courseId`, the typed `instituteCampusName`), so an existing
