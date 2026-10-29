@@ -1960,3 +1960,45 @@ Edge functions are at `5114b6e9` (additive). Redeploy the frontend from `main` o
 e2e.cjs 0 page errors / 0 failed requests / 0 /sb ≥400; students.cjs + parent.cjs function calls all 200; bundle has no
 DEV / supabase.co hosts. Post-grant checks: anon on new tables 0, `save_lesson_progress_atomic` not executable by
 authenticated/anon, `rpt_student_access` still service-role only.
+
+## 2026-10-29 — deployed `f0edabbf` (upstream `83c8e3dd`, 93 commits, + 2 fix commits)
+
+**New:** Foreign Language Assessment Studio (teacher) + FL results (parent), competitive-exam Q-bank (NEET/JEE/CET/CUET)
+with teacher/admin Q-Bank Upload, AI Doubt Bot + Teacher Lesson Builder tables, WhatsApp digest function, 15-min idle
+timeout, beginner/advanced/enterprise plan tiers, event-driven background work (`app_events` + `app-event-dispatcher`
+replacing cron). `main` builds again (was unbuildable on 10-26).
+
+| Upstream migration | UAT action |
+|---|---|
+| `20261021120001_subscription_reporting_views` | Skipped — older definition of views superseded by 20261022120000 (already applied). |
+| `20261025000000_sprint11_demo_seed_data`, `20261026000000_restore_login_credentials`, `20261026000001_create_admin_users`, `20261026000002_create_demo_students_4_boards`, `20261026000003_create_test_student_9820065335` | **Skipped — credential/seed files.** They set student passwords to their mobile number, reset every parent to `Parent@123` and teachers to `Teacher@123`, make three personal email addresses platform admins, create `admin@eduspeak.in` with password `123456` + admin role, and seed demo schools/students — all with passwords committed in the repo. |
+| `20261025000000_event_driven_replace_cron` | Adapted: `emit_app_event` service_role only (upstream: every signed-in user); FL-content trigger guarded (table absent) and invalid `CREATE TRIGGER IF NOT EXISTS` removed. |
+| `20261025000001_remove_pg_cron_dependency`, `20261026120000_plan_access_enhancement`, `20261027000000/01` Q-bank | As shipped. |
+| `20261027000002_foreign_language_assessments` | Adapted: staff writes scoped to own school; students SELECT-only on own attempts (upstream FOR ALL → could edit scores); attempts readable via `can_access_student` (upstream had a branch true for everyone); `record_fl_assessment_attempt` checks the caller, sets search_path, casts score to integer (`record_skill_attempt(int)` — upstream would fail every call). |
+| `20261028000001_doubt_bot_system` | Adapted: upstream file failed (undefined alias `tc`, missing `class_students`); student policies compared `auth.uid()` to a student_profiles id; lessons readable within own school. |
+| drizzle `0003_scope_evidence_subscriptions_parent_links` | Applied (real fix: any teacher could manage any school's parent links/subscriptions) minus absent `topic_evidence_profile`; **keeps `uat_teacher_subscriptions_same_school_student_read`** (students inherit the school plan). |
+| Old migrations edited in place (`commercial_plan_rbac…`, `20260420080038…`) | Lifted only the new menu rows (teacher.fl-assessment, teacher.qbank-upload, parent.fl-assessment-results), insert-only. |
+
+**Background processing paused on purpose.** The new `admin-cron-jobs` tick forwards to `app-event-dispatcher`, so the
+UAT scheduler (`eduspeak-sb-scheduler`, every minute) would start sending outbox messages, subscription sweeps, YouTube
+video refreshes and retention deletes. UAT ran with every job inactive, so the scheduler container is **stopped with
+restart=no** until Ops decides. Enable: `docker update --restart=unless-stopped eduspeak-sb-scheduler && docker start
+eduspeak-sb-scheduler` (7 pending kick events from 10-26 will run on the first tick).
+
+**`admin@eduspeak.in` reserved.** Upstream hard-codes it as a platform admin in `frontend/src/lib/adminAccess.ts`
+(UI-level gate); UAT sign-up is open with autoconfirm and the address was unclaimed, so anyone could have signed up as
+it and got the admin screens. A no-role account with a random, unrecorded password now holds the email.
+
+**Grant step 07** also closes `emit_app_event` (authenticated), `record_fl_assessment_attempt` (anon) and anon SELECT on
+the new tables. **Build:** fine with `Dockerfile.uat-build`.
+
+**Upstream frontend bugs:** fixed + pushed `88709abe` (admin Q-Bank Upload section crashed: missing `sectionTitle`
+entry; parent FL Results missing `useNavigate`) and `f0edabbf` (missing `CardDescription`). A TypeScript pass over this
+release's files found **29 more pages with undefined components/functions** (e.g. AdminPaymentManagement,
+AdminSubscriptionManagement, Competition*, StudentGrades, PronunciationPractice, AdminAttendanceDashboard…). None is in a
+menu; 18 are routed (crash when the URL is opened directly), 11 are unrouted. Several call functions that were never
+written (`loadData`, `markAsPaid`, `generateLink`), so these need upstream work, not import fixes.
+
+**Verified:** 13 test-set + 10 demo logins; admin 54/54, teacher 18/18, parent 19/19 sections render (fresh load each);
+student sidebar vs route lock 24/24; FL Studio, Q-Bank Upload, Competitive Exams, SWOT load; e2e.cjs clean; bundle clean.
+aividya.si CORS (`corsHeadersFor` → localhost:5173) still unfixed — gateway change awaiting approval.
