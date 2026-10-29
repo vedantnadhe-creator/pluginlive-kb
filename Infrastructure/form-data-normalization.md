@@ -672,6 +672,54 @@ reversible snapshot in `student.backup_tally_campus_20260622`. PROD pending. **G
 canonical identifier is `source = 'TALLY_FORM'`** (response_data is the historical-only proxy);
 to catch any re-linked rows: `WHERE source='TALLY_FORM' AND institute_campus_id <> ''`.
 
+### ⚠️ Known bug — a Tally push detaches an EXISTING college student (PROD, open as of 2026-10-29)
+
+When the email already exists, `create-full` → `updateExistingStudentData` (student-node
+`app/handlers/common.js`) spreads the normalization `student` block onto the existing row via
+`Student.update`. That block is built for *new* Tally students (`source: "TALLY_FORM"`,
+`instituteCampusId: ""`, a degree id as `courseId`, the typed `instituteCampusName`), so an
+existing campus student gets: **college link wiped**, `source` → `TALLY_FORM`, college name →
+whatever they typed (e.g. "CFA Institute", "Diploma in Engineering"), `course_id`,
+`current_course` and education rows overwritten, and `dob`/`gender` set to null when the form
+doesn't carry them. The student then disappears from their college's student list, TPO dashboard,
+institute assessment reports and campus-based assignments. Corporate assessments (email-keyed) are
+unaffected.
+
+**PROD impact:** 438 existing students detached — 436 in the July 2026 V2 re-upload burst, 2 more in
+Oct 2026. Find them: students created > 1 day before their first `candidate_job_details` push, now
+`source='TALLY_FORM'` with empty `institute_campus_id`.
+
+**Recovery (done 2026-10-29, PROD):** the push does not touch `user_management.users.institute_campus_id`,
+which still holds the old campus (98% agreement with `students.institute_campus_id` on unaffected
+students). 193 students with a valid active campus there were re-linked (`institute_campus_id`,
+`institute_campus_name` = master name, `source` → `MANUAL`). Previous values + the revert statement
+are in **`student.backup_tally_recover_20261029`**. Not recovered: 243 with no campus anywhere
+(probably never campus-linked — only a pre-July DB backup can tell) and 2 with an invalid campus id.
+`course_id` / `current_course` were **not** restored (no source holds the old values). Schedule
+student lists (`assessment.student_lists`) only covered 2 of the 438 — not a useful source.
+
+**Safety-net snapshot (PROD, 2026-10-29 09:57Z):** until the fix ships, students hit *after* that
+time can be restored from:
+`student.backup_tally_overwrite_20261029_{students,current_course,education_profile,personal_profile,users}`
+(~250 MB, point-in-time; slim column sets, no password hashes). Affected rows = `source='TALLY_FORM'`
+with empty campus whose snapshot row has a campus.
+
+**TODO — cleanup when the fix reaches PROD.** The fix (student-node: on the update path never
+overwrite `institute_campus_id`, `institute_campus_name`, `source`, `course_id`, `current_course`
+of an existing student; only add the role mapping and fill empty fields) is **not written yet**.
+In the PROD release/hotfix that ships it:
+1. Restore any student hit between 2026-10-29 and the deploy from the `backup_tally_overwrite_20261029_*` snapshot.
+2. Then drop the six backup tables:
+   ```sql
+   DROP TABLE student.backup_tally_overwrite_20261029_students,
+              student.backup_tally_overwrite_20261029_current_course,
+              student.backup_tally_overwrite_20261029_education_profile,
+              student.backup_tally_overwrite_20261029_personal_profile,
+              student.backup_tally_overwrite_20261029_users,
+              student.backup_tally_recover_20261029;
+   ```
+3. Delete this TODO and rewrite this section as "fixed in <release>".
+
 ### Behavior — existing student is updated, not rejected; materialized masters are active (Jun 2026)
 
 Two `create-full` behaviors changed in student-node (`app/handlers/common.js`,
