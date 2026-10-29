@@ -2,6 +2,10 @@
 
 Behavioural / integrity proctoring that runs **silently during an assessment** and produces an **after-the-fact integrity report** for human review. It never interrupts, warns, or auto-submits the candidate — that existing in-exam flow (tab-switch / fullscreen warnings → auto-submit at `MAX_TAB_SWITCH_WARNINGS`) is unchanged. Proctoring here only *collects signals* and *computes a report*.
 
+> **Nothing is recorded or counted once the final submission starts (DEV + UAT, 2026-10-29):** Esc,
+> closing or switching the tab on "Submitting…" is not a violation; events, snapshots, gaze and
+> environment watchers stop. See [submission-pipeline.md](submission-pipeline.md).
+>
 > **Candidate enforcement (DEV + UAT, 2026-08-27):** auto-submit now occurs on the fourth counted violation, with a blocking five-second acknowledgement modal before submission. See [Auto-submit on the Fourth Proctoring Violation](fourth-violation-auto-submit.md). This does not change report-only signal collection. PROD is pending.
 
 **Live on:** DEV + UAT. PROD pending.

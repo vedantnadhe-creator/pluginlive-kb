@@ -668,8 +668,10 @@ proctoring processing are unchanged and live where they always did — see
 `uploadQueue.ts` now requests a signed Oracle upload URL from student-node for ordinary
 recordings, uploads the browser blob directly to Object Storage, then confirms completion.
 This removes the student-node proxy leg and its full-file memory buffering. The queue does not
-consider a take landed until confirmation succeeds, and submission drainage still waits for
-this sitting's queued media.
+consider a take landed until confirmation succeeds. **Since 2026-10-29 the final submit no longer
+waits for uploads** (it used to wait up to 10 min): it registers each queued take (`init`) and
+submits; uploads run 3 at a time and finish on the completion screen. The submit also freezes the
+paper and stops proctoring — see [submission-pipeline.md](submission-pipeline.md).
 
 The server creates the pending answer before returning the URL, so scoring can distinguish an
 upload in flight from a skipped response. If initialization fails for a non-authentication

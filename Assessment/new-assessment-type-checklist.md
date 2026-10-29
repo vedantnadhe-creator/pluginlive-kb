@@ -30,6 +30,11 @@ DEV `c3d0aba6` / UAT `471ef417`. PROD pending.
 
 ## Steps
 
+### 0. Submission: persist during the sitting, never at submit
+Answers save as they are given (with retry), recordings upload in the background on signed URLs,
+and the final submit only registers takes, freezes the paper, stops proctoring and submits parts
+once each. Follow the checklist in [submission-pipeline.md](submission-pipeline.md) §4.
+
 ### 1. Scoring: the calculator only stores the score
 - Add the branch to student-node `Assessment.calculateAssessmentScore` (`app/models/Assessment.js`).
   Return `{ message: "success" }`, or `{ message: "error", isTransient, status }` so the worker

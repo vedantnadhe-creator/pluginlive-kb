@@ -110,8 +110,15 @@ pending, and holds the student-dashboard redirect until they have landed (`usePe
 
 | Repo | Change | DEV | UAT | PROD |
 |---|---|---|---|---|
-| assessment-react-v2 | freeze + proctoring stop + no upload wait + parallel queue + answer-save retry | `9c9746f` | see below | pending |
-| student-node | submit writes only changed answers | `39f415bb` | see below | pending |
+| assessment-react-v2 | freeze + proctoring stop + no upload wait + parallel queue + answer-save retry | `9c9746f` | `3e67371` (2026-10-29) | pending |
+| student-node | submit writes only changed answers | `39f415bb` | `8e66a56d` (2026-10-29) | pending |
+
+Verified 2026-10-29: unit tests (reducer freeze, queue scheduling/registration, answer-save
+retry, no-violation-while-submitting, submit diff); DEV AI Interview sitting through the new
+submit → `COMPLETED`, `calc:done`, `ai_finalize:done`, `scores_calculated = t`; UAT bundle built on
+the UAT box with no DEV hostnames and no page errors. The Jev admin-float specs are stale against
+the current admin wizard (combined Degree & Department picker, moved Aptitude section step, Ask Oli
+over Continue — `JEV_HIDE_OLI=1`), so the four-type sanity chain could not float on DEV that day.
 
 Deploy student-node before the frontend: the frontend change is safe against the old backend
 (it only stops waiting), but the backend diff is what removes the redundant writes.

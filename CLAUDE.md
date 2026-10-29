@@ -15,6 +15,7 @@ When working on a feature, check the relevant file here **before asking the user
 - `Assessment/custom.md` — custom question assessments
 - `Assessment/rolebased.md` — role-based assessment scoring and calculations
 - `Assessment/ai-interview-v2.md` — Complete AI Interview (AI_Interview_v2): Interview Flow planning, per-step task answers, spoken step instructions, per-parameter task scores, combined scoring, report, Feature Access
+- `Assessment/submission-pipeline.md` — **final submit contract for every assessment type**: paper freeze + proctoring stop on submit, recordings registered not awaited (server barrier + late re-score), parallel uploads, answer-save retry, submit writes only changed answers
 - `Assessment/new-assessment-type-checklist.md` — **read before adding an assessment type or a scoring path**: the result-final rule (`scores_calculated` + proctoring hold), the single readiness predicate, ATS ping ownership, report/score plumbing
 - `Assessment/schedule.md` — assessment scheduling and cron jobs
 - `Assessment/admin.md` — admin panel, assessment management, TPO/corporate flows
