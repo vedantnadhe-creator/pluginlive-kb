@@ -1,6 +1,6 @@
 # Next.js v2 apps on UAT — topology and deployment
 
-Production-truth as of 2026-08-19, when all four v2 apps were brought onto UAT
+Topology established 2026-08-19; isolated systemd deployments updated 2026-10-30. All four v2 apps were brought onto UAT
 and given `deploy.sh` entries. Before this, only `institute-react-v2` was on the
 box and it was deployed **by hand** — UAT's `deploy.sh` had no v2 entry at all.
 
@@ -16,7 +16,7 @@ two assessment apps to edit, and which candidates still reach v1.
 | `assessment-react-v2` | `~/frontend/assessment-react-v2` | **Docker** `candidate-assessment-journey-v2` | `127.0.0.1:3015→3000` | `assessment.uat…/candidate-assessment-journey/v2` |
 | `admin-react-v2` | `~/frontend/admin-react-v2` | systemd `admin-react-v2.service` | 3013 | `admin.uat…/v2` |
 | `corporate-react-v2` | `~/frontend/corporate-react-v2` | systemd `corporate-react-v2.service` | 3014 | `corporate.uat…/v2` |
-| `institute-react-v2` | `~/frontend/institute-react-v2` | systemd `institute-react-v2.service` | 3012 | `institute.uat…/v2` |
+| `institute-react-v2` | source: `~/frontend/institute-react-v2`; runtime: `~/releases/institute-react-v2/UAT-<sha>-<timestamp>` | systemd `institute-react-v2.service` | 3012 | `institute.uat…/v2` |
 | `corporate-node-v2` | `~/api/corporate-node-v2` | systemd `corporate-node-v2.service` | 4001 | none — internal only |
 
 **Ports differ from DEV.** On DEV, institute-react-v2 is :3011 and
@@ -51,6 +51,20 @@ ssh ubuntu@uat.pluginlive.com
 > retains the previous build's `static/chunks` so open tabs keep working, which
 > means grepping `/app/.next/static` can match a *stale* chunk and show a change
 > that is not actually live.
+
+Since 2026-10-30, UAT `auto_deploy.sh` dispatches **admin-react-v2,
+corporate-react-v2 and institute-react-v2** through
+`~/scripts/deploy-shared-assessment-next.sh`. They build in a fresh release checkout using
+the target server's `.env.local`, verify no DEV URLs, then switch a systemd drop-in
+(`zz-shared-assessment.conf`). The previous directory is retained for rollback. Do not
+build over a live `.next` directory. The helper uses Node 20 and chooses **pnpm frozen
+install when pnpm-lock.yaml exists**, otherwise npm ci. It verifies service PID/port and
+page assets; failures restore the previous override.
+
+Institute-v2's first isolated release is
+`~/releases/institute-react-v2/UAT-ba6c1c2a506b-20261030T093135`, port 3012. Source checkout
+HEAD can lag an isolated deployment: inspect `systemctl show institute-react-v2 -p WorkingDirectory`
+and the release's Git revision. Helper source is [versioned here](scripts/deploy-shared-assessment-next.sh).
 
 Menu IDs 22–25 in `~/deploy.sh`. They do **not** use `TYPE=frontend` — that
 branch builds a Docker image from `.env` and would miss what these apps need.

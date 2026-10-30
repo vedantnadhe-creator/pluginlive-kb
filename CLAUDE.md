@@ -8,7 +8,7 @@ When working on a feature, check the relevant file here **before asking the user
 - `ATS/auth-react-login-app.md` — the shared sign-in app and the platform **session model**: 2-day access token + 30-day rotating refresh cookie, and the per-env `LOGIN_TOKEN_EXPIRES_IN=2d` requirement
 - `ATS/Corporate/Users/company-management-v2.md` — corporate v2 Manage Users: Admin + per-corporate roles, per-user action permissions, check-in = full access, BFF `requireAction`, `PASSWORD_MASK_SECRET`
 - `Assessment/README.md` — assessment system overview
-- `Assessment/attempt-integrity.md` — **🚫 HOLD: DEV-only feature. Never promote commits tagged `[attempt-integrity]` (or DB-Scripts in `Attempt Integrity/`) to UAT/PROD until Kushal says so** — read before any UAT promotion
+- `Assessment/attempt-integrity.md` — **UAT live QA approved 2026-10-30; PROD HOLD.** Resets, student/TPO UI, notifications and both migrations are on UAT. Never promote commits tagged `[attempt-integrity]` or DB-Scripts `Attempt Integrity/` to PROD/release without separate approval. Read the release/cutover details before promotion.
 - `Assessment/candidate-frontend-v2.md` — **the candidate app is `assessment-react-v2`; `Assessment-React` is legacy/maintenance-only** — read this before editing either frontend
 - `Assessment/aptitude.md` — aptitude test scoring, flow, proctoring
 - `Assessment/communication.md` — video/audio assessment scoring

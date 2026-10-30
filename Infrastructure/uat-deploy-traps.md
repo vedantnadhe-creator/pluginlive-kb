@@ -14,10 +14,29 @@ Some features are built on DEV and **on hold** for UAT/PROD until Kushal release
 if it lists anything, cherry-pick only the commits you are deploying instead of pushing
 `Development:UAT`, and do not apply DB scripts without the corresponding environment approval.
 
-**2026-10-30 exception:** Kushal explicitly approved the existing attempt-integrity **shadow
-implementation** for UAT (student-node `22e0ff54`, fastapi `3339e59`, decision-log migration
-`20261028T080732Z`). Original DEV-only commit trailers remain historical. PROD promotion and
-future live reset/UI phases remain on hold; this is not a release-wide approval.
+**2026-10-30 environment approval:** Kushal first approved the shadow implementation and
+then explicitly requested **working live behavior for UAT QA**. UAT now includes live retries,
+notifications, progression exclusion and student/TPO UI (student-node `7c6c7541`, admin-node
+`1fda4a2`, institute-node `ba39e30`, Assessment-React `f4af526`, institute-v2 `ba6c1c2`,
+fastapi `3339e59`). Both Attempt Integrity migrations are applied to UAT. Original DEV-only
+trailers remain historical; new trailers hold **PROD**. This approval covers this feature
+on UAT, not a full release or PROD. Details/config/cutover: [attempt integrity](../Assessment/attempt-integrity.md).
+
+## Institute v2: build in an isolated release with the right lockfile (2026-10-30)
+
+`~/auto_deploy.sh institute-react-v2 UAT` now delegates to the same isolated Next release
+helper used by admin/corporate v2. The old in-place `.next` build could disrupt the running
+service. The helper builds before swapping the systemd WorkingDirectory, retains the old
+release/override, checks listening PID plus referenced assets and rolls back on verification
+failure. Institute uses port **3012** and verifies `/v2/assessments` and `/v2/dashboard`.
+
+Institute v2 tracks **pnpm-lock.yaml**, not package-lock.json: use
+`pnpm install --frozen-lockfile --ignore-scripts`, then its build. An initial `npm ci` attempt
+failed before switching the service; the helper now selects pnpm for a pnpm lockfile and npm
+for a package lockfile. Use Node 20 from the existing nvm path. UAT bundle checks must find
+no DEV URLs. Secret-free helper copy: [deploy-shared-assessment-next.sh](scripts/deploy-shared-assessment-next.sh).
+The auto-deploy dispatch also includes institute-v2 on the UAT host; do not copy the full
+host auto-deploy script into the KB because it contains private notification configuration.
 
 ## Fastapi speech model assets need to be copied too (2026-10-30)
 

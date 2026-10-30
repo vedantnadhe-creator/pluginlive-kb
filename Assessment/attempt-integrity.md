@@ -1,149 +1,223 @@
-# Attempt integrity: shadow classifier and planned retakes
+# Attempt integrity: live retries on UAT
 
-> **HOLD — PROD promotion still requires separate approval.**
-> Kushal explicitly approved the **existing shadow implementation for UAT on 2026-10-30**.
-> That approval covers the classifier, speech check and decision-log table only; it does
-> not turn on automatic resets, progression exclusion, notifications or new UI.
-> **Do not promote this feature or its DB migration to PROD / release / hotfix branches
-> without separate approval.** Future live-action phases also need their own UAT approval.
+> **HOLD — PROD requires separate approval.** Kushal approved UAT promotion on
+> 2026-10-30 and then explicitly requested working live behavior for QA: “Not shadow
+> mode, it will be tested by QAs so it should be working.” This releases the classifier,
+> speech check, live resets, notifications and student/TPO UI to **UAT only**.
+> Never promote this feature or its migrations to PROD/release/hotfix without separate approval.
 >
-> **How to recognise its commits:**
-> - Subject starts with **`[attempt-integrity]`**
-> - Trailer line: **`Hold: attempt-integrity (DEV only; do not promote to UAT/PROD without Kushal's go-ahead)`**
-> - Branch: **`feat/attempt-integrity`** (in every repo it touches)
->
-> Find them before any UAT promotion:
+> Feature commits start `[attempt-integrity]`. New trailers are
+> `Hold: attempt-integrity (PROD only; separate approval required)`; earlier DEV-only
+> trailers are historical and superseded only for the UAT work recorded here.
+> Branches: `feat/attempt-integrity`, `feat/attempt-integrity-live` and selective
+> `promote/attempt-integrity-live-uat`. Always check the commit markers before promotion:
 > ```bash
 > git log origin/Development --oneline --grep='\[attempt-integrity\]'
 > git log origin/Development --format='%h %s' --grep='Hold: attempt-integrity'
 > ```
-> The original DEV-only trailers are historical: the UAT approval above overrides them
-> for the released shadow commits. UAT equivalents: student-node `ddad55b7`, `2c6f8632`,
-> `22e0ff54`; fastapi `cec5b30`, `3339e59`. Continue checking markers before promotion.
-> DB-Scripts live in `Attempt Integrity/`; UAT is applied and PROD remains pending/on hold.
->
-> Runtime safety net: everything is behind `INTEGRITY_CHECK_MODE` (student-node),
-> default **`off`** = behaviour identical to before the feature.
+> DB scripts: `PluginLive-Technologies/DB-Scripts/Attempt Integrity/`.
+> Runtime default is still `INTEGRITY_CHECK_MODE=off`; **UAT is configured `live`**.
 
-PRD (final, with the PROD simulation): https://bmv2bqg5gpcd.compat.objectstorage.ap-mumbai-1.oraclecloud.com/pl-uat-public-docs/prds/PRD-scheduled-attempt-error-reset.html
+PRD (decision history; this document describes the implementation): https://bmv2bqg5gpcd.compat.objectstorage.ap-mumbai-1.oraclecloud.com/pl-uat-public-docs/prds/PRD-scheduled-attempt-error-reset.html
 
-## What it does
+## Current behavior
 
-After an institute **scheduled** or **diagnosis** Communication / Aptitude attempt is scored,
-and before progression runs, a classifier decides whether the attempt was spoiled by **our
-system**, by the **student's side**, or is plain **performance**.
+Scope: institute **scheduled and diagnosis Communication/Aptitude**. Practice, corporate,
+one-time and other assessment types retain their existing flow.
 
-**Current implementation is shadow only:** it writes a decision and evidence. It does not
-reset/reassign attempts, change status or scores, exclude results from progression, or send
-notifications. Even `live` currently behaves as shadow. The actions below are the planned
-live behavior, not actions performed by the deployed code.
+After submission, an in-scope live attempt remains `INPROGRESS` while scored and checked.
+Only an accepted check changes it to `COMPLETED`; progression runs afterward. An error
+creates a **new assignment on a different question set**, preserving the original as
+`ERRORED` with its answers, scores and evidence. It never updates progression.
 
-| Outcome | When | Planned live effect (not implemented) |
+| Outcome | Cause | Live action |
 |---|---|---|
-| `CLEAN` | No trigger | Progression as today |
-| `PERFORMANCE` | Score-drop trigger only, no technical evidence | Progression as today |
-| `SYSTEM_RETAKE` | Our error (scoring failure, speech-to-text failed on real audio) | Retake on a new set, not counted |
-| `STUDENT_RETAKE` | Student-side error, retakes used < 3 | Retake on a new set, counted |
-| `PAST_LIMIT_ACCEPT` | Student-side error, retakes used ≥ 3 | Accepted as the result (COMPLETED, progression runs; on a diagnosis it initialises the level) + email to the team |
+| `CLEAN` | No problem detected | `COMPLETED`, normal progression |
+| `PERFORMANCE` | Low NPS with no technical cause | `COMPLETED`, score stands, normal progression |
+| `SYSTEM_RETAKE` | Scoring failure, primary STT lost real speech, or speech check unavailable | Original `ERRORED`, new-set retry, student email, no chance used |
+| `STUDENT_RETAKE` | Missing recording, silence/too-short/no-speech recording, drop-off; fewer than three counted retries used | Original `ERRORED`, new-set retry, student email, one chance used |
+| `PAST_LIMIT_ACCEPT` | Another student-side error after three counted retries | No reset; `COMPLETED`, result accepted and progression runs, team email |
 
-## Decisions (Kushal, 2026-10-28)
+The limit is **three counted retries per student for life, combined across both assessment
+types**. Allocation is serialized per normalized email inside the action transaction, so
+simultaneous errors cannot allocate a fourth retry. System-side retries remain free even
+past the limit. Shadow decisions never consume the live budget.
 
-- Retry limit: **3 student-side retakes per student, lifetime**. Our errors are never counted.
-- No human in the loop; the team is only notified (email to every active row in
-  `assessment.quota_alert_recipients` + `#platform-activity`, the support-ticket path). No admin list/panel.
-- Student side is student side: **no cohort-incident rule** (a campus-wide network failure still counts).
-- Past the limit, the attempt is **accepted** (scheduled and diagnosis alike), not discarded.
-- A blank answer at a genuine time-out (stored as not attempted) with no technical error is
-  **performance**, not an error.
-- **Loudness check required** for Paragraph Reading and Video Response: decides "our STT failed on
-  real speech" (ours) vs "no speech captured" (student).
-- Diagnosis: no score-drop trigger (no level/baseline yet).
-- Retake window 7 days from issue, via a policy function so it can become dynamic.
-- Student never sees a retry count.
+The latest accepted policy applies the exhausted-limit rule to **both diagnosis and
+scheduled assessments**. A diagnosis at that point can establish the starting level.
+No manual review queue/admin panel is implemented. Limit emails reuse every active row in
+`assessment.quota_alert_recipients`; there is no new Slack sender. Campus network problems
+remain student-side; there is no cohort-based incident override. Students never see a count.
 
-## Triggers
+## Triggers and low scores
 
 | Trigger | Condition |
 |---|---|
-| Scoring failure | `calculation_error = true` after retries |
-| Recording never landed | a Video Response answer with `error` "Video not uploaded within timeout period" |
-| Silent recording | Video Response with empty transcript ("Transcription too short" / "No meaningful speech detected"), or Paragraph Reading scored 0 with no recognised words |
-| Drop-off | scheduled attempt flipped to `DROPOUT` |
-| Score drop | scheduled only: attempt log NPS < 75% of the student's average log NPS over prior COMPLETED, non-errored same-type attempts |
+| Scoring failure | Terminal scoring failure (`calculation_error=true`) |
+| Missing media | An attempted/initialized required recording never arrived |
+| Empty transcript | Video Response: “Transcription too short” / “No meaningful speech detected”; Paragraph Reading: zero with no recognized words |
+| Drop-off | The existing dropout flow marks the live attempt `DROPOUT` |
+| Score drop | Scheduled only: current per-attempt log NPS is **strictly below 75%** of the prior same-type baseline |
 
-**Per-attempt NPS** (not the stored pair NPS in `progression_history`): Communication
-`communicationNPS(set CEFR level, final score)`, Aptitude `difficultyAnchoredScore(set difficulty, % marks)`,
-curved with `curveNPS`; the average is `curvedMean` of the linear values (`npsScale.js`).
+Low score is **a check trigger, never sufficient evidence for a reset**. With no technical
+cause the outcome is `PERFORMANCE`, and the score counts. Genuine timed-out blank answers
+that the backend marks not attempted are performance. Explicit skipped/not-attempted
+recording answers are excluded from missing/silent-recording error evidence.
 
-**Gotcha — match sections by name.** Since 2026-01-11 Communication attempts store
-`communication_scores` under the **Hinglish**-owned `section_id`s (all of them since May 2026). Any
-rule keyed on Communication section ids is blind to recent attempts; join `assessment.sections` and
-use `section_name`.
+Per-attempt NPS is calculated from the paper actually served, before progression:
+Communication `communicationNPS(set CEFR, final score)`; Aptitude
+`difficultyAnchoredScore(set difficulty, percentage marks)`. `curveNPS` curves the current
+value; `curvedMean` averages historical **linear** values and curves once. This is different
+from the rolling/pair NPS stored in `progression_history`. Baseline: up to 20 earlier scored,
+COMPLETED same-type institute attempts, excluding errored outcomes. **Diagnosis has no
+score-drop comparison.**
 
-## Build status
+Communication score evidence joins `assessment.sections` by **section name**. Section IDs
+may belong to Hinglish even for Communication (recent scoring storage convention).
 
-| Phase | Scope | Status |
+## Retakes, gates and recovery
+
+- A retry has its own `valid_until`, **real UTC**, seven days after issue. The shared map's
+  IST-as-UTC end date is untouched; an expired shared map does not expire the retry. A
+  canceled map stays closed. `retakeValidUntil()` is the single policy function for future changes.
+- The retry inherits diagnosis/configuration and the original occurrence's `attemptNumber`;
+  answers start empty. Question content must differ, not just the set UUID. Existing
+  compatible active sets are reused; Aptitude can generate a replacement from its existing
+  question bank. If no compatible complete Communication set exists, the check remains
+  pending with an explicit error and the recovery sweep retries; it never silently reuses
+  the failed paper.
+- Retakes do not charge an additional institute assessment credit. The existing contract
+  window still applies, and candidate soft locks mirror that rule.
+- The live gate blocks a subsequent scheduled assessment of that type while classification,
+  progression or an outstanding retry is pending; it does not stop blocking after 30 minutes.
+  Errored originals are ignored. **Diagnosis #2 remains startable.** Another available retry
+  may also start while a retry is outstanding, avoiding mutual blocking.
+- After `PAST_LIMIT_ACCEPT`, no case remains pending: progression runs and the student can
+  continue once it finishes. No admin verdict is required.
+- Scoring/progression workers never process `ERRORED` originals. Clean results still honor
+  the existing proctoring score-release hold. Late queued jobs cannot restore a failed result.
+- Actions are transactional, with a unique retry-parent link and a durable decision receipt;
+  duplicate checks return the same retry. Submission timestamps distinguish a later resubmission.
+- The minute score cron reconciles submitted scored/failed and dropped live attempts and
+  enqueues missing progression work. Notifications use an outbox lease, five deliveries per
+  sweep, and retain errors for retry. Mail delivery is at least once: a process crash after
+  relay acceptance but before receipt persistence can duplicate an email.
+
+## Student and TPO screens
+
+Candidate dashboard: **Assessment-React** at
+`https://assessment.uat.pluginlive.com/assessment` (not student-react's unused assessment
+route). Scheduled and diagnosis cards display “Retry available”, reason and deadline;
+action is “Retry Assessment”. No retry count is exposed. The runner itself is unchanged.
+
+Institute v2: `https://institute.uat.pluginlive.com/v2/assessments`. The assessment student row
+shows the issue chip (“Errored · retry available”, “Retry limit reached · result accepted”,
+or prior error). The report drawer's **Attempt issues** section preserves the errored entry,
+reason and linked retry. Errored results are excluded from overview/roster/report score,
+NPS, trend and attempt aggregates. A limit-accepted result counts normally. Institute CEFR
+behavior is unchanged. There is no new admin action panel or errored KPI/filter.
+
+## Release state (2026-10-30)
+
+Only feature commits were cherry-picked onto UAT; no Development-wide merge was used.
+
+| Repository | Development source tip | UAT deployed source |
 |---|---|---|
-| 1 | Decision log table, pure classifier, evidence + per-attempt NPS, shadow-mode hook before progression and on terminal scoring failure | Built and promoted to DEV and UAT; table applied in both environments. UAT student-node `22e0ff54`, DB-Scripts `7bd92dc` |
-| 2 | Loudness / speech check (Reading + Video) | Built and promoted to DEV and UAT; UAT fastapi `3339e59`. Recorder telemetry (stop reason + client duration) not started |
-| 3 | Live mode: `ERRORED` status, COMPLETED-after-check, retake service, gate changes, limit, notifications | not started |
-| 4 | UI: student retry card, institute-v2 chips/drawer/KPI | not started |
+| student-node | `8d3a4bba` | `7c6c7541` |
+| admin-node (assessment Prisma schema) | `d742dff` | `1fda4a2` |
+| institute-node | `aa1be42` | `ba39e30` |
+| Assessment-React | `8c84c38` | `f4af526` |
+| institute-react-v2 | `97d5564` | `ba6c1c2` |
+| fastapi (earlier speech release, unchanged by live phase) | `2cdc113` | `3339e59` |
 
-### DEV deployment (2026-10-30)
+UAT config in **both** `~/api/student-node/.env.uat` and `.env`:
+`INTEGRITY_CHECK_MODE=live`, `INTEGRITY_LIVE_SINCE=2026-10-30T09:32:23Z`,
+`CALCULATION_ASYNC=true`. Existing results before that cutoff are not reset retroactively.
+The worker normalizes an unclassified post-cutoff submission made during the image build
+from the former `COMPLETED` submission state to `INPROGRESS` before scoring.
 
-- student-node `f4cc682b` and fastapi `2cdc113` are on `origin/Development` and **LIVE on DEV**, with
-  `INTEGRITY_CHECK_MODE=shadow` in `~/api/student-node/.env` **and** `.env.dev` (CI copies `.env` → `.env.dev`,
-  `auto_deploy.sh` copies `.env.dev` → `.env`; the flag must be in both).
-- Shadow = every scored in-scope attempt gets a row in `assessment.attempt_integrity_decisions`; nothing
-  else changes (no ERRORED status, no retake, scores/progression untouched).
-- student-node CI failed on the divergent shared checkout (`git pull` without a reconcile strategy);
-  deployed by merging `origin/Development` into `~/api/student-node` then `./auto_deploy.sh student-node`.
-- PROD is still on hold; the existing shadow implementation was approved for UAT on 2026-10-30.
+DEV runtime remains **shadow** (verified 2026-10-30), although the live source/schema
+changes were pushed to Development. The shared DEV checkout has unrelated local commits;
+this release did not overwrite them. PROD is unchanged and held.
 
-### UAT promotion (2026-10-30)
+Migrations, applied DEV and UAT, **PROD pending**:
 
-- Only the three student-node feature commits and two fastapi feature commits were cherry-picked
-  onto the existing UAT branches. No Development-wide merge was used.
-- student-node UAT `22e0ff54`; fastapi UAT `3339e59`. UAT student-node `.env.uat` and `.env`
-  both specify `INTEGRITY_CHECK_MODE=shadow`; `CALCULATION_ASYNC=true` is required.
-- Applied `Attempt Integrity/20261028T080732Z__attempt_integrity_decisions.sql` to
-  `uat_pluginlive` using a transaction and bounded lock/statement timeouts. The migration is
-  additive and has no Prisma changes. DB-Scripts status commit: `7bd92dc`; PROD pending/on hold.
-- Fastapi deployed through `CENTRAL_LLM_RELEASE=1 ~/auto_deploy.sh fast-api UAT`, retaining
-  the running dependencies, env, mounts and ports. The host helper now also copies
-  `Proctoring/models/` assets and compiles only Python files; otherwise it would omit Silero's
-  bundled `.jit` model. The source checkout may lag; verify image files/release artifacts.
-- Deployment logs and private rollback configuration are under
-  `~/releases/attempt-integrity-uat-20261030/` on UAT; fastapi's immutable release artifacts
-  are under `~/releases/fastapi-ai-engine/UAT-3339e59816e7-20261030T082333Z/`.
-- student-node deployed with `~/auto_deploy.sh student-node UAT`; the calculation and
-  progression queue workers started successfully with `CALCULATION_ASYNC=true`.
-- Before promotion: classifier/NPS unit checks **40 passed**. On UAT, the speech model
-  loaded and classified synthetic silence as `digital_silence`; an unauthenticated endpoint
-  call returned **401**. The new student-node client reached `fast-api.uat.pluginlive.com`
-  with its service token (**200**) and the endpoint refused an external recording URL.
-- A completed scheduled Aptitude attempt was checked through the deployed model: one
-  **shadow / CLEAN** decision was stored, while its status, set, scores and progression
-  remained identical before/after. Runtime hashes matched the promoted source for four
-  student-node files and six fastapi files, including the bundled model and license.
-- Broad Jev regression was not run as part of the deployment smoke checks.
+- `20261028T080732Z__attempt_integrity_decisions.sql` — decision log (earlier release).
+- `20261030T084703Z__live_attempt_integrity.sql` — `ERRORED` enum;
+  `assessment_assigned_students.integrity_retry_of_id` (unique, self-FK), `valid_until`,
+  `integrity_checked_at`; decision action/notification receipt columns and pending-mail index.
+  DB-Scripts commit `e9dffde`. Student/admin Prisma schemas match; institute API uses raw SQL.
 
-Check on DEV or UAT:
+UAT deploys use `~/auto_deploy.sh`. Backend/candidate build logs, private config backups and
+rollback tags are recorded under `~/releases/attempt-integrity-live-20261030/`.
+Student/institute/candidate old images were tagged `attempt-integrity-live-rollback/<name>:20261030`.
+Institute v2 builds in an isolated release through the shared Next helper; see
+[UAT topology](../Infrastructure/v2-apps-uat-topology.md). Fastapi retains its earlier
+immutable dependency/model release, described in [deploy traps](../Infrastructure/uat-deploy-traps.md).
+
+## Checks and QA
+
+- Classifier/NPS/window/gate checks: **82 passed**. A subsequent contract-lock-only fix
+  reran the affected 61 checks successfully.
+- `script/checkAttemptIntegrityLive.js` passed against isolated DEV and UAT database
+  fixtures, including actual deployed Prisma 4.16 on UAT: original preservation/new paper,
+  expired-parent retry deadline, idempotence, combined budget, fourth-error acceptance,
+  free system errors past the limit, low-score performance, notification receipts and
+  **four simultaneous errors allocating exactly three retries**. Injected mail prevented
+  student/team emails; all fixtures were removed.
+- Candidate and institute v2 browser smoke: both HTTP 200, no page exceptions, no DEV
+  request hosts. Candidate built bundle contains no DEV URLs. This is not the broad Jev suite.
+- On the deployed live container, an isolated diagnosis scoring-failure fixture for the
+  dedicated UAT QA student was handled by the **actual minute cron**, without a manual
+  classifier call: `SYSTEM_RETAKE`, original `ERRORED`, fresh-set child `PENDING`, no original
+  progression row, seven-day deadline. The **real UAT mail relay accepted its retry email**
+  (`notified_at` persisted). Student HTTP list returned its retry card without a count despite
+  an expired parent map; the questions API started it successfully. TPO roster/report HTTP
+  APIs returned the error/pending-retry metadata and audit event without an errored score.
+  Test maps/papers/assignments/decisions were removed; existing assignments were untouched.
+- Runtime hashes matched all 14 checked student/admin/institute source/schema files.
+  Workers are running in `live`, with the expected cutoff and mail/portal config.
+  Authenticated student-to-fastapi speech-check HTTP call succeeded and refused an external URL.
+  Redis instance IDs were checked: these student services use different host-local Redis
+  instances on DEV and UAT, so their existing queue labels do not share jobs across hosts.
+
+For QA, use only dedicated UAT test candidates. Submit a normal attempt, an empty/silent
+recording, a missed upload, and a dropped attempt; check decision/status and student retry
+card plus TPO issue chip. Retake should have a different paper and a personal seven-day
+deadline, and its original should have no progression row. Repeat student-side failures
+across both types to verify the shared three-retry budget; the fourth is accepted and
+alerts the configured team recipients. A low score with no technical error must never reset.
+A diagnosis never triggers the score-drop rule and its second paper remains startable.
+
+Debug queries (read only):
 ```sql
-SELECT created_at, assessment_type, is_diagnosis, stage, outcome, rule, triggers,
-       counts_as_chance, attempt_nps, avg_nps, evidence->'silentRecordings' AS silent
-  FROM assessment.attempt_integrity_decisions ORDER BY created_at DESC LIMIT 20;
+SELECT created_at, assessment_assigned_id, assessment_type, is_diagnosis, mode,
+       stage, outcome, rule, triggers, counts_as_chance, retake_assigned_id,
+       action_applied_at, notified_at, notification_attempts, last_notification_error,
+       attempt_nps, avg_nps
+FROM assessment.attempt_integrity_decisions ORDER BY created_at DESC LIMIT 20;
 ```
-Logs: `docker logs student 2>&1 | grep '\[INTEGRITY\]'`; AI container is `fastapi` on DEV
-and `fastapiai` on UAT (`docker logs <container> 2>&1 | grep speech-presence`).
+Logs: `docker logs student 2>&1 | grep '\[INTEGRITY\]'`.
+Fastapi container: `fastapiai` on UAT, `fastapi` on DEV.
 
-### Code map (student-node)
+Do not simply switch live off while classified work is pending: drain/resolve outstanding
+INPROGRESS checks and retry chains before rollback. Keep the additive columns and evidence;
+never undo the migration to make old code read the new records.
 
-- `app/helpers/attemptIntegrity.js` — pure rules: mode flag, scope, per-attempt NPS, triggers, cause, outcome. Spec: `test/attemptIntegrity.spec.js`.
-- `app/models/AttemptIntegrity.js` — evidence (sections by name), prior NPS history (last 20 valid same-type attempts), chronological retake count (only attempts taken before this one, same mode), idempotent upsert into `assessment.attempt_integrity_decisions`.
-- `app/queues/calculationWorker.js` — `runIntegrityCheck` after a successful score (before the progression job) and on a terminal scoring failure; errors are logged, never thrown. Stage is `drop_off` for a DROPOUT row.
-- Async calc path only (`CALCULATION_ASYNC=true`); the legacy inline cron is not hooked.
-- `live` currently behaves as `shadow` (no ERRORED/retake/notify yet).
+## Code map
+
+- `app/helpers/attemptIntegrity.js`: pure rules/NPS/trigger/cause; specs in `test/attemptIntegrity.spec.js`.
+- `app/helpers/attemptIntegrityPolicy.js`: live cutoff, seven-day policy, public reason text.
+- `app/models/AttemptIntegrity.js`: scope, answer/media evidence, prior NPS, shadow decision persistence.
+- `app/models/AttemptIntegrityActions.js`: transactional statuses/retries/budget, replacement selection,
+  live receipts, recovery queries, recipient/outbox database operations.
+- `app/services/AttemptIntegrityService.js`: workflow, Aptitude replacement generation, email relay, recovery.
+- `app/models/Assessment.js` / quota/window/diagnosis/progression helpers: submission/list/start boundaries.
+- `app/queues/calculationWorker.js`, `script/calculatePendingAssessmentCron.js`, dropout cron:
+  score/check/progression ordering and missed-work recovery (`CALCULATION_ASYNC=true` required).
+- institute-node `AssessmentDetailV2.js` / `assessmentScoreSql.js`: error visibility and score exclusion.
+- Assessment-React `RetryNotice.js`: candidate retry notices; institute-v2 `IntegrityNotice.tsx` and report drawer:
+  TPO issue chip/history.
 
 ### Speech-presence check (silent recordings)
 
@@ -209,7 +283,15 @@ Readings make this urgent: 55 of 150 silent readings are under 3 s.
 
 ### Config
 
-| Var (student-node) | Values | Default |
+| student-node variable | Purpose | Default |
 |---|---|---|
-| `INTEGRITY_CHECK_MODE` | `off` / `shadow` (classify + log only) / `live` | `off` |
-| `INTEGRITY_SCORE_DROP_RATIO` | Ratio in (0, 1); trigger is strictly below this fraction of the baseline | `0.75` |
+| `INTEGRITY_CHECK_MODE` | `off`, `shadow` (log only), `live` (apply actions) | `off` |
+| `INTEGRITY_LIVE_SINCE` | Required ISO UTC cutover in live mode; preserve on future deploys | None |
+| `INTEGRITY_SCORE_DROP_RATIO` | Trigger strictly below this fraction of the baseline | `0.75` |
+| `CALCULATION_ASYNC` | Use the scoring/progression workers | Must be `true` for this feature |
+| `EMAIL_ENDPOINT`, `EMAIL_SENDER` | Environment's existing mail relay and sender | Configured on UAT from its admin service |
+| `INTEGRITY_MAIL_AUTH_KEY` | Mail relay auth; falls back to existing `AUTH_KEY` | Set separately on UAT; do not alter the student API auth key |
+| `INTEGRITY_STUDENT_URL` | HTTPS candidate dashboard URL in retry emails | `https://assessment.uat.pluginlive.com/assessment` on UAT |
+
+There is no retry-count/deadline setting yet: limit is three in the classifier; deadline
+is seven days behind `retakeValidUntil()`. Historical decisions keep their mode/evidence.
