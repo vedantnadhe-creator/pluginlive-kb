@@ -122,6 +122,13 @@ size. The attempts were restored and the 40 exact object keys removed. Reports:
 **229 ms**. This still does not pass the full workload/latency gate, and the
 historical GCP submit p95 (402 ms) is lower.
 
+Cold scaling still needs validation: a fresh node's FastAPI image pull was
+**15m11.935s** for a **10,956,650,165-byte** image during the second smoke. HPA
+returned to one replica before the extras started; they stopped and were removed,
+while the primary stayed healthy. The readiness metric excludes terminating pods
+so intended scale-down does not become a false outage. Check cold workload
+readiness separately from node scale-up during the full load run.
+
 Remaining Phase-5 work after preflight: full **240 starts/hour for 30 minutes
 (120 starts), then 100 starts within 60 seconds**, real sittings with answers and
 proctoring; Jev regression against v2; two timed refresh rehearsals (≤30 min);
