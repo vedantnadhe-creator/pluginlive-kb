@@ -544,8 +544,8 @@ produces: `POST /corporates/:id/assessments/v2/:id/candidates/export` proxies
 admin-node's `/assessment/exportStudentData` with `entityType=corporate`.
 Columns: Name, Email, Phone, Sent/Start/End dates, Status,
 Delivery Status, Delivery Issue, Overall Score, Verdict (plus a % column per
-type on a Mix & Match float). It replaced a CSV the browser built from whatever
-the table happened to be showing.
+type and its subsection breakdown on a Mix & Match float). It replaced a CSV
+the browser built from whatever the table happened to be showing.
 
 **Custom exports v1's Custom sheet (DEV + UAT, 2026-09-30).** Every corporate v2
 float is a Mix & Match group, and exporting by group id gave the float summary
@@ -628,12 +628,31 @@ already produced by `getAssessmentDetails`; re-checking a fixed Speaking +
 Reading + Listening trio incorrectly blanks the result for assessments where
 one of those sections is disabled.
 
+**Mix & Match subsection scores (DEV + UAT, 2026-10-30; PROD pending).** Each
+part's percentage is now followed by its own breakdown, prefixed with the type:
+`Aptitude - Critical Reasoning %`, `Communication - Speaking Ability`,
+`Role Based - Coding Score`, etc. Aptitude contributes its three categories;
+Communication/Hinglish its four abilities; Role Based its selected sections;
+Custom its section percentages; Behavior its competency proficiency levels.
+AI Interview retains its summary percentage without parameter columns.
+Dynamic Custom/Behavior columns are collected across the selected candidates.
+Missing/unscored values are blank and genuine zeroes are preserved.
+
+The fix is in admin-node's Excel writer and
+`app/helpers/mixMatchReport.js:mixMatchSubsectionColumns`; the corporate proxy
+is unchanged. It reads the `parts[].report` objects the consolidated report
+already loaded, with no extra score queries or recalculation. The float used
+to skip the per-type column chain and emit only summary percentages and CEFR,
+so subsection data was lost only when writing Excel. The existing final/part
+scores and Communication CEFR pair remain. Deployed commits: `ba36a49` DEV /
+`92b278b` UAT. See `Assessment/admin.md` for the column contract and checks.
+
 **A Mix & Match float carries the CEFR pair too (DEV + UAT, 2026-09-08).** A
 float has no single assessment type, so the export's per-type column chain is
 skipped entirely and its Communication part came out as a bare
 `Communication %` — the level the result is actually read as was missing. The
 workbook now appends `Assigned CEFR Level` / `CEFR Level` for every
-communication-type part of a float, after the per-part % columns. Detection
+communication-type part of a float, after the per-part score columns. Detection
 mirrors the per-type chain's own fallback (anything that is not Behaviour /
 Aptitude / Role_Based / Custom / AI_Interview), so a Hinglish part keeps its
 CEFR as well; when a float somehow holds more than one such part the headers are
