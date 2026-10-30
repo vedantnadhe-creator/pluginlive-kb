@@ -20,6 +20,39 @@ tags: [service, frontend, uat, supabase, lovable]
 > `kbwjokmmzkgjwiqelrdc`.** See `Infrastructure/banking-postgres-migration.md` — read it before
 > touching UAT `.env`, migrations or edge functions.
 
+## Trainer assessment review (2026-10-30)
+
+UAT runs commit `0690bb1a` for the trainer assessment review fix, deployed with
+`CENTRAL_LLM_RELEASE=0 DEPLOY_REF=0690bb1a ~/auto_deploy.sh banking main` on the UAT box.
+The release applied `20261030060000_trainer_grade_scoped_attempts`, synced the grading function and
+rebuilt the frontend on UAT. Rollback snapshot: `~/banking-sb/snapshots/20261030T085339Z`.
+
+- **Hidden standalone assessment:** Shanmuga Prabha's "Interview Prenup check" had no module and was
+  excluded by the trainer's mapped-module filter even though Yami had completed it with 18 stored responses.
+  The review list now also includes assessments created by the trainer's login or trainer-record ID.
+  Learner reads remain bounded by RLS and the trainer roster.
+- **Review entry point:** Trainer → Grading opens Assessment Reports. Each completed assessment has
+  its own Review button, so reviewers can open that submission rather than only the candidate's latest
+  assessment. Ungraded submissions show Pending review instead of Failed.
+- **Reliable saves:** `save_assessment_review_v1(uuid,jsonb)` permits grading admins or scoped
+  trainers/teachers to review completed attempts. It validates the question set, bounds marks against the
+  author's `marks` (legacy `max_score` only as fallback), and atomically saves response marks, all question-type
+  totals, per-question grading, completion grading status and report-cache invalidation. The old broad-policy
+  draft was not deployed; direct row-update policies remain unchanged. Execute is denied to anonymous users,
+  and candidates are rejected by the function's authorization check.
+- **Answer display and AI regrading:** Review reads both response rows and legacy answer JSON, resolves
+  MCQ option indices/text consistently, and shows coding answers and video transcripts. The
+  `grade-assessment-attempt` function now accepts trainers/teachers only when the caller's RLS-scoped
+  attempt read succeeds; the service client's unrestricted read is not used to establish their scope.
+
+Verification: 72 targeted tests passed before release. The live browser opened Yami's assessment with all
+18 answers, Pending review and an enabled Save button, with no page errors or failed API reads. The deployed
+save function successfully wrote all 18 response grades and totals inside BEGIN…ROLLBACK; Yami's actual
+marks and pending status were preserved. Candidate review saves and out-of-scope trainer AI regrading return
+403; invalid trainer payloads return 400. The deployed grading source matches the repository hash, and the
+UAT-built JS bundle contains no DEV, localhost Supabase or hosted Supabase API URLs. Full typechecking still
+reports errors in unchanged files; no errors were reported in the changed files.
+
 ## Why it's off the standard deploy path
 
 This app (and its sibling `ailearning.uat.pluginlive.com`) came in as a Lovable-generated SPA cloned straight into the UAT box's home directory, not under `~/frontend/`. Full Banking releases use `~/banking-sb/deploy.sh`. Since 2026-10-16, `~/auto_deploy.sh banking-functions` dispatches to `~/banking-sb/sync-functions.sh` for functions-only releases (repo functions plus the UAT overlay, then an edge-runtime restart); it does not pull, migrate or rebuild the frontend. Snapshot and review overlay changes first.

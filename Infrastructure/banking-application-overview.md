@@ -130,7 +130,14 @@ SWOT Analytics permits reports for assigned learners and filters the trainer int
 Learner data RLS (2026-10-24): `student_module_progress`, `student_module_topic_progress`, `student_assessment_scores`,
 `assessment_attempts` and `assessment_responses` are readable only by the learner, an admin, or a trainer/teacher/institute user
 whose institute or `trainer_students` assignment covers the learner (`private.trainer_can_view_student_data`). Learners write their
-own progress/attempts; attempt and response grading needs the admin `grading` tab; clients cannot write assessment scores.
+own progress/attempts; clients cannot write the derived assessment score cache. Trainer and teacher reviews of completed
+attempts use `save_assessment_review_v1`, which checks the learner scope and saves bounded response marks, totals,
+grading status and cached-report invalidation in one transaction. Candidates and anonymous users cannot call it;
+grading admins retain access through the `grading` tab permission. The existing direct-update policies are unchanged.
+Trainer **Grading** opens **Assessment Reports** with a Review action for each completed submission. Its assessment
+list includes mapped-module assessments and assessments created by the signed-in trainer (login or trainer-record ID),
+including those with no module. Ungraded submissions show Pending review. AI regrading also accepts scoped trainers
+and teachers, verified through the caller's RLS-scoped attempt read; candidate self-grading and admin grading remain supported.
 Trainers can assign admin-owned module groups to their candidates but cannot change their own approval status or tier,
 and a non-admin client cannot change `profiles.role` (trigger `trg_prevent_client_profile_role_escalation`).
 
