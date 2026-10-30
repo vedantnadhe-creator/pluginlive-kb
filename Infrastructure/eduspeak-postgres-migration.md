@@ -1,7 +1,7 @@
 # EduSpeak: hosted Supabase → PluginLive PostgreSQL (UAT)
 
-**Status:** UAT live on PluginLive PostgreSQL since 2026-08-05, updated 2026-08-06 to app commit `deacd151`
-(410 commits + 141 migrations). DEV still on hosted Supabase. PROD does not exist yet.
+**Status:** UAT live on PluginLive PostgreSQL since 2026-08-05; current release `8290aba0` (2026-10-30).
+DEV still uses hosted Supabase. PROD does not exist yet. Historical release details follow below.
 
 **UAT hostname is `pilvidya.uat.pluginlive.com` since 2026-08-06** — see
 [Hostname rename](#2026-08-06--uat-hostname-renamed-to-pilvidya) at the bottom. `eduspeak.uat.*`
@@ -2002,3 +2002,78 @@ written (`loadData`, `markAsPaid`, `generateLink`), so these need upstream work,
 **Verified:** 13 test-set + 10 demo logins; admin 54/54, teacher 18/18, parent 19/19 sections render (fresh load each);
 student sidebar vs route lock 24/24; FL Studio, Q-Bank Upload, Competitive Exams, SWOT load; e2e.cjs clean; bundle clean.
 aividya.si CORS (`corsHeadersFor` → localhost:5173) still unfixed — gateway change awaiting approval.
+
+
+## 2026-10-30 — PilVidya UAT `8290aba0` (upstream `4b71269b` + two release fixes)
+
+Frontend and edge functions use GitHub `main`; the frontend image is built **on UAT** with
+`~/eduspeak-sb/Dockerfile.uat-build`, retaining the vendored logo and `/sw.js` handling.
+Upstream adds expanded **LLM and System Config** (AI/content/messaging categories and fallback fields),
+school context in lesson/portal requests, an admin journey switcher, and subscription UI components.
+The new `AdminSubscriptionDashboard` and its supporting components are not connected to the app router;
+the established admin subscription screen remains the live flow.
+
+### Release fixes on GitHub main
+
+- `a2e26275`: removed the separate `student_quiz_submissions` insert from `student-360`.
+  `save_lesson_progress_atomic` already inserts the submission inside its transaction; upstream's new
+  insert would have doubled every attempt. The endpoint still retains the best result. A rollback-only
+  DB check confirmed one submission per save, best score retained, and completed status retained.
+- `8290aba0`: `llm-config` rejects unsupported features/providers with HTTP 400 instead of silently
+  mapping them to `__default__` / `lovable`. The expanded frontend advertises keys/providers that the
+  backend does not yet implement; saving those must never overwrite the global default. These new
+  unsupported choices remain unavailable until upstream implements their contracts.
+
+### Database review — no permanent schema/data migration needed
+
+| New upstream file | UAT decision |
+|---|---|
+| `20261021120004_subscription_reporting_views` | **Skipped.** Placeholder `SELECT 1 AS student_id`; retain the real reporting views. |
+| `20261021120004_subscription_validity_step4` | **Skipped.** Rollback-only rehearsal fails with `c_rank is not a known variable`. Also references undeclared `c_*`/`best`, has an invalid sweep UPDATE alias, and repeats an operational job seed. Retain the working access snapshot, school mapping, reporting and permission rules. |
+| `20261031000000_llm_config_fallback_columns` | **Already satisfied.** `fallback_provider` and `fallback_model` both exist as text on UAT; no DDL needed. |
+
+Working access/reporting each cover all 56 students. Enforcement stays `off`; `subscription-validity-daily`
+stays inactive; the event scheduler remains absent/stopped and the seven pending background events remain
+pending. Credential-reset/admin-seed migrations skipped in previous releases remain unapplied. No grant sweep
+was needed: authenticated/anon still cannot read password hashes or session tokens, reporting views remain
+service-role-only, and `save_lesson_progress_atomic` is still service-role-only.
+
+### aividya.si cross-origin login repaired in deployment configuration
+
+`functions-secrets.env` now sets `APP_ORIGIN=https://aividya.si`; the functions container was recreated
+with `auto_deploy.sh pilvidya-functions`. The function response previously returned localhost as its origin.
+The auth service also returned no allowed origin for cross-origin preflights, so the function setting alone
+was insufficient. The `/sb/` block of `/etc/nginx/sites-available/pilvidya-uat.conf` now applies one CORS
+policy to auth, REST, storage and functions: an exact origin map for `https://pilvidya.uat.pluginlive.com`
+and `https://aividya.si`, standard methods, Supabase SDK headers, PostgREST profile/preference/range headers, and storage upload headers;
+OPTIONS 204; and suppression of conflicting upstream CORS headers. Unknown origins receive no allowed-origin header. `nginx -t` passed before reload.
+This supersedes the earlier notes saying the alias CORS issue was awaiting approval/unfixed.
+
+The UAT `~/auto_deploy.sh` dispatcher now supports `pilvidya`/`eduspeak` (existing frontend/functions
+workflow), `pilvidya-functions` (only the functions service configuration), and `pilvidya-proxy`
+(validate/reload host nginx). Database review and checkout fast-forward remain prerequisites; the
+frontend helper builds the checked-out commit. These scoped paths bypass the legacy service notification
+branch. The Node adjunct was not redeployed.
+
+### Verification and remaining limits
+
+- Initial release checks: all **13 QA accounts** and **10 demo accounts** land correctly; no page errors or
+  server errors. Canonical-host student sessions survive reload; student and parent function calls return 200.
+- Final `8290aba0` verification: admin, teacher, student and parent all sign in on **aividya.si** and reach their dashboards without page errors/5xx. Both hostnames serve `8290aba0`; final canonical browser smoke has zero page errors, failed requests, hosted-Supabase requests or API responses >=400.
+- Admin/teacher LLM configuration pages render their new headings and fallback columns without page errors/5xx.
+- Live invalid-feature/provider probes return 400 and leave the configuration list unchanged.
+- Required-route manifest and production build pass; bundle scan finds no DEV or hosted-project Supabase endpoints.
+- Release regression selection: **18/18 pass** (lesson/teacher portal, plan guard, admin provider keys).
+- Full upstream suite is **not green**: 1,415 passed / 3 failed / 14 skipped, six failed files and one unhandled error.
+  Failures include missing `StudentFlAssessmentResults.tsx`, malformed new E2E specs, stale Q-Bank/enterprise
+  expectations, AI Doubt Bot fallback coverage, and missing `date-fns` for the unused AttendanceTracker page.
+  ESLint has 14 errors / 128 warnings; edge syntax parses all 241 files, while the name check finds undeclared
+  names in 11 unchanged functions. These are not a passing full regression certification.
+- The standalone `/school/llm-config` page still needs upstream work for users without `teacher_profiles.user_id`
+  mapping or a school: its loading state has no empty-state exit. Existing teacher/admin hash-menu configuration
+  remains available. Other previously documented unfinished direct routes remain outside this release's fixes.
+
+Rollback: original image `eduspeakreact:f0edabbf` is retained/tagged; UAT snapshot
+`~/pilvidya-predeploy-20261030T120649Z/` contains functions, container definitions, frontend env, deployment
+scripts, pre-change origin environment, compose file and nginx site configuration. Public/reporting DB backup:
+`/home/ubuntu/eduspeak-pg-migration/backups/eduspeak_uat_predeploy_20261030T120649Z.dump` on the DEV box.
