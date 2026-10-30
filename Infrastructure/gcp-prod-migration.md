@@ -1,4 +1,9 @@
-# GCP PROD migration — PROD copy on `*.v2.pluginlive.com`
+# GCP PROD migration — historical test copy
+
+**2026-10-30:** the `*.v2.pluginlive.com` hostnames now reach the new OCI migration
+copy at `130.210.5.156`. See [OCI PROD v2 migration](oci-prod-v2-migration.md) for
+the current environment and performance gates. The GCP setup below is historical;
+real PROD has not cut over.
 
 Status as of **2026-10-19**. PROD is still served from OCI (OKE k8s + `pl-prod-pg16`). A full copy of PROD
 runs on Google Cloud for testing at `*.v2.pluginlive.com`; cutover (real DNS → GCP) has **not** happened.
