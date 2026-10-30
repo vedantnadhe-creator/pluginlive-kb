@@ -83,6 +83,25 @@ use `section_name`.
 | 3 | Live mode: `ERRORED` status, COMPLETED-after-check, retake service, gate changes, limit, notifications | not started |
 | 4 | UI: student retry card, institute-v2 chips/drawer/KPI | not started |
 
+### DEV deployment (2026-10-30)
+
+- student-node `f4cc682b` and fastapi `2cdc113` are on `origin/Development` and **LIVE on DEV**, with
+  `INTEGRITY_CHECK_MODE=shadow` in `~/api/student-node/.env` **and** `.env.dev` (CI copies `.env` → `.env.dev`,
+  `auto_deploy.sh` copies `.env.dev` → `.env`; the flag must be in both).
+- Shadow = every scored in-scope attempt gets a row in `assessment.attempt_integrity_decisions`; nothing
+  else changes (no ERRORED status, no retake, scores/progression untouched).
+- student-node CI failed on the divergent shared checkout (`git pull` without a reconcile strategy);
+  deployed by merging `origin/Development` into `~/api/student-node` then `./auto_deploy.sh student-node`.
+- **Still DEV-only — the hold above applies.**
+
+Check on DEV:
+```sql
+SELECT created_at, assessment_type, is_diagnosis, stage, outcome, rule, triggers,
+       counts_as_chance, attempt_nps, avg_nps, evidence->'silentRecordings' AS silent
+  FROM assessment.attempt_integrity_decisions ORDER BY created_at DESC LIMIT 20;
+```
+Logs: `docker logs student 2>&1 | grep '\[INTEGRITY\]'`, `docker logs fastapi 2>&1 | grep speech-presence`.
+
 ### Code map (student-node)
 
 - `app/helpers/attemptIntegrity.js` — pure rules: mode flag, scope, per-attempt NPS, triggers, cause, outcome. Spec: `test/attemptIntegrity.spec.js`.
