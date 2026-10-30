@@ -7,12 +7,30 @@ Production-truth as of 2026-08-20. Companion to
 ## Held work in `Development` — never push `Development:UAT` blindly
 
 Some features are built on DEV and **on hold** for UAT/PROD until Kushal releases them.
-Currently: **attempt integrity** (`Assessment/attempt-integrity.md`) — commits start with
+**Attempt integrity** (`Assessment/attempt-integrity.md`) — commits start with
 `[attempt-integrity]` and carry the trailer `Hold: attempt-integrity …`; DB-Scripts folder
 `Attempt Integrity/`. Before any UAT push run
 `git log origin/UAT..Development --format='%h %s' --grep='\[attempt-integrity\]' --grep='^Hold: '`;
 if it lists anything, cherry-pick only the commits you are deploying instead of pushing
-`Development:UAT`, and do not apply the held DB scripts.
+`Development:UAT`, and do not apply DB scripts without the corresponding environment approval.
+
+**2026-10-30 exception:** Kushal explicitly approved the existing attempt-integrity **shadow
+implementation** for UAT (student-node `22e0ff54`, fastapi `3339e59`, decision-log migration
+`20261028T080732Z`). Original DEV-only commit trailers remain historical. PROD promotion and
+future live reset/UI phases remain on hold; this is not a release-wide approval.
+
+## Fastapi speech model assets need to be copied too (2026-10-30)
+
+The dependency-preserving central-release helper used to copy Python files only. Attempt
+integrity also needs `Proctoring/models/silero_vad.jit` and its license: importing the app can
+pass without them because the model is loaded on the first speech check. The UAT helper now
+copies changed files in `Proctoring/models/` and runs `py_compile` only on Python files.
+Verify a silence sample loads the model, in addition to checking `/openapi.json`.
+
+The helper's revision label can lag after a later overlay; a shared checkout can lag too.
+Check hashes of the actual image files against the target Git revision. Preserve the live
+dependency image when there are no package changes; do not pull a new torch stack for this
+feature. UAT rollback/config and logs: `~/releases/attempt-integrity-uat-20261030/`.
 
 ## "Behind" is not one number — check both directions
 

@@ -1,10 +1,11 @@
-# Attempt integrity: classify errored attempts, retake, keep them out of progression
+# Attempt integrity: shadow classifier and planned retakes
 
-> **🚫 HOLD — DEV ONLY. Do not move to UAT or PROD.**
-> This feature is being built on DEV only. **No session or agent may cherry-pick, merge,
-> rebase onto, or deploy any of its commits to a `UAT` / `PROD` / release / hotfix branch,
-> or apply its DB scripts to UAT/PROD, until Kushal explicitly says so.** When promoting
-> other work from `Development`, leave these commits out.
+> **HOLD — PROD promotion still requires separate approval.**
+> Kushal explicitly approved the **existing shadow implementation for UAT on 2026-10-30**.
+> That approval covers the classifier, speech check and decision-log table only; it does
+> not turn on automatic resets, progression exclusion, notifications or new UI.
+> **Do not promote this feature or its DB migration to PROD / release / hotfix branches
+> without separate approval.** Future live-action phases also need their own UAT approval.
 >
 > **How to recognise its commits:**
 > - Subject starts with **`[attempt-integrity]`**
@@ -16,9 +17,10 @@
 > git log origin/Development --oneline --grep='\[attempt-integrity\]'
 > git log origin/Development --format='%h %s' --grep='Hold: attempt-integrity'
 > ```
-> When cherry-picking a range, exclude every SHA these commands list. If a merge would
-> carry them in, cherry-pick instead. DB-Scripts for this feature live in the
-> `Attempt Integrity/` folder with `UAT — on hold` / `PROD — on hold` in the header.
+> The original DEV-only trailers are historical: the UAT approval above overrides them
+> for the released shadow commits. UAT equivalents: student-node `ddad55b7`, `2c6f8632`,
+> `22e0ff54`; fastapi `cec5b30`, `3339e59`. Continue checking markers before promotion.
+> DB-Scripts live in `Attempt Integrity/`; UAT is applied and PROD remains pending/on hold.
 >
 > Runtime safety net: everything is behind `INTEGRITY_CHECK_MODE` (student-node),
 > default **`off`** = behaviour identical to before the feature.
@@ -29,10 +31,14 @@ PRD (final, with the PROD simulation): https://bmv2bqg5gpcd.compat.objectstorage
 
 After an institute **scheduled** or **diagnosis** Communication / Aptitude attempt is scored,
 and before progression runs, a classifier decides whether the attempt was spoiled by **our
-system**, by the **student's side**, or is plain **performance**. Errored attempts are retaken on
-a new set and never reach progression.
+system**, by the **student's side**, or is plain **performance**.
 
-| Outcome | When | Effect |
+**Current implementation is shadow only:** it writes a decision and evidence. It does not
+reset/reassign attempts, change status or scores, exclude results from progression, or send
+notifications. Even `live` currently behaves as shadow. The actions below are the planned
+live behavior, not actions performed by the deployed code.
+
+| Outcome | When | Planned live effect (not implemented) |
 |---|---|---|
 | `CLEAN` | No trigger | Progression as today |
 | `PERFORMANCE` | Score-drop trigger only, no technical evidence | Progression as today |
@@ -74,12 +80,12 @@ curved with `curveNPS`; the average is `curvedMean` of the linear values (`npsSc
 rule keyed on Communication section ids is blind to recent attempts; join `assessment.sections` and
 use `section_name`.
 
-## Build status (DEV)
+## Build status
 
 | Phase | Scope | Status |
 |---|---|---|
-| 1 | Decision log table, pure classifier, evidence + per-attempt NPS, shadow-mode hook before progression and on terminal scoring failure | **done on branch** `feat/attempt-integrity` (student-node `9c20b0d8`, worktree `~/api/_wt-attempt-integrity`, not pushed / not merged to Development); table applied on DEV DB; DB-Scripts `1525de1` |
-| 2 | Loudness / speech check (Reading + Video) | **done on branch** (student-node `6aa88022`, fastapi `3ffcea6` in `~/api/_wt-attempt-integrity-fastapi`); calibrated on PROD; not pushed. Recorder telemetry (stop reason + client duration) not started |
+| 1 | Decision log table, pure classifier, evidence + per-attempt NPS, shadow-mode hook before progression and on terminal scoring failure | Built and promoted to DEV and UAT; table applied in both environments. UAT student-node `22e0ff54`, DB-Scripts `7bd92dc` |
+| 2 | Loudness / speech check (Reading + Video) | Built and promoted to DEV and UAT; UAT fastapi `3339e59`. Recorder telemetry (stop reason + client duration) not started |
 | 3 | Live mode: `ERRORED` status, COMPLETED-after-check, retake service, gate changes, limit, notifications | not started |
 | 4 | UI: student retry card, institute-v2 chips/drawer/KPI | not started |
 
@@ -92,15 +98,44 @@ use `section_name`.
   else changes (no ERRORED status, no retake, scores/progression untouched).
 - student-node CI failed on the divergent shared checkout (`git pull` without a reconcile strategy);
   deployed by merging `origin/Development` into `~/api/student-node` then `./auto_deploy.sh student-node`.
-- **Still DEV-only — the hold above applies.**
+- PROD is still on hold; the existing shadow implementation was approved for UAT on 2026-10-30.
 
-Check on DEV:
+### UAT promotion (2026-10-30)
+
+- Only the three student-node feature commits and two fastapi feature commits were cherry-picked
+  onto the existing UAT branches. No Development-wide merge was used.
+- student-node UAT `22e0ff54`; fastapi UAT `3339e59`. UAT student-node `.env.uat` and `.env`
+  both specify `INTEGRITY_CHECK_MODE=shadow`; `CALCULATION_ASYNC=true` is required.
+- Applied `Attempt Integrity/20261028T080732Z__attempt_integrity_decisions.sql` to
+  `uat_pluginlive` using a transaction and bounded lock/statement timeouts. The migration is
+  additive and has no Prisma changes. DB-Scripts status commit: `7bd92dc`; PROD pending/on hold.
+- Fastapi deployed through `CENTRAL_LLM_RELEASE=1 ~/auto_deploy.sh fast-api UAT`, retaining
+  the running dependencies, env, mounts and ports. The host helper now also copies
+  `Proctoring/models/` assets and compiles only Python files; otherwise it would omit Silero's
+  bundled `.jit` model. The source checkout may lag; verify image files/release artifacts.
+- Deployment logs and private rollback configuration are under
+  `~/releases/attempt-integrity-uat-20261030/` on UAT; fastapi's immutable release artifacts
+  are under `~/releases/fastapi-ai-engine/UAT-3339e59816e7-20261030T082333Z/`.
+- student-node deployed with `~/auto_deploy.sh student-node UAT`; the calculation and
+  progression queue workers started successfully with `CALCULATION_ASYNC=true`.
+- Before promotion: classifier/NPS unit checks **40 passed**. On UAT, the speech model
+  loaded and classified synthetic silence as `digital_silence`; an unauthenticated endpoint
+  call returned **401**. The new student-node client reached `fast-api.uat.pluginlive.com`
+  with its service token (**200**) and the endpoint refused an external recording URL.
+- A completed scheduled Aptitude attempt was checked through the deployed model: one
+  **shadow / CLEAN** decision was stored, while its status, set, scores and progression
+  remained identical before/after. Runtime hashes matched the promoted source for four
+  student-node files and six fastapi files, including the bundled model and license.
+- Broad Jev regression was not run as part of the deployment smoke checks.
+
+Check on DEV or UAT:
 ```sql
 SELECT created_at, assessment_type, is_diagnosis, stage, outcome, rule, triggers,
        counts_as_chance, attempt_nps, avg_nps, evidence->'silentRecordings' AS silent
   FROM assessment.attempt_integrity_decisions ORDER BY created_at DESC LIMIT 20;
 ```
-Logs: `docker logs student 2>&1 | grep '\[INTEGRITY\]'`, `docker logs fastapi 2>&1 | grep speech-presence`.
+Logs: `docker logs student 2>&1 | grep '\[INTEGRITY\]'`; AI container is `fastapi` on DEV
+and `fastapiai` on UAT (`docker logs <container> 2>&1 | grep speech-presence`).
 
 ### Code map (student-node)
 
@@ -177,3 +212,4 @@ Readings make this urgent: 55 of 150 silent readings are under 3 s.
 | Var (student-node) | Values | Default |
 |---|---|---|
 | `INTEGRITY_CHECK_MODE` | `off` / `shadow` (classify + log only) / `live` | `off` |
+| `INTEGRITY_SCORE_DROP_RATIO` | Ratio in (0, 1); trigger is strictly below this fraction of the baseline | `0.75` |

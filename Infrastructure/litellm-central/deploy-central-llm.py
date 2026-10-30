@@ -62,9 +62,34 @@ if service=='corporate-node-v2':
     print('DEPLOYED',environment,repo,sha,release,flush=True)
     raise SystemExit(0)
 
-files=output(['git','-C',str(source),'diff',sha+'^',sha,'--name-only']).splitlines()
-files=[f for f in files if f.endswith('.py') and not f.startswith('tests/')]
-if not files:raise SystemExit('No Python task-routing change in target commit')
+# Overlay everything changed since the revision the running image was built from,
+# not just the target commit: a push of several commits otherwise ships only the
+# last commit's files (new modules from earlier commits went missing on UAT).
+def deployed_revision(name):
+    inspected=subprocess.run(['docker','inspect',name,'--format','{{index .Config.Labels "pluginlive.central-llm.revision"}}'],capture_output=True,text=True)
+    return inspected.stdout.strip() if inspected.returncode==0 else ''
+# The base must be KNOWN: guessing (sha^) silently drops every earlier commit.
+# Running images carry the revision label; CENTRAL_LLM_BASE=<sha> states it
+# explicitly for an image built some other way (e.g. a full CI build).
+revisions={deployed_revision(n) for n in containers.get(service,[])}-{'','<no value>'}
+base=os.environ.get('CENTRAL_LLM_BASE','').strip()
+if not base:
+    if len(revisions)!=1:raise SystemExit('Deployed revision unknown ('+(', '.join(sorted(revisions)) or 'no label')+'): set CENTRAL_LLM_BASE=<sha the running image was built from>')
+    base=revisions.pop()
+if subprocess.run(['git','-C',str(source),'merge-base','--is-ancestor',base,sha]).returncode!=0:
+    raise SystemExit('Deployed revision '+base+' is not an ancestor of '+sha+': overlay would ship a mixed tree')
+print('Overlay base',base,flush=True)
+# Name-status, with renames: added/modified files are copied in, deleted ones
+# and the old side of a rename are removed from the image.
+files,removed=[],[]
+for line in output(['git','-C',str(source),'diff',base,sha,'--name-status','-M']).splitlines():
+    status,*paths=line.split('\t')
+    if status.startswith('R'):removed.append(paths[0]);files.append(paths[1])
+    elif status.startswith('D'):removed.append(paths[0])
+    else:files.append(paths[-1])
+def shipped(f):return (f.endswith('.py') and not f.startswith('tests/')) or f.startswith('Proctoring/models/')
+files=[f for f in files if shipped(f)];removed=[f for f in removed if shipped(f)]
+if not files and not removed:raise SystemExit('No Python task-routing change since '+base)
 for f in files:
     target=release/f;target.parent.mkdir(parents=True,exist_ok=True)
     target.write_bytes(subprocess.check_output(['git','-C',str(source),'show',sha+':'+f]))
@@ -85,19 +110,29 @@ for cfg in configs:
         dest=build/f;dest.parent.mkdir(parents=True,exist_ok=True);shutil.copy2(release/f,dest)
     dockerfile='FROM '+rollback+'\n'
     for f in files:dockerfile+='COPY '+json.dumps([f,'/app/'+f])+'\n'
+    if removed:dockerfile+='RUN '+json.dumps(['rm','-f',*['/app/'+f for f in removed]])+'\n'
     dockerfile+='LABEL pluginlive.central-llm.revision="'+sha+'"\n'
     (build/'Dockerfile').write_text(dockerfile)
     tag='central-llm/'+name+':'+sha[:12]
     run(['docker','build','-t',tag,str(build)])
     # Parse the actual shipped code before interrupting the existing container.
-    run(['docker','run','--rm','--entrypoint','python',tag,'-m','py_compile',*['/app/'+f for f in files]])
+    python_files=[f for f in files if f.endswith('.py')]
+    if python_files:run(['docker','run','--rm','--entrypoint','python',tag,'-m','py_compile',*['/app/'+f for f in python_files]])
+    # Import the app too: py_compile cannot see a module the overlay left out.
+    if service=='fast-api':run(['docker','run','--rm','--entrypoint','python','-w','/app',tag,'-c','import main'])
     cfg['_new_image']=tag
 
 def recreate(cfg,image):
     name=cfg['Name'].lstrip('/');host=cfg['HostConfig'];conf=cfg['Config']
     env_file=release/(name+'.env')
     if any('\n' in item for item in conf['Env']):raise RuntimeError('Multiline env needs a different deployment method')
-    env_file.write_text('\n'.join(conf['Env'])+'\n');os.chmod(env_file,0o600)
+    env=conf['Env']
+    # CENTRAL_LLM_ENV_FILE=<file of KEY=VALUE>: set/override those variables on
+    # the new container (the running one's env is otherwise copied as is).
+    if image==cfg.get('_new_image') and os.environ.get('CENTRAL_LLM_ENV_FILE'):
+        extra=dict(l.split('=',1) for l in Path(os.environ['CENTRAL_LLM_ENV_FILE']).read_text().splitlines() if '=' in l and not l.startswith('#'))
+        env=[e for e in env if e.split('=',1)[0] not in extra]+[k+'='+v for k,v in extra.items()]
+    env_file.write_text('\n'.join(env)+'\n');os.chmod(env_file,0o600)
     cmd=['docker','run','-d','--name',name,'--env-file',str(env_file)]
     restart=host['RestartPolicy']['Name']
     if restart and restart!='no':cmd+=['--restart',restart]
