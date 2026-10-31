@@ -72,6 +72,7 @@ copying the xattrs from a fresh UAT copy (content verified identical); all 143 o
 `release/prod-v1.0` = `ce198515`; `release/prod-v1.1` = v1.0 + `4bf921ba` cherry-picked (`d61c289c`, simulation
 "Revise …"/skill-profile links went to the non-existent `/journey/candidate/tech` → 404; now `/journey/student/tech`).
 The VM records the deployed branch/commit in `/opt/banking/app/.release-branch` / `.release-commit`.
+Both PROD (`banking-prod.conf`) and UAT (`banking-react.conf`) nginx 301 `/journey/candidate/*` → `/journey/student/*` so stale tabs/bookmarks of the old simulation links still land (an open tab keeps the old JS and its old links until reloaded).
 
 Before launch (owner's decision, tracked in the notes): third-party keys and `llm_provider_configs` are still **UAT keys**;
 UAT/Jev test accounts are still present; email/OTP relay = container `banking-mail-relay` on the VM (copy of the platform `mail-server:uat` image, published on `172.17.0.1:5010` like UAT, env `/opt/banking-sb/mail-relay.env`: UAT SMTP login + auth key by owner decision, `MAIL_ENV=prod-banking`, no `[UAT]` subject tag); MSG91 SMS key is also UAT's;
