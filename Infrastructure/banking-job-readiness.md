@@ -63,7 +63,7 @@ Same self-hosted stack as UAT in `/opt/banking-sb` (DB `banking_prod` on `/data/
 Nightly `pg_dump` 02:00 IST → `/data/backups/daily` (14 days), restore tested. Build notes: `/opt/banking-sb/PROD-NOTES.md`.
 
 Before launch (owner's decision, tracked in the notes): third-party keys and `llm_provider_configs` are still **UAT keys**;
-UAT/Jev test accounts are still present; `MAIL_SERVICE_URL` points at the UAT-box mail relay (email OTP does not work);
+UAT/Jev test accounts are still present; email/OTP relay = container `banking-mail-relay` on the VM (copy of the platform `mail-server:uat` image, published on `172.17.0.1:5010` like UAT, env `/opt/banking-sb/mail-relay.env`: UAT SMTP login + auth key by owner decision, `MAIL_ENV=prod-banking`, no `[UAT]` subject tag); MSG91 SMS key is also UAT's;
 code is branch `release/prod-v1.0` (`ce198515`), PROD deploys come from release branches cut off `main`; shared security list on `Pl-Production` allows all ports, so the
 host iptables (80/443 open, 22 from DEV/UAT/builder/VCN) is the only filter; every docker port is bound to 127.0.0.1.
 
