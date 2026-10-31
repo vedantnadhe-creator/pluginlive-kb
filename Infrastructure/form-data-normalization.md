@@ -135,7 +135,7 @@ Done so far for the QA role `c1b429fb…` only.
 
 **DB:** `dev_pluginlive.candidate_ingestion_schema` was bootstrapped from a schema-only dump of UAT
 (DB-Scripts `Form Data Normalization DEV Isolation/`): `20261031T154736Z__…bootstrap.sql` (DDL),
-`20261031T154738Z__…reference_seed.sql` (normalized_columns 815, degree/department canonical+alias,
+`20261031T154751Z__…reference_seed.sql` (normalized_columns 815, degree/department canonical+alias,
 entity_configs 8, institute_alias 360 + institute_id_map 2401 — UAT rows filtered to campus IDs that
 exist on DEV), `20261031T160237Z__dev_admin_mongo_db_countries.sql`. ⚠️ The repo's `schema.sql` is
 **stale** (11 tables and `candidates_raw_data.corporate_id/job_role_id` are missing) — don't
