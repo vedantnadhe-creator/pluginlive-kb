@@ -76,7 +76,7 @@ Both PROD (`banking-prod.conf`) and UAT (`banking-react.conf`) nginx 301 `/journ
 
 Before launch (owner's decision, tracked in the notes): third-party keys and `llm_provider_configs` are still **UAT keys**;
 UAT/Jev test accounts are still present; email/OTP relay = container `banking-mail-relay` on the VM (copy of the platform `mail-server:uat` image, published on `172.17.0.1:5010` like UAT, env `/opt/banking-sb/mail-relay.env`: UAT SMTP login + auth key by owner decision, `MAIL_ENV=prod-banking`, no `[UAT]` subject tag); MSG91 SMS key is also UAT's;
-code is branch `release/prod-v1.1` (`8fcc4388` = `main` `4bf921ba`); fixes are merged into the current release branch rather than cutting a new one (owner's call); shared security list on `Pl-Production` allows all ports, so the
+code is branch `release/prod-v1.1` (`3bff415a` = UAT `8f62e11d`, 2026-10-31 15:53Z); fixes are merged into the current release branch rather than cutting a new one (owner's call); shared security list on `Pl-Production` allows all ports, so the
 host iptables (80/443 open, 22 from DEV/UAT/builder/VCN) is the only filter; every docker port is bound to 127.0.0.1.
 
 ## Why it's off the standard deploy path
