@@ -25,7 +25,7 @@ Google Drive / API → Ingest raw data → LLM normalization → Entity matching
 
 ---
 
-## Real-Time Ingest via Google Drive Webhook (UAT + PROD — LIVE)
+## Real-Time Ingest via Google Drive Webhook (DEV + UAT + PROD — LIVE)
 
 As of **2026-06-11 (UAT)** and **2026-06-12 (PROD)**, both environments ingest in **real time** through a Google Drive push-notification (`changes.watch`) webhook — no waiting for the daily cron. End-to-end latency is seconds (ingest) + a few seconds (AI normalization).
 
@@ -34,6 +34,7 @@ As of **2026-06-11 (UAT)** and **2026-06-12 (PROD)**, both environments ingest i
 **Service account (changed):** Both UAT and PROD use the **`pluginalex`** SA `pluginliveservice@pluginalex.iam.gserviceaccount.com` (the same `auth_creds.json` that student/corporate/institute-node use for Google Sheet export), **not** the old `data-eng-dev-486917` SA. The Drive folders are shared with this SA. On **PROD** the key is mounted from k8s Secret `data-normalization-sa` at `/app/secrets/auth_creds.json` (NOT baked in the image); on **UAT** it sits in the repo as `./auth_creds.json` and is baked into `datanormalization:api`.
 
 **Webhook URLs (no more ngrok anywhere):**
+- DEV: `https://data-normalization.dev.pluginlive.com/webhooks/google-drive` (nginx `data-normalization.conf` → `localhost:5013`; since 2026-10-31 — DEV used an ngrok URL before).
 - UAT: `https://data-normalization.uat.pluginlive.com/webhooks/google-drive` (nginx `data-normalization.conf` → `localhost:5013`, Let's Encrypt).
 - PROD: `https://data-normalization.prod.pluginlive.com/webhooks/google-drive` (k8s Ingress `data-normalization-prod-ingress` in ns `api` → Service `form-data-normalization:80` → pod `:5013`, TLS secret `data-normalization-tls`, ingress IP `152.67.29.77`).
 
@@ -42,6 +43,7 @@ ngrok is **local-dev only**; its `*.ngrok-free.dev` domains are pre-verified wit
 **⚠️ Folder-scope filter (critical, since UAT+PROD share the SA):** Google Drive's change feed is **per-service-account, global**, not per-folder. Without filtering, the UAT webhook ingests files modified in the PROD folder and vice versa — this actually happened during the rollout (UAT picked up 1010 PROD rows; PROD picked up 3 UAT rows). The fix is in `services/drive_change_service.py`: every change is checked against `settings.GOOGLE_DRIVE_FOLDER_ID` (using `file.parents` from the Drive API) and dropped if it's not in this env's folder. **Daily ingest (`ingest_parallel`) was already folder-scoped; only the webhook path leaked.** If you ever share an SA across environments again, this filter is what keeps them separate. Code lives on `Development` (`bb5c848`), `UAT` (`68f5f59`), `release-v1.33-hotfix-1` (`f61f581`).
 
 **Drive folders (separate per env):**
+- DEV: `1SH8msujZRVVfyB9Su6MAoVcoLB6Fa2R-` (`FormData-DEV`, created 2026-10-31 under `PIL-Mandate`, owned by the pluginalex SA, inherits PIL-Mandate's sharing)
 - UAT: `1OJ2sGcz85VmGk2fHkg3XALW5nX5M06Ug`
 - PROD: `1vnv0vCwqPnAU_I3afaW7zRn3ge8QLNtG`
 
@@ -82,6 +84,79 @@ done
 ```
 Expect `No pending sheets found.` (worker), `Scheduler started` (cron) and
 `Export worker ready - polling every 15s` (export-worker) in the logs. Code + SA key are **baked into the image** (`COPY . /app`), so config/key changes require an image rebuild, not just an `.env` edit. The runtime config (batch sizes, model, normalizer URL) is read from the baked `/app/.env`, but OS env vars set via `docker run -e`/`--env-file` **override** it.
+
+### DEV runtime topology — separate pipeline since 2026-10-31
+
+Until 2026-10-31 DEV had **no pipeline of its own**: the DEV `datanormalization` API wrote to
+`uat_pluginlive.candidate_ingestion_schema`, DEV corporate-node created role-application sheets
+inside **FormData-UAT**, and UAT's worker normalized them and called UAT student-node — so DEV
+role applicants became **UAT students** and DEV's All Candidates stayed empty. DEV now runs the
+same four containers as UAT, all on its own DB, Drive folder and student-node:
+
+| Container | Command | Notes |
+|-----------|---------|-------|
+| `datanormalization` | image CMD (uvicorn :5013) | API + webhook receiver, `-p 5013:5013` |
+| `datanormalization-worker` | `python main.py worker` | added 2026-10-31 |
+| `datanormalization-cron` | `python main.py cron` | added 2026-10-31 — webhook renewal + 1 AM folder backfill |
+| `datanormalization-export-worker` | `python main.py export_worker` | exports are stored in `export_jobs.file_bytes`, no shared volume |
+
+All from `datanormalization:api`, `--restart always --env-file .env`, plus
+`-v /home/ubuntu/api/student-node/auth_creds.json:/app/secrets/auth_creds.json:ro` (pluginalex SA,
+mounted, not baked). Rollback tags: `datanormalization:api-prev-20261031`,
+`datanormalization:export-worker-prev-20261031`.
+
+```bash
+cd ~/api/form-data-normalization
+KEY=/home/ubuntu/api/student-node/auth_creds.json
+COMMON="--restart always --env-file .env -v $KEY:/app/secrets/auth_creds.json:ro --log-opt tag=service_name={{.Name}} --log-opt max-size=100m --log-opt max-file=3"
+docker rm -f datanormalization && docker run -itd --name datanormalization $COMMON -p 5013:5013 datanormalization:api
+for m in worker cron export_worker; do n=$(echo $m | tr _ -); docker rm -f datanormalization-$n
+  docker run -itd --name datanormalization-$n $COMMON datanormalization:api python main.py $m; done
+```
+
+DEV `.env` (differs from UAT): `APP_ENV=dev`, `POSTGRES_URL` / `POSTGRES_ASSESSMENT_SCORE_URL` →
+`pl-database.dev.pluginlive.com:5441/dev_pluginlive` (the first with
+`?options=-csearch_path=candidate_ingestion_schema`), `BASE_URL=https://api-std.dev.pluginlive.com`
+(**must be set** — the code default is UAT's student-node; `STUDENT_API_KEY` default matches DEV's
+`AUTH_KEY`), `GOOGLE_SERVICE_ACCOUNT_FILE=/app/secrets/auth_creds.json`,
+`GOOGLE_DRIVE_FOLDER_ID=1SH8msujZRVVfyB9Su6MAoVcoLB6Fa2R-`,
+`GOOGLE_DRIVE_WEBHOOK_URL=https://data-normalization.dev.pluginlive.com/webhooks/google-drive`,
+`EXPORT_QUEUE_ENV=dev`. DEV previously used the `sheet-reader-dev@data-eng-dev-486917` SA; it moved
+to pluginalex because `pluginlive.com` is verified for `changes.watch` only in that project. The
+DEV channel lives in DEV's own `drive_state` row; the per-folder filter keeps DEV/UAT/PROD apart on
+the shared SA's change feed.
+
+**DEV corporate-node** `GOOGLE_DRIVE_FOLDER_ID` = FormData-DEV too (`.env.dev`/`.env`, both untracked;
+the running container also has `-e GOOGLE_DRIVE_FOLDER_ID=…` so no rebuild was needed). Only roles
+whose sheet is created from now on land in FormData-DEV. **DEV roles created earlier keep their
+sheet in FormData-UAT** and are still ingested by UAT until the sheet is moved (Drive "Move" to
+FormData-DEV; DEV then ingests all its rows, since DEV has no `ingested_sheets` history for it).
+Done so far for the QA role `c1b429fb…` only.
+
+**DB:** `dev_pluginlive.candidate_ingestion_schema` was bootstrapped from a schema-only dump of UAT
+(DB-Scripts `Form Data Normalization DEV Isolation/`): `20261031T154736Z__…bootstrap.sql` (DDL),
+`20261031T154738Z__…reference_seed.sql` (normalized_columns 815, degree/department canonical+alias,
+entity_configs 8, institute_alias 360 + institute_id_map 2401 — UAT rows filtered to campus IDs that
+exist on DEV), `20261031T160237Z__dev_admin_mongo_db_countries.sql`. ⚠️ The repo's `schema.sql` is
+**stale** (11 tables and `candidates_raw_data.corporate_id/job_role_id` are missing) — don't
+bootstrap a new environment from it alone.
+
+> **Gotcha — a missing `admin.mongo_db_countries` silently nulls every resolved id.** The
+> resolved-names patch in `_resolve_and_store_all_ids` looks the country up there; an exception is
+> logged as `Resolved names patch failed … UndefinedTable` and the function returns `None`, so
+> create-full gets `roleId:""`, empty campus/degree/city ids and answers `roleMappingCreated:false`
+> (student created, no `student_role_mapping`). DEV lacked the table until 2026-10-31.
+
+**Still shared with UAT:** DEV `vectorsearch` (`ENTITY_NORMALIZER_API_URL=vector-search.dev…`,
+pg-vector-api-service) reads `uat_pluginlive` — DEV Postgres has no pgvector. So the master IDs it
+returns (campus, degree, stream, city, role) are UAT's. Most institutes are shared (87,365 common);
+degrees are not (DEV 420 vs UAT 1,017), so a UAT-only degree id can reach DEV create-full. The DEV
+seeds of `entity_configs`/`*_canonical`/`*_alias`/`institute_id_map` are only read by
+pg-vector-api-service and stay inert until it moves to a DEV DB.
+
+**Slow first ingest:** `get_sheet_form_id` → `build_form_sheet_map` lists every Google Form the
+SA can see and calls the Forms API on each (~280 `403 PERMISSION_DENIED` warnings per webhook
+batch), so a new sheet takes ~3–4 min to reach `candidates_raw_data`. The same happens on UAT.
 
 ### PROD runtime topology — 3 Deployments in ns `api`
 
@@ -511,7 +586,7 @@ variant. Fixes the old literal-`LIKE` gaps where `fullstack` (no space) or
 | **PeopleDataLabs** (`api.peopledatalabs.com/v5/person/enrich`) | LinkedIn profile enrichment for experienced-role candidates (opt-in, `PDL_ENABLED`). See "LinkedIn enrichment" below. |
 | **PG Vector Search / Entity Normalizer** (`vector-search.{dev,prod}.pluginlive.com`, k8s `pg-vector-api-service`) | Master entity resolution (institute/degree/city/state/country/department). **5–10s per call**; the dominant per-candidate latency. |
 | **Assessment DB** | Fetch assessment scores (separate PG connection) |
-| **student-node `POST /students/create-full`** | Final push of the normalized candidate → student record. URL = `{BASE_URL}/students/create-full`, auth via `auth-key: STUDENT_API_KEY`. UAT `BASE_URL=https://api-std.uat.pluginlive.com`, PROD `https://api-stud.pluginlive.com`. Responds ~0.4s. |
+| **student-node `POST /students/create-full`** | Final push of the normalized candidate → student record. URL = `{BASE_URL}/students/create-full`, auth via `auth-key: STUDENT_API_KEY`. DEV `BASE_URL=https://api-std.dev.pluginlive.com` (set in `.env`; the code default is UAT's), UAT `BASE_URL=https://api-std.uat.pluginlive.com`, PROD `https://api-stud.pluginlive.com`. Responds ~0.4s. |
 
 ---
 
@@ -1793,9 +1868,9 @@ LinkedIn-sourced candidate gets a populated work history / education without a r
 | `GEMINI_API_KEY` / `GEMINI_MODEL` | Gemini config — **primary** normalization model (default `gemini-2.5-flash-lite`; PROD still `gemini-3-flash-preview`) |
 | `NORMALIZATION_COMPACT_PROMPT` | Use compact `SYSTEM_PROMPT_V2` (default `true`); `false` = legacy `SYSTEM_PROMPT` |
 | `AI_BATCH_SIZE` / `API_INGEST_BATCH_SIZE` | Main-worker / api-ingest claim batch sizes (PROD 100 / 20) |
-| `GOOGLE_SERVICE_ACCOUNT_FILE` | SA JSON path. **UAT: `./auth_creds.json`** (baked); **PROD: `/app/secrets/auth_creds.json`** (Secret `data-normalization-sa`). Both = pluginalex SA. |
-| `GOOGLE_DRIVE_FOLDER_ID` | Drive folder. **UAT: `1OJ2sGcz85VmGk2fHkg3XALW5nX5M06Ug`** · **PROD: `1vnv0vCwqPnAU_I3afaW7zRn3ge8QLNtG`** |
-| `GOOGLE_DRIVE_WEBHOOK_URL` | Webhook receiver URL (UAT/PROD Let's Encrypt; ngrok local-dev only) |
+| `GOOGLE_SERVICE_ACCOUNT_FILE` | SA JSON path. **DEV: `/app/secrets/auth_creds.json`** (bind-mounted from student-node's `auth_creds.json`); **UAT: `./auth_creds.json`** (baked); **PROD: `/app/secrets/auth_creds.json`** (Secret `data-normalization-sa`). All = pluginalex SA. |
+| `GOOGLE_DRIVE_FOLDER_ID` | Drive folder. **DEV: `1SH8msujZRVVfyB9Su6MAoVcoLB6Fa2R-`** · **UAT: `1OJ2sGcz85VmGk2fHkg3XALW5nX5M06Ug`** · **PROD: `1vnv0vCwqPnAU_I3afaW7zRn3ge8QLNtG`** |
+| `GOOGLE_DRIVE_WEBHOOK_URL` | Webhook receiver URL (DEV/UAT/PROD `https://data-normalization.<env>.pluginlive.com/webhooks/google-drive`; ngrok local-dev only) |
 | `PDF_PARSER_URL` / `PDF_PARSER_AUTH_KEY` | Resume parser endpoint |
 | `PDL_ENABLED` / `PDL_API_KEY` | PeopleDataLabs LinkedIn enrichment master switch (default `false`) + API key. **UAT: enabled Jun 2026.** See "LinkedIn enrichment". |
 | `PDL_API_BASE_URL` / `PDL_MIN_LIKELIHOOD` / `PDL_TIMEOUT_SECONDS` | PDL host (`https://api.peopledatalabs.com`), match-confidence floor (default `6`), HTTP timeout (default `30`s) |
