@@ -2077,3 +2077,59 @@ Rollback: original image `eduspeakreact:f0edabbf` is retained/tagged; UAT snapsh
 `~/pilvidya-predeploy-20261030T120649Z/` contains functions, container definitions, frontend env, deployment
 scripts, pre-change origin environment, compose file and nginx site configuration. Public/reporting DB backup:
 `/home/ubuntu/eduspeak-pg-migration/backups/eduspeak_uat_predeploy_20261030T120649Z.dump` on the DEV box.
+
+## 2026-11-01 — PilVidya UAT `dc68323c` (upstream `7da90344`, 82 commits, + 1 UAT fix commit)
+
+Both hosts (pilvidya.uat.pluginlive.com, aividya.si) serve `eduspeakreact:dc68323c`. The UAT checkout is on local
+branch **`uat/pv-fixes-20261101`** = upstream `main` 7da90344 + one fix commit (not pushed to GitHub). Next deploy:
+`git checkout main && git merge --ff-only origin/main`, then re-apply the fix only if upstream hasn't fixed it.
+
+**New upstream (Sprints 5–17):** SWOT score engine + versioned reports, curriculum live sessions, PWA/offline sync,
+admin operations (institute onboarding, fee payments, academic calendar, exam schedules), parent–teacher chat, ~39
+new `ai-*` edge functions.
+
+### Database (DB-Scripts `20261101T144552Z__pilvidya_swot_engine_live_sessions_pwa_admin_ops.sql`)
+- 18 new tables created. **Upstream policies replaced**: upstream let any teacher/principal/admin of *any* school
+  read and write every row (`EXISTS user_roles … role IN (...)`), and let students `FOR ALL` their own fee_payments.
+  UAT: student-keyed rows → `can_access_student(student_id)` read, platform-admin write; institute-keyed rows →
+  new `my_institute_ids()` (institute_users + student/teacher profile `institute_id`), staff-of-that-institute write.
+  New tables' `school_id` FK → `institutes(id)` (not `schools`; UAT school and institute ids do not overlap).
+- Sprint 7/9 statements on tables UAT already has (`curriculum_resources/lessons/quizzes/assignments`,
+  `fee_structures`, `fee_invoices` — different columns) dropped, plus upstream `student_has_curriculum` (UAT has its
+  own overloads) and the `v_curriculum_summary` / `v_fee_collection_summary` views.
+- New SECDEF fns (`run_swot_scoring_engine`, `generate_swot_classification`, `register_pwa_device`,
+  `queue_offline_sync`, `create_fee_invoice`, `generate_fee_invoice_number`, `check_curriculum_access`) have no
+  caller checks → `service_role` only. **03_grants re-grants anon EXECUTE on all functions — re-run the file's
+  lockdown section after 03 → 05 → 06 → 07.**
+- `sql_fix_scripts.sql` 2026-10-31 sections applied (institute_users recursion-free helpers + scoped policies,
+  `teacher_profiles_read_scoped`); `ai_usage_logs` part skipped (table not on UAT).
+- `20261021120004_subscription_validity_step4` (edited in place upstream) re-run.
+- **Skipped:** `20261031_live_schema_repair` (`USING (true)` on institutes/institute_users; columns already present),
+  `20261030000001` / `20261030000004` (hosted-dev demo-data seeds with hard-coded ids).
+
+### Edge functions — 39 new functions HELD
+`~/eduspeak-sb/functions.hold` (rsync `--exclude-from` in `~/pilvidya-checks/deploy-frontend.sh`) keeps 39 new `ai-*`
+functions and `realtime-chat` off UAT. Each creates a **service-role** client and never verifies the caller, so
+anyone with the public anon key could e.g. read any parent–teacher conversation (`ai-parent-teacher-messages`) or mark
+any invoice paid (`ai-fee-payment-process`). They return 404 on UAT; the frontend pages that call them show errors.
+Release a function by deleting its line once it checks the caller's JWT and tenancy. `curriculum-live-session-manager`
+(has a `getUser` check) is deployed.
+
+### Frontend fix (`dc68323c`)
+- `ParentFeesView`: missing `useCallback` import + `targetStudentId` read inside a `useMemo` above its declaration
+  (TDZ) → parent **Fees** tab showed "This screen needs to restart". Fixed.
+- `StudentDashboard`: `clearStudentSessionLocally` used without import → revoked-session path threw instead of
+  signing the student out. Fixed.
+
+### Known, not fixed (pre-existing, also broken on `8290aba0`)
+- Admin `/admin/institutes`, `/admin/payments`, `/admin/subscriptions`, `/teacher/live-class-management` hit the
+  error screen: upstream pages reference undeclared components/functions (`Select*`, `loadPayments`,
+  `loadSubscriptions`, `loadClasses`, …). Needs real code from upstream.
+- Parent Fees tab now renders but `parent-fees` answers "Invalid or expired session" (same call as before).
+- `src/components/ai/ParentTeacherChat.tsx` does not parse (not in the build graph); the TS2304 scan must exclude
+  `src/components/ai/` or tsc stops at the syntax error and reports 0 files.
+
+### Verification
+13 tester logins + 10 demo logins land on their dashboards with no page errors/5xx; plan-locked student routes
+(Foreign Languages, Report Cards, Community, Fees) show the upgrade screen; no anon grants on the new tables; locked
+SECDEF fns not executable by anon/authenticated; held functions 404 on both hosts.
