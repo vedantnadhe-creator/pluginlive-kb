@@ -571,6 +571,45 @@
         "gpt-6-luna": "none"
       },
       "modality": "text"
+    },
+    "pl/sim-persona-turn": {
+      "primary": "gemini-3-flash-preview",
+      "fallbacks": [
+        "gemini-2.5-flash"
+      ],
+      "timeout": 12,
+      "retries": 0,
+      "reasoning": {
+        "gemini-3-flash-preview": "disable",
+        "gemini-2.5-flash": "disable"
+      },
+      "modality": "text"
+    },
+    "pl/banking-topic-content": {
+      "primary": "gemini-3-flash-preview",
+      "fallbacks": [
+        "gemini-3.8-flash"
+      ],
+      "timeout": 60,
+      "retries": 0,
+      "reasoning": {
+        "gemini-3-flash-preview": "low",
+        "gemini-3.8-flash": "medium"
+      },
+      "modality": "text"
+    },
+    "pl/banking-curriculum": {
+      "primary": "gemini-2.5-flash",
+      "fallbacks": [
+        "gpt-6-luna"
+      ],
+      "timeout": 120,
+      "retries": 0,
+      "reasoning": {
+        "gemini-2.5-flash": "disable",
+        "gpt-6-luna": "none"
+      },
+      "modality": "text"
     }
   }
 }
