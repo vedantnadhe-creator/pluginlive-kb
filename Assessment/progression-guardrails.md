@@ -12,7 +12,7 @@
 |---|---|
 | 2026-04-06 `418b76dd` (kesavan) | Diagnosis rule set: confirmed level = **lower of the paper level and the calculated level**. B1 papers at 86%+ → confirmed **B1**, suggested **B2**. |
 | 2026-06-16 `132c2697` (Ravi) | "Rewrite CEFR progression as deterministic chain replay". It was a refactor, but it silently changed the diagnosis rule to confirmed = suggested (C2 capped at C1). The paper cap was lost and the KB was rewritten to match the new code, so the regression was then documented as if it were the spec. |
-| 2026-10-15 → 2026-11-02 | PROD: `sshrayanika@gmail.com` sat two **B1** diagnosis papers (avg 85.795 → 86) and the institute drawer showed **Achieved level B2, current difficulty B1**. 3 PROD diagnoses were affected in total. Fixed in `student-node` `559f5bfd` (see `communication.md` → Level derivation). |
+| 2026-10-15 → 2026-11-02 | PROD: `sshrayanika@gmail.com` sat two **B1** diagnosis papers (avg 85.795 → 86) and the institute drawer showed **Achieved level B2, current difficulty B1**. 3 PROD diagnoses were affected in total. Fixed in `student-node` `559f5bfd`: LIVE DEV + UAT 2026-11-02, PROD pending (see `communication.md` → Level derivation). The fix itself followed this rule: pinned tests, then an old-vs-new replay diff on a seeded copy of the PROD chain on DEV and UAT, then a predicate count of every affected row per environment. |
 
 What went wrong: a refactor changed a business rule, no test pinned that rule, nobody diffed the
 replayed output against the stored data, and the KB was updated from the new code instead of
