@@ -950,15 +950,18 @@ Both now derive the admin's own number:
 |---|---|
 | Aptitude | inverted blueprint — 25 questions → 30 min, 30 → 45, 40 → 60 |
 | Communication | summed from the sections enabled — 30 min for the full paper (see [communication.md](communication.md#duration-is-summed-from-the-enabled-sections-2026-08-21)) |
-| Behavior | 20 min |
+| Behavior | 30 min (was 20 until 2026-11-02; v1 runner was always 30) |
 
 The Aptitude blueprint is 1:1 and invertible, so reading it backwards returns
 exactly the duration that was chosen. **Nothing is persisted per assignment on
 purpose:** Communication sets come from a shared pre-generated pool and
 `assessment_config` is 1:1 with a set, so writing one assignment's duration
 there would change it for every other assignment reusing that set. The rule
-lives in two places and the two must agree — `estimatedDuration()` here and
-`assessmentMetrics()` in `admin-react-v2/src/lib/assessments/typeSummary.ts`.
+lives in two places and the two must agree — `estimatedDuration()` in
+`student-node/app/helpers/attemptDuration.js` (candidate clock + dropout
+deadline) and its port in `corporate-node/app/helpers/assessmentDuration.js`
+(corporate v2 list / detail / dashboard "Duration"). admin-react-v2 no longer
+quotes a per-type duration (`typeSummary.ts` is gone).
 
 `estimatedDuration()` takes the map's `enabled_sections` as its third argument
 for Communication and delegates to

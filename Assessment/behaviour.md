@@ -219,6 +219,18 @@ breadcrumb, the left rail and the mobile track.
   attempt. Timer expiry and `expireCurrentAssessment` bypass the gate.
 - Legacy `Assessment-React` already shuffled, hid names and gated answers.
 
+## Duration: 30 minutes (DEV + UAT 2026-11-02)
+
+No Behavior set stores a duration (`assessment_config` has no Behavior rows), so
+the length is the code fallback `estimatedDuration('Behavior') = 30` in
+`student-node/app/helpers/attemptDuration.js` (v2 candidate clock and dropout
+deadline) and `corporate-node/app/helpers/assessmentDuration.js` (corporate v2
+"Duration"). It was 20 until 2026-11-02 while the v1 runner
+(`Assessment-React/.../Behaviourassmt/assessment.js`) already ran 30. Only
+sittings started after the deploy get 30; an already-stamped `expiresAt` keeps
+its value. student-node DEV `90b62f7e` / UAT `686d6551`, corporate-node DEV
+`3ae9807e` / UAT `f3c4bdcc`. **PROD pending.**
+
 ## Admin wizard question count
 
 The shared `@pluginlive-technologies/assessment-creation` package (design-system
