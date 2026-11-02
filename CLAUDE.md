@@ -10,6 +10,7 @@ When working on a feature, check the relevant file here **before asking the user
 - `Assessment/README.md` — assessment system overview
 - `Assessment/attempt-integrity.md` — **UAT live QA approved 2026-10-30; PROD HOLD.** Resets, student/TPO UI, notifications and both migrations are on UAT. Never promote commits tagged `[attempt-integrity]` or DB-Scripts `Attempt Integrity/` to PROD/release without separate approval. Read the release/cutover details before promotion.
 - `Assessment/candidate-frontend-v2.md` — **the candidate app is `assessment-react-v2`; `Assessment-React` is legacy/maintenance-only** — read this before editing either frontend
+- `Assessment/progression-guardrails.md` — **HARD RULE: any change whose blast radius touches progression (Communication CEFR / Aptitude level / NPS — algorithm, inputs, gates, readers, data) must prove the algorithm is undisturbed (invariants, pinned tests, replay dry-run diff) before pushing.** Read before editing anything progression-adjacent
 - `Assessment/aptitude.md` — aptitude test scoring, flow, proctoring
 - `Assessment/communication.md` — video/audio assessment scoring
 - `Assessment/custom.md` — custom question assessments

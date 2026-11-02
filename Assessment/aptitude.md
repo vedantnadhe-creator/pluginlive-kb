@@ -455,6 +455,8 @@ Race Fix/001`.
 
 ### 5. Level Update & Progression
 
+> **HARD RULE — read [progression-guardrails.md](progression-guardrails.md) before changing anything that touches Aptitude progression, its inputs, or its readers.**
+
 #### `updateAptitudeProgression()`
 **Path:** `student-node/app/models/Assessment.js` (line ~11080)
 

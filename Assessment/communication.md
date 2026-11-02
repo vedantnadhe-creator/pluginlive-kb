@@ -729,6 +729,8 @@ then replay the candidate's full practice and real Communication chains.
 Applies weighted formula to section scores (Video 40%, Reading 20%, Audio 10%, Writing 30%).
 
 #### `updateCurrCERFlevelOfStudent()` → `replayCommunicationProgression()`
+
+> **HARD RULE — read [progression-guardrails.md](progression-guardrails.md) before changing anything below or anything that feeds it.** This section is the spec. If the code disagrees with it, resolve which is right; don't rewrite the section to match new code.
 **Path:** `student-node/app/models/Assessment.js`; pure core in `student-node/app/helpers/communicationProgression.js`
 
 After scoring, the student's **entire** Communication chain (for one `is_practice` value) is recomputed deterministically and every `progression_history` row is re-upserted. The live path (`updateCurrCERFlevelOfStudent` → `replayCommunicationProgression`) and the **backfill** (`CommunicationCalculations.backfillAllStudentProgression`) call the **same pure core** (`computeCommunicationChain`), so they can never diverge. This replaced the old "rolling window of pairs" + `is_calc` machinery, which let the live and backfill paths drift apart (causing missing/stale latest CEFR in the frontend and the need for repeated manual backfills).
@@ -749,11 +751,13 @@ suggested   = newLevel
 
 | Phase | Mapping used | progression |
 |---|---|---|
-| **Diagnosis** (first 2) | `cerfMapping` (detailed bands; downgrade allowed for calibration) | `= suggested`, **except** `C2 → C1` (C2 means "suggest C2 test", not a confirmed level) |
+| **Diagnosis** (first 2) | `cerfMapping` (detailed bands; downgrade allowed for calibration) | `= min(suggested, paper level)`, then capped at **C1**. A top-band score only *suggests* the next level up: B1 papers at avg ≥86 → suggested **B2**, confirmed **B1**. A downgrade band confirms at the lower level (B1 papers at 69 → A2/A2). |
 | **Post-diagnosis** | `assessmentCefrMapping` (stay-or-up) | `= one rank below suggested` (floor A1) |
 
 - **No-downgrade** (assessment chains, post-diagnosis only): `suggested = max(suggested, prevSuggested)`, `progression = max(progression, prevProgression)`. Because `previousSuggested` is null only at the diagnosis pair, downgrade is automatically allowed there and blocked afterward.
 - **Practice chains** skip the no-downgrade clamp — practice **may drift down** to always reflect the latest mapped level.
+
+> **Regression fixed 2026-11-02 (`student-node` `559f5bfd` on branch `fix/diagnosis-confirmed-cap`; not yet pushed or deployed. DEV/UAT/PROD pending).** kesavan's `418b76dd` (2026-04-06) capped diagnosis confirmation at the paper level. Ravi's chain-replay rewrite `132c2697` (2026-06-16) dropped that cap (`progression = suggested`, C2→C1 only), and this section was rewritten to match. Symptom (PROD, Jershini): `sshrayanika@gmail.com` sat two B1 diagnosis papers (85.53 + 86.06, avg 85.795 → 86) and the institute v2 drawer showed **Achieved level B2 · Current difficulty B1**. The DB itself stored `assessment_cefr = B2` with NPS anchored at B2 (64.3, shown as 79.1). After the fix it is B1/B2, NPS 47.64 (shown as 66.27), and her later B2 sitting carries B1/B2. PROD rows to re-derive after deploy (`backfill-progression`, plain mode, `primaryEmails` scoped): `n.naga@mba.christuniversity.in` (A1 paper → A2), `prabhakar.morajkar+cacadc122@pluginlive.com` (test, B1 → B2), `sshrayanika@gmail.com` (B1 → B2). Pinned by `test/communicationProgression.spec.js` → "never confirms above the paper level" + "diagnosis move-up (PROD regression 2026-11-02)".
 
 **The diagnosis→post-diagnosis seam:** diagnosis seeds `progression = suggested`; post-diagnosis wants `progression = suggested − 1`. No-downgrade absorbs the gap, so a student confirmed at e.g. A2 by diagnosis **stays** at A2 and only ever ratchets **up** when a same-level pair scores ≥86.
 
@@ -781,11 +785,11 @@ This is the **linear, stored** value. Since 2026-08-25 every *display* surface c
 | 6 | B1 | 78 | A2 | B1 | carry at new level |
 | 7 | B1 | 98 | B1 | B2 | derive move-up → **prog A2→B1, bridge NPS** |
 
-> **C2 ceiling:** post-diagnosis `progression = suggested − 1` caps confirmed progression at **C1** (a student tested at C2 keeps progression C1). Only the diagnosis can confirm via the cerfMapping bands.
+> **C2 ceiling:** post-diagnosis `progression = suggested − 1` caps confirmed progression at **C1** (a student tested at C2 keeps progression C1). The diagnosis also caps at C1, and never above the paper level.
 
 **Profile update (`_updateProfileCefr`, keyed by `primaryEmail`):** from the latest row's `suggestedCefr` — first-timer seeds `PracticeCEFR`/`AssessmentCEFR`/`MaxPracticeCEFR`; practice updates `PracticeCEFR` (+`MaxPracticeCEFR` if higher); non-practice updates `AssessmentCEFR` (drives next-test assignment). The triggering assessment's `resultingCefr` is also stamped with its suggested level.
 
-> **Key distinction:** `suggestedCefr` drives the **next test level** (profile `AssessmentCEFR`). `assessmentCefr`/`practiceCefr` is the **confirmed progression level** read by the frontend/report (`getAllAssessmentScores` reads `progression_history.assessmentCefr` per assessment and skips nulls). They differ by one rank post-diagnosis (e.g. confirmed A2, suggested B1).
+> **Key distinction:** `suggestedCefr` drives the **next test level** (profile `AssessmentCEFR`). `assessmentCefr`/`practiceCefr` is the **confirmed progression level** read by the frontend/report (`getAllAssessmentScores` reads `progression_history.assessmentCefr` per assessment and skips nulls). They differ by one rank post-diagnosis (e.g. confirmed A2, suggested B1), and at diagnosis whenever the pair scores in the top band (e.g. B1 papers ≥86 → confirmed B1, suggested B2).
 
 **ProgressionHistory fields stored per record:**
 
