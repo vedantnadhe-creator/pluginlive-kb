@@ -267,8 +267,8 @@ yet" and "Achieved Level — Level pending". The drawer now gates on
 `progressType = isRecurring ? npsType : null` (`isRecurring` includes diagnosis
 maps), the same rule as the roster's `reportsNps`. A one-time attempt returns
 `supportsNps: false`, the plain `Score` %, and the Achieved Level from the stored
-grade if any. Otherwise Aptitude uses its score band ("Beginner", "0–40% band"),
-and **Communication reads the score against the paper sat**: see below.
+grade if any. Otherwise **both types read the score against the paper sat**
+(see below), and the drawer caption is "On a B2 paper" / "On an easy paper".
 
 **One-time Communication level = paper-aware, capped at the paper (fixed
 2026-11-02, institute-node `e0ef120` DEV, UAT `2ff1c13`; PROD pending).** The
@@ -287,7 +287,25 @@ unknown, the old band is kept. UAT blast radius: 48 one-time Communication maps,
 disagree with admin-node. Paper-aware table for reference, upper bounds
 inclusive: A2 paper ≤75 A1; B1 ≤60 A1, ≤80 A2; B2 ≤50 A1, ≤67 A2, ≤83 B1; C1 ≤43
 A1, ≤57 A2, ≤71 B1, ≤86 B2; C2 ≤30 A1, ≤40 A2, ≤50 B1, ≤60 B2, ≤70 C1; anything
-higher is the paper's own level. `npsType` still drives the SQL columns. A recurring or
+higher is the paper's own level.
+
+**One-time Aptitude level = paper difficulty (fixed 2026-11-02, institute-node
+`f979ca9` DEV, UAT `14c22bf`; PROD pending).** It had the same flat-scale fallback
+(≤40 Beginner, ≤60 Intermediate, ≤80 Upper Intermediate, else Advanced, on any
+paper). The candidate PDF uses student-node `getLevel(difficulty, round(score))`
+(`newAptitudeLevel.js` `difficultyMapping`; see `aptitude.md` → Proficiency-level
+visibility), so e.g. 97.44% on an **easy** paper read Advanced in the drawer and
+Intermediate in the PDF. Now `aptitudeLevelForPaper` (`assessmentBands.js`, the
+same table and integer rounding, parity-checked on 30,000 cases) is the Aptitude
+entry in `PAPER_LEVEL_RULES` / `paperLevelFor` (`AssessmentDetailV2.js`), used by
+the drawer, roster and competency ladder. The table, applied to the rounded score:
+easy ≤79 Beginner, else Intermediate; medium ≤39 Beginner, ≤69 Intermediate,
+else Upper Intermediate; hard ≤39 Beginner, ≤59 Intermediate, ≤79 Upper
+Intermediate, else Advanced. admin-node's export has no Aptitude level column.
+Note that one one-time map can serve **different difficulties to different
+students** (UAT `a90730c3…`: easy, medium and hard papers), so the level is read
+per student from their own attempt's set, never from the map. UAT blast radius:
+45 maps, 182 scored rows. Before the fix 22 disagreed with the PDF; now 0. `npsType` still drives the SQL columns. A recurring or
 diagnosis drawer with every paper in but no grade still reads "Level pending".
 
 Averaging raw percentages across a series is meaningless in the first place: the
