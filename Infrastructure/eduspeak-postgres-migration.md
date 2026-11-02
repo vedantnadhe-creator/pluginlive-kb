@@ -2133,3 +2133,22 @@ Release a function by deleting its line once it checks the caller's JWT and tena
 13 tester logins + 10 demo logins land on their dashboards with no page errors/5xx; plan-locked student routes
 (Foreign Languages, Report Cards, Community, Fees) show the upgrade screen; no anon grants on the new tables; locked
 SECDEF fns not executable by anon/authenticated; held functions 404 on both hosts.
+
+## 2026-11-02 — PilVidya UAT `f440c75a` (upstream `d932b39f`, 11 commits, + the 11-01 UAT fix re-applied)
+
+UAT checkout is on local branch **`uat/pv-fixes-20261102`** = `main` d932b39f + cherry-picked fix (parent Fees tab /
+StudentDashboard import; upstream still hasn't fixed it). Not pushed to GitHub.
+
+**New upstream:** foreign-language speaking assessments, Sprint 15 study groups, brochure page.
+
+- **DB** (DB-Scripts `…__pilvidya_fl_speaking_assessments.sql`): `fl_speaking_assessments` + enums + view + 2 readers.
+  Upstream view `student_speaking_progress` lacked `security_invoker` (every signed-in user would read every
+  student's scores) and the SECDEF readers took any student id → fixed (view `security_invoker=true`, readers gated by
+  `can_access_student`). Upstream teacher/admin policies used `teacher_profiles.user_id` (NULL on UAT) and
+  `admin_profiles` (absent) → one `can_access_student` SELECT policy. The `sql_fix_scripts.sql` change (drop
+  `institute_users_select`) was already true on UAT.
+- **Edge functions:** 5 more held in `~/eduspeak-sb/functions.hold` (45 total): the 4 `ai-study-group-*` fns
+  (service role, no caller check) and `speaking-assessment` (reads the request body three times, so the session check
+  always fails; also calls `api.openai.com` directly instead of the LiteLLM gateway).
+- **Verification:** 13 tester + 10 demo logins clean; plan locks hold; parent Fees tab renders (still the pre-existing
+  "Invalid or expired session" from `parent-fees`); new objects have no anon access.
