@@ -441,6 +441,30 @@ re-submit). Scoring previously used `.find()` (first match), which could pick a 
 count a genuinely-answered question as unattempted (off-by-1..3 under-count). Scoring now builds a
 per-question map preferring a non-`SKIPPED` (and latest `submittedAt`) row before counting.
 
+**Report overall % — source of truth is `statistics.summary`, not the columns (fixed 2026-11-02).**
+The `aptitude_scores` row stores both a `statistics` jsonb (summary + per-category/topic marks,
+the detailed scoring) and denormalised top-level `total_score`/`gained_score` columns. At write
+time the upsert sets the columns from `statistics.summary.{total_marks,gained_marks}`, but on some
+rows the columns drifted from the summary (older rows, rounded to integers, or a re-score that
+updated one and not the other) — observed on ~24/234 DEV rows, e.g. column `gained_score=21` vs
+`summary.gained_marks=29` on the same 48-mark paper (44% vs 60%).
+
+The institute/TPO report (`TpoDashBoard.js` `getPercentage(summary.gained_marks, summary.total_marks)`)
+and the student report tab's own **per-category breakdown** read the `statistics` summary, but the
+student report tab's **overall** card and the **PDF** read the top-level columns — so the same student
+saw a different overall % on the website (e.g. 59%) than on the institute report (e.g. 65%), and the
+overall disagreed with the categories on the very same screen. Fix: `getAssessmentReport` and
+`generatePDFReport` now derive `totalScore`/`gainedScore`/`overallPercentage` for aptitude from
+`statistics.summary` (fallback to the columns only if the summary is absent) and the API sends a
+precomputed `overallPercentage`; the v1 `Assessment-React` `AptitudeAssessment` card renders that
+instead of recomputing `gainedScore/totalScore` in the browser. Progression is undisturbed — the
+report's `aptitudeLevel` comes from stored `progressionHistory`, and the one-time-institute PDF
+`directProficiencyLevel` already recomputed from `overallPercentage`, now off the same authoritative
+summary that scoring/progression use. (`student-node/app/models/Assessment.js`,
+`Assessment-React/src/components/AptitudeAssessment/index.js`.) The stale columns themselves are left
+as-is; only the read path was corrected. The report tab is **v1-only** (institute students sign in →
+v1 dashboard → Report tab; `assessment-react-v2` has no aptitude report card).
+
 **Index:** `assessment.student_answers(assessment_assigned_id)` backs the per-attempt
 answer lookups (scoring, guard, backfill) — see DB-Scripts `Aptitude Set Regeneration
 Race Fix/001`.
