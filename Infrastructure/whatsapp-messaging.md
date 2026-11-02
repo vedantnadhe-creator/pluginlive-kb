@@ -116,6 +116,11 @@ before it sends anything).
 
 ### Dynamic corporate deadline copy and invite/reminder intent (DEV + UAT, 2026-08-17)
 
+> **2026-11-02 (DEV + UAT):** before an assessment opens, `{{5}}` reads
+> `Opens tomorrow at 6 PM. Complete it by 04 Nov 2026 12 PM` (36h rule measured
+> from the opening), and a third intent `opened` sends the `corporate_*_open_v1`
+> templates. See `Assessment/assessment-opening-notice.md`.
+
 Corporate assessment communications now calculate a short candidate-facing CTA
 from the assessment map's deadline in the IST wall-clock frame. More than 36h
 remaining renders `Complete it by tomorrow 12 PM`; at or below 36h it uses

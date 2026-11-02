@@ -13,7 +13,7 @@
 
 | Reminder | Fires |
 |---|---|
-| #1 | 24h after the candidate's invite (falls back to the assessment `start_time` if no invite email is on record) |
+| #1 | 24h after the candidate's invite — or after the "now open" notice if one was sent (`GREATEST(invited_at, opening_notified_at)`, see `assessment-opening-notice.md`); falls back to the assessment `start_time` if no invite email is on record |
 | #2 | 24h after #1 |
 | #3 | 24h after #2 — then never again for that assignment |
 

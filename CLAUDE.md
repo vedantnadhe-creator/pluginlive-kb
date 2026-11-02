@@ -19,6 +19,7 @@ When working on a feature, check the relevant file here **before asking the user
 - `Assessment/submission-pipeline.md` — **final submit contract for every assessment type**: paper freeze + proctoring stop on submit, recordings registered not awaited (server barrier + late re-score), parallel uploads, answer-save retry, submit writes only changed answers
 - `Assessment/new-assessment-type-checklist.md` — **read before adding an assessment type or a scoring path**: the result-final rule (`scores_calculated` + proctoring hold), the single readiness predicate, ATS ping ownership, report/score plumbing
 - `Assessment/schedule.md` — assessment scheduling and cron jobs
+- `Assessment/assessment-opening-notice.md` — future-start corporate OTP invites: "Opens <day> at <time>" deadline copy + the one-time "now open" email/WhatsApp cron (`assessment_opening_reminder`)
 - `Assessment/admin.md` — admin panel, assessment management, TPO/corporate flows
 - `Assessment/admin-frontend.md` — admin-react Assessment module (UnifiedAssessmentTable, StudentReport, subscription filtering, heading display)
 - `Assessment/institute.md` — institute TPO view, two-API architecture, score format differences, PDF browser pool

@@ -12,6 +12,7 @@
 | `question_verification` | Aptitude question **review/verification** (validate-and-repair, see `question-verification.md`) | every 11 min |
 | `delivery_feedback_sync` | Reconcile accepted sends against the OCI suppression list (see `email-delivery-tracking.md`) | every 15 min |
 | `assessment_auto_reminder` | Chase candidates still `PENDING` every 24h, capped at 3 (see `auto-reminders.md`) | hourly |
+| `assessment_opening_reminder` | One "your assessment is now open" email + WhatsApp for corporate OTP/AI Interview invites sent before `start_time`; no quiet hours (see `assessment-opening-notice.md`) | every 5 min |
 
 > `assessment_auto_reminder` additionally requires **`AUTH_KEY`** in that
 > environment — the sweep refuses to claim without it, precisely so a
@@ -64,4 +65,5 @@ The same Question Manager UI + auth pattern now also drives **per-topic × per-d
 Each env's flags live in its own DB. Readiness (backend + table + creds):
 - **DEV** — ready. (`question_verification` was enabled here for testing.) `assessment_auto_reminder` row seeded disabled 2026-08-06.
 - **UAT** — ready (2026-07-10). `assessment_auto_reminder` row seeded disabled 2026-08-06.
+- `assessment_opening_reminder` — DEV + UAT seeded and **enabled** 2026-11-02; PROD pending.
 - **PROD** — **pending** (backend + `cron_config` table + QM creds not yet deployed).
