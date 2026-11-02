@@ -181,6 +181,8 @@ Writing Sections = Question Based Response, Sentence Completion,
 ```
 
 > An assessment has either Dictation or Email Writing (controlled by `IsEmailWriting` flag), plus up to 3 other writing sections. The divisor is always **4** (hardcoded), not the count of present sections. This ensures consistent scoring across PDF report, dashboard, and `getAssessmentReport`.
+>
+> **Every reader must pass the real `IsEmailWriting` and `enabledSections` to `calculateCommunicationDashboardScore` (fixed 2026-11-02).** If the flag is missing (`undefined`/`null`) the helper guesses the variant from the rows and picks Email Writing whenever an Email Writing row exists — even a 0-scored one on a Dictation sitting. The student Report tab (`getAssessmentReport`) did not load `IsEmailWriting` and passed `enabledSections=[]`, so it averaged Email Writing 0 instead of Dictation: e.g. UAT attempt `108260fe…` showed Writing 40 / Overall 77.14 on the website vs 62.33 / 83.84 in the PDF. It now selects `IsEmailWriting` + the institute/corporate map `enabledSections` and passes them exactly like `generatePDFReport` (student-node DEV `2ee0bd44`, UAT `d11a3909`).
 
 **Score consistency rule:** All display surfaces (PDF report `generateCommunicationReport`, dashboard `getStudentListForAssessment`, detail view `getAssessmentReport`) must use stored `communicationScores.score` values directly and divide writing sum by 4. Do NOT recalculate section scores from metadata — use the stored score.
 
