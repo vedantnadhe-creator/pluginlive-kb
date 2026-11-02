@@ -24,7 +24,8 @@ git -C "$release" fetch -q "$source_repo" "refs/remotes/origin/$branch"
 git -C "$release" checkout -q -b "$branch" FETCH_HEAD
 cp "$source_repo/.env.local" "$release/.env.local"
 cd "$release"
-if [[ -f pnpm-lock.yaml ]]; then
+# npm wins when both lockfiles exist: corporate-react-v2 carries a stale scaffold pnpm-lock.yaml.
+if [[ -f pnpm-lock.yaml && ! -f package-lock.json ]]; then
   pnpm install --frozen-lockfile --ignore-scripts
   pnpm run build
 else

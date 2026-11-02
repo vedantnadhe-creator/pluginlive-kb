@@ -229,7 +229,14 @@ deadline) and `corporate-node/app/helpers/assessmentDuration.js` (corporate v2
 (`Assessment-React/.../Behaviourassmt/assessment.js`) already ran 30. Only
 sittings started after the deploy get 30; an already-stamped `expiresAt` keeps
 its value. student-node DEV `90b62f7e` / UAT `686d6551`, corporate-node DEV
-`3ae9807e` / UAT `f3c4bdcc`. **PROD pending.**
+`3ae9807e` / UAT `f3c4bdcc`. The shared wizard (`assessment-creation`
+`typeSummary.ts`, display only: Behaviour sends no duration on float) quoted a
+separate hardcoded 20 and now says 30 too: admin-react-v2 DEV `cb20801`
+(0.1.16-custom.16) / UAT `2936315` (0.1.12-custom.13), corporate-react-v2 DEV
+`6bab93d` (0.1.2-bugfix.27) / UAT `92c87a4` (0.1.2-bugfix.26-uat). **Keep the
+wizard number and `estimatedDuration('Behavior')` equal.** institute-react-v2
+still pins older wizard versions (DEV 0.1.16-custom.5, UAT 0.1.12-custom.4)
+that say 20. **PROD pending.**
 
 ## Admin wizard question count
 

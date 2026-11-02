@@ -203,3 +203,25 @@ Releases: admin-node DEV `7580de7` / UAT `a769b29`; admin-react DEV `2cf51559` /
 College Step 3 → Upload a sheet is one row: **Degree & Department** (single searchable, clearable dropdown grouped by degree) / **Year of passing** / Upload / **+ Add**; every added sheet is stamped with the cohort picked at that moment and listed as a chip (file name + candidate count). Manual entry carries the same two fields; "Use an existing list" asks for neither. Recipient rows show Degree-Department and Year as read-only columns; the recipient list starts collapsed; Candidate Details opens only after Schedule & settings is saved; one Save dialog asks "save as custom list?"; all Aptitude sections are ticked by default; upload errors are a red toast. No API change: each recipient already carried its own `cohort`, and admin-node provisions per row (`degree`/`department`/`passingYear` on each `bulkUploadData` row).
 
 UAT lineage: `0.1.12-custom.5` = `~/worktrees/ds-custom-parity-admin-uat` `d1dfda6` (port of DEV custom.6; the read-only cohort columns follow Mobile because the UAT line has no on-call column). **institute-react-v2 not yet bumped** to match (see "Keep in step").
+
+## Behaviour shown as 30 min (DEV + UAT 2026-11-02)
+
+`typeSummary.ts` `behaviour` → `minutes: 30` (was 20), matching the candidate clock
+(see [behaviour.md](behaviour.md#duration-30-minutes-dev--uat-2026-11-02)). Lineage heads
+(design-system branches are local only, push is 403):
+
+| App / env | Package | design-system worktree / commit | App commit |
+|---|---|---|---|
+| admin-react-v2 DEV | 0.1.16-custom.16 | `~/worktrees/ds-assessable-admin` `b50743c` | `cb20801` |
+| admin-react-v2 UAT | 0.1.12-custom.13 | `~/worktrees/ds-assessable-admin-uat` `29e040d` | `2936315` |
+| corporate-react-v2 DEV | 0.1.2-bugfix.27 | `~/worktrees/ds-wiz-bugfix26` `6fb20b7` | `6bab93d` |
+| corporate-react-v2 UAT | 0.1.2-bugfix.26-uat | `~/worktrees/ds-assessable-corp-uat` `92b3e23` | `92c87a4` |
+
+institute-react-v2 was not bumped (still DEV 0.1.16-custom.5 / UAT 0.1.12-custom.4).
+
+**UAT deploy helper fix (same day):** since 2026-10-30 the helper used pnpm whenever
+`pnpm-lock.yaml` existed. corporate-react-v2 carries a stale scaffold `pnpm-lock.yaml`
+beside its real `package-lock.json`, so corporate UAT deploys failed at
+`pnpm install --frozen-lockfile`. pnpm is now used only when there is **no**
+`package-lock.json` (institute-react-v2). Backup on UAT:
+`~/scripts/deploy-shared-assessment-next.sh.bak-20261102`.
