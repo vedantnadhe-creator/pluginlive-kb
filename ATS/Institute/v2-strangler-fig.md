@@ -691,6 +691,8 @@ API says why, via `headline.levelState` + `headline.levelSub`
 | `diagnosis_pending` | Diagnosis not completed (1/2) | diagnosis papers still outstanding |
 | `grading_pending` | Level pending | every paper in, no grade yet (scoring lag, zero-core-section exclusion, one-time map) |
 
+One-time Communication is not on this table (no NPS): its level is the score read against the paper sat. See `Assessment/nps-scale-and-curve.md` (one-time Communication level, 2026-11-02).
+
 The frontend (`StudentReportDrawer.tsx`) prints `levelSub` under the dash and
 keeps "Current difficulty X" only under a real level. Types without a
 progression ladder (Role_Based, Custom, AI_Interview) keep the score band —

@@ -267,8 +267,27 @@ yet" and "Achieved Level — Level pending". The drawer now gates on
 `progressType = isRecurring ? npsType : null` (`isRecurring` includes diagnosis
 maps), the same rule as the roster's `reportsNps`. A one-time attempt returns
 `supportsNps: false`, the plain `Score` %, and the Achieved Level from the stored
-grade if any, else the score band ("A2 (Beginner)", "30–45% band"; Aptitude
-"Beginner", "0–40% band"). `npsType` still drives the SQL columns. A recurring or
+grade if any. Otherwise Aptitude uses its score band ("Beginner", "0–40% band"),
+and **Communication reads the score against the paper sat**: see below.
+
+**One-time Communication level = paper-aware, capped at the paper (fixed
+2026-11-02, institute-node `e0ef120` DEV, UAT `2ff1c13`; PROD pending).** The
+fallback above used to band the raw % on the flat `LADDERS` scale (60–75% = B2
+on *any* paper). The candidate PDF (student-node) and admin-node's export read
+the score against the paper (`mapCEFRBasedOnQuestionSetAndScore`), so UAT
+`prabha+sduw393@pluginlive.com` (62.33% on a B2 one-time paper) showed **B2** in
+the v2 drawer but **A2** in the report and export. The frontend only displays
+`headline.level`; the level came from institute-node. Now
+`cefrForPaperScore(paperCefr, pct)` (`app/helpers/assessmentBands.js`, the same
+table as admin-node, parity-checked on 2,406 cases) feeds the drawer headline
+(caption "On a B2 paper"), the roster's Achieved Level column and the competency
+ladder, via `paperLevelFor` in `AssessmentDetailV2.js`. If the paper's CEFR is
+unknown, the old band is kept. UAT blast radius: 48 one-time Communication maps,
+75 scored rows, 42 levels changed (e.g. 83.84% on a B1 paper read C1, now B1), 0
+disagree with admin-node. Paper-aware table for reference, upper bounds
+inclusive: A2 paper ≤75 A1; B1 ≤60 A1, ≤80 A2; B2 ≤50 A1, ≤67 A2, ≤83 B1; C1 ≤43
+A1, ≤57 A2, ≤71 B1, ≤86 B2; C2 ≤30 A1, ≤40 A2, ≤50 B1, ≤60 B2, ≤70 C1; anything
+higher is the paper's own level. `npsType` still drives the SQL columns. A recurring or
 diagnosis drawer with every paper in but no grade still reads "Level pending".
 
 Averaging raw percentages across a series is meaningless in the first place: the
