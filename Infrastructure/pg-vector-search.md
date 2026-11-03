@@ -50,6 +50,31 @@ Input (e.g., "BVRIT Narsapur")
   Cascade: Query rewriter expands abbreviations, resolves pincodes → re-runs signals
 ```
 
+### Match-quality guards (DEV + UAT 2026-11-03, PROD pending)
+
+Added in `pg-vector-api-service` `2503e9d` + `ecb9d29` (UAT `3ebec42` + `fcdde19`) after a PROD audit
+showed ~1 in 3 mid-confidence (0.4–0.8) LLM picks were wrong and short forms left fields blank:
+
+| Guard | Where | Behaviour |
+|---|---|---|
+| Short-form aliases | `ENTITY_LOOKUP_ALIASES` (degree + department) in `core/normalizer.py` | `Mechanical`, `CSE`, `ECE`, `EEE`, `IT`, `Civil`, `B.com`, `B.Tech`, `BSc`, `MBA`, `MCA`, `PGDM`, `ITI` … are looked up as their canonical master name (exact hit). Keys are compacted (casefold, alphanumerics). Replaces the old degree-only `BE` alias. A target missing from an env's master just falls through to the normal signals. |
+| Non-entity answers | `NON_ENTITY_ANSWERS` | `yes/no/regular/appearing/pursuing/completed/running/pending/repair/xxx/nn/test/other` → `no_match`, no LLM call. |
+| College pick guard | `_reject_conflicting_pick` | A **non-exact** college pick becomes `no_match` when the master name is generic ("Government Polytechnic", "Government Polytechnic College") for an input that names a place, or carries a group/brand qualifier (Girls/Women/Mahila; IIT/NIT/IIIT/IIM/Indian/National) the input lacks. "IIT Bombay" still matches. Logged as `PICK REJECTED`. |
+| Non-degree master rows | `_drop_unusable_masters` (degree only) | Degree signals drop master rows that name an institution (college/university/vidyalaya/school/society), end in engineering/technology without a degree word ("BE-Mechanical Engineering", "Biomedical engineering"), or are non-answers / < 4 letters. Legit school/professional rows (ELEVENTH, NINETH, ITI, ICAI, CHARTERED ACCOUNTANCY) are kept. |
+| LLM prompt | `core/llm_fallback.py` strict prompt | Now gets `Entity type:` and rules: return 0 for non-entity input, generic names, group/brand qualifiers not in input, degree vs field-of-study mix-ups. |
+| Exact trim | `exact_search` | `LOWER(BTRIM(name)) = LOWER($1)` — master rows with trailing spaces ("Computer Science Engineering ") now exact-match. |
+
+Eval: 59 real PROD inputs, old vs new on DEV master → 21 better, 0 worse. Tests: `tests/test_normalizer_guards.py`.
+
+**PROD master data (2026-11-03):** `institute.degrees` holds ~57 non-degree active rows (college names,
+branches, "Appearing", "3 years" …) typed in by Tally/ERP flows. Students with evidence were remapped
+(diploma level → `DIPLOMA`; UG with an explicit BE/BSc/BCom form answer → that degree) in
+`current_course`, `education_profile` and both `role_application_*` copies (170 rows), and 15 now-unreferenced
+junk degrees were set `status=0`. Undo table `student.backup_degree_junk_remap_20261103`, kit + `revert.sql`
+in `~/scripts/degree_junk_remap_20261103` on DEV. The remaining junk rows stay active for students with no
+evidence and are filtered by `_drop_unusable_masters`. The department master (`institute.streams`) still has
+~130 duplicate/typo rows (`Machanical`, `Mechinacal4`); the aliases route around the common ones.
+
 **Graceful Degradation:** When embedding/LLM API is down, circuit breaker skips vector signal and LLM — serves trigram/acronym/exact only.
 
 ### Role-family clustering (DEV + UAT, updated 2026-08-27)
