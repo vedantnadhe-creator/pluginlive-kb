@@ -686,10 +686,12 @@ API says why, via `headline.levelState` + `headline.levelSub`
 
 | `levelState` | `levelSub` | when |
 |---|---|---|
-| `graded` | "" | a stored grade exists (FE captions "Current difficulty X") |
+| `graded` | "" | a stored grade exists (FE captions "Current difficulty X", see below) |
 | `not_attempted` | Pending attempt | nothing submitted |
 | `diagnosis_pending` | Diagnosis not completed (1/2) | diagnosis papers still outstanding |
 | `grading_pending` | Level pending | every paper in, no grade yet (scoring lag, zero-core-section exclusion, one-time map) |
+
+**"Current difficulty X" = the level the student is tested at now (2026-11-03, institute-node `8f04a67` / UAT `0419b8b`, institute-react-v2 `95104d6` / UAT `bbe100d`; PROD pending).** `getStudentReport` returns `headline.currentDifficulty`. For a recurring Communication series it is the latest non-null `progression_history.suggested_cefr` (non-practice, matched on `lower(primary_email)`), the same value student-node re-levels the next paper to at delivery. Otherwise it is the set CEFR/difficulty of the last scored sitting. The drawer prefers it over `timeline[].difficulty`, which still shows the paper actually served per sitting in Schedule-wise performance. Why: PROD `riya0125@vsmedu.in` read "Achieved A2 · Current difficulty A1" after the 11-02 re-score moved her chain to A2/A2; her last paper (A1) was history and her next paper is A2. Confirmed and suggested can legitimately be equal straight after a diagnosis (see `Assessment/communication.md`, "The diagnosis→post-diagnosis seam").
 
 One-time Communication is not on this table (no NPS): its level is the score read against the paper sat. See `Assessment/nps-scale-and-curve.md` (one-time Communication level, 2026-11-02).
 
