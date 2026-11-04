@@ -95,7 +95,7 @@ domains (19) → module_groups (22) → admin_modules (70) → admin_module_topi
   are dropped in code whatever the Admin tier list holds, and learners are offered English only. **One video per topic
   within a module:** a video on a sibling topic (either table, joined by `source_topic_id`) is skipped; older duplicates
   and manual pastes are untouched. The same video may sit in different modules. `generate-trainer-curriculum` has its
-  own search and none of these rules apply there. The checker then reads what was watched. Only approved videos are assigned; if the checker cannot run,
+  own search and none of these rules apply there. The checker then reads what was watched, including the country, currency and standards the video uses, and rejects only for something that evidence shows (another country's rules, an outdated standard, wrong level, not a lesson); a detail the report does not mention, or an example in another currency, is not a reason. Language is judged from the sentences, so Hindi full of English terms is Hindi. The watch stage has 140 s and the checker 120 s, inside the 300 s worker limit. Known limit: watching stops at the first batch with a watch pass, so if the checker then rejects that video, the rest of the shortlist is not tried and the topic ends as no_match. Only approved videos are assigned; if the checker cannot run,
   only gate-approved videos survive (a maker-only pick is never published). Without a feature row a role uses
   the global chain (UAT: Lovable key invalid → GPT-5). `verification.maker_model` / `checker_model` and
   `ai_generation_runs.maker_model` / `checker_model` record what actually ran. Expect more topics to show the
