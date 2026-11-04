@@ -40,7 +40,7 @@ The parser's text is not stable: the same PDF has returned about 1,400 to 3,100 
 
 ## Evaluation stages follow the subscription
 
-A role can only use assessment stages the company has a current subscription to (`assessment.subscribed_corporates`, not past `end_date`). DEV + UAT, 2026-11-04. Rule: `services/evaluation/subscribedStages.js`. AI proposals, the default process and copied processes leave the others out, `GET assessment-options/v2` returns `unsubscribedStageTypes` for the Stage type dropdown, and Setup Now answers 422 naming the stage. A live role keeps a stage it already runs. Running out of tokens is not part of this rule; it is checked at float.
+A role can only use assessment stages the company has a current subscription to (`assessment.subscribed_corporates`, not past `end_date`). DEV + UAT, 2026-11-04. Rule: `services/evaluation/subscribedStages.js`. AI proposals, the default process and copied processes leave the others out, `GET assessment-options/v2` returns `unsubscribedStageTypes` for the Stage type dropdown, and Setup Now answers 422 naming the stage. A live role keeps a stage it already runs. Multiple Assessments shows only with two or more subscribed assessment types, and Complete AI Interview only with an `AI_Interview_v2` subscription; neither can be dispatched yet, so both stay tagged "Not available yet". Running out of tokens is not part of this rule; it is checked at float.
 
 ## Locked application form fields
 
