@@ -20,6 +20,15 @@ A process can't be saved until every **enabled** stage is configured. The green 
 
 Assessments a role floats for itself (evaluation stages, Quick Evaluation) stay off every assessment surface: the Assessments list, candidate-wise list, dashboard KPIs and Active Assessments, week rail, Schedule and financial-year counts. One rule covers them: `NOT_ROLE_EVALUATION` in `helpers/corporateAssessmentSql.js`. The Usage quota in the header still counts them. DEV + UAT (2026-11-04).
 
+## Sign-in lands on v2
+
+Corporate users land on `/v2/signin#token=` and then `/v2/dashboard`, on DEV and UAT since 2026-11-04.
+
+- `CORPORATE_LOGIN_V2="true"` in user-management-node `.env.dev` / `.env.uat` drives password, Google and account-selector sign-ins (`utils.getLoginUrl`). PROD: not set, so corporate logins still open v1.
+- An admin Checkin (`/user/portal/signin`, journey CORPORATE) always returns the v2 link, with or without the flag.
+- The v2 menu has no links back to v1, so v1-only screens such as the Interviewer dashboard are reachable by direct URL only. v2 ignores the multi-account token (`mat`).
+- Rollback: remove the flag from the env file and redeploy user-management-node.
+
 ## Permissions
 
 24 Application Tracking actions in `app/helpers/corporatePermissions.js` (same list as the frontend `ActionKey`). Routes declare `can: "<action>"`; `helpers/requireAction.js` answers 403 and caches a user's access for 30 s. `GET .../users/v2/me/access` returns `knownActions`, which turns frontend enforcement on.
