@@ -16,6 +16,12 @@ The Roles screens in `corporate-react-v2` (`/v2/roles`, `/v2/roles/new`, `/v2/ap
 
 A process can't be saved until every **enabled** stage is configured. The green tick on a stage row and the save button read the same check (`isStageConfigured` in `roles/[id]/_constants.ts`): the stage has a type, and an assessment type passes `configIssues`. This covers **Setup Now / Save changes** in the Setup evaluation dialog and **Continue** on Quick Evaluation's "Set up evaluation" step. While a Role Based or AI Interview stage is still being prepared, or its prefill failed, the button stays off and a note names the stages ("Still to set up: ..."). Disabled stages don't count: they are never prefilled, and corporate-node's `unconfiguredStages` skips them too. A live process with an unfinished enabled stage can't save edits until that stage is fixed. Quick Evaluation's Start evaluation retry only runs on a live process with no unsaved edits.
 
+## One application per email
+
+A role takes one application per email (DEV + UAT, 2026-11-04). `RoleIntakeV2.hasApplied` counts a stored response or an applicant row, including one the recruiter soft-deleted, so a deleted candidate cannot apply to that role again. Submit answers 422 on the email question. The form also calls `POST /public/roles/v2/:roleId/apply/check-email` when the email field loses focus (60 checks per 10 minutes per IP). A candidate can no longer resubmit to correct an application. Matching is by email only, and Tally-form roles are not covered.
+
+The form's dropdowns and College picker are the DS `CreatableSelect` without `onCreate`: a searchable select.
+
 ## Role assessments stay on the role
 
 Assessments a role floats for itself (evaluation stages, Quick Evaluation) stay off every assessment surface: the Assessments list, candidate-wise list, dashboard KPIs and Active Assessments, week rail, Schedule and financial-year counts. One rule covers them: `NOT_ROLE_EVALUATION` in `helpers/corporateAssessmentSql.js`. The Usage quota in the header still counts them. DEV + UAT (2026-11-04).
