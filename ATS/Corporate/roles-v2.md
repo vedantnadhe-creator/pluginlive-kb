@@ -34,6 +34,7 @@ Corporate users land on `/v2/signin#token=` and then `/v2/dashboard`, on DEV and
 - An admin Checkin (`/user/portal/signin`, journey CORPORATE) always returns the v2 link, with or without the flag.
 - The v2 menu has no links back to v1, so v1-only screens such as the Interviewer dashboard are reachable by direct URL only. v2 ignores the multi-account token (`mat`).
 - Rollback: remove the flag from the env file and redeploy user-management-node.
+- `/user/portal/signin` (check-in and check-out) needs the caller's JWT and only re-scopes their own internal account (`helpers/portalCaller.js`), on DEV and UAT since 2026-11-04. It is not `isPrivate` on purpose: check-out signs out first and then calls it with that token, so a token signed out in the last 2 minutes is still accepted. PROD code does not have this check yet.
 
 ## Permissions
 
