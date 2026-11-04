@@ -2042,3 +2042,5 @@ retries** — the tell-tale that thinking is now off.
 > container. Keep `LITELLM_PROXY_URL`/`LITELLM_VIRTUAL_KEY` so the gateway routing stays.
 > DEV (Development branch) has **no** LiteLLM routing — it uses `gemini_client` directly, which
 > already sets `thinkingConfig.thinkingBudget=0`, so DEV only needed the model switch.
+
+**2026-11-04 (UAT):** API, worker, cron and export-worker all run `datanormalization:api` (commit f798804, the CV link alias). Rollback images: `central-llm/datanormalization:21d0646a7863`, `central-llm/datanormalization-worker:21d0646a7863`, `central-llm/datanormalization-cron:21d0646a7863`.

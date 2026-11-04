@@ -208,3 +208,5 @@ Single-instance DEV/UAT containers/services were restarted for the initial migra
 ## Versioned operational files
 
 Secret-free copies are in [litellm-central/](litellm-central/): hook, DEV/UAT policy manifests (`policies/tasks.json` = DEV, `policies/tasks-uat.json` = UAT), the PROD rollout kit in `prod/` (policy, deployment patch, apply/check/key scripts), unit checks, policy activation tool, route/hot-switch checks, gateway recreation script and limited migration helper. Runtime credentials and full gateway registration config remain only on their respective hosts. The host policy is live; the KB copies document this rollout and must be updated when policy changes.
+
+**2026-11-04 (UAT):** policy 47 → 53 tasks: added the six `pl/corp-*` Roles tasks. New UAT service key alias `corporate-node` (`~/litellm/corporate_node_vkey.txt`), limited to those plus `pl/corporate-jd-generation`. Normal call and forced fallback (served `gpt-6-luna`) verified.

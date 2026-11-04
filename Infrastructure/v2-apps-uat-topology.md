@@ -129,6 +129,8 @@ them — you can edit the live file and see no change. Backups go in
 
 ## corporate-node-v2 on UAT
 
+> 2026-11-04: Roles and the score webhook moved to corporate-node (`CORPORATE_ATS_URL=http://172.17.0.1:8080`). See [ATS/Corporate/roles-v2.md](../ATS/Corporate/roles-v2.md).
+
 Brought up 2026-08-19. Config assembled **on the box** from the other UAT
 services' env files, because every secret must belong to the UAT estate:
 
@@ -170,7 +172,7 @@ scoring instead of waiting for its hourly reconciler:
 
 ```bash
 CORPORATE_ATS_URL=http://172.17.0.1:4001    # NO /v2 suffix — the helper appends it
-CORPORATE_ATS_TOKEN=<equals corporate-node-v2 REMINDER_TICK_TOKEN>
+CORPORATE_ATS_TOKEN=<equals corporate-node ROLES_V2_INTERNAL_TOKEN>
 CORPORATE_ATS_TIMEOUT_MS=3000
 ```
 

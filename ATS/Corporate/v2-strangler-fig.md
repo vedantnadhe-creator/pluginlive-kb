@@ -10,6 +10,8 @@ the same pattern as institute-react-v2. Two new repos sit alongside the v1 app:
 
 ## UAT (since 2026-08-19)
 
+**Roles moved to corporate-node on 2026-11-04**: see [roles-v2.md](roles-v2.md). `corporate-node-v2` below no longer serves Roles or the score webhook on UAT.
+
 Both services run as systemd units on the UAT box, not containers:
 `corporate-react-v2` :3014 behind `corporate.uat.pluginlive.com/v2`, and
 `corporate-node-v2` :4001 with no public route. Deploy the frontend with
