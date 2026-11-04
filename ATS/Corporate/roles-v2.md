@@ -20,6 +20,12 @@ A process can't be saved until every **enabled** stage is configured. The green 
 
 The Roles and Assessments lists tell "nothing exists" from "filters hid everything" with `isNarrowed` (a status tab, search or filter is on; `useRoleFilters`, `useAssessmentFilters`). Not narrowed: the first-run empty state, "No roles yet" / "No assessments yet" / "No candidates yet", with no button of its own because the top bar's Create action is already there and permission-aware. Narrowed: "No ... match these filters" with Clear filters, which also returns the list to the All tab.
 
+## Resuming a draft and the JD parser
+
+Autosave stores every wizard field, blanks included. On resume, only values the recruiter set (`recruiterSetFields` in `roles/new/_utils.ts`: filled in and different from the form default) are protected from a JD parse, so an upload fills a blank draft and never overwrites their edits. DEV + UAT, 2026-11-04.
+
+The parser's text is not stable: the same PDF has returned about 1,400 to 3,100 characters across runs.
+
 ## One application per email
 
 A role takes one application per email (DEV + UAT, 2026-11-04). `RoleIntakeV2.hasApplied` counts a stored response or an applicant row, including one the recruiter soft-deleted, so a deleted candidate cannot apply to that role again. Submit answers 422 on the email question. The form also calls `POST /public/roles/v2/:roleId/apply/check-email` when the email field loses focus (60 checks per 10 minutes per IP). A candidate can no longer resubmit to correct an application. Matching is by email only, and Tally-form roles are not covered.
