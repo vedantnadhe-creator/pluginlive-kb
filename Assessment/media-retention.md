@@ -254,6 +254,12 @@ PROD go-live: follow the [PROD deployment checklist](#prod-deployment-checklist-
 
 Check a bucket: `oci os object list --bucket-name <bucket> --prefix verification/ --all --query 'length(data)'`.
 
+## Question audio must never match the attempt-media rules (incident, fixed 2026-11-04)
+
+Question-bank TTS audio (`audio/google_audio_*`: Listening clips, Dictation sentences) shares the `audio/` prefix with student recordings, so `audio-delete-365d` deleted it from October 2026, once it was 365 days old. Every question audio file generated before 2025-11-05 is gone from `pl-prod-assessment` (1,042 Listening, 3,022 Dictation); the bucket has no versioning, so they cannot be restored. Affected: 320 of 883 active Communication sets. Symptom: Listening or Dictation scored 0 with no answers.
+
+**Fixed 2026-11-04:** `audio-ia-90d` and `audio-delete-365d` now carry `exclusionPatterns: ["audio/google_audio*"]` on `pl-prod-assessment`, `pl-uat-assessment` and `pl_dev_poc`. The other 5 rules are unchanged. **`script/ociLifecycleRules.json` still holds only the verification rule:** a `PUT` from it would remove the other rules, so never apply it as is. The S3-compatible API reports `NoSuchLifecycleConfiguration` for these buckets, which is misleading; read the rules with `oci os object-lifecycle-policy get`.
+
 ## PROD deployment checklist — next release
 
 **Status: PARTLY DONE.** On **2026-10-01** the OCI IAM statement for `pl-prod-assessment` was
