@@ -2152,3 +2152,33 @@ StudentDashboard import; upstream still hasn't fixed it). Not pushed to GitHub.
   always fails; also calls `api.openai.com` directly instead of the LiteLLM gateway).
 - **Verification:** 13 tester + 10 demo logins clean; plan locks hold; parent Fees tab renders (still the pre-existing
   "Invalid or expired session" from `parent-fees`); new objects have no anon access.
+
+## 2026-11-04 — PilVidya UAT: DB + functions at `d4e2189f`, frontend at `87d05124` (upstream `main` does not build)
+
+Both hosts serve `eduspeakreact:87d05124` = upstream `7ffcf271` + the Fees/StudentDashboard fix. Checkout is on local
+branch **`uat/pv-frontend-20261104`** (not pushed); `main` is at `d4e2189f`. Next deploy: `git checkout main`, ff, then
+re-check whether the build works.
+
+**Why the frontend is held:** from `86127b85` upstream `main` fails to build: `App.tsx` routes to
+`pages/SimulationPlayer` and `pages/CompetitionPlayer` (never committed) and 16 changed files do not parse, including
+the whole simulation and competition UI, `MySimulations`, `StudentLiveClasses`, `CompetitionList`, `i18n/rtl-provider`.
+Scan per round: esbuild-parse changed files (`~/ae-sample/node_modules/esbuild/bin/esbuild --loader=tsx`) plus
+`~/pvdeploy/scanimp.py` for unresolved imports, before the first build.
+
+**DB** (DB-Scripts `…__pilvidya_simulations_multilanguage_analytics_mock_tests.sql`): 16 new tables. Students can start
+and submit their own simulation attempts but cannot write `overall_score`/`passed` or edit after submit. Translations
+are platform-admin write. `mock_tests`: global catalogue platform-admin only; school rows by `my_institute_ids()`.
+Skipped files and reasons are in the script header.
+
+**Functions:** 7 more held (52 total): `grade-simulation-attempt` (any caller with `teacher_override` gets the
+service-role path and can grade any attempt), `generate-simulation`, `generate-excel-scenario`,
+`simulate-excel-scenario` (body read 3x, session check can never pass), `ai-analytics-dashboard`,
+`ai-subscription-access`, `ai-curriculum-live-session-manager` (`const { data: user } = getUser()` is always truthy,
+`user.id` undefined; not a real check).
+
+**Lockdown gotcha:** a failing line rolls the whole lockdown back and leaves 03's anon EXECUTE re-grants in place.
+Always confirm `has_function_privilege('anon', …)` after it (happened this round, open for about a minute).
+
+**Verification:** 13 tester + 10 demo logins clean; plan locks hold; held functions 404 on both hosts; rolled-back RLS
+probes: student score forge, translation write and mock_tests write refused; plain teacher refused global mock test and
+global simulation, allowed own-school simulation.
