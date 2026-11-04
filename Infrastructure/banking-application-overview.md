@@ -109,7 +109,7 @@ domains (19) → module_groups (22) → admin_modules (70) → admin_module_topi
 - Modules and topics with lessons, AI-generated quizzes (`/quiz/:moduleId`), video MCQs and a personalised
   learning path (`generate-candidate-path`, `ai-learning-path`, `recommend-next-topics`).
 - Practice: MCQ, descriptive (AI-graded), interview and coding (`/practice/*`, with history).
-  Coding runs through **JDoodle** (`execute-code`). 370 coding challenges on UAT.
+  Coding runs through **JDoodle** (`execute-code`, `grade-coding-challenge`); UAT has no JDoodle keys, so Run is AI-simulated and solves cannot be saved. 375 coding challenges on UAT.
 - Assessments: `/assessments` → `/assessment/:id` → `/assessment-results/:attemptId`, with proctoring
   (`analyze-proctoring`, configurable defaults) and AI grading (`grade-assessment-attempt`).
 - AI Coach (`/ai-coach`, voice via ElevenLabs with Gemini TTS fallback), Interview Coach (records and
