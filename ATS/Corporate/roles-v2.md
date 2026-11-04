@@ -24,6 +24,8 @@ Saving: `resolveEligibility` maps a master label ("Bachelor Of Technology · Civ
 
 A whole-degree pick is stored as a degree-only item with no map id, so every save rebuilds `degree_stream_map_ids` and `domainIds` for kept items from the master. Without that, the next autosave left the ids empty and AI Suggested showed 0 colleges.
 
+AI Suggested lists every match, not a page: the wizard calls `matched-institutes` with `limit=100000` (the route's ceiling, above the whole campus table) in one response, about 0.9 KB a college. So the tab count, search, tiers and Select all cover all matches on the client. Cards and the Selected column mount 100 at a time as they scroll (`useRevealOnScroll`). Measured on DEV: 13,497 colleges for an 809-map draft took 7.8 s and 12 MB. Other colleges still loads 40 rows per search from `institutes/v2`. Publish inserts and mails invited campuses one at a time in the request, so a very large Select all is slow there.
+
 A draft stores invited campuses as ids (`invite_email_template.campusIds`); the role response adds `inviteCampusNames` (`findCampusNames`), which the wizard seeds its name map from so Resume draft lists them by name.
 
 Known gap: `12th` and `Certifications` are offered by the picker but exist in neither the master nor `DEGREE_CATALOGUE`, so picking one fails on save with "Some degrees are not known". Test rows in the master ("BACHELOR OF TEST DEGREE") show up on DEV and UAT.
