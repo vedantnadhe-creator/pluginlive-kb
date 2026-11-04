@@ -84,11 +84,18 @@ domains (19) → module_groups (22) → admin_modules (70) → admin_module_topi
   (best + bulk alternatives) for core-concept fit, the module's learner (gets the module description), the
   module's language, and educational content. **Language gates (since 2026-10-28 eve):** before any AI step a
   candidate whose YouTube `defaultAudioLanguage` differs from the first search tier's language (en on UAT) is
-  rejected (`zxx`/`und`/`mul` = unknown, not a mismatch); then **Gemini listens** (`ai-video-suggest/video-listen.ts`,
-  LLM Settings feature `ai-video-listen`, UAT row → `gemini-2.5-flash`) to a 60 s clip (0:30–1:30) of each shortlisted
-  video straight from its YouTube URL — nothing is downloaded, ~6.2k tokens ≈ $0.002, ~9 s, in parallel — and drops
-  other spoken languages; the checker also gets what was heard. Titles are often English on Hindi-spoken videos
-  (25 of 73 UAT candidates carried an `hi` tag), so text alone is not enough. Only approved videos are assigned; if the checker cannot run,
+  rejected (`zxx`/`und`/`mul` = unknown, not a mismatch); then **Gemini watches the whole video** (`ai-video-suggest/video-listen.ts`,
+  LLM Settings feature `ai-video-listen`, UAT row → provider `litellm`, model `pl/banking-video-check`) straight from
+  its YouTube URL — nothing is downloaded, ~100 tokens per second of video, 7–75 s each, 3 at a time, stopping at the
+  first batch with a pass — and scores it against the topic content. Published only when `video_type` = lesson,
+  `topic_match_percent` ≥ 50 and speech is English (≥ 70%); a video it could not watch is never published, and if
+  nothing was watched the function returns 503 so the bulk job requeues the topic. The call must use the gateway's
+  Google-native route (`/v1beta/models/pl/<task>:generateContent`): the chat route 400s on YouTube URLs, and the task's
+  fallback must stay Gemini (OpenAI cannot take a YouTube URL). **English only** (since 2026-11-04): non-English tiers
+  are dropped in code whatever the Admin tier list holds, and learners are offered English only. **One video per topic
+  within a module:** a video on a sibling topic (either table, joined by `source_topic_id`) is skipped; older duplicates
+  and manual pastes are untouched. The same video may sit in different modules. `generate-trainer-curriculum` has its
+  own search and none of these rules apply there. The checker then reads what was watched. Only approved videos are assigned; if the checker cannot run,
   only gate-approved videos survive (a maker-only pick is never published). Without a feature row a role uses
   the global chain (UAT: Lovable key invalid → GPT-5). `verification.maker_model` / `checker_model` and
   `ai_generation_runs.maker_model` / `checker_model` record what actually ran. Expect more topics to show the
