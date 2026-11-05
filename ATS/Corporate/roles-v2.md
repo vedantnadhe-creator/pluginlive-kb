@@ -32,6 +32,10 @@ A draft stores invited campuses as ids (`invite_email_template.campusIds`); the 
 
 Known gap: `12th` and `Certifications` are offered by the picker but exist in neither the master nor `DEGREE_CATALOGUE`, so picking one fails on save with "Some degrees are not known". Test rows in the master ("BACHELOR OF TEST DEGREE") show up on DEV and UAT.
 
+## Applicant export
+
+**Export Sheet** on the candidate list's selection bar downloads the server workbook for the ticked rows: `POST /corporates/:corporateId/roles/v2/:roleId/applicants/export.xlsx` with `{ applicantIds }` (BFF `POST /api/roles/:id/applicants/export`, `exportApplicants` permission, up to 5,000 ids, 422 otherwise). `GET` on the same path exports by list filter. Both add one column per application form question from `job_role_response`; FILE_UPLOAD questions are left out. The stage and final-candidates drawers still export their own short CSV of the tier on screen.
+
 ## Empty lists
 
 The Roles and Assessments lists tell "nothing exists" from "filters hid everything" with `isNarrowed` (a status tab, search or filter is on; `useRoleFilters`, `useAssessmentFilters`). Not narrowed: the first-run empty state, "No roles yet" / "No assessments yet" / "No candidates yet", with no button of its own because the top bar's Create action is already there and permission-aware. Narrowed: "No ... match these filters" with Clear filters, which also returns the list to the All tab.
