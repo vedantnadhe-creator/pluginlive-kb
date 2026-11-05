@@ -2182,3 +2182,22 @@ Always confirm `has_function_privilege('anon', …)` after it (happened this rou
 **Verification:** 13 tester + 10 demo logins clean; plan locks hold; held functions 404 on both hosts; rolled-back RLS
 probes: student score forge, translation write and mock_tests write refused; plain teacher refused global mock test and
 global simulation, allowed own-school simulation.
+
+## 2026-11-05 — PilVidya UAT `95e5f8ba` (upstream `5ee522c4`, 20 commits, + 2 UAT fix commits)
+
+Frontend, DB and functions are all on current upstream again; the 11-04 frontend hold is over. Checkout is on local
+branch **`uat/pv-fixes-20261105`** (not pushed): the Fees/StudentDashboard fix, plus a build fix for `5ee522c4`
+(`SimulationReviewQueue` unbalanced JSX + second `TYPE_LABELS`, bare `<` in `SimulationAnalytics`, wrong `alert-dialog`
+path). No SQL this round, so the grant baselines were not re-run.
+
+**Functions:** 2 more held (54): `api-gateway` (does not compile, uses `api_keys`/`api_usage_logs` that exist nowhere,
+forwards any path to PostgREST) and `speaking-assessment-generate` (body read 3x). `api-documentation` deployed (static
+docs, no data access). Sprint 12 API screens (`components/api`) do not parse and are not in the build.
+
+**Pages that crash when opened (all pre-existing, not from this deploy):** `/competitions`, `/competitions/create`,
+`/student/competitions`, `/admin/competitions`, `/analytics`, `/admin/analytics`, `/simulation-test`, `/student/grades`,
+`/student/pronunciation-practice`, `/admin/institutes`, `/admin/payments`, `/admin/subscriptions`. Most are plain
+missing imports. `tsc` TS2304 lists 33 files; scope the scan with an esbuild metafile (`--metafile`, inputs under
+`src/`) so files outside the build graph don't stop tsc at a syntax error.
+
+**Verification:** 13 tester + 10 demo logins clean; plan locks hold; held functions 404 on both hosts.
