@@ -80,9 +80,23 @@ fields yet.
 | 5 | **Email Writing** | Writing | AI evaluation (phrasing, voice/tone, format, grammar, spelling) |
 | 6 | **Dictation** | Writing | Text comparison (word accuracy, character accuracy, punctuation, capitalization) |
 | 7 | **Sentence Completion** | Writing | Fill-in-the-blank correctness |
-| 8 | **Sentence Build** | Writing | Drag-and-drop word ordering with normalized comparison |
+| 8 | **Sentence Build** | Writing | Drag-and-drop word and sentence ordering, compared with the stored accepted orders (see *Sentence Build accepted orders*) |
 
 ---
+
+
+### Sentence Build accepted orders
+
+A rearrangement can have more than one correct answer, so valid orders are worked out **once at generation** and scoring never calls AI.
+
+- **Generation** (`fastapi-ai-engine`, `QuestionGeneration/sentence_build_orders.py`, used by the Communication and Hinglish generators): prompts ask for questions with one natural order, then each question gets two review passes.
+  - Word question: the model lists valid orders; code drops any that change the words. An order is accepted if either pass lists it.
+  - Paragraph question: the model states only which sentences must come before which, and code computes every order. Only rules both passes agree on are kept. Listing whole paragraph orders missed valid ones.
+  - Limits: at most 2 word orders and 2 paragraph orders, and a paragraph must have 5 sentences. A looser question is rewritten up to 2 times, then generation fails with an error rather than saving it.
+- **Storage** (`admin-node`, both set writers): `assessment.sub_questions.correct_order` holds a JSON array of full-text orders, including the reference. No schema change: the column already existed and was empty.
+- **Scoring** (`student-node`, `app/helpers/sentenceBuildAnswer.js`): the answer is normalized (lowercase, punctuation removed) and compared with the reference and the stored orders. `normalizeForComparison` must stay in step with `normalize_answer` in the Python module.
+- **Older questions:** `correct_order` is NULL, so only the reference counts, exactly as before. Non-text values such as legacy index arrays `[2,0,1]` are ignored. Stored scores are not recalculated.
+- **Reports:** the "Correct Answer" block appears only for wrong answers, so an accepted alternative shows as correct with no report change.
 
 ## Duration is summed from the enabled sections (2026-08-21)
 
