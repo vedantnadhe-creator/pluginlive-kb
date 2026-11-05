@@ -2201,3 +2201,11 @@ missing imports. `tsc` TS2304 lists 33 files; scope the scan with an esbuild met
 `src/`) so files outside the build graph don't stop tsc at a syntax error.
 
 **Verification:** 13 tester + 10 demo logins clean; plan locks hold; held functions 404 on both hosts.
+
+## 2026-11-05 (later) — PilVidya UAT `59f7df92` (upstream `fd629618`, 1 commit)
+
+Upstream moved `setStudentApproval` above the `switch` in `admin-manage-users` (it was declared inside the switch and
+hit a TDZ error, so admin student approve/reject failed). Checkout branch **`uat/pv-fixes-20261105b`** = `main` + the two
+UAT fix commits, not pushed. No SQL, no frontend change. Checked: the action now answers its own validation errors for
+an admin and refuses a logged-out caller; 10 demo logins pass. A real approve/reject on a student row was not run.
+The crash list and 54 held functions from the entry above are unchanged.
