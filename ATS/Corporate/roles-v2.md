@@ -76,6 +76,14 @@ A role takes one application per email (DEV + UAT, 2026-11-04). `RoleIntakeV2.ha
 
 The form's dropdowns and College picker are the DS `CreatableSelect` without `onCreate`: a searchable select.
 
+## Custom Assessment stages
+
+A Custom Assessment stage uses the assessment module's builder (package `assessment-creation` 0.1.2-bugfix.29): saved question banks, Excel or manual sections. A stage references sections by id, so Apply saves each new or edited section through `/api/assessments/custom-banks`; an unedited bank is reused, and a reopened stage reads its questions back. Saving needs `createAssessment` or `manageEvaluation`. Apply refuses what corporate-node would drop the whole section list for: more than 20 sections, a name over 200 characters, marks below 1, or a time that isn't whole minutes.
+
+## Resend Assessment (candidates bulk bar)
+
+The Roles bulk bar resends each candidate's current assessment round, through `POST /api/roles/:id/applicants/resend`, with `remindCandidates`. It sends `onlyDroppedOff: true` to admin-node `resendInvites`, so only candidates who dropped off are reset; anyone else keeps their attempt and is counted as skipped. Without that flag a selection resets a candidate in any state, which is what the assessment pages do on purpose (the old attempt goes to `assessment_attempt_archive`). admin-node must carry the flag before the frontend relies on it: an older admin-node ignores it. Selected emails match regardless of case, and a mix-match float where nobody was reset mails nobody.
+
 ## Role assessments stay on the role
 
 A stage's assessment name ends in ` · <first 8 of the stage id>` (`assessmentNameFor`); dispatch finds the assessment by that name, so it stays stored. The Assessment performance tab hides it (`withoutStageId`). Anything else that reads the stored name still shows it.
