@@ -68,6 +68,10 @@ The form's dropdowns and College picker are the DS `CreatableSelect` without `on
 
 ## Role assessments stay on the role
 
+A stage's assessment name ends in ` · <first 8 of the stage id>` (`assessmentNameFor`); dispatch finds the assessment by that name, so it stays stored. The Assessment performance tab hides it (`withoutStageId`). Anything else that reads the stored name still shows it.
+
+Add candidates sheets go through admin-node `parseCandidateSheet`; accepted headers are `SHEET_COLUMN_ALIASES` in `app/helpers/candidateSheetRows.js`. They match exactly: `Email Ids` is on the list, `Secondary Email` is not.
+
 Assessments a role floats for itself (evaluation stages, Quick Evaluation) stay off every assessment surface: the Assessments list, candidate-wise list, dashboard KPIs and Active Assessments, week rail, Schedule and financial-year counts. One rule covers them: `NOT_ROLE_EVALUATION` in `helpers/corporateAssessmentSql.js`. The Usage quota in the header still counts them. DEV + UAT (2026-11-04).
 
 ## Sign-in lands on v2
