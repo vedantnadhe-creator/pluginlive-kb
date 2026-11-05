@@ -48,9 +48,11 @@ A role can only use assessment stages when the company has Assessment access (Fe
 
 An assessment stage's pass bar is its "Passing score: N%" evaluation parameter. With Auto-Pilot on, that row can't be removed and only its number is editable (0-100; left blank, it goes back to the previous value). Turning Auto-Pilot on, or loading a stage with parameters but no bar, adds the line at the stage's bar or 60, the backend default. A stage with no parameters gets it from the AI build. UI rule only: a save without a bar still runs on 60.
 
-## Same as current address
+## Apply form details
 
-The public apply form shows a "Same as current address" checkbox above the first Permanent Address question, when the form has matching Permanent and Current Address questions (`addressCopies`). While ticked, Current Address answers copy into Permanent Address as they are typed; editing a Permanent Address field unticks it. Not in the form builder, and nothing extra is stored.
+"Same as permanent address" sits above the first Current Address question (after Permanent Address - Pincode), when the form has matching Permanent and Current Address questions (`addressCopies`). While ticked, Permanent Address answers copy into Current Address as they are typed; editing a Current Address field unticks it. Not in the form builder, and nothing extra is stored.
+
+"Let AI fill this in from my resume" sits above the resume upload, which is pinned first, so it is directly below College. Date and month fields open the calendar on a click anywhere in the box (`showPicker`); typing still works.
 
 ## Locked application form fields
 
