@@ -70,7 +70,11 @@ The form's dropdowns and College picker are the DS `CreatableSelect` without `on
 
 A stage's assessment name ends in ` · <first 8 of the stage id>` (`assessmentNameFor`); dispatch finds the assessment by that name, so it stays stored. The Assessment performance tab hides it (`withoutStageId`). Anything else that reads the stored name still shows it.
 
-Add candidates sheets go through admin-node `parseCandidateSheet`; accepted headers are `SHEET_COLUMN_ALIASES` in `app/helpers/candidateSheetRows.js`. They match exactly: `Email Ids` is on the list, `Secondary Email` is not.
+Add candidates (role page drawer, Quick Evaluation) accepts sheets, CVs and manual entry. A sheet is read by admin-node `parseCandidateSheet` for the count only; accepted headers are `SHEET_COLUMN_ALIASES` in `app/helpers/candidateSheetRows.js` and match exactly (`Email Ids` is on the list, `Secondary Email` is not). The screen shows "N candidates from your sheet", not rows; to change a sheet, remove the file and upload again. CV and manual rows stay listed. The Assessment page drawer still lists sheet rows.
+
+On save the original file goes through `/bulk-upload/inspect` then `/commit` (`addRoleCandidates`), on the mapper's proposed mapping with no review step; a tab with no email mapping is skipped, and a workbook with none is refused. CV and manual rows go first, as a small built workbook, so someone in both keeps the CV. A CSV is converted to a workbook in `inspectUpload`. A row already on the role counts as a duplicate, so a retry is safe.
+
+Mapped columns reach normalization. Unmapped columns are stored in `job_role_response.response` but are not written to the role's Google Sheet (`buildSheetRow` keeps only the sheet's headers), so normalization never sees them.
 
 Assessments a role floats for itself (evaluation stages, Quick Evaluation) stay off every assessment surface: the Assessments list, candidate-wise list, dashboard KPIs and Active Assessments, week rail, Schedule and financial-year counts. One rule covers them: `NOT_ROLE_EVALUATION` in `helpers/corporateAssessmentSql.js`. The Usage quota in the header still counts them. DEV + UAT (2026-11-04).
 

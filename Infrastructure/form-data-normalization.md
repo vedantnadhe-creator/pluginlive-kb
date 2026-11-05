@@ -14,6 +14,8 @@ tags: [service, api, python, normalization, ingestion, ai]
 
 ---
 
+> **DEV deploy gotcha (2026-11-05):** `auto_deploy.sh form-data-normalization` recreates the API container without the `/app/secrets/auth_creds.json` bind mount DEV relies on. On DEV, build the image and recreate `datanormalization` by hand with the same mount, `--env-file .env`, `--restart always` and `-p 5013:5013`. UAT has no mount, so its script is fine.
+
 ## What It Does
 
 Ingests candidate/student data from Google Drive spreadsheets and API payloads, normalizes free-text fields using LLM, matches them against master data (institutes, degrees, cities, roles) via fuzzy matching, and enriches profiles with assessment scores and CV parsing.
