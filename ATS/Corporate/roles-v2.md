@@ -16,6 +16,8 @@ The Roles screens in `corporate-react-v2` (`/v2/roles`, `/v2/roles/new`, `/v2/ap
 
 A process can't be saved until every **enabled** stage is configured. The green tick on a stage row and the save button read the same check (`isStageConfigured` in `roles/[id]/_constants.ts`): the stage has a type, and an assessment type passes `configIssues`. This covers **Setup Now / Save changes** in the Setup evaluation dialog and **Continue** on Quick Evaluation's "Set up evaluation" step. While a Role Based or AI Interview stage is still being prepared, or its prefill failed, the button stays off and a note names the stages ("Still to set up: ..."). Disabled stages don't count: they are never prefilled, and corporate-node's `unconfiguredStages` skips them too. A live process with an unfinished enabled stage can't save edits until that stage is fixed. Quick Evaluation's Start evaluation retry only runs on a live process with no unsaved edits.
 
+AI interview stages use the assessment module's own forms: stage type `ai_interview` opens the single scrolling form and floats `AI_Interview`; `complete_ai_interview` opens the five-step form and floats `AI_Interview_v2` (package `assessment-creation` 0.1.2-bugfix.28, adapter `src/lib/stageConfig/interviewPanels.ts`). Both store instructions and the second language. Communication & Language's 20% comes out of the other parameters, so the total stays 100. Dispatch keeps the ids the form sent, because the scorer finds the locked parameter by id `communication`; only a parameter with no id gets a name slug. Setup Now also refuses a Complete AI Interview flow admin-node would reject at float time: a reading, listening or custom row with no instructions, more than 50 questions on a row, more than 50 voice questions, or a parameter weight of 0. Hand-written choice questions are still only checked by admin-node at float time. Only companies subscribed to `AI_Interview_v2` see the stage type.
+
 ## Degree & department master
 
 The picker offers the degree/stream master, the same list v1 role creation uses: corporate-node `GET /corporates/:corporateId/degrees/v2` calls institute-node's `institutes/search/degreeStreams?pageLimit=700&status=1` and returns `{ degree, level, departments }` (BFF `/api/roles/degrees`, hook `useDegreeCatalogue`). That list also carries inactive rows whatever `status=1` asks for, so corporate-node keeps active degrees with active streams only and merges duplicate names; degrees with no stream aren't offered. PHD counts as PG, PG diplomas as Diploma, and ITI (stored as a DIPLOMA) as ITI.
@@ -129,7 +131,7 @@ DB-Scripts folder `Corporate ATS v2 Roles Integration` (11 scripts, DEV + UAT ap
 
 ## Known limits
 
-Multiple Assessments and Complete AI Interview stages are not dispatched. 12th and Certifications eligibility labels return 422. Applicant matching ignores qualifications and age (lives in normalization). The apply form skips captcha while `ROLES_V2_CAPTCHA_SECRET` is unset.
+Multiple Assessments stages are not dispatched. 12th and Certifications eligibility labels return 422. Applicant matching ignores qualifications and age (lives in normalization). The apply form skips captcha while `ROLES_V2_CAPTCHA_SECRET` is unset.
 
 ## Testing the form by script
 
