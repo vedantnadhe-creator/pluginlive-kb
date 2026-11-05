@@ -42,7 +42,15 @@ The parser's text is not stable: the same PDF has returned about 1,400 to 3,100 
 
 ## Evaluation stages follow the subscription
 
-A role can only use assessment stages the company has a current subscription to (`assessment.subscribed_corporates`, not past `end_date`). DEV + UAT, 2026-11-04. Rule: `services/evaluation/subscribedStages.js`. AI proposals, the default process and copied processes leave the others out, `GET assessment-options/v2` returns `unsubscribedStageTypes` for the Stage type dropdown, and Setup Now answers 422 naming the stage. A live role keeps a stage it already runs. Multiple Assessments shows only with two or more subscribed assessment types, and Complete AI Interview only with an `AI_Interview_v2` subscription; a type that cannot be dispatched yet is left out of the Stage type dropdown altogether (`NOT_SENDABLE_STAGE_TYPES`), though a stage already set to it still shows, with its notice. UAT hides both; on DEV Complete AI Interview is being enabled. Running out of tokens is not part of this rule; it is checked at float.
+A role can only use assessment stages when the company has Assessment access (Feature Access, ASSMT. column) and a current subscription to that type (`assessment.subscribed_corporates`, not past `end_date`). Turning access off leaves the subscription rows in place, so `blockedStageTypes` checks access first and blocks every assessment stage type without it. DEV + UAT, 2026-11-04. Rule: `services/evaluation/subscribedStages.js`. AI proposals, the default process and copied processes leave the others out, `GET assessment-options/v2` returns `unsubscribedStageTypes` for the Stage type dropdown, and Setup Now answers 422 naming the stage. A live role keeps a stage it already runs. Multiple Assessments shows only with two or more subscribed assessment types, and Complete AI Interview only with an `AI_Interview_v2` subscription; a type that cannot be dispatched yet is left out of the Stage type dropdown altogether (`NOT_SENDABLE_STAGE_TYPES`), though a stage already set to it still shows, with its notice. UAT hides both; on DEV Complete AI Interview is being enabled. Running out of tokens is not part of this rule; it is checked at float.
+
+## Passing score and Auto-Pilot
+
+An assessment stage's pass bar is its "Passing score: N%" evaluation parameter. With Auto-Pilot on, that row can't be removed and only its number is editable (0-100; left blank, it goes back to the previous value). Turning Auto-Pilot on, or loading a stage with parameters but no bar, adds the line at the stage's bar or 60, the backend default. A stage with no parameters gets it from the AI build. UI rule only: a save without a bar still runs on 60.
+
+## Same as current address
+
+The public apply form shows a "Same as current address" checkbox above the first Permanent Address question, when the form has matching Permanent and Current Address questions (`addressCopies`). While ticked, Current Address answers copy into Permanent Address as they are typed; editing a Permanent Address field unticks it. Not in the form builder, and nothing extra is stored.
 
 ## Locked application form fields
 
@@ -77,6 +85,15 @@ Corporate users land on `/v2/signin#token=` and then `/v2/dashboard`, on DEV and
 `shareRoleLink` and `editInviteEmail` only hide buttons; `assignTraining` has no endpoint yet.
 
 **Order matters:** run `scripts/sql/backfill-application-tracking-permissions.sql` before the corporate-node deploy, or saved users lose Roles access. A missing key means off.
+
+## Company Feature Access
+
+`corporate.corporates."accessLevel"` (admin Feature Access, ATS and ASSMT. columns: 0 neither, 1 ATS, 2 Assessment, 3 both) limits v2 for everyone in the company, Admins and PluginLive check-ins included. `CorporateUserAccessService.getMyAccess` removes the off module's actions from `permissions` (`limitToCompanyModules`) and returns `modules: { ats, assessment }`, so `can:` route guards refuse them too. User Management actions are never removed.
+
+- Sidebar: Roles needs `modules.ats`; Dashboard and Assessments need `viewAssessmentDetails`.
+- Landing: `/roles` without ATS goes to the dashboard gate. That sends an ATS-only company to Roles, a company with neither to Manage Users (or "no access" without User Management).
+- A change takes up to about 90 s: 60 s `FeatureAccessService` cache plus the 30 s `requireAction` cache. The browser reads it on page load.
+- The roles list API has no check of its own; only the page is gated.
 
 ## Env (corporate-node)
 
