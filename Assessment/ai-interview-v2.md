@@ -436,6 +436,13 @@ captured nothing) is scored like a missing recording — **0, "No answer was giv
 lists them; re-score with `new AIInterviewV2().calculateScore(<assessment_assigned_id>)` in the student-node container.
 fastapi DEV 148b8ef / UAT 58451dc; PROD pending.
 
+**Session recording placeholder.** The full-session recording sits in `student_answers` under the placeholder question
+`a55c5db4-a546-41a4-b103-c17401e82b4e`. DEV and UAT have a `questions` row for it, **PROD does not**. So on PROD a v2
+attempt with Role Based steps failed all 3 tries with `Role Based scoring failed … Field question is required to return
+data, got null` and stayed on Preparing Report. This never reproduces on DEV/UAT. `RoleBasedCalculations.roleBasedAnswersWhere`
+now leaves the placeholder out of the Role Based answers (student-node DEV 34349928 / UAT 30e62881, 2026-11-05; PROD pending).
+After the PROD deploy, re-score attempts with that `last_error` in `calc_jobs`.
+
 Corporate v2's shared score SQL withholds both the AI Interview and Role Based score rows for a v2 attempt until
 that flag is true. The roster's AI fitness verdict and report availability follow the same rule. A completed attempt
 therefore shows **Preparing Report** while scoring is running, without exposing the temporary voice-only score
