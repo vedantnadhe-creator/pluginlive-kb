@@ -4025,7 +4025,7 @@ admin5 5/5, journeytabs 6/6. Metabase uses ~1.25 GiB.
 
 **For PROD:** run Metabase (or a managed instance) with its own app DB, create `metabase_readonly` with the same view-only
 grants, build the dashboards with `metabase-setup.py` (adjust host/URL), then set the 5 secrets and `VITE_METABASE_ENABLED=true`.
-The Metabase login page is reachable at `/metabase/`; only the admin account exists.
+Since 2026-11-06 the UAT Metabase login and admin screens are not reachable from the internet (see the 2026-11-06 section); only the admin account exists.
 
 ## 2026-10-26 — UAT: BI Dashboard period / comparison / Combined-Domain-Tech filters enabled (config only)
 
@@ -4196,3 +4196,37 @@ Note: the gateway sets `X-Real-IP` to the internal proxy, so per-network counter
 `trainer_roster_parity.sh`, `cancelled_session_attendance.sh`, `curriculum_eligibility_parity.mts`,
 `select_scroll_probe.cjs`, `retake_transcript.cjs`, `fullscreen_start.cjs`, `coding_solved_screen.cjs`,
 `coding_grading_catalog.mts`, `solved_challenges_same_name.sh`, `trainer_assessment_form.cjs`, `login_otp_limits.sh`.
+
+## 2026-11-06 — UAT `935e77e2`: blanket write rules closed, server hardening (PROD pending)
+
+**Database.** Migration `20261106090000_close_blanket_write_policies` removes the `USING (true)` write rules that let any signed-in
+user change 20 tables (signup is open, so that reached the internet): 17 `"<table> authenticated write"` policies, student direct
+inserts on `payment_requests` (`submit_payment_request` RPC is the only path), module analytics writes (edge functions only), and open
+inserts on colleges, locations and the question bank. New scoped rules: `is_curriculum_staff` for practice rubrics and coding challenges,
+admins for colleges and locations, `can_manage_trainer_curriculum` for curriculum versions, staff or institute for the question bank.
+Learners may still insert quiz bank rows with `source IN ('ai','student_quiz')`, which is what `useQuizQuestions` mirrors from the browser.
+`admin_error_logs` keeps open inserts on purpose (the client logs errors before sign-in). Rollback:
+`supabase/rollbacks/20261106090000_close_blanket_write_policies.down.sql` (not rehearsed).
+
+**Behaviour changes.** An institute user can no longer save global proctoring defaults (the save returns an error). Admins reach
+Metabase through a tunnel: `ssh -L 8210:127.0.0.1:8210 ubuntu@uat.pluginlive.com`, then `http://localhost:8210`.
+
+**Server settings (not in deploy.sh, applied by hand per `infra/hardening/README.md`).** Backups in `~/hardening-backup-20261106` on UAT.
+`deploy.sh` does not touch these files, so they survive deploys.
+- nginx `/etc/nginx/sites-available/banking-react.conf`: `server_tokens off`, `snippets/lms-security-headers.conf` in `/`, `= /index.html`
+  and `/assets/` (HSTS, nosniff, X-Frame SAMEORIGIN, Referrer-Policy, Permissions-Policy, CSP in report-only).
+- `/metabase/` now allows GET on `embed/`, `api/embed/`, `api/session/properties` and `app/` only. Everything else returns 404, including
+  the login page and `POST /metabase/api/session`.
+- `~/banking-sb/docker-compose.yml`: `PGRST_OPENAPI_MODE: "disabled"`, so `/sb/rest/v1/` returns 404 and the API catalog is no longer public.
+
+**Before enforcing the CSP:** rename it from report-only only after a week of real use. It currently reports `https://accounts.google.com`
+on the student and admin screens; resolve that first.
+
+**Verification (diagnostics, not a Jev run):** role matrix on the applied migration 47/47 (`~/banking-checks/rlsmatrix-*.sql`; drop the
+inlined migration from the head file now it is applied). Certificate journey as admin, trainer and student passed through issue, download,
+public verify, revoke and reinstate. `excelqa.cjs` 77/77. BI Dashboard drew for student and admin with no failed `/metabase/` request.
+Camera and a YouTube frame worked under the live headers. The test module's QA Excel pack makes a simulation required and `excelqa.cjs`
+does not complete it for the certificate, so set the pack to draft during `journey.cjs student2`/`admin2` and restore it afterwards.
+
+**Still open:** a learner can add a bad AI question to the shared bank and delete their own proctoring logs; any trainer can edit any
+coding challenge; signup is open; about 39 edge functions have no caller check; UAT and PROD share keys.
