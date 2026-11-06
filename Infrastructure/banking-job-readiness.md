@@ -4230,3 +4230,45 @@ does not complete it for the certificate, so set the pack to draft during `journ
 
 **Still open:** a learner can add a bad AI question to the shared bank and delete their own proctoring logs; any trainer can edit any
 coding challenge; signup is open; about 39 edge functions have no caller check; UAT and PROD share keys.
+
+## 2026-11-06 — UAT `cbd063ff`: Excel workbook rebuilt for hands-on use, PivotTables and charts (PROD pending)
+
+**Why.** Until today no learner had completed a workbook task: every UAT submission came from scripts that called the checker directly.
+Formulas typed quickly lost their first characters, clicking a cell mid-formula saved it half done, only answer cells took input, tasks
+opened on a fully locked sheet, and "Back to conversation" wiped the work.
+
+**Lock rule (client and server).** `lockedCells` in `_shared/workbook-grader.ts`: a cell is locked when the starting workbook fills it and the
+task does not list it in `editable`. Every blank cell is open for workings, up to row 1000 and column 52. `editable` now means the answer
+cells, which are highlighted and counted. `applyEdits` drops edits to locked cells, so a forged request cannot change the data. Learners
+may add up to 5 sheets. Filled cells inside `editable` stay editable.
+
+**Workbook window (`WorkbookWorkspace.tsx`).** In-cell editor; click or drag to add references, across sheets; F4; AutoSum; Insert Function by
+category; `₹1,50,000`, `10%`, `15/01/2026`, `(250)` read as Excel does; lower case and missing brackets fixed on Enter; plain-English
+errors; warning before submitting empty answers. The unsubmitted workbook is kept in the browser's localStorage under
+`wb-draft:<attempt>:<slot>`, so it does not follow the learner to another device. Nothing may appear above the grid on a cell click: it moves
+cells under the mouse and reads as a drag.
+
+**PivotTables and charts (`lib/workbook/pivot.ts`, `WorkbookInsertPanels.tsx`, `WorkbookCharts.tsx`).** A pivot is written as ordinary cells with
+live `SUMIFS`-style formulas, one-way or two-way, by sum, count, average, min or max, on a new sheet or at the selected cell, and it refuses to
+overwrite cells in use. Charts (column, bar, line, pie, scatter) follow the cells and travel in the submission as `payload.charts`, or on
+`sheets[].charts` in a scratch workbook. Downloaded .xlsx keeps pivot formulas but not charts, because SheetJS community cannot write them.
+
+**New checks (trainers add them in Checks JSON).**
+- `{ "type": "summary", "source": "Loans!A1:D13", "rows": "Branch", "columns": "Product", "values": "Amount", "aggregate": "sum" }`: worked out from
+  the source and looked for among the learner's own cells, so the pivot tool, hand-written formulas and an uploaded Excel pivot all count.
+- `{ "type": "chart", "kinds": ["column", "bar"], "plots": ["Summary!B2:B5"], "title_required": true }`: `plots` is read from the answer workbook and
+  compared with the figures the chart plots, wherever they sit.
+AI-drafted packs do not generate these two checks yet.
+
+**Engine (`workbook-core.ts`).** COUNTIF, SUMIF, AVERAGEIF and the *IFS family share one Excel-style matcher: whole-cell, case-insensitive, `*`, `?`
+and `~`. Fixed TRIM, SEARCH, NORMSDIST, WEEKNUM, PERCENTRANK, NUMBERVALUE, TEXTBEFORE, TEXTAFTER and exact VLOOKUP wildcards. Not supported:
+dynamic arrays (FILTER, SEQUENCE, LET, spilling), TRANSPOSE, ISFORMULA.
+
+**Library decision.** No spreadsheet library added. Handsontable is commercial, HyperFormula is GPL or paid, and FortuneSheet and Univer bring a
+second calculation engine, so a learner could see one figure and be marked on another. Browser and server must stay on the same engine.
+
+**Verification (diagnostics, not a Jev run).** `~/banking-checks`: `xlcheck`, `xlmore`, `xlall` (all 14 tasks by keyboard) and `xlpivot` on the local
+harness in `xl-harness/`; `xllive-text`, `xllive-robo`, `xllive-pivot`, `xllive-review` on UAT. Text and Robo routes both marked pass by the server,
+16 forged locked cells ignored, trainer review shows pivots and charts read-only. Pack `[QA] Excel Pivot and Chart` stays on the test module.
+
+**Not built:** sort and filter, cell colours and bold, pasting from outside the workbook, editing a pivot after it is created (delete and recreate).
