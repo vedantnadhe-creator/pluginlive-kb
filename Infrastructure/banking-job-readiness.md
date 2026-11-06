@@ -4272,3 +4272,10 @@ harness in `xl-harness/`; `xllive-text`, `xllive-robo`, `xllive-pivot`, `xllive-
 16 forged locked cells ignored, trainer review shows pivots and charts read-only. Pack `[QA] Excel Pivot and Chart` stays on the test module.
 
 **Not built:** sort and filter, cell colours and bold, pasting from outside the workbook, editing a pivot after it is created (delete and recreate).
+
+## 2026-11-06 — PROD `c676764d`: Excel workbook rebuild, PivotTables and charts
+
+`release/prod-v1.1` moved from `63925838` by cherry-picking `81e46f06` and `cbd063ff` (same content as UAT `cbd063ff`, no migration, 16 files).
+Everything in the UAT section above now applies to `lms.pluginlive.com`. Backup: `/data/backups/prod-20261106T065825Z` on the PROD VM, with `dist.tgz`,
+`functions.tgz` and the previous `.release-commit`. The video checker stays held and the security batch `935e77e2` (blanket write rules and server
+hardening) is still UAT only. Check: `~/banking-checks/xllive-prod.cjs` runs as the QA admin on a draft pack, then removes it and compares row counts.
