@@ -65,6 +65,7 @@ The Docker image's CMD only runs the API. The worker and scheduler run as **sepa
 | `datanormalization-worker` | `python main.py worker` | AI normalization loop |
 | `datanormalization-cron` | `python main.py cron` | APScheduler (renewal, daily ingest, status, **expired-export purge**) |
 | `datanormalization-export-worker` | `python main.py export_worker` | Analytics candidate export builder (added 2026-08-19) |
+| `datanormalization-talent-worker` | `python main.py talent_worker` | Talent search and student versions, see `talent-search.md` (added 2026-11-06) |
 
 **`export_worker` is its own container on purpose.** A full export is ~90 MB and
 takes 5-6 minutes of CPU; `run_worker`'s loop is sequential, so folding exports
@@ -76,7 +77,7 @@ BackgroundTask in the API any more — see *Analytics export* below.
 **Tag drift (resolved 2026-08-05):** the siblings historically ran a separate **`datanormalization:api-mastersrc`** tag while `deploy.sh` builds `datanormalization:api`, so a plain redeploy left them on a stale image even after a manual `docker restart`. As of 2026-08-05 all three UAT containers run **`datanormalization:api`**. Recreate them from that tag:
 ```bash
 cd ~/api/form-data-normalization
-for m in worker cron export_worker; do
+for m in worker cron export_worker talent_worker; do
   name=$(echo "$m" | tr '_' '-')
   docker rm -f datanormalization-$name
   docker run -itd --name datanormalization-$name --restart unless-stopped --env-file .env \

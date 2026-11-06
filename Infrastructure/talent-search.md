@@ -1,0 +1,73 @@
+# Talent search and student versions
+
+Ranked candidate search over a separate `talent` schema, plus a full version history of each
+student profile. Live on DEV and UAT, PROD pending. Backend only: no product screen uses it yet.
+The only UI is the test page `/talent-search` on `dev.pluginlive.com` (masked PROD copy) and
+`uat.pluginlive.com` (real UAT data), behind basic auth.
+
+## What it never changes
+
+Student tables stay one current row per student, and ATS reads them as before. `institute.tier` is
+not used or written (student-created colleges default to tier 1, so it is unreliable).
+The one exception is **going back to a version**, see below.
+
+## Moving parts
+
+| Part | Where | Notes |
+|---|---|---|
+| `datanormalization-talent-worker` | form-data-normalization, `python main.py talent_worker` | Its own container. Recreate it with the other siblings. Claims `talent.event_queue` |
+| Search API | `POST /api/talent/search` | Needs `X-API-Key`; it returns student data |
+| Versions API | `GET /api/talent/students/{id}/versions`, `POST .../versions/{versionId}/restore` | `X-API-Key` |
+| Gateway tasks | `pl/talent-classify`, `pl/talent-search` | Registered per environment |
+| Who changed it | student-node `app/helpers/studentChangeActor.js` | Prisma middleware calling `talent.note_change` |
+| Junk guard | institute-node `app/helpers/masterNameGuard.js` | `kind` = degree, stream or college |
+
+## Flow
+
+1. Triggers on student and master tables queue events. A trigger failure cannot fail the save.
+2. The worker classifies values into groups, using rules, then decided spellings, then two AI checks
+   that must agree. New spellings go to Default at once and are placed after the save. Limit
+   `TALENT_AI_DAILY_SPELLING_LIMIT` (2,000 a day); over that they wait.
+3. `talent.student_profile` holds one search row per student.
+4. A search makes one AI call to read the sentence into JSON (about $0.0016). Everything else is
+   bound SQL composed from `talent.attribute_def`. The AI never writes SQL or sees student data.
+   States are match, unknown and no. One person on several rows is listed once (`person_key`).
+
+## College tiers
+
+India has no official tiers. Ours: brand list (IIT, NIT, IIIT, IIM, AIIMS, IISc, IISER, BITS, NLU)
+or the top half of a NIRF list is Tier 1, the rest of a NIRF list is Tier 2, everything else is
+Unranked, meaning unknown. Evidence is in `talent.institute_evidence`.
+NIRF data is the 2025 top 100 per category from Internet Archive copies, because nirfindia.org
+refuses automated fetches. College, Law and ranks above 100 are missing. To add lists, extend
+`data/talent_seed/spellings.csv` and `institute_evidence.csv` and run `talent_seed`, which re-tiers
+students already in search.
+
+## Versions
+
+Student tables update in place, so `talent.student_version` keeps a full snapshot per change. Writes
+queue a `version` event 15 seconds ahead, so one save across tables is one version, and an unchanged
+hash adds none. Going back: the live student tables are rewritten from the snapshot, versions off the
+path to it turn inactive (never deleted), and the next update branches from it. Login email and phone
+are not restored. Going back writes `student.*` from form-data-normalization, a deliberate exception
+that skips student-node side effects; move it to a student-node endpoint before offering it outside
+the test screens. Deleting a student deletes their history. About 2 KB per version, no retention limit.
+
+`changed_by` shows the person, "Form upload", or nothing. Raw SQL writes (admin-node
+`linkStudentCampus`, `assignmentDb`), background jobs and bulk writes that do not name the student
+are not attributed.
+
+## Deploying
+
+Run DB scripts first, in timestamp order (folder `Talent Search` in DB-Scripts): student-node calls
+`talent.note_change`. Deploy institute-node before student-node is not required, but the database is.
+Then: `talent_seed` **before** starting the worker (otherwise its first events fail and retry), start
+`talent_worker`, then `talent_versions_fill` and `talent_fill`. AI decisions travel in the seed files
+(`talent_export` adds new ones), so a new environment does not pay for them again.
+
+## Gotchas
+
+- `snapshot.debian.org` outages fail student-node builds in the apt layer. If only app files changed,
+  build a small image `FROM student-node:api` with those files.
+- DEV CI updates the student-node checkout but may not rebuild the container: check its uptime.
+- `auto_deploy.sh` must run from the home folder (`./deploy.sh` is relative).
