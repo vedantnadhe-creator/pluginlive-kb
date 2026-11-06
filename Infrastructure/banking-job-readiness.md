@@ -4320,3 +4320,30 @@ for `<mobile>@bankready.app` does not link it; auto-linking on mobile is unsafe 
 without, admin Module Builder assign, then each candidate's real Modules page. Sessions used signed tokens, and first sign-in was applied with the same update
 `candidate-otp-login` makes, not a real code. PROD: migration rehearsed in a rolled-back transaction; `xlprod-assign.cjs` opened the dialog as QA admin without saving.
 Modules sit under collapsed categories, so check `All (n)` and open them before calling one missing.
+
+## 2026-11-06 — UAT `efa7f157`: Excel workbook brought up to Excel 2024 (PROD pending)
+
+**Engine (`_shared/workbook-core.ts`, `workbook-functions.ts`; browser and marker share it).** Dynamic arrays spill into neighbouring cells, with `#SPILL!` and `A1#`. Ranges under
+operators compute cell by cell (`expandArrays`), so `SUM(IF(...))` and two-condition `INDEX/MATCH` work; a range in a single-value slot such as `SUMIFS(C:C,A:A,D2#)` gives one
+result per cell. `LET` and the `LAMBDA` family are resolved in the formula text and need ranges or literal sizes as input. New or corrected: bonds (`PRICE`, `YIELD`, `DURATION`, coupon
+functions), database functions, `TRUNC`, `SUBSTITUTE`, `CHIDIST`, `TINV`, `T.TEST`, `F.TEST`, `VDB`, `AMOR*`. T-bill functions follow Microsoft's examples. `TABLE(result, input, value, …)` is the
+What-If Data Table and recalculates the model per cell. Not supported: `ODD*` bonds.
+
+**Workbook window.** Ribbon (`WorkbookRibbon.tsx`) with Home, Insert, Formulas, Data, View. Logic lives in `lib/workbook/sheetTools.ts`. Sort refuses to move pre-filled data; Filter only hides
+rows; Replace skips locked cells. Formats, conditional rules and validations travel in `payload.look`, defined names in `payload.names`; neither changes a marked value except names, which
+formulas read. Nothing may appear above the grid on a cell click, because it moves cells under the mouse and reads as a drag.
+
+**Marking.** New check `{ "type": "validation", "cells": "Sheet1!B2:B10", "kinds": ["list"] }`, joining `summary` and `chart`. A cell filled by a spill counts as calculated for `formula_required`.
+
+**Persona.** `caseFiguresLine` gives the persona the numbers in the pack's starting workbooks, never the answer workbook, and tells it to quote only those. Packs with no workbook are unaffected.
+
+**Files.** `.xlsx` download writes `_xlfn.` prefixes, `ANCHORARRAY` and the dynamic-array flag; upload strips them and ignores stored spill values. Data Tables download as values, charts are not written.
+
+**Content fix.** Year-End Adjustments at Sahyadri Traders on UAT: answer `Workings!B9` changed in version `eeb25414` from `=Inputs!$B$11 - Workings!$B$7` (-10,000) to
+`=Inputs!$B$11 - Inputs!$B$11 * Inputs!$B$13` (+90,000), applied directly to a frozen version with the user's approval. The pack is not on PROD.
+
+**Verification (diagnostics, not a Jev run).** `~/banking-checks/xl-oracle` compares 513 formulas and 47 array formulas with LibreOffice 26.8: 481 and 46 match, others explained. Real Microsoft Excel was not available.
+`xlfeatures` 49/49, `xlall` 14 tasks, on the local harness. Live on UAT: `xllive-sahyadri` (text at 760px and Robo Play, server pass), `xllive-pivot` 15/15 including a task the server marks for spill, name, Data Table and
+validation, `xllive-review`. Pack `[QA] Excel Pivot and Chart` now holds both test tasks.
+
+**Not built:** merged cells, insert or delete rows and columns, borders, comments, Scenario Manager, Solver, structured table references, formulas across several sheets, macros, Power Query, slicers, sparklines, pasting from outside.
