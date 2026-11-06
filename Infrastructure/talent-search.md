@@ -35,13 +35,22 @@ The one exception is **going back to a version**, see below.
 
 ## College tiers
 
-India has no official tiers. Ours: brand list (IIT, NIT, IIIT, IIM, AIIMS, IISc, IISER, BITS, NLU)
-or the top half of a NIRF list is Tier 1, the rest of a NIRF list is Tier 2, everything else is
-Unranked, meaning unknown. Evidence is in `talent.institute_evidence`.
-NIRF data is the 2025 top 100 per category from Internet Archive copies, because nirfindia.org
-refuses automated fetches. College, Law and ranks above 100 are missing. To add lists, extend
-`data/talent_seed/spellings.csv` and `institute_evidence.csv` and run `talent_seed`, which re-tiers
-students already in search.
+India has no official tiers. Ours: the brand list (IIT, NIT, IIIT, IIM, AIIMS, IISc, IISER, BITS, NLU)
+or a NIRF rank within the top 50 (top half of a short list; a band counts as its bottom) is Tier 1.
+Any other NIRF rank, including Innovation and SDG lists, or NAAC A++/A+, is Tier 2. NAAC A or B++ is
+Tier 3. NAAC below that or declared over 5 years ago is evidence only. Everything else is Unranked,
+meaning unknown. NIRF participants never earn a tier.
+
+Sources (`~/scripts/talent_search/accred`, backup on S3 under `nirf-naac-20261106`): NIRF 2025 from
+Internet Archive copies, because nirfindia.org refuses automated fetches; NAAC from the official
+workbook of 14-08-2025 plus committee results to 12 Dec 2025. `build_seed.py` rewrites the seed, then
+run `talent_seed`, which also replaces `talent.institute_evidence` and re-tiers students in search.
+
+Search matches on the name alone, so a name shared across states earns no tier. `institute.tier` is a
+separate live column read by ATS filters, ordering and reports. On PROD it was set for 2,406 institutes
+on 2026-11-06 with name plus state/city checks (`build_prod_tiers.py`, undo with `prod_tier_revert.sql`).
+About 13,000 PROD institutes still hold an unproven tier 1, and student-created colleges default to tier 1.
+DEV and UAT `institute.tier` were not changed.
 
 ## Versions
 
