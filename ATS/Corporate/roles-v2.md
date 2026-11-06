@@ -90,7 +90,17 @@ A Custom Assessment stage uses the assessment module's builder (package `assessm
 
 ## Resend Assessment (candidates bulk bar)
 
-The Roles bulk bar resends each candidate's current assessment round, through `POST /api/roles/:id/applicants/resend`, with `remindCandidates`. It sends `onlyDroppedOff: true` to admin-node `resendInvites`, so only candidates who dropped off are reset; anyone else keeps their attempt and is counted as skipped. Without that flag a selection resets a candidate in any state, which is what the assessment pages do on purpose (the old attempt goes to `assessment_attempt_archive`). admin-node must carry the flag before the frontend relies on it: an older admin-node ignores it. Selected emails match regardless of case, and a mix-match float where nobody was reset mails nobody.
+The Roles bulk bar resends each candidate's current assessment round, through `POST /api/roles/:id/applicants/resend`, with `remindCandidates`. It reaches any candidate sitting in an assessment stage, in any state, and resets the attempt. A finished candidate's score is cleared (admin-node archives the attempt to `assessment_attempt_archive` first), the dialog says so, and the round scores the retake normally, so with Auto-Pilot on a retake can advance or reject them. admin-node's `onlyDroppedOff` option on `resendInvites` exists but nothing sends it. Selected emails match regardless of case, and a mix-match float where nobody was reset mails nobody.
+
+## Moves and offers
+
+A Move can carry a reason per candidate (`moves[].reason`, 500 characters). It is stored as the dispatch's `move_reason` and shown in the activity feed as "Reason: …". The engine's default reason is not shown. An offer answer (accepted or rejected) no longer needs the offered step: `/applicants/offers` moves the candidate into Offer first, and the final round accepts it from `offered` or `offer_sent`. A candidate marked not selected can't get an answer recorded. Deploy the backend before the frontend, because the frontend no longer sends the offered step.
+
+## Apply form colleges
+
+`GET /public/roles/v2/:roleId/apply/colleges?search=&limit=` searches active colleges by name or city (2+ characters, 25 results, 300 per minute per IP). It returns id, name and city, never contacts. The College field lists invited colleges first, then the search, and removes duplicate master rows by name and city. Submit accepts any active college and stores it by name, like Others. Off-campus roles show no College field, because the answer was never saved (`collegeSearch` on the apply response). Every CV upload is an autofill call, limited to 60 per 10 minutes per IP.
+
+Invites carry `tier` (the company's own tier first), and applicants carry `assessmentTitle` for their current stage.
 
 ## Normalized data on applicants
 
