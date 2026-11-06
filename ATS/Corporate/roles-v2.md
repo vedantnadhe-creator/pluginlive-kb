@@ -90,6 +90,16 @@ A Custom Assessment stage uses the assessment module's builder (package `assessm
 
 The Roles bulk bar resends each candidate's current assessment round, through `POST /api/roles/:id/applicants/resend`, with `remindCandidates`. It sends `onlyDroppedOff: true` to admin-node `resendInvites`, so only candidates who dropped off are reset; anyone else keeps their attempt and is counted as skipped. Without that flag a selection resets a candidate in any state, which is what the assessment pages do on purpose (the old attempt goes to `assessment_attempt_archive`). admin-node must carry the flag before the frontend relies on it: an older admin-node ignores it. Selected emails match regardless of case, and a mix-match float where nobody was reset mails nobody.
 
+## Normalized data on applicants
+
+The candidate drawer's Candidate details and the Export Sheet show normalized values, not what the candidate typed. `RoleApplicantsV2.withNormalizedAnswers` overlays the form answers (`helpers/normalizedAnswers.js`): college, degree and department for UG, PG, Diploma and ITI come from the current course and education rows, Select Your College from the campus, and current, permanent and education city and state from `response_data` (the normalization output on the application). A blank answer stays blank, nothing normalized leaves the form answer, and custom questions are never changed.
+
+Experience reads `work_experience`, then the stated `total_experience` when that is 0. `work_experience` is derived from the resume, and a role with no end date yields 0, so the card, export and experience filter use the stated figure.
+
+form-data-normalization matches each `education_<level>_city` through the city matcher without the candidate's pincode, which would steer a college's city (`_match_education_cities`). Arrears fall back to the form's own column (`PG - No. of Current Arrears/Backlogs`) when the LLM leaves a level out. Both apply to new applications only; rows ingested earlier keep their stored values.
+
+The fix lives in the worker, and `auto_deploy.sh form-data-normalization` only replaces the API container. Recreate `datanormalization-worker` and `-cron` on the new image too.
+
 ## Role assessments stay on the role
 
 A stage's assessment name ends in ` · <first 8 of the stage id>` (`assessmentNameFor`); dispatch finds the assessment by that name, so it stays stored. The Assessment performance tab hides it (`withoutStageId`). Anything else that reads the stored name still shows it.
