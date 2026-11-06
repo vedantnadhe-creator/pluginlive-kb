@@ -4277,5 +4277,26 @@ harness in `xl-harness/`; `xllive-text`, `xllive-robo`, `xllive-pivot`, `xllive-
 
 `release/prod-v1.1` moved from `63925838` by cherry-picking `81e46f06` and `cbd063ff` (same content as UAT `cbd063ff`, no migration, 16 files).
 Everything in the UAT section above now applies to `lms.pluginlive.com`. Backup: `/data/backups/prod-20261106T065825Z` on the PROD VM, with `dist.tgz`,
-`functions.tgz` and the previous `.release-commit`. The video checker stays held and the security batch `935e77e2` (blanket write rules and server
-hardening) is still UAT only. Check: `~/banking-checks/xllive-prod.cjs` runs as the QA admin on a draft pack, then removes it and compares row counts.
+`functions.tgz` and the previous `.release-commit`. The video checker stays held. Check: `~/banking-checks/xllive-prod.cjs` runs as the QA admin on a draft pack, then removes it and compares row counts.
+
+## 2026-11-06 — PROD `e4bc6071`: blanket write rules closed, server hardening
+
+Cherry-pick of `935e77e2` onto `release/prod-v1.1`. The UAT section of the same date describes the rules and settings; all of it now applies to
+`lms.pluginlive.com`. Backup: `/data/backups/prod-20261106T080306Z` on the PROD VM, with `banking_prod.dump`, the nginx site file and `docker-compose.yml`.
+
+**PROD paths.** nginx site `/etc/nginx/sites-available/banking-prod.conf`, snippet `/etc/nginx/snippets/lms-security-headers.conf`, compose
+`/opt/banking-sb/docker-compose.yml`. Nothing in the code-only deploy touches these, so they survive deploys.
+
+**Behaviour changes on PROD.** Metabase admin is tunnel-only: `ssh -i ~/.ssh/pl_prod_banking -L 8210:127.0.0.1:8210 ubuntu@130.210.28.66`, then
+`http://localhost:8210`. An institute user can no longer save global proctoring defaults. The public API catalog is off.
+
+**Rollback.** `supabase/rollbacks/20261106090000_close_blanket_write_policies.down.sql`, rehearsed on PROD inside a rolled-back transaction: up then down
+left 0 policy differences. Restore nginx and compose from the backup folder, then `sudo nginx -t`, reload, and recreate `rest` alone.
+
+**Verification (diagnostics, not a Jev run).** Before: a made-up signed-in user could do 8 of 10 attacks, including approving payments and unlocking menus.
+After: all refused, checked in a rolled-back transaction. All 979 public policies are identical to UAT. `~/banking-checks/xlprod-sec.cjs` (QA admin): BI
+Dashboard, camera, YouTube frame, admin screens. `xllive-prod.cjs`: workbook 11/11, row counts restored. Not tested on PROD with a real learner, trainer or
+institute account: those roles were tested on UAT only.
+
+**Still open on PROD:** a learner can add a bad AI question to the shared bank and delete their own proctoring logs; any trainer can edit any coding challenge;
+signup is open; about 39 edge functions have no caller check; UAT and PROD share keys; CSP is report-only and reports `accounts.google.com`.
