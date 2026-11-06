@@ -4301,3 +4301,22 @@ institute account: those roles were tested on UAT only.
 
 **Still open on PROD:** a learner can add a bad AI question to the shared bank and delete their own proctoring logs; any trainer can edit any coding challenge;
 signup is open; about 39 edge functions have no caller check; UAT and PROD share keys; CSP is report-only and reports `accounts.google.com`.
+
+## 2026-11-06 — Module assignment for candidates with no login: UAT `00bb4280`, PROD `86d2c76a`
+
+**Two routes, stored differently.** Trainers assign through Curriculum Setup → Module Groups → Assign to candidates, which writes
+`module_group_assignments` by `students.id` and never lost anyone. Module Builder (`TrainerModuleCatalog`) writes `user_module_access`, which needs a login id.
+Admins reach it at Admin Journey → Module Builder. The trainer sidebar has no entry for it: `case "module-builder"` in `TrainerJourney.tsx` is unreachable.
+
+**Fix.** Module Builder used to drop candidates with no login and record nothing. They now go into `pending_module_access` (student_id, module_id, granted_by),
+and trigger `trg_release_pending_module_access` on `students` turns those rows into normal `user_module_access` grants when `user_id` goes from null to a value,
+by any route. Screens that read access are unchanged. RLS: `private.staff_can_manage_student`, and `granted_by` must be the caller. Assignments dropped before this
+fix were never stored, so they must be assigned again. Rollback: `supabase/rollbacks/20261106140000_pending_module_access.down.sql`, rehearsed.
+
+**A mapped candidate sees nothing until they sign in.** Most roster rows have no login. First sign-in by mobile code links the row in `candidate-otp-login`. Password login
+for `<mobile>@bankready.app` does not link it; auto-linking on mobile is unsafe while signup is open. Three PROD rows are in that state.
+
+**Verification (diagnostics, not a Jev run).** `~/banking-checks/assigncheck.cjs` on UAT, 17/17: trainer Module Groups assign for one candidate with a login and one
+without, admin Module Builder assign, then each candidate's real Modules page. Sessions used signed tokens, and first sign-in was applied with the same update
+`candidate-otp-login` makes, not a real code. PROD: migration rehearsed in a rolled-back transaction; `xlprod-assign.cjs` opened the dialog as QA admin without saving.
+Modules sit under collapsed categories, so check `All (n)` and open them before calling one missing.
