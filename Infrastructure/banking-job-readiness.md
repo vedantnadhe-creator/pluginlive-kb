@@ -4321,7 +4321,7 @@ without, admin Module Builder assign, then each candidate's real Modules page. S
 `candidate-otp-login` makes, not a real code. PROD: migration rehearsed in a rolled-back transaction; `xlprod-assign.cjs` opened the dialog as QA admin without saving.
 Modules sit under collapsed categories, so check `All (n)` and open them before calling one missing.
 
-## 2026-11-06 — UAT `efa7f157`: Excel workbook brought up to Excel 2024 (PROD pending)
+## 2026-11-06 — Excel workbook brought up to Excel 2024: UAT `efa7f157`, PROD `ceb0b088`
 
 **Engine (`_shared/workbook-core.ts`, `workbook-functions.ts`; browser and marker share it).** Dynamic arrays spill into neighbouring cells, with `#SPILL!` and `A1#`. Ranges under
 operators compute cell by cell (`expandArrays`), so `SUM(IF(...))` and two-condition `INDEX/MATCH` work; a range in a single-value slot such as `SUMIFS(C:C,A:A,D2#)` gives one
@@ -4347,3 +4347,7 @@ formulas read. Nothing may appear above the grid on a cell click, because it mov
 validation, `xllive-review`. Pack `[QA] Excel Pivot and Chart` now holds both test tasks.
 
 **Not built:** merged cells, insert or delete rows and columns, borders, comments, Scenario Manager, Solver, structured table references, formulas across several sheets, macros, Power Query, slicers, sparklines, pasting from outside.
+
+**PROD release `ceb0b088` (`release/prod-v1.1`).** Cherry-picks of `bfb8d5d6` (update notice), `16a6c804`, `efa7f157`; no migrations. Deployed by `prod_deploy40.sh` with a backup in `/data/backups/prod-20261106T134947Z` (database, `dist`, functions).
+Held back from PROD: the video checker (`384d4eff`, `7994d662`, `02abb762`) and `2ea1b875` (edge runtime restarts during long AI calls). The Sahyadri pack is not on PROD.
+Checked on PROD: `xllive-prod` 15/15 as the QA admin on a draft pack, now including spill, defined name, Data Table and validation marked by the server. All 6 published PROD workbook tasks grade their answer key as pass and a blank workbook as fail on the new engine.
