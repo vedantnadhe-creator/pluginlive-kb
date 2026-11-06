@@ -2241,3 +2241,7 @@ so the school list stayed hidden and re-picking CBSE fired nothing. UAT fix: `va
 **Known, not fixed (since 2026-08-29):** `admin-create-teacher` ignores `body.password` and generates a random one, returned
 as `temporary_password`. `AdminSchoolSetup` displays it; the Admin Dashboard form does not and says "can now log in", so a
 teacher created there cannot sign in with the password typed. Checked with a real create (account removed afterwards).
+
+**Also seen 2026-11-06 (not fixed):** `student-authenticate-profile` logs two errors on student sign-in. It inserts `profiles.board`
+(no such column on UAT) and upserts `user_roles` with `onConflict: user_id` (UAT's unique key is `user_id, role`). Sign-in still works,
+but 55 students have no `profiles` row and 51 have no `student` role row.
