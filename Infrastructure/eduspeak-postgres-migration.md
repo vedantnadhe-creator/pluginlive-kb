@@ -2228,3 +2228,16 @@ Lockdown file extended; it is now part of the dry run before apply.
 **Verification:** 13 tester + 10 demo logins clean; plan locks hold; 8 new admin pages load; rolled-back probes as student:
 no provider or other-school rows, approval / audit insert / `append_audit_event` refused; admin reads the 3 reports.
 The 12 crashing pages from 2026-11-05 are unchanged; held functions still 54.
+
+## 2026-11-06 (later) — PilVidya UAT `6cf4e229` (upstream `292ca59d`, 4 commits, + 2 UAT fixes)
+
+No SQL. Checkout: local branch **`uat/pv-fixes-20261106b`** (not pushed) = `main` + Fees/StudentDashboard fix + board select fix.
+
+**Teacher creation:** admin form is now board-first and requires a school; `admin-create-teacher` no longer upserts `profiles`.
+Upstream's form shipped broken: `value={normalizeBoard(board)}` shows CBSE for an empty board (`normalizeBoard('')` is `cbse`),
+so the school list stayed hidden and re-picking CBSE fired nothing. UAT fix: `value={board}`. School list filters on
+`schools.board` (all 4 UAT schools are `cbse`).
+
+**Known, not fixed (since 2026-08-29):** `admin-create-teacher` ignores `body.password` and generates a random one, returned
+as `temporary_password`. `AdminSchoolSetup` displays it; the Admin Dashboard form does not and says "can now log in", so a
+teacher created there cannot sign in with the password typed. Checked with a real create (account removed afterwards).
