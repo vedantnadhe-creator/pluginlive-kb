@@ -58,6 +58,8 @@ Screening scores every applicant but moves and closes nobody (DEV + UAT, 2026-11
 
 Move to a Stage warns on a move to an earlier stage, and says when an assessment goes out again. A move back to an assessment round the candidate already has a row on resends it (`resendMapIdFor`, `resendStageAssessment`): the assessment window is extended if needed, then admin-node `resendInvites` with a selection resets the attempt and re-invites. admin-node archives the old attempt first, but its score leaves the screens. The resend runs before anything moves, so a failure leaves the candidate where they were. Forward moves, same-stage moves, and human or screening rounds send nothing. Moving forward to a round they left reactivates it with no new invite.
 
+A candidate moved off an assessment round without starting it can no longer take it: Move, Not selected, Shortlisted and drawer Advance call admin-node `POST /assessment/candidateAccess`, which sets `valid_until` to now on an untouched attempt (student-node `assignmentWindowState` then answers "This assessment is no longer available."). Nothing is deleted, because removing an assessment's last assignment row loses its question set. Coming back reopens it with a reminder; `resendInvites` clears `valid_until` too. Attempts already started or finished are left alone, as are candidates moved before 2026-11-06 and candidates deleted from a role. PROD needs the `valid_until` column.
+
 The candidates list ignores `moved_back` dispatch rows, so it shows the round the candidate is on now.
 
 ## Passing score and Auto-Pilot
