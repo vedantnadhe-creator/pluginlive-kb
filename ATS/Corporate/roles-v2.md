@@ -54,6 +54,12 @@ A role can only use assessment stages when the company has Assessment access (Fe
 
 Screening scores every applicant but moves and closes nobody (DEV + UAT, 2026-11-05). `stageAutoPilot` is always false for a screening stage, because its card has no switch: strong fits are held as recommended, medium and weak fits are held, and the recruiter decides. Any scored applicant still at screening can be selected in the stage drawer's advance. Later assessment stages keep their own Auto-Pilot switch. Candidates moved or closed before this change were not reversed.
 
+## Moving a candidate back
+
+Move to a Stage warns on a move to an earlier stage, and says when an assessment goes out again. A move back to an assessment round the candidate already has a row on resends it (`resendMapIdFor`, `resendStageAssessment`): the assessment window is extended if needed, then admin-node `resendInvites` with a selection resets the attempt and re-invites. admin-node archives the old attempt first, but its score leaves the screens. The resend runs before anything moves, so a failure leaves the candidate where they were. Forward moves, same-stage moves, and human or screening rounds send nothing. Moving forward to a round they left reactivates it with no new invite.
+
+The candidates list ignores `moved_back` dispatch rows, so it shows the round the candidate is on now.
+
 ## Passing score and Auto-Pilot
 
 An assessment stage's pass bar is its "Passing score: N%" evaluation parameter. With Auto-Pilot on, that row can't be removed and only its number is editable (0-100; left blank, it goes back to the previous value). Turning Auto-Pilot on, or loading a stage with parameters but no bar, adds the line at the stage's bar or 60, the backend default. A stage with no parameters gets it from the AI build. UI rule only: a save without a bar still runs on 60.
