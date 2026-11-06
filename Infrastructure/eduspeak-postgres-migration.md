@@ -2209,3 +2209,22 @@ hit a TDZ error, so admin student approve/reject failed). Checkout branch **`uat
 UAT fix commits, not pushed. No SQL, no frontend change. Checked: the action now answers its own validation errors for
 an admin and refuses a logged-out caller; 10 demo logins pass. A real approve/reject on a student row was not run.
 The crash list and 54 held functions from the entry above are unchanged.
+
+## 2026-11-06 — PilVidya UAT `befb2636` (upstream `0d89e3b2`, 20 commits, + Fees/StudentDashboard fix)
+
+Upstream builds unpatched again; the UAT build fix is dropped. Checkout: local branch **`uat/pv-fixes-20261106`** = `main`
++ the one fix commit (not pushed).
+
+**New:** admin pages for branch-board mapping, data quality, workflow builder, audit log, fee reconciliation, concessions and
+refunds, leave management, condonation/shortage; `admin-create-teacher` accepts `schoolName` and needs `profiles.email`.
+
+**DB** (DB-Scripts `…__pilvidya_branch_scoping_workflow_audit_fee_reconciliation.sql`, reasons in its header): upstream's
+`… OR branch_id IS NULL` read rules skipped (would expose all fee invoices). Workflow rows: staff of the school, the starter,
+assignee. Approval only by the task assignee or admin. `audit_events` written only through `append_audit_event`, service role
+only (no caller uses it yet, so the audit log stays empty until one does). Student fee rows via `can_access_student`;
+`payment_providers` admin only; day close and settlements admin or finance. `20261106104137` skipped.
+Lockdown file extended; it is now part of the dry run before apply.
+
+**Verification:** 13 tester + 10 demo logins clean; plan locks hold; 8 new admin pages load; rolled-back probes as student:
+no provider or other-school rows, approval / audit insert / `append_audit_event` refused; admin reads the 3 reports.
+The 12 crashing pages from 2026-11-05 are unchanged; held functions still 54.
