@@ -4349,7 +4349,7 @@ validation, `xllive-review`. Pack `[QA] Excel Pivot and Chart` now holds both te
 **Not built:** merged cells, insert or delete rows and columns, borders, comments, Scenario Manager, Solver, structured table references, formulas across several sheets, macros, Power Query, slicers, sparklines, pasting from outside.
 
 **PROD release `ceb0b088` (`release/prod-v1.1`).** Cherry-picks of `bfb8d5d6` (update notice), `16a6c804`, `efa7f157`; no migrations. Deployed by `prod_deploy40.sh` with a backup in `/data/backups/prod-20261106T134947Z` (database, `dist`, functions).
-Held back from PROD: the video checker (`384d4eff`, `7994d662`, `02abb762`) and `2ea1b875` (edge runtime restarts during long AI calls). The Sahyadri pack is not on PROD.
+Held back from PROD: the video checker (`384d4eff`, `7994d662`, `02abb762`). `2ea1b875` (edge runtime restarts during long AI calls) has been on PROD since 2026-11-04 as `8f1e58ba`. The Sahyadri pack is not on PROD.
 Checked on PROD: `xllive-prod` 15/15 as the QA admin on a draft pack, now including spill, defined name, Data Table and validation marked by the server. All 6 published PROD workbook tasks grade their answer key as pass and a blank workbook as fail on the new engine.
 
 ## 2026-11-07 — Workbook fit, resubmission, Robo waits for Excel, marker-led scoring: UAT `fa45cb08`, PROD `7cf49e4f`
@@ -4368,7 +4368,7 @@ Checked on PROD: `xllive-prod` 15/15 as the QA admin on a draft pack, now includ
 
 **Verification (diagnostics, not a Jev run).** On deployed UAT: `~/banking-checks/robo-rules.cjs` 19/19 (`LIVE=1`), `robo-e2e.cjs` PART=robo 20/23 (2 are the known gap, 1 is persona wording: it asked for a resubmit but opened with "I've checked the workbook again"), robo2 3/3, text 3/3. Real microphone not tested.
 
-**PROD release `7cf49e4f` (`release/prod-v1.1`).** Cherry-pick of `fa45cb08`; no migrations. Deployed by `prod_deploy41.sh` with a backup in `/data/backups/prod-20261107T105945Z`. Still held back from PROD: the video checker (`384d4eff`, `7994d662`, `02abb762`) and `2ea1b875`.
+**PROD release `7cf49e4f` (`release/prod-v1.1`).** Cherry-pick of `fa45cb08`; no migrations. Deployed by `prod_deploy41.sh` with a backup in `/data/backups/prod-20261107T105945Z`. Still held back from PROD: the video checker (`384d4eff`, `7994d662`, `02abb762`).
 Checked on PROD: `xllive-prod` 21/21 as the QA admin on a draft pack, adding resubmits at `revisions_allowed` 0, trust unchanged on a repeated pass, Hide conversation, the persona asking for a resubmit, and a finished run scoring the latest submission. `from_task` depends on the judge labelling a row: in that run the Apex-based row "Financial Calculation & Ratio Accuracy" stayed null, so marker-led rows are proven on the Sahyadri pack only, which is not on PROD.
 
 ## 2026-11-07 — Uncovered rubric points and microphone recovery: UAT `069e82b6`, PROD `c8b23e50`
