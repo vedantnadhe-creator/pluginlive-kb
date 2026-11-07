@@ -2275,5 +2275,23 @@ UAT checkout is back on `main`; no local-only branch. The four UAT fixes are on 
 refused. Audit rows go through the shared `writeAudit`: `admin_audit_log` has no `actor_user_id` or `metadata`, which previously failed the
 request after the data had saved. A student's mobile change takes effect at login at once (new number signs in, old refused).
 
-**Still missing in this function:** `list`, `delete`, `resetPassword`, `resetUserPassword`, `setUserActive` return "Unknown action".
 **Verification:** 15 live API checks, Edit Teacher and plan change on aividya.si in a browser with no edge failures, test rows restored.
+
+## 2026-11-07 (evening) — PilVidya UAT functions + frontend `f7b769e4`, GitHub `main` `5e87380f`
+
+`main` is one commit past the running image; that commit only adds `NOTIFY pgrst` to a migration already applied.
+
+**Password resets:** `auth.admin.revokeRefreshTokens` does not exist in supabase-js, so all five reset paths changed the password, then threw
+and showed "failed", and never ended sessions. New `public.admin_revoke_user_sessions(uuid)` (service role only, in the lockdown file, DB-Scripts
+`…__pilvidya_admin_revoke_user_sessions.sql`) via `_shared/revoke-sessions.ts`. After any new function: `NOTIFY pgrst, 'reload schema'`,
+otherwise rpc fails with PGRST202 and the UI shows "Unknown error".
+
+**Admin user actions added to `admin-manage-users`:** `list`, `update`, `resetPassword`, `resetUserPassword`, `setUserActive`, `delete`; `create` repaired
+(its `profiles` upsert has no matching unique key on UAT; now also saves `opsRole`). Admin mobile and location live in auth `user_metadata`, because
+`profiles` has no such columns. Deactivate uses a GoTrue ban plus session revoke; `listSystemUsers` shows banned users as inactive. Delete applies only
+to admin or ops accounts and refuses self and the last admin.
+
+**Teacher creation:** `admin-create-teacher` uses the typed password; `temporary_password` is null then. School Setup sends none and still gets a generated one.
+
+**Verification:** 36 live checks with throwaway accounts (removed afterwards), including the key icon on aividya.si; deactivated student blocked at
+sign-in and restored; 13 tester + 10 demo logins clean; plan locks hold.
