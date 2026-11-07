@@ -2245,3 +2245,22 @@ teacher created there cannot sign in with the password typed. Checked with a rea
 **Also seen 2026-11-06 (not fixed):** `student-authenticate-profile` logs two errors on student sign-in. It inserts `profiles.board`
 (no such column on UAT) and upserts `user_roles` with `onConflict: user_id` (UAT's unique key is `user_id, role`). Sign-in still works,
 but 55 students have no `profiles` row and 51 have no `student` role row.
+
+## 2026-11-07 — PilVidya UAT `3bfe2a22` (upstream `4e57196e`, 16 commits, + 3 UAT fixes)
+
+Checkout: local branch **`uat/pv-fixes-20261107`** (not pushed) = `main` + Fees/StudentDashboard fix + board select fix + `index.html` restore.
+
+**`index.html` held at `292ca59d`.** `c77bd8be` replaced it with a static marketing page with no `<div id="root">`, so
+`createRoot` would throw and the whole app would be blank; a bare `<0.6×` also fails `vite build`, which is what caught it. The esbuild
+scan starts at `main.tsx` and does not see `index.html`: diff `frontend/index.html` every round and confirm `id="root"`. That page
+also claims "SOC 2 Type II Certified" and uses placeholder testimonials, so it needs a business check before any use. The React home in
+`Index.tsx` is live.
+
+**DB** (DB-Scripts `…__pilvidya_library_question_governance_quiz_video_tracking.sql`, reasons in its header): 15 new tables and
+`question_bank` columns. Upstream opened `question_bank` to callers with no sign-in; refused. Quiz attempt and video playback
+writes are service role + platform admin; no caller writes them yet. Library writes admin only (catalogue has no school column).
+Skipped: `20261117000000_sprint7_curriculum_live_sessions`, drizzle `0004` (`is_school_staff` absent).
+
+**Verification:** 13 tester + 10 demo logins clean; plan locks hold; `/admin/library-admin` and `/admin/library-catalogue` load; home
+page renders on both hosts. Rolled-back probes: student score and video forge refused, plain teacher vendor write refused, anon
+`question_bank` denied. The 12 crashing pages and 54 held functions are unchanged.
