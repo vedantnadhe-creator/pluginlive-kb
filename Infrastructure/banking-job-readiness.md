@@ -4351,3 +4351,19 @@ validation, `xllive-review`. Pack `[QA] Excel Pivot and Chart` now holds both te
 **PROD release `ceb0b088` (`release/prod-v1.1`).** Cherry-picks of `bfb8d5d6` (update notice), `16a6c804`, `efa7f157`; no migrations. Deployed by `prod_deploy40.sh` with a backup in `/data/backups/prod-20261106T134947Z` (database, `dist`, functions).
 Held back from PROD: the video checker (`384d4eff`, `7994d662`, `02abb762`) and `2ea1b875` (edge runtime restarts during long AI calls). The Sahyadri pack is not on PROD.
 Checked on PROD: `xllive-prod` 15/15 as the QA admin on a draft pack, now including spill, defined name, Data Table and validation marked by the server. All 6 published PROD workbook tasks grade their answer key as pass and a blank workbook as fail on the new engine.
+
+## 2026-11-07 — UAT `fa45cb08`: workbook fit, resubmission, Robo waits for Excel, marker-led scoring (PROD pending)
+
+**Resubmission.** Workbook slots ignore `revisions_allowed` and take up to `WORKBOOK_SUBMISSION_CEILING` (50) submissions while the attempt is open; the latest counts. The Revisions field is hidden for workbook slots in Studio. Other task kinds keep `revisions_allowed`. Trust moves by the difference from the slot's previous result (`taskTrustChange`), so repeating a result changes nothing.
+
+**Clock and outcome.** Each task set adds its `time_limit_s` to the run (`state.task_time_s`, read through `runSecondsLeft`). The persona cannot reach an outcome while a set task has no result (`hasTaskOutstanding`). `submit_task` uses `assertWorkOpen`, so work can be handed in after the outcome but not after the clock; turns and hints still use `assertOpen`.
+
+**Robo Play.** Opening a workbook task stops the mic once the reply finishes (`holdForWork`). On submit the page sends "I have submitted the workbook. Please review it." (`reviewWork`), so that line appears in the transcript as the candidate's. Back to conversation resumes listening. The persona prompt says it cannot see the sheet, only the latest TASK_RESULT, and must ask for a resubmit.
+
+**Layout.** The live page drops `max-w-4xl` while a workbook is open and has a Hide conversation toggle. The grid has at least 16 columns and stretches to fill. The action row is sticky and carries the unsent-changes notice. On the module page a collapsed AI Coach gives its 320px column back on work steps. Finish warns when work is unsubmitted, on both routes.
+
+**Scoring.** The judge sets `from_task` on rubric rows about the hands-on work; `applyTaskMarks` replaces those rows with the marker's score, without needing a quote. A task set and never handed in scores 0 (`validator_status: not_submitted`) in the task row and those rubric rows. A slot never set still adds no row. Rubric `type: "hard"` means a hard rule, not machine marked. Scores already stored are not recalculated.
+
+**Known gap.** A judged rubric row with no verified quote stays null and `weightedTotal` returns null, so the debrief shows "No verified score". On 2026-11-07 that was 17 of 27 submitted PROD attempts. No simulation review screen was found. Decision pending.
+
+**Verification (diagnostics, not a Jev run).** On deployed UAT: `~/banking-checks/robo-rules.cjs` 19/19 (`LIVE=1`), `robo-e2e.cjs` PART=robo 20/23 (2 are the known gap, 1 is persona wording: it asked for a resubmit but opened with "I've checked the workbook again"), robo2 3/3, text 3/3. Real microphone not tested.
