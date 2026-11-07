@@ -2264,3 +2264,16 @@ Skipped: `20261117000000_sprint7_curriculum_live_sessions`, drizzle `0004` (`is_
 **Verification:** 13 tester + 10 demo logins clean; plan locks hold; `/admin/library-admin` and `/admin/library-catalogue` load; home
 page renders on both hosts. Rolled-back probes: student score and video forge refused, plain teacher vendor write refused, anon
 `question_bank` denied. The 12 crashing pages and 54 held functions are unchanged.
+
+## 2026-11-07 (later) — PilVidya UAT `dfeacc5c`, now GitHub `main`
+
+UAT checkout is back on `main`; no local-only branch. The four UAT fixes are on GitHub: Fees/StudentDashboard, teacher board select,
+`index.html` restore (next deploy: confirm `id="root"` survives upstream's next edit), and `admin-manage-users`.
+
+**`admin-manage-users`:** `ASSIGNABLE_PLANS` now comes from `SUBSCRIPTION_PLANS`, so Beginner, Advanced and Enterprise save. New actions
+`updateTeacherProfile` and `updateStudentProfile` take allow-listed fields only; `school_id` follows `school_name`, and an unknown school is
+refused. Audit rows go through the shared `writeAudit`: `admin_audit_log` has no `actor_user_id` or `metadata`, which previously failed the
+request after the data had saved. A student's mobile change takes effect at login at once (new number signs in, old refused).
+
+**Still missing in this function:** `list`, `delete`, `resetPassword`, `resetUserPassword`, `setUserActive` return "Unknown action".
+**Verification:** 15 live API checks, Edit Teacher and plan change on aividya.si in a browser with no edge failures, test rows restored.
