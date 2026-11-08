@@ -4386,3 +4386,11 @@ Checked on PROD: `xllive-prod` 21/21 as the QA admin on a draft pack, adding res
 UAT attempt `a4177042`: speech recognition heard "submit it" as "submitted", and the persona thanked the candidate for figures from a workbook that had never been set. At stages before a slot opens, `tasksLine` said "this simulation has no hands-on task". It now names any task that opens later and the stage it opens at. `taskStatusLine(spec, events)` adds each task's status from the event ledger to the persona prompt every turn: not set yet, set and not handed in, or handed in with the latest result. Only that line counts as handed in; ids are for `open_slot` and are never spoken.
 
 Verification (diagnostics, not a Jev run): `~/banking-checks/claim-check.cjs` replays the case on the Sahyadri pack. Before: 1 of 6 replies claimed a submission. Deployed UAT: 0 of 12. `robo-rules.cjs` 22/22 on UAT, `xllive-prod` 21/21 on PROD. Backup `/data/backups/prod-20261108T150706Z`. Not fixed: Chrome's built-in recogniser can drop the start of a sentence.
+
+## 2026-11-08 — Outcome waits inside the final stage; Chrome keeps listening: UAT `44c020cd`, PROD `e7ff4cbd`
+
+**Outcome.** `applyTurn` resolves agree or decline only on a turn whose starting stage is already the final stage. Before, the turn that entered the final stage resolved at once, so the persona's concerns were never asked and "Addressing Objections" scored 0. Low trust (15 or less) still exits at once. This guarantees one exchange in the final stage, not a good answer: in one UAT run the persona raised its objection, the learner's next line did not address it, and the row still scored 0.
+
+**Chrome recogniser.** `listenOnce` restarts Chrome's recogniser after its silence timeout (about 8 s) until `maxWaitMs`, so the microphone stays open and "Didn't catch that" is not spoken over a candidate who starts late. Results from a restarted session are keyed `session * 1000 + index`. Tested with a simulated recogniser only (`src/test/browserSttRestart.test.ts`); a real Chrome session is not tested.
+
+**Verification (diagnostics, not a Jev run).** UAT: `robo-e2e.cjs` PART=robo 23/23 (including the persona asking for a resubmit), `robo-rules.cjs` 22/22. PROD: `xllive-prod` 21/21. Backup `/data/backups/prod-20261108T154131Z`.
