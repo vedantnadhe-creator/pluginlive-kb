@@ -2295,3 +2295,16 @@ to admin or ops accounts and refuses self and the last admin.
 
 **Verification:** 36 live checks with throwaway accounts (removed afterwards), including the key icon on aividya.si; deactivated student blocked at
 sign-in and restored; 13 tester + 10 demo logins clean; plan locks hold.
+
+## 2026-11-08 — PilVidya UAT `7ba66d35` (upstream main, 19 commits, no UAT patches)
+
+UAT runs upstream `main` unmodified: all earlier UAT fixes are on `main` and upstream kept them. Upstream restored a valid `index.html`
+(has `#root`) and `main.tsx` now throws a clear error if the root is missing. New home page renders on both hosts.
+
+**DB** (DB-Scripts `…__pilvidya_video_verification_live_participants_grants.sql`): grants from drizzle `0005`; its read policies need
+`is_school_staff()` (absent), so UAT's scoped policies stay. Book-to-topic library links are now readable by all signed-in users (upstream
+says the product owner confirmed this).
+
+**Functions:** `admin-set-teacher-password` resolves the auth user from `teacher_profiles.user_id` (checked: reset works, teacher signs in).
+
+**Verification:** 13 tester + 10 demo logins clean, plan locks hold, Create Teacher school list works, crash list unchanged (12 pages).
