@@ -34,7 +34,7 @@ commit `vX.Y.Z` (bump Z for every PROD deploy). Hotfixes branch from the release
 `DEPLOY_REF=<sha>` still overrides the default ref on DEV/UAT for a one-off.
 
 Starting point: `Development` = `UAT` = `8cd5701e` (= `main` on 2026-11-09); `release/prod-v1.1` = `1be41a69` (PROD, 2026-11-09)
-Tags: `v1.1.0` = `0aaf2f2e`, `v1.1.1` = `1be41a69`, `v1.1.2` = `7f6fc4b9` (PROD from 2026-11-09 11:56Z); `UAT` = `main` = `cdaf47c0`.
+Tags: `v1.1.0` = `0aaf2f2e`, `v1.1.1` = `1be41a69`, `v1.1.2` = `7f6fc4b9` (PROD from 2026-11-09 11:56Z); `UAT` = `125fa9ae`, `main` = `cdaf47c0`, `Development` = `498b43b0` (2026-11-09 13:12Z).
 as running on PROD. `main` is no longer deployed anywhere; it is kept only for history and old PRs.
 DEV copy of the stack (2026-11-09): `~/banking-sb` on the DEV box, DB `banking_dev` on `127.0.0.1:5443`, app worktree
 `~/banking-dev-app`, static files served from `/var/www/banking-dev`; data copied from UAT that day, own JWT secret,
@@ -4458,4 +4458,21 @@ the speakers, not your voice…*. `MAX_MIC_PROBES` 6 → 8.
 pass now. Live UAT: `~/banking-checks/mic-stereo.cjs` (Chromium with Edge UA; default input patched to a Stereo Mix-labelled
 dither stream) 7/7 — Stereo Mix skipped, learner heard on the real mic, healthy mic triggers no recovery. PROD `xllive-prod.cjs`
 21/21. Not yet seen on a real Edge laptop with Stereo Mix.
+
+## 2026-11-09 — Generator asks again when the AI leaves out the Excel task: DEV `498b43b0`, UAT `125fa9ae` (PROD pending)
+
+**Symptom.** UAT Trainer Studio, "Home Down Payment Goal Planning" (pack `f73cae57`, 12:11Z): toast *"No Excel task was
+added: the AI found nothing to calculate in this scenario"*, draft saved with no task, although the notes asked for an Excel
+workbook and gave a target, lumpsum, SIP, tenor and returns. Earlier generations of the same notes did get a workbook task.
+**Cause.** `sim-generate-pack` asked the model a second time only when it returned a workbook task that the server rejected.
+When the model returned no `workbook_tasks` at all, nothing asked again.
+**Fix.** The second request also runs when no task came back and the trainer asked for Excel (`/excel|workbook|spreadsheet/i`
+on the notes — the same test as the Studio toast — or a "Generate Excel workbook" section request). It shows the model the
+brief and verified facts and asks for exactly one task from those figures. One extra AI call at most.
+**Deploy.** Fix alone: `125fa9ae` fast-forwarded onto `UAT` (`git fetch origin && deploy.sh`, snapshot `20261109T131250Z`);
+cherry-picked onto `Development` as `498b43b0` and deployed on DEV (snapshot `20261109T131140Z`). Not on `main` or PROD.
+**Verification (diagnostics, not a Jev run).** Generator contract tests pass. UAT `gen-repro.cjs` with that pack's own
+notes, 2 runs: both drafts got a workbook task (22 inputs, 12 workings), the answer key is marked pass and a blank sheet
+fail; drafts deleted. Both runs may have got the task first time, so these runs don't prove the retry path fired.
+**For the existing draft:** Tasks tab → *Generate Excel workbook* (or generate again).
 
