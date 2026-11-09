@@ -2308,3 +2308,21 @@ says the product owner confirmed this).
 **Functions:** `admin-set-teacher-password` resolves the auth user from `teacher_profiles.user_id` (checked: reset works, teacher signs in).
 
 **Verification:** 13 tester + 10 demo logins clean, plan locks hold, Create Teacher school list works, crash list unchanged (12 pages).
+
+## 2026-11-09 — PilVidya UAT `45eb14f1` (upstream `60a6b552`, 19 commits, + 1 UAT build fix, not pushed)
+
+Checkout: `main` with one local commit on top of `origin/main`. Upstream's latest did not build: `StudentCurriculum.tsx` had a stray
+`</div>` (from `5ec864ef`), and `buildExamples` in `studentCurriculumLessonPack.ts` returned an object with a missing brace in one
+branch and an array in the other (`60a6b552`); the page expects an array, so both branches now return one.
+`index.html` was replaced again and is valid (`#root` present).
+
+**SQL skipped:** drizzle `0006_scope_library_admin_tables` and `0007_scope_questions_and_quiz_summaries` both use `is_school_staff()`
+(not on UAT). 0007 also limits `question_bank` reads to staff and relies on a "Students can view assigned questions" policy that UAT
+does not have; StudentCurriculum and StudentDashboard read `question_bank` directly, so applying it would break student quizzes.
+UAT keeps its existing school-scoped rules. Needs `is_school_staff()` and that student policy defined first.
+
+**Upstream bug, not fixed:** on `/student/curriculum` the board picker shows "State Board" for a CBSE student, because the page treats
+any `profile.board` value as a state board (`state_board || board`).
+
+**Verification:** 13 tester + 10 demo logins clean; plan locks hold; new home page renders on both hosts; `/student/curriculum` loads with
+no errors; crash list unchanged (12 pages).
