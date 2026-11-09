@@ -2346,3 +2346,17 @@ REST 400 from the UAT nginx logs. Kit: `~/pilvidya-checks/migration-audit` (DEV 
   0007 also expects the "Students can view assigned questions" policy from `sql_fix_scripts.sql`. Ask upstream for the function definition
   before applying; guessing it risks hiding global (school_id NULL) questions from teachers.
 - **Security spot-check:** none of the 29 vhosts on the UAT box serves `/.env`, `.env.local`, `.env.production` or `.git/config`.
+
+## 2026-11-09 (later) — PilVidya UAT `15d94408`: crash sweep clean (44/44 pages)
+
+Five local commits on the UAT checkout on top of `main` 60a6b552 (not pushed): build fix, missing imports (32 pages), undefined helpers on
+reachable pages (Payments now reads real `fee_payments` columns and has a working Mark Paid; Pay Online says payments are not set up),
+23 nested `useMemo` calls flattened (deps moved to the outer memo), Institutes/Parents/Classes loaders, two `DialogTrigger`s outside
+`Dialog`, Admin Teachers board labels, library catalogue (no nested order, no empty uuid, to-one embeds as objects), Parent Communication
+skips school lookups when the parent has no school.
+
+Sweep `~/pilvidya-checks/sweep-routes.cjs` (admin, teacher, student, parent; 44 pages): 0 crashes. Remaining: `/student/simulations/:id/play`
+(SimulationPlayer incomplete; backend functions held) and 9 unrouted admin pages.
+
+Upstream asks (attendance schema, `is_school_staff()`, assigned-questions policy): `~/pilvidya-checks/upstream-request-20261109.md`.
+The org PAT and the GitHub connector cannot open issues on `eduspeak-india`, so this goes to the team by hand.
