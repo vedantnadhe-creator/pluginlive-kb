@@ -182,7 +182,7 @@ The UAT bundles have no DEV URLs.
 
 ## Institute portal creation — DEV + UAT 2026-10-08 (PROD pending)
 
-`institute-react-v2` mounts the same wizard, **always the same package version as admin-react-v2 in that environment** (2026-10-08: DEV `0.1.16-custom.5`, UAT `0.1.12-custom.4`; vendored in `vendor/` with a pnpm override pointing the nested `@pluginlive-technologies/ui` dependency at the vendored tgz; the Dockerfile copies `vendor/` before `pnpm install`). Assessment Schedules shows **Create assessment** in the top bar only when access is granted.
+`institute-react-v2` mounts the same wizard, **always the same package version as admin-react-v2 in that environment** (2026-11-09: DEV `0.1.16-custom.16`, UAT `0.1.12-custom.13`, which brings Complete AI Interview to institutes; vendored in `vendor/` with a pnpm override pointing the nested `@pluginlive-technologies/ui` dependency at the vendored tgz; the Dockerfile copies `vendor/` before `pnpm install`). Assessment Schedules shows **Create assessment** in the top bar only when access is granted.
 
 **Access rule** (`src/lib/api/assessmentCreationAccess.ts`): allowed when admin-node's `GET /assessment/featureAccess?entityType=institute` returns `ASSESSMENT_CREATION: true` for the session's institute, **or** the session is a PluginLive check-in (the auth-service profile of the JWT `_id` has a `pluginlive_id` — the same signal `/api/me` uses for Check out). The check-in is read from the auth service, so a hand-edited JWT cannot claim it. Lookup failure = 502 (never a grant). Every write route (`/api/assessments/mix-match`, custom-bank save, saved-list save, AI parameter suggestions) re-checks access server-side.
 

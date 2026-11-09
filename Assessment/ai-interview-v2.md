@@ -1,7 +1,7 @@
 # Complete AI Interview (AI_Interview_v2)
 
 > **State (2026-10-16):** LIVE on **DEV + UAT**. **PROD pending** (needs the DB script, the three gateway tasks,
-> and every service below, plus the `/ai-interview-v2/` ingress path; see *Proxy timeout* below). Corporate floats only (the report lives in the corporate portal, not the institute one).
+> and every service below, plus the `/ai-interview-v2/` ingress path; see *Proxy timeout* below). Corporates and institutes (institutes since 2026-11-09 DEV + UAT; the institute portal opens its report in the AI Interview report).
 
 AI Interview and Role Based merged into one assessment: the recruiter builds an **Interview Flow** of ordered rows
 (voice, subjective, single choice, multiple choice, coding, custom task), an LLM plans
@@ -12,7 +12,7 @@ with one combined score and one report.
 |---|---|
 | Assessment type | `AI_Interview_v2` (`assessment.assessment_type` row + section `Interview Task`) — DB-Scripts `AI Interview v2/20261013T100315Z__ai_interview_v2_assessment_type.sql` (DEV + UAT applied, PROD pending) |
 | Wizard type key | `complete-ai-interview` — "Complete AI Interview" (badge *New*) |
-| Who can create it | Corporate entities **subscribed** to `AI_Interview_v2` in Feature Access (admin wizard and corporate wizard); never colleges |
+| Who can create it | Corporates and institutes **subscribed** to `AI_Interview_v2` in Feature Access: admin wizard (either segment), corporate wizard, institute TPO wizard (institute-react-v2, when Allow assessment creation is on). Institutes since 2026-11-09 (DEV + UAT; PROD pending) |
 | Gateway tasks | `pl/interview-skeleton` (planner), `pl/interview-slot` (content), `pl/interview-v2-score` (task answers) — Gemini 3.8 Flash → Luna fallback, granted to the fastapi key |
 
 ---
@@ -640,3 +640,10 @@ DEV `code-runner:r-tidyverse`, UAT `pl-code-runner:c4d07afe`; previous container
 fastapi-ai-engine 68c30d5 · admin-node d1b21b8 · student-node 0b8c7d04 · corporate-node b94c6206 ·
 assessment-react-v2 175aa5f (mandatory answers, 10-16; DEV 1fb7ea7) · corporate-react-v2 bb86eff · admin-react-v2 e440dd5 · admin-react fb5c2f07 ·
 design-system wizard sources (local only, push not permitted): `uat/aiv2-0.1.2`, `uat/aiv2-0.1.12`.
+
+## Institutes (2026-11-09, DEV + UAT; PROD pending)
+
+- **Feature Access** (admin-react `AssignSubscription/index.js`) lists **Complete AI Interview** for colleges too, and a college save keeps `AI_Interview_v2`. admin-node needed no change: its schema enum and the Role Based async float already accept `entityType: "college"`. admin-react DEV `df2ccc77`, UAT `6a5642e5`.
+- **Admin wizard**: no change. The wizard offers the card from the institute's subscription (`getSubscribedAssessmentByInstitute`).
+- **Institute TPO portal** (institute-react-v2): wizard bumped to admin's version per env (DEV `0.1.16-custom.16`, UAT `0.1.12-custom.13`). `mix-match` floats `complete-ai-interview` as `AI_Interview_v2` (same payload as admin), `ai-interview/suggest-parameters` forwards the Interview Flow and languages, the type is labelled "Complete AI Interview", `ai_interview_v2` routes to `/reports/ai-interview-report`, and the report-v2 type `"AI Interview v2"` renders through the AI Interview panels (`reportDocKind` in `lib/types/fullReport.ts`). DEV `5b6b423` (release `DEV-5b6b423ae616-20261109T060715`), UAT `77d8b0f`.
+
