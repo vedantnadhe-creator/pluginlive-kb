@@ -418,6 +418,41 @@ row couldn't be recovered. The Activity UI shows the **Retry** button for `faile
 **or** `pending`-with-attempts>0 (was `failed`-only), and the ATTEMPTS column now
 shows in the Pending view too. DEV ✅ · UAT ✅ · PROD pending.
 
+### One failed part never blocks the report (2026-11-09, DEV + UAT; PROD pending)
+
+Before: one part that failed on every try (an undecodable reading recording, the Role Based
+placeholder bug) failed the **whole** attempt 3 times → `calculation_error=true` → "Preparing
+Report" forever, with no alert.
+
+Now (`student-node` `helpers/scoringRun.js`, DEV `cbeea4a2`, UAT `5c8e94ae`):
+- Tries 1–2 stay **strict** (a part failing fails the attempt, the sweeper retries), so a short
+  outage still ends in a real score. Transient failures (429/502/503/504, timeouts) stay strict
+  until the transient budget (10) runs out.
+- The **last try is lenient**: a part that still fails is isolated —
+  - the candidate's own input could not be scored (4xx 400/415/422, "could not decode", "decoding
+    failed", "unreadable", "no audio") → the part **scores 0**;
+  - our side failed (DB, bug, FastAPI 5xx, anything else) → the part is **left out of the total**
+    (no `communication_scores` row; no AIv2 evidence → its parameters are not assessed).
+- Covered parts: every Communication / Hinglish section except Video Response (which already
+  fell back to null), and in Complete AI Interview the voice interview, the Role Based steps and each
+  graded answer (`scoreRemote`).
+- What happened is saved in **`assessment_assigned_students.scoring_issues`** (jsonb,
+  `[{part, outcome: zero|excluded|unscored, reason}]`, NULL = clean; a clean re-score clears it)
+  and logged as `[SCORING ALERT]`. It is also posted to a Google Chat webhook when
+  `SCORING_ALERT_WEBHOOK_URL` is set (unset on every env as of 2026-11-09).
+- A whole attempt that still fails is recorded as `unscored` + alerted; it keeps
+  `calculation_error=true` (there is no score to show).
+- Drop-offs: the worker's "recording not uploaded yet" wait ends **10 min after `dropped_at`**
+  (`dropoutScoring.isSettledDropout`) — before, a drop-off with a half-uploaded Video Response was
+  deferred on every tick and never scored. Abandoned Complete AI Interviews (`scoreAbandonedV2`,
+  retried by cron with no attempt count) always score leniently.
+
+Limits: corp-node `SCORE_JOINS` averages the four Writing sub-parts over 4, so a left-out Writing
+sub-part still counts as 0 there (whole abilities are excluded correctly). Older admin/TPO
+formulas count any missing section as 0. No UI shows `scoring_issues` yet.
+Schema: DB-Scripts `Assessment Calculation Queue/20261109T060958Z__scoring_issues_column.sql`
+(DEV + UAT applied; PROD must run it **before** the student-node deploy).
+
 ## Activity UI (admin-react)
 
 - **Manage Assessments → Assignment Activity** tab: a server-paginated list of all
