@@ -2326,3 +2326,23 @@ any `profile.board` value as a state board (`state_board || board`).
 
 **Verification:** 13 tester + 10 demo logins clean; plan locks hold; new home page renders on both hosts; `/student/curriculum` loads with
 no errors; crash list unchanged (12 pages).
+
+## 2026-11-09 — PilVidya UAT migration coverage audit
+
+Parsed every upstream migration (`supabase/migrations`, `drizzle/migrations`) and compared it with the UAT schema; then replayed every real
+REST 400 from the UAT nginx logs. Kit: `~/pilvidya-checks/migration-audit` (DEV box).
+
+- **Tables/functions:** all present except intentional skips: `class_students`, `module_mappings` (trainer journey, FK tables UAT never
+  had), `arm_ai_video_render` / `dispatch_ai_video_render` (need pg_cron/pg_net), `sync_curriculum_topic_subject`, `sync_school_event_times`
+  (UAT table shapes differ).
+- **Columns:** ~200 columns from hosted-dev repair files (`20260916150000_comprehensive_repair_v2`, `sprint6-9`, `20261031_live_schema_repair`)
+  are absent where UAT's tables have their own shape by design (see the 09-19/09-22 notes). None showed up as a runtime failure.
+- **Real runtime failures:** `attendance_leave_requests`, `attendance_condonations`, `attendance_shortage_alerts` (+ `attendance_leave_types`)
+  do not exist on UAT, and **no SQL in the repo creates them**: Sprint 4 attendance & leave (`63a2cbfa`) shipped frontend only. Admin
+  Leave Management and Condonation/Shortage pages show empty/errors until upstream commits the schema.
+- **Frontend bugs (not migrations):** library catalogue orders by a nested embed PostgREST v12 cannot parse; library reservations send `""`
+  as a uuid; some student/teacher lookups send `"undefined"` as an id.
+- **Still skipped:** drizzle 0004–0007 policies need `is_school_staff()`, which exists only on upstream's hosted DB (not in the repo).
+  0007 also expects the "Students can view assigned questions" policy from `sql_fix_scripts.sql`. Ask upstream for the function definition
+  before applying; guessing it risks hiding global (school_id NULL) questions from teachers.
+- **Security spot-check:** none of the 29 vhosts on the UAT box serves `/.env`, `.env.local`, `.env.production` or `.git/config`.
