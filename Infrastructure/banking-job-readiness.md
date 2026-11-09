@@ -33,7 +33,7 @@ current `release/prod-vX.Y` (or cut `release/prod-vX.(Y+1)` from `UAT` for a new
 commit `vX.Y.Z` (bump Z for every PROD deploy). Hotfixes branch from the release branch, then merge back into `UAT` and `Development`.
 `DEPLOY_REF=<sha>` still overrides the default ref on DEV/UAT for a one-off.
 
-Starting point: `Development` = `UAT` = `8cd5701e` (= `main` on 2026-11-09); tag `v1.1.0` = `0aaf2f2e` = `release/prod-v1.1`
+Starting point: `Development` = `UAT` = `8cd5701e` (= `main` on 2026-11-09); `release/prod-v1.1` = `1be41a69` (PROD, 2026-11-09)
 as running on PROD. `main` is no longer deployed anywhere; it is kept only for history and old PRs.
 DEV copy of the stack (2026-11-09): `~/banking-sb` on the DEV box, DB `banking_dev` on `127.0.0.1:5443`, app worktree
 `~/banking-dev-app`, static files served from `/var/www/banking-dev`; data copied from UAT that day, own JWT secret,
@@ -4424,7 +4424,7 @@ Verification (diagnostics, not a Jev run): `~/banking-checks/claim-check.cjs` re
 
 **Verification on UAT (diagnostics, not a Jev run).** `~/banking-checks/gen-repro.cjs`: three shared topics, each generated and approved (one cited the `topics` copy); the PROD trainer notes twice, each giving one workbook task with all ten inputs and results, opened by a learner, answer key pass, blank fail, approved. `robo-rules.cjs` 22/22. Existing PROD drafts are not repaired: regenerate them, or use "Generate Excel workbook task".
 
-## 2026-11-09 — Curriculum build checked against the uploaded material: UAT `8cd5701e` (not yet on GitHub `main`; PROD pending)
+## 2026-11-09 — Curriculum build checked against the uploaded material: UAT and GitHub `main` `8cd5701e`, PROD `1be41a69`
 
 **Symptom.** Trainer Curriculum Builder: "Generated curriculum failed context checker: Selected module context is too sparse to verify generated output" for a curriculum titled "Finance" with no description, after a 3.5 minute AI build of a readable 12,150-character .docx.
 
@@ -4432,6 +4432,6 @@ Verification (diagnostics, not a Jev run): `~/banking-checks/claim-check.cjs` re
 
 **Fix.** `curriculumCheckContext` (`_shared/ai-context.ts`) checks a build against title, description, goal and taxonomy when those are enough, and against the uploaded text when they are not. A build that cannot be checked at all stops before the AI call and asks for a more descriptive title or a description. `validateGeneratedText` is unchanged for its other callers (ai-content, ai-quiz, ai-video-suggest, sim-generate-pack). A PDF- or video-only curriculum with a one-word title still has no text to check against, so it now gets that message at once.
 
-**Deployed to UAT from a bundle** (`DEPLOY_REF=refs/heads/uat-test-8cd5701e`); UAT is ahead of GitHub `main` until this commit is pushed.
+**Deployed to UAT from a bundle** (`DEPLOY_REF=refs/heads/uat-test-8cd5701e`), then the same commit was pushed to `main`, so UAT and `main` match again. PROD release `1be41a69` (cherry-pick of `8cd5701e`) via `prod_deploy46.sh`, backup `/data/backups/prod-20261109T104812Z`; 21/21 PROD live checks pass. Existing PROD curricula that showed the error (e.g. "new cuur") need Build pressed again.
 
 **Verification (diagnostics, not a Jev run).** `~/banking-checks/curr-check.cjs` copies a curriculum as a QA draft, builds it and deletes the copy. A copy of "Finance" (one-word title, no description, the same .docx) built in 216 s with 1 subject and 8 topics; the trainer's original was not touched. `src/test/curriculumCheckContext.test.ts` covers the one-word title, unrelated output still rejected, description and goal counted, and the stop before the AI call.
