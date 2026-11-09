@@ -4395,12 +4395,12 @@ Verification (diagnostics, not a Jev run): `~/banking-checks/claim-check.cjs` re
 
 **Verification (diagnostics, not a Jev run).** UAT: `robo-e2e.cjs` PART=robo 23/23 (including the persona asking for a resubmit), `robo-rules.cjs` 22/22. PROD: `xllive-prod` 21/21. Backup `/data/backups/prod-20261108T154131Z`.
 
-## 2026-11-09 — Generated packs keep their Excel task and pass approval: UAT `3f0fab5c` (not yet on GitHub `main`; PROD pending)
+## 2026-11-09 — Generated packs keep their Excel task and pass approval: UAT and GitHub `main` `3f0fab5c`, PROD `0aaf2f2e`
 
 **Excel task dropped.** `workbook-author.ts` rejected a whole trainer-specified task because one internal result key was 33 characters (limit 31), and the pack kept a legacy `spreadsheet` task whose fixed solver sheet ignored its ten inputs (PROD draft `763f3763`). Keys may now be 64 characters and formulas 600. A rejected workbook task gets one corrected model attempt with the reason (`action: retry_workbook_tasks`). A compiled workbook task replaces `spreadsheet` tasks, and `taskWorkspacesOf` skips a spreadsheet plan naming figures its solver sheet has no row for (`sheetPlanMismatch`).
 
 **Approval error "Fact N must cite an exact quote" / "Source changed since this draft was generated".** 487 topic ids exist in both `admin_module_topics` and `topics` (485 with different text, PROD and UAT). The generator labelled every copy `admin_topic:`, so verification re-read the admin copy and failed quotes taken from the other one; on UAT, generation from such a topic failed outright with 422. Each source row now carries the table it came from (`admin_topic:` or `topic:`).
 
-**Deployed to UAT from a bundle** with `DEPLOY_REF=refs/heads/uat-test-3f0fab5c`, so the UAT checkout is ahead of GitHub `main` until this commit is pushed; a later deploy from `origin/main` will not fast-forward before then.
+**Deployed to UAT from a bundle** (`DEPLOY_REF`), then the same commit was pushed to `main`, so UAT and `main` match again. PROD release `0aaf2f2e` via `prod_deploy45.sh`, backup `/data/backups/prod-20261109T081813Z`. On PROD, `xllive-prod` passed 21/21 and `~/banking-checks/prod-gen-check.cjs` generated one workbook task (10 inputs, 10 results) from the trainer notes of draft `763f3763`; the QA draft was deleted. That check needs the pack's real topic title, or the context checker rejects it.
 
 **Verification on UAT (diagnostics, not a Jev run).** `~/banking-checks/gen-repro.cjs`: three shared topics, each generated and approved (one cited the `topics` copy); the PROD trainer notes twice, each giving one workbook task with all ten inputs and results, opened by a learner, answer key pass, blank fail, approved. `robo-rules.cjs` 22/22. Existing PROD drafts are not repaired: regenerate them, or use "Generate Excel workbook task".
