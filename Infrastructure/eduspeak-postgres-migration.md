@@ -2360,3 +2360,5 @@ Sweep `~/pilvidya-checks/sweep-routes.cjs` (admin, teacher, student, parent; 44 
 
 Upstream asks (attendance schema, `is_school_staff()`, assigned-questions policy): `~/pilvidya-checks/upstream-request-20261109.md`.
 The org PAT and the GitHub connector cannot open issues on `eduspeak-india`, so this goes to the team by hand.
+
+**2026-11-09 — pushed:** the five UAT fix commits are on GitHub `main` (`60a6b552` → `15d94408`). UAT checkout is plain `main` again.
