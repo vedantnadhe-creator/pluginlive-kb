@@ -5,9 +5,9 @@ tags: [service, frontend, uat, supabase, lovable]
 
 # Banking Job Readiness (Candidate Job Readiness Journey)
 
-**Repo:** `PluginLive-Technologies/bankingjobreadiness`, branch `main`
+**Repo:** `PluginLive-Technologies/bankingjobreadiness` — branches per environment, see *Branching strategy* below
 **UAT path:** `/home/ubuntu/bankingjobreadiness` (on the UAT box, directly under `~/`)
-**Live URL:** `https://banking.uat.pluginlive.com/`
+**Live URLs:** DEV `https://banking.dev.pluginlive.com/` · UAT `https://banking.uat.pluginlive.com/` · PROD `https://lms.pluginlive.com/`
 **Stack:** Vite + React + shadcn/ui SPA — not part of the PluginLive Node/Prisma stack.
 
 > **What the app is (roles, features, content model, AI layer, risks):** see
@@ -19,6 +19,25 @@ tags: [service, frontend, uat, supabase, lovable]
 > `supabase-js`; only the origin changed. **PROD is still on hosted project
 > `kbwjokmmzkgjwiqelrdc`.** See `Infrastructure/banking-postgres-migration.md` — read it before
 > touching UAT `.env`, migrations or edge functions.
+
+## Branching strategy (from 2026-11-09)
+
+| Env | Branch | Deploy |
+|---|---|---|
+| DEV `banking.dev.pluginlive.com` | `Development` | `bash ~/banking-sb/deploy.sh` on the DEV box (default ref `github/Development`) |
+| UAT `banking.uat.pluginlive.com` | `UAT` | `git fetch origin && bash ~/banking-sb/deploy.sh` on the UAT box (default ref `origin/UAT`) |
+| PROD `lms.pluginlive.com` | `release/prod-vX.Y` + tag `vX.Y.Z` | built on `Pl-Prod-Banking` from the release branch |
+
+Flow: feature/fix branch → PR into `Development` → DEV test → PR `Development` → `UAT` → UAT test → merge `UAT` into the
+current `release/prod-vX.Y` (or cut `release/prod-vX.(Y+1)` from `UAT` for a new release) → deploy PROD → tag the deployed
+commit `vX.Y.Z` (bump Z for every PROD deploy). Hotfixes branch from the release branch, then merge back into `UAT` and `Development`.
+`DEPLOY_REF=<sha>` still overrides the default ref on DEV/UAT for a one-off.
+
+Starting point: `Development` = `UAT` = `8cd5701e` (= `main` on 2026-11-09); tag `v1.1.0` = `0aaf2f2e` = `release/prod-v1.1`
+as running on PROD. `main` is no longer deployed anywhere; it is kept only for history and old PRs.
+DEV copy of the stack (2026-11-09): `~/banking-sb` on the DEV box, DB `banking_dev` on `127.0.0.1:5443`, app worktree
+`~/banking-dev-app`, static files served from `/var/www/banking-dev`; data copied from UAT that day, own JWT secret,
+third-party keys (MSG91, Gemini, ElevenLabs, mail) shared with UAT.
 
 ## Trainer assessment review (2026-10-30)
 
