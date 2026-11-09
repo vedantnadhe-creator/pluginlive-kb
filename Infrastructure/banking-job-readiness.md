@@ -4404,3 +4404,15 @@ Verification (diagnostics, not a Jev run): `~/banking-checks/claim-check.cjs` re
 **Deployed to UAT from a bundle** (`DEPLOY_REF`), then the same commit was pushed to `main`, so UAT and `main` match again. PROD release `0aaf2f2e` via `prod_deploy45.sh`, backup `/data/backups/prod-20261109T081813Z`. On PROD, `xllive-prod` passed 21/21 and `~/banking-checks/prod-gen-check.cjs` generated one workbook task (10 inputs, 10 results) from the trainer notes of draft `763f3763`; the QA draft was deleted. That check needs the pack's real topic title, or the context checker rejects it.
 
 **Verification on UAT (diagnostics, not a Jev run).** `~/banking-checks/gen-repro.cjs`: three shared topics, each generated and approved (one cited the `topics` copy); the PROD trainer notes twice, each giving one workbook task with all ten inputs and results, opened by a learner, answer key pass, blank fail, approved. `robo-rules.cjs` 22/22. Existing PROD drafts are not repaired: regenerate them, or use "Generate Excel workbook task".
+
+## 2026-11-09 — Curriculum build checked against the uploaded material: UAT `8cd5701e` (not yet on GitHub `main`; PROD pending)
+
+**Symptom.** Trainer Curriculum Builder: "Generated curriculum failed context checker: Selected module context is too sparse to verify generated output" for a curriculum titled "Finance" with no description, after a 3.5 minute AI build of a readable 12,150-character .docx.
+
+**Cause.** `build-curriculum-from-content` built the checker's context from the title and taxonomy metadata only. The description and goal went to the prompt but not to the check, the uploaded material was never consulted, and `validateGeneratedText` needs two words longer than four letters. So a one-word title always failed, and only after the AI call.
+
+**Fix.** `curriculumCheckContext` (`_shared/ai-context.ts`) checks a build against title, description, goal and taxonomy when those are enough, and against the uploaded text when they are not. A build that cannot be checked at all stops before the AI call and asks for a more descriptive title or a description. `validateGeneratedText` is unchanged for its other callers (ai-content, ai-quiz, ai-video-suggest, sim-generate-pack). A PDF- or video-only curriculum with a one-word title still has no text to check against, so it now gets that message at once.
+
+**Deployed to UAT from a bundle** (`DEPLOY_REF=refs/heads/uat-test-8cd5701e`); UAT is ahead of GitHub `main` until this commit is pushed.
+
+**Verification (diagnostics, not a Jev run).** `~/banking-checks/curr-check.cjs` copies a curriculum as a QA draft, builds it and deletes the copy. A copy of "Finance" (one-word title, no description, the same .docx) built in 216 s with 1 subject and 8 topics; the trainer's original was not touched. `src/test/curriculumCheckContext.test.ts` covers the one-word title, unrelated output still rejected, description and goal counted, and the stop before the AI call.
