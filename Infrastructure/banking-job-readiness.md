@@ -34,6 +34,7 @@ commit `vX.Y.Z` (bump Z for every PROD deploy). Hotfixes branch from the release
 `DEPLOY_REF=<sha>` still overrides the default ref on DEV/UAT for a one-off.
 
 Starting point: `Development` = `UAT` = `8cd5701e` (= `main` on 2026-11-09); `release/prod-v1.1` = `1be41a69` (PROD, 2026-11-09)
+Tags: `v1.1.0` = `0aaf2f2e`, `v1.1.1` = `1be41a69`, `v1.1.2` = `7f6fc4b9` (PROD from 2026-11-09 11:56Z); `UAT` = `main` = `cdaf47c0`.
 as running on PROD. `main` is no longer deployed anywhere; it is kept only for history and old PRs.
 DEV copy of the stack (2026-11-09): `~/banking-sb` on the DEV box, DB `banking_dev` on `127.0.0.1:5443`, app worktree
 `~/banking-dev-app`, static files served from `/var/www/banking-dev`; data copied from UAT that day, own JWT secret,
@@ -4435,3 +4436,26 @@ Verification (diagnostics, not a Jev run): `~/banking-checks/claim-check.cjs` re
 **Deployed to UAT from a bundle** (`DEPLOY_REF=refs/heads/uat-test-8cd5701e`), then the same commit was pushed to `main`, so UAT and `main` match again. PROD release `1be41a69` (cherry-pick of `8cd5701e`) via `prod_deploy46.sh`, backup `/data/backups/prod-20261109T104812Z`; 21/21 PROD live checks pass. Existing PROD curricula that showed the error (e.g. "new cuur") need Build pressed again.
 
 **Verification (diagnostics, not a Jev run).** `~/banking-checks/curr-check.cjs` copies a curriculum as a QA draft, builds it and deletes the copy. A copy of "Finance" (one-word title, no description, the same .docx) built in 216 s with 1 subject and 8 topics; the trainer's original was not touched. `src/test/curriculumCheckContext.test.ts` covers the one-word title, unrelated output still rejected, description and goal counted, and the stop before the AI call.
+
+## 2026-11-09 — Robo never listens on "Stereo Mix": UAT branch and `main` `cdaf47c0`, PROD `7f6fc4b9` (tag `v1.1.2`)
+
+**Symptom.** PROD Robo Play on Edge (Windows): "We can't hear any sound from your microphone" on every turn.
+**Cause.** The browser's `listen_diag` showed `mic_label` = `Default - Stereo Mix (Realtek(R) Audio)`, outcome `silence`,
+`mic_recovered=false`, empty `mic_probe`. Stereo Mix is a Windows loopback input (it records what the speakers play), and it
+was the laptop's default input. It delivers dither just above zero, and the dead-mic recovery only ran on a peak of exactly
+`0`, so the app never looked for another microphone.
+**Fix (`src/lib/voice/serverStt.ts`).** Loopback inputs (`stereo mix`, `what u hear`, `wave out mix`, `loopback`,
+`cable output`, `voicemeeter out`) are never used: a loopback default is swapped for a real microphone when the stream is
+opened, and the probe skips them (`mic_probe` shows `…=loop`). Dead microphone = peak below `0.0001` for 2.5 s (was
+`=== 0`). If only loopback inputs exist the learner is told *Your computer is listening to "Stereo Mix…", which records
+the speakers, not your voice…*. `MAX_MIC_PROBES` 6 → 8.
+**Learner workaround** (any version): Windows Sound settings → Input → choose the real microphone (or disable Stereo Mix), reload.
+**Deploy.** `cdaf47c0` pushed to `UAT` and `main`, UAT deployed with `deploy.sh` (default `origin/UAT`), snapshot
+`20261109T114729Z`. PROD: cherry-pick `7f6fc4b9` on `release/prod-v1.1`, `prod_deploy47.sh`, backup
+`/data/backups/prod-20261109T115550Z`, tagged `v1.1.2` (and the previous deploy `1be41a69` tagged `v1.1.1`). `Development`
+(`214662d0`) does not have this commit yet — merge `UAT` into it.
+**Verification (diagnostics, not a Jev run).** Unit tests: 3 new in `roboLatencyStreaming.test.ts` fail on the old code,
+pass now. Live UAT: `~/banking-checks/mic-stereo.cjs` (Chromium with Edge UA; default input patched to a Stereo Mix-labelled
+dither stream) 7/7 — Stereo Mix skipped, learner heard on the real mic, healthy mic triggers no recovery. PROD `xllive-prod.cjs`
+21/21. Not yet seen on a real Edge laptop with Stereo Mix.
+
