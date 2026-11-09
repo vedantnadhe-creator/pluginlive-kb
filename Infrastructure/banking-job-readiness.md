@@ -34,7 +34,7 @@ commit `vX.Y.Z` (bump Z for every PROD deploy). Hotfixes branch from the release
 `DEPLOY_REF=<sha>` still overrides the default ref on DEV/UAT for a one-off.
 
 Starting point: `Development` = `UAT` = `8cd5701e` (= `main` on 2026-11-09); `release/prod-v1.1` = `1be41a69` (PROD, 2026-11-09)
-Tags: `v1.1.0` = `0aaf2f2e`, `v1.1.1` = `1be41a69`, `v1.1.2` = `7f6fc4b9` (PROD from 2026-11-09 11:56Z); `UAT` = `125fa9ae`, `main` = `cdaf47c0`, `Development` = `498b43b0` (2026-11-09 13:12Z).
+Tags: `v1.1.0` = `0aaf2f2e`, `v1.1.1` = `1be41a69`, `v1.1.2` = `7f6fc4b9`, `v1.1.3` = `61d23d01` (PROD from 2026-11-09 13:40Z); `UAT` = `main` = `125fa9ae`, `Development` = `498b43b0` (2026-11-09 13:12Z).
 as running on PROD. `main` is no longer deployed anywhere; it is kept only for history and old PRs.
 DEV copy of the stack (2026-11-09): `~/banking-sb` on the DEV box, DB `banking_dev` on `127.0.0.1:5443`, app worktree
 `~/banking-dev-app`, static files served from `/var/www/banking-dev`; data copied from UAT that day, own JWT secret,
@@ -4459,7 +4459,7 @@ pass now. Live UAT: `~/banking-checks/mic-stereo.cjs` (Chromium with Edge UA; de
 dither stream) 7/7 — Stereo Mix skipped, learner heard on the real mic, healthy mic triggers no recovery. PROD `xllive-prod.cjs`
 21/21. Not yet seen on a real Edge laptop with Stereo Mix.
 
-## 2026-11-09 — Generator asks again when the AI leaves out the Excel task: DEV `498b43b0`, UAT `125fa9ae` (PROD pending)
+## 2026-11-09 — Generator asks again when the AI leaves out the Excel task: DEV `498b43b0`, UAT and `main` `125fa9ae`, PROD `61d23d01` (tag `v1.1.3`)
 
 **Symptom.** UAT Trainer Studio, "Home Down Payment Goal Planning" (pack `f73cae57`, 12:11Z): toast *"No Excel task was
 added: the AI found nothing to calculate in this scenario"*, draft saved with no task, although the notes asked for an Excel
@@ -4470,7 +4470,7 @@ When the model returned no `workbook_tasks` at all, nothing asked again.
 on the notes — the same test as the Studio toast — or a "Generate Excel workbook" section request). It shows the model the
 brief and verified facts and asks for exactly one task from those figures. One extra AI call at most.
 **Deploy.** Fix alone: `125fa9ae` fast-forwarded onto `UAT` (`git fetch origin && deploy.sh`, snapshot `20261109T131250Z`);
-cherry-picked onto `Development` as `498b43b0` and deployed on DEV (snapshot `20261109T131140Z`). Not on `main` or PROD.
+cherry-picked onto `Development` as `498b43b0` and deployed on DEV (snapshot `20261109T131140Z`). `main` fast-forwarded to `125fa9ae`. PROD: cherry-pick `61d23d01` on `release/prod-v1.1`, `prod_deploy48.sh`, backup `/data/backups/prod-20261109T133930Z`, tag `v1.1.3`; PROD generation from the notes of `752b1559` (Goal-Based Planning: Home Down Payment) got a workbook task (10 inputs, 10 results), draft deleted; `xllive-prod.cjs` 21/21 (one earlier run 20/21: persona reply wording, passed on rerun). `sim-voice` "stream controller cannot close or enqueue" errors in PROD logs line up with each `xllive-prod.cjs` run (test client closing the stream), not with this release.
 **Verification (diagnostics, not a Jev run).** Generator contract tests pass. UAT `gen-repro.cjs` with that pack's own
 notes, 2 runs: both drafts got a workbook task (22 inputs, 12 workings), the answer key is marked pass and a blank sheet
 fail; drafts deleted. Both runs may have got the task first time, so these runs don't prove the retry path fired.
