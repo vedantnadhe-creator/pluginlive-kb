@@ -4394,3 +4394,13 @@ Verification (diagnostics, not a Jev run): `~/banking-checks/claim-check.cjs` re
 **Chrome recogniser.** `listenOnce` restarts Chrome's recogniser after its silence timeout (about 8 s) until `maxWaitMs`, so the microphone stays open and "Didn't catch that" is not spoken over a candidate who starts late. Results from a restarted session are keyed `session * 1000 + index`. Tested with a simulated recogniser only (`src/test/browserSttRestart.test.ts`); a real Chrome session is not tested.
 
 **Verification (diagnostics, not a Jev run).** UAT: `robo-e2e.cjs` PART=robo 23/23 (including the persona asking for a resubmit), `robo-rules.cjs` 22/22. PROD: `xllive-prod` 21/21. Backup `/data/backups/prod-20261108T154131Z`.
+
+## 2026-11-09 — Generated packs keep their Excel task and pass approval: UAT `3f0fab5c` (not yet on GitHub `main`; PROD pending)
+
+**Excel task dropped.** `workbook-author.ts` rejected a whole trainer-specified task because one internal result key was 33 characters (limit 31), and the pack kept a legacy `spreadsheet` task whose fixed solver sheet ignored its ten inputs (PROD draft `763f3763`). Keys may now be 64 characters and formulas 600. A rejected workbook task gets one corrected model attempt with the reason (`action: retry_workbook_tasks`). A compiled workbook task replaces `spreadsheet` tasks, and `taskWorkspacesOf` skips a spreadsheet plan naming figures its solver sheet has no row for (`sheetPlanMismatch`).
+
+**Approval error "Fact N must cite an exact quote" / "Source changed since this draft was generated".** 487 topic ids exist in both `admin_module_topics` and `topics` (485 with different text, PROD and UAT). The generator labelled every copy `admin_topic:`, so verification re-read the admin copy and failed quotes taken from the other one; on UAT, generation from such a topic failed outright with 422. Each source row now carries the table it came from (`admin_topic:` or `topic:`).
+
+**Deployed to UAT from a bundle** with `DEPLOY_REF=refs/heads/uat-test-3f0fab5c`, so the UAT checkout is ahead of GitHub `main` until this commit is pushed; a later deploy from `origin/main` will not fast-forward before then.
+
+**Verification on UAT (diagnostics, not a Jev run).** `~/banking-checks/gen-repro.cjs`: three shared topics, each generated and approved (one cited the `topics` copy); the PROD trainer notes twice, each giving one workbook task with all ten inputs and results, opened by a learner, answer key pass, blank fail, approved. `robo-rules.cjs` 22/22. Existing PROD drafts are not repaired: regenerate them, or use "Generate Excel workbook task".
