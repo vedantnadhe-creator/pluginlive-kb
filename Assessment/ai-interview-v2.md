@@ -643,7 +643,7 @@ design-system wizard sources (local only, push not permitted): `uat/aiv2-0.1.2`,
 
 ## Institutes (2026-11-09, DEV + UAT; PROD pending)
 
-- **Feature Access** (admin-react `AssignSubscription/index.js`) lists **Complete AI Interview** for colleges too, and a college save keeps `AI_Interview_v2`. admin-node needed no change: its schema enum and the Role Based async float already accept `entityType: "college"`. admin-react DEV `df2ccc77`, UAT `6a5642e5`.
+- **Feature Access** (admin-react `AssignSubscription/index.js`) lists **Complete AI Interview** for colleges too, and a college save keeps `AI_Interview_v2`. admin-node needed no change: its schema enum and the Role Based async float already accept `entityType: "college"`. admin-react DEV `df2ccc77` (live); UAT branch `6a5642e5` pushed but **not yet deployed** (the 2026-11-09 build ran the UAT box out of memory twice; it hung and was rebooted at 07:41Z).
 - **Admin wizard**: no change. The wizard offers the card from the institute's subscription (`getSubscribedAssessmentByInstitute`).
 - **Institute TPO portal** (institute-react-v2): wizard bumped to admin's version per env (DEV `0.1.16-custom.16`, UAT `0.1.12-custom.13`). `mix-match` floats `complete-ai-interview` as `AI_Interview_v2` (same payload as admin), `ai-interview/suggest-parameters` forwards the Interview Flow and languages, the type is labelled "Complete AI Interview", `ai_interview_v2` routes to `/reports/ai-interview-report`, and the report-v2 type `"AI Interview v2"` renders through the AI Interview panels (`reportDocKind` in `lib/types/fullReport.ts`). DEV `5b6b423` (release `DEV-5b6b423ae616-20261109T060715`), UAT `77d8b0f`.
 
