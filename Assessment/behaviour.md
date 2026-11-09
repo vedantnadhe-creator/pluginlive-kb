@@ -219,24 +219,28 @@ breadcrumb, the left rail and the mobile track.
   attempt. Timer expiry and `expireCurrentAssessment` bypass the gate.
 - Legacy `Assessment-React` already shuffled, hid names and gated answers.
 
-## Duration: 30 minutes (DEV + UAT 2026-11-02)
+## Duration: 45 minutes (DEV + UAT 2026-11-09)
 
 No Behavior set stores a duration (`assessment_config` has no Behavior rows), so
-the length is the code fallback `estimatedDuration('Behavior') = 30` in
-`student-node/app/helpers/attemptDuration.js` (v2 candidate clock and dropout
-deadline) and `corporate-node/app/helpers/assessmentDuration.js` (corporate v2
-"Duration"). It was 20 until 2026-11-02 while the v1 runner
-(`Assessment-React/.../Behaviourassmt/assessment.js`) already ran 30. Only
-sittings started after the deploy get 30; an already-stamped `expiresAt` keeps
-its value. student-node DEV `90b62f7e` / UAT `686d6551`, corporate-node DEV
-`3ae9807e` / UAT `f3c4bdcc`. The shared wizard (`assessment-creation`
-`typeSummary.ts`, display only: Behaviour sends no duration on float) quoted a
-separate hardcoded 20 and now says 30 too: admin-react-v2 DEV `cb20801`
-(0.1.16-custom.16) / UAT `2936315` (0.1.12-custom.13), corporate-react-v2 DEV
-`6bab93d` (0.1.2-bugfix.27) / UAT `92c87a4` (0.1.2-bugfix.26-uat). **Keep the
-wizard number and `estimatedDuration('Behavior')` equal.** institute-react-v2
-still pins older wizard versions (DEV 0.1.16-custom.5, UAT 0.1.12-custom.4)
-that say 20. **PROD pending.**
+the length is a code constant that lives in **four places that must agree**:
+
+| Where | What it drives |
+|---|---|
+| student-node `app/helpers/attemptDuration.js` `estimatedDuration('Behavior')` | v2 candidate clock + dropout deadline (`expiresAt`) |
+| corporate-node `app/helpers/assessmentDuration.js` | corporate v2 list / detail / dashboard "Duration" |
+| Assessment-React `Behaviourassmt/assessment.js` (`useState(45 * 60)`) + `instruction.js` ("Duration - 45 mins") | v1 candidate timer and instructions |
+| shared wizard `assessment-creation` `src/lib/typeSummary.ts` (`minutes: 45`) | creation wizard summary/review only; a Behaviour float sends no duration |
+
+History: 20 (v2) / 30 (v1) → 30 everywhere on 2026-11-02 → **45 on 2026-11-09**.
+Only sittings started after a deploy get the new length; an already-stamped
+`expiresAt` keeps its value.
+
+2026-11-09 revisions: student-node DEV `5696f5c2` / UAT `26b019e2`; corporate-node
+DEV `32c84bb9` / UAT `ab681619`; Assessment-React DEV `6df5f42` / UAT `f93740a`.
+Wizard: admin-react-v2 + institute-react-v2 DEV **0.1.16-custom.17** (admin `f9f0922`,
+institute `2691a07`), UAT **0.1.12-custom.14** (admin `37f0e36`, institute `587abf6`);
+corporate-react-v2 **0.1.2-bugfix.30** on both (DEV `acbdf74`, UAT `af75c6d`).
+**PROD still runs 30** (hotfix-42.4, 2026-11-02) — PROD pending.
 
 ## Admin wizard question count
 

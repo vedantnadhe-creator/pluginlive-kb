@@ -950,7 +950,7 @@ Both now derive the admin's own number:
 |---|---|
 | Aptitude | inverted blueprint — 25 questions → 30 min, 30 → 45, 40 → 60 |
 | Communication | summed from the sections enabled — 30 min for the full paper (see [communication.md](communication.md#duration-is-summed-from-the-enabled-sections-2026-08-21)) |
-| Behavior | 30 min (was 20 until 2026-11-02; v1 runner was always 30) |
+| Behavior | 45 min since 2026-11-09 (30 from 2026-11-02, 20 before; see [behaviour.md](behaviour.md#duration-45-minutes-dev--uat-2026-11-09)) |
 
 The Aptitude blueprint is 1:1 and invertible, so reading it backwards returns
 exactly the duration that was chosen. **Nothing is persisted per assignment on

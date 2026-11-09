@@ -225,3 +225,19 @@ beside its real `package-lock.json`, so corporate UAT deploys failed at
 `pnpm install --frozen-lockfile`. pnpm is now used only when there is **no**
 `package-lock.json` (institute-react-v2). Backup on UAT:
 `~/scripts/deploy-shared-assessment-next.sh.bak-20261102`.
+
+## Behaviour shown as 45 min (DEV + UAT 2026-11-09)
+
+`typeSummary.ts` `behaviour` → `minutes: 45`. Lineage heads (design-system branches local only):
+
+| Package | design-system worktree / commit | Consumers |
+|---|---|---|
+| 0.1.16-custom.17 | `~/worktrees/ds-assessable-admin` `c7d6eaf` | admin-react-v2 + institute-react-v2 Development |
+| 0.1.12-custom.14 | `~/worktrees/ds-assessable-admin-uat` `a167096` | admin-react-v2 + institute-react-v2 UAT |
+| 0.1.2-bugfix.30 | `~/worktrees/ds-wiz-bugfix29` `f53a7e7` | corporate-react-v2 Development and UAT |
+
+institute-react-v2 now tracks admin's wizard version in both envs. Note: DEV institute
+runs from an isolated release pinned by `/etc/systemd/system/institute-react-v2.service.d/zz-release.conf`;
+`auto_deploy.sh institute-react-v2` builds the main checkout, which that override does
+not serve — a DEV release needs a new `~/releases/institute-react-v2/DEV-<rev>-<ts>`
+build and the drop-in switched (rollback file `previous-override.conf` in each release).
