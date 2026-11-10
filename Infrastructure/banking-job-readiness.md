@@ -34,7 +34,7 @@ commit `vX.Y.Z` (bump Z for every PROD deploy). Hotfixes branch from the release
 `DEPLOY_REF=<sha>` still overrides the default ref on DEV/UAT for a one-off.
 
 Starting point: `Development` = `UAT` = `8cd5701e` (= `main` on 2026-11-09); `release/prod-v1.1` = `1be41a69` (PROD, 2026-11-09)
-Tags: `v1.1.0` = `0aaf2f2e`, `v1.1.1` = `1be41a69`, `v1.1.2` = `7f6fc4b9`, `v1.1.3` = `61d23d01`, `v1.1.4` = `98ad9668` (PROD from 2026-11-10 11:41Z); `UAT` = `main` = `dd2b69ab`, `Development` = `dc157550`, `Development` = `498b43b0` (2026-11-09 13:12Z).
+Tags: `v1.1.0` = `0aaf2f2e`, `v1.1.1` = `1be41a69`, `v1.1.2` = `7f6fc4b9`, `v1.1.3` = `61d23d01`, `v1.1.4` = `98ad9668`, `v1.1.5` = `180822ba` (PROD from 2026-11-10 17:42Z); `UAT` = `main` = `cce235ae`, `Development` = `c6b61541`, `Development` = `498b43b0` (2026-11-09 13:12Z).
 as running on PROD. `main` is no longer deployed anywhere; it is kept only for history and old PRs.
 DEV copy of the stack (2026-11-09): `~/banking-sb` on the DEV box, DB `banking_dev` on `127.0.0.1:5443`, app worktree
 `~/banking-dev-app`, static files served from `/var/www/banking-dev`; data copied from UAT that day, own JWT secret,
@@ -4491,4 +4491,26 @@ on modules without one.
 **Verification (diagnostics, not a Jev run).** `src/test/myCertificatesEmpty.test.tsx` (both empty states). UAT: test learner
 `b1dc35d0` opens My Certificates → the info box, no page errors (`/tmp/p2/certshot.cjs`). PROD serves the new chunk;
 `xllive-prod.cjs` 21/21.
+
+## 2026-11-10 — OTP sign-in for a learner whose Auth user has no email: DEV `c6b61541`, UAT and `main` `cce235ae`, PROD `180822ba` (tag `v1.1.5`)
+
+**Symptom.** PROD: an active learner entered a correct email code and got "Login failed — Invalid or expired sign-in code".
+**Cause.** The learner's linked Auth user (`e2cb672e`, migrated 2026-08-09) has **no email**; their student row, active profile
+and roles point at it. `candidate-otp-login` issues the session by `generateLink({ type: "magiclink", email })` and fell back to
+`<mobile>@bankready.app`, which belongs to a **second** Auth user (`f0ba99ee`, 2026-09-29) whose profile is inactive. The code
+verified (`auth_login_otp_challenges.consumed_at` set), the browser was signed in as the other user and signed straight out
+(GoTrue logout in the same second), and the retries met an already-consumed code → "Invalid or expired". Every earlier sign-in of
+this learner had silently been the duplicate; it broke when that profile became inactive. 15 PROD learner Auth users have no
+email (1 with the mobile address held by another user).
+**Fix.** `_shared/otp-login.ts` `freeLoginEmail()`; in `candidate-otp-login`, an Auth user without an email gets the first of
+`<mobile>@bankready.app` / the address the code was sent to that no other Auth user holds (`login_auth_users_by_email`), set with
+`email_confirm`, before the link. None free → "Your account's sign-in details need fixing. Please contact your administrator."
+The link must resolve to the learner's own user (`generated.data.user.id === authUserId`) or no session is given.
+The duplicate `f0ba99ee` was not changed. The affected learner's own user gets their `@pluginlive.com` address on next sign-in.
+**Deploy.** Cherry-pick onto `Development` (`c6b61541`, DEV snapshot `20261110T173347Z`); `UAT` and `main` fast-forwarded to
+`cce235ae`; PROD cherry-pick `180822ba`, `prod_deploy50.sh`, backup `/data/backups/prod-20261110T174202Z`, tag `v1.1.5`.
+**Verification (diagnostics, not a Jev run).** `~/banking-checks/emailless-login.cjs` (`ENV=uat|prod`, default DEV) builds the
+same shape with throw-away users (email-less learner + inactive duplicate holding the mobile address), signs in with a known code
+and checks the session user: old code on UAT 2/4 ("got duplicate B"); fixed DEV, UAT and PROD 4/4; test users and rows removed
+(PROD checked: 0 left). `xllive-prod.cjs` 21/21.
 
