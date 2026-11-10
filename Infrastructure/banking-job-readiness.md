@@ -34,7 +34,7 @@ commit `vX.Y.Z` (bump Z for every PROD deploy). Hotfixes branch from the release
 `DEPLOY_REF=<sha>` still overrides the default ref on DEV/UAT for a one-off.
 
 Starting point: `Development` = `UAT` = `8cd5701e` (= `main` on 2026-11-09); `release/prod-v1.1` = `1be41a69` (PROD, 2026-11-09)
-Tags: `v1.1.0` = `0aaf2f2e`, `v1.1.1` = `1be41a69`, `v1.1.2` = `7f6fc4b9`, `v1.1.3` = `61d23d01` (PROD from 2026-11-09 13:40Z); `UAT` = `main` = `125fa9ae`, `Development` = `498b43b0` (2026-11-09 13:12Z).
+Tags: `v1.1.0` = `0aaf2f2e`, `v1.1.1` = `1be41a69`, `v1.1.2` = `7f6fc4b9`, `v1.1.3` = `61d23d01`, `v1.1.4` = `98ad9668` (PROD from 2026-11-10 11:41Z); `UAT` = `main` = `dd2b69ab`, `Development` = `dc157550`, `Development` = `498b43b0` (2026-11-09 13:12Z).
 as running on PROD. `main` is no longer deployed anywhere; it is kept only for history and old PRs.
 DEV copy of the stack (2026-11-09): `~/banking-sb` on the DEV box, DB `banking_dev` on `127.0.0.1:5443`, app worktree
 `~/banking-dev-app`, static files served from `/var/www/banking-dev`; data copied from UAT that day, own JWT secret,
@@ -4475,4 +4475,20 @@ cherry-picked onto `Development` as `498b43b0` and deployed on DEV (snapshot `20
 notes, 2 runs: both drafts got a workbook task (22 inputs, 12 workings), the answer key is marked pass and a blank sheet
 fail; drafts deleted. Both runs may have got the task first time, so these runs don't prove the retry path fired.
 **For the existing draft:** Tasks tab → *Generate Excel workbook* (or generate again).
+
+## 2026-11-10 — My Certificates says when no module has a certificate: DEV `dc157550`, UAT and `main` `dd2b69ab`, PROD `98ad9668` (tag `v1.1.4`)
+
+**Before.** A learner with no certificate saw "Complete a module to earn your first certificate" on My Certificates, even when
+none of their modules had a certificate enabled (finishing a module could never earn one).
+**Now (`src/components/certificate/MyCertificates.tsx`).** With nothing earned, the page asks `module-certificate`
+`action: "dashboard"`: certificate modules in progress are listed with their percent ("Complete these modules to earn their
+certificates"); otherwise an info box says **"Module not enabled with Certificate" — "Request the Admin / Trainer to enable the
+Certificate for the Module."** Earned certificates show as before. Frontend only; module pages still hide the certificate card
+on modules without one.
+**Deploy.** Cherry-picked alone onto `Development` (`dc157550`, DEV `deploy.sh`, snapshot `20261110T113407Z`); fast-forwarded
+`UAT` and `main` to `dd2b69ab` (UAT snapshot via `deploy.sh`); PROD cherry-pick `98ad9668` on `release/prod-v1.1`,
+`prod_deploy49.sh`, backup `/data/backups/prod-20261110T114100Z`, tag `v1.1.4`.
+**Verification (diagnostics, not a Jev run).** `src/test/myCertificatesEmpty.test.tsx` (both empty states). UAT: test learner
+`b1dc35d0` opens My Certificates → the info box, no page errors (`/tmp/p2/certshot.cjs`). PROD serves the new chunk;
+`xllive-prod.cjs` 21/21.
 
