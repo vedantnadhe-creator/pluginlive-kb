@@ -2374,3 +2374,5 @@ Coach (`navigate`, `handleSignOut` → `hardLogout`), English Lab (`studentBoard
 (`X`), Student Curriculum (`SUBJECTS`, `getStateBoardLanguage`); AI Coach Back button used `asChild` with two children (render crash).
 **Verification:** 46 swept pages, 0 crashes; role-journey Student Portal card navigates; AI Coach back works; 13 tester + 10 demo logins;
 plan locks hold.
+
+**2026-11-10 (later):** upstream `a48ef0cd` edited the already-shipped `20261126000000_admin_curriculum_file_storage.sql`, replacing `can_access_sprint_school(tc.school_id)` (missing on their hosted DB) with "school exists". That would let any signed-in user read every school's published teacher-content files. UAT has `can_access_sprint_school()`, so the original, school-scoped version stays applied on UAT; the edit is not applied. Upstream needs to define the function on their side instead.
