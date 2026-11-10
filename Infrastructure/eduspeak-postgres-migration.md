@@ -2362,3 +2362,15 @@ Upstream asks (attendance schema, `is_school_staff()`, assigned-questions policy
 The org PAT and the GitHub connector cannot open issues on `eduspeak-india`, so this goes to the team by hand.
 
 **2026-11-09 — pushed:** the five UAT fix commits are on GitHub `main` (`60a6b552` → `15d94408`). UAT checkout is plain `main` again.
+
+## 2026-11-10 — PilVidya UAT `909d5ac5` (upstream `07fefbe5`, 14 commits, + 2 UAT fix commits, not pushed)
+
+**DB** (DB-Scripts `…__pilvidya_scope_analytics_rls_admin_curriculum_storage.sql`): both new upstream migrations applied as shipped.
+Analytics (Metabase dashboards, SWOT, score snapshots) now uses upstream's role/school scoped policies; teacher-content storage reads
+tightened and admins can upload curriculum originals. The `school-demo` seed scripts were not run (demo data).
+**Functions:** `record_simulation_evidence` held (service role, no caller check; anyone could write any student's mastery). Hold list 55.
+**Frontend fixes:** upstream's latest used undefined names: Admin Dashboard role-journey cards (`navigate` in `SchoolAnalyticsView`), AI
+Coach (`navigate`, `handleSignOut` → `hardLogout`), English Lab (`studentBoard`, `youtubeTopics`, `Card` — render crash), Foreign Languages
+(`X`), Student Curriculum (`SUBJECTS`, `getStateBoardLanguage`); AI Coach Back button used `asChild` with two children (render crash).
+**Verification:** 46 swept pages, 0 crashes; role-journey Student Portal card navigates; AI Coach back works; 13 tester + 10 demo logins;
+plan locks hold.
