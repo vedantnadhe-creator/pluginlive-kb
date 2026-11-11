@@ -2707,3 +2707,7 @@ Backend wiring that came out of reviewing the items:
 - Known: admin-node `assessmentConfigService.spec.js` "AI_Interview: the brief
   and format are editable" fails on Development and UAT independently of this
   change (stale editable-keys expectation).
+
+## Financial year picker (2026-11-11)
+
+`GET /corporates/:id/dashboard/v2/filters` lists every financial year with standalone assessments (role-stage assessments excluded) or with roles floated (`COALESCE(posted_date, created_at)`, `RolesDashboardV2.roleYears`), newest first, each with `assessments` and `roles` counts (`mergeFinancialYears`). The count beside a year follows the view: assessments, roles, or both on All. A Roles-only company used to see "No options". Only the first picked year is applied.
