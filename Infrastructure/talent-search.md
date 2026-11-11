@@ -33,6 +33,21 @@ The one exception is **going back to a version**, see below.
    bound SQL composed from `talent.attribute_def`. The AI never writes SQL or sees student data.
    States are match, unknown and no. One person on several rows is listed once (`person_key`).
 
+## Jobs, roles and skills
+
+`talent.student_profile.jobs` keeps every job from `student.resume.work_experience` with the title and
+company as typed, whether or not the company is one we know. A job is current when
+`isCurrentlyWorking` says so; with no flag, a blank, "present" or future end date counts as current.
+`current_role` and `previous_role` are searchable on their own; `role` matches either.
+
+Skills come from `current_course.skills`, each job's `skill_set`, `students.skill_ids` and each job's
+free-text `skills` (comma-separated). All are searchable by name. Only picked skills go to AI for an
+industry hint; free-text phrases (tens of thousands) do not, to keep cost flat.
+
+Industry evidence: worked 1.0, internship 0.7, skill 0.5, role 0.5 (only roles tied to one kind of
+employer, `ROLE_INDUSTRIES` in `talent_facts.py`), department 0.3; at least 0.5 to join an industry.
+One skill alone is enough today, which may be generous.
+
 ## College tiers
 
 India has no official tiers. Ours: the brand list (IIT, NIT, IIIT, IIM, AIIMS, IISc, IISER, BITS, NLU)
