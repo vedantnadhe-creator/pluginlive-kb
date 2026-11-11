@@ -610,6 +610,162 @@
         "gemini-2.5-flash": "disable"
       },
       "modality": "text"
+    },
+    "pl/corp-workflow-design": {
+      "primary": "gemini-3.8-flash",
+      "fallbacks": [
+        "gpt-6-luna"
+      ],
+      "retries": 0,
+      "reasoning": {
+        "gemini-3.8-flash": "low",
+        "gpt-6-luna": "none"
+      },
+      "modality": "text",
+      "timeout": 90
+    },
+    "pl/corp-stage-prefill": {
+      "primary": "gemini-3.8-flash",
+      "fallbacks": [
+        "gpt-6-luna"
+      ],
+      "retries": 0,
+      "reasoning": {
+        "gemini-3.8-flash": "low",
+        "gpt-6-luna": "none"
+      },
+      "modality": "text",
+      "timeout": 60
+    },
+    "pl/corp-assessment-paper": {
+      "primary": "gemini-3.8-flash",
+      "fallbacks": [
+        "gpt-6-luna"
+      ],
+      "retries": 0,
+      "reasoning": {
+        "gemini-3.8-flash": "low",
+        "gpt-6-luna": "none"
+      },
+      "modality": "text",
+      "timeout": 120
+    },
+    "pl/corp-interview-guidance": {
+      "primary": "gemini-3.8-flash",
+      "fallbacks": [
+        "gpt-6-luna"
+      ],
+      "retries": 0,
+      "reasoning": {
+        "gemini-3.8-flash": "low",
+        "gpt-6-luna": "none"
+      },
+      "modality": "text",
+      "timeout": 60
+    },
+    "pl/corp-apply-autofill": {
+      "primary": "gemini-3.8-flash",
+      "fallbacks": [
+        "gpt-6-luna"
+      ],
+      "retries": 0,
+      "reasoning": {
+        "gemini-3.8-flash": "low",
+        "gpt-6-luna": "none"
+      },
+      "modality": "text",
+      "timeout": 60
+    },
+    "pl/corp-resume-contact": {
+      "primary": "gemini-3.8-flash",
+      "fallbacks": [
+        "gpt-6-luna"
+      ],
+      "retries": 0,
+      "reasoning": {
+        "gemini-3.8-flash": "low",
+        "gpt-6-luna": "none"
+      },
+      "modality": "text",
+      "timeout": 60
+    },
+    "pl/banking-video-check": {
+      "primary": "gemini-2.5-flash",
+      "fallbacks": [
+        "gemini-3.8-flash"
+      ],
+      "timeout": 120,
+      "retries": 0,
+      "reasoning": {
+        "gemini-2.5-flash": "disable",
+        "gemini-3.8-flash": "low"
+      },
+      "modality": "audio"
+    },
+    "pl/talent-classify": {
+      "primary": "gemini-3.8-flash",
+      "fallbacks": [
+        "gpt-6-luna"
+      ],
+      "timeout": 60,
+      "retries": 0,
+      "reasoning": {
+        "gemini-3.8-flash": "low",
+        "gpt-6-luna": "none"
+      },
+      "modality": "text"
+    },
+    "pl/talent-search": {
+      "primary": "gemini-3.8-flash",
+      "fallbacks": [
+        "gpt-6-luna"
+      ],
+      "timeout": 20,
+      "retries": 0,
+      "reasoning": {
+        "gemini-3.8-flash": "low",
+        "gpt-6-luna": "none"
+      },
+      "modality": "text"
+    },
+    "pl/sim-persona": {
+      "primary": "gemini-3-flash-preview",
+      "fallbacks": [
+        "gpt-5.4-mini"
+      ],
+      "timeout": 12,
+      "retries": 0,
+      "reasoning": {
+        "gemini-3-flash-preview": "disable",
+        "gpt-5.4-mini": "none"
+      },
+      "modality": "text"
+    },
+    "pl/sim-judge": {
+      "primary": "gemini-3.8-flash",
+      "fallbacks": [
+        "gpt-6-luna"
+      ],
+      "timeout": 60,
+      "retries": 0,
+      "reasoning": {
+        "gemini-3.8-flash": "low",
+        "gpt-6-luna": "none"
+      },
+      "modality": "text"
+    },
+    "pl/sim-generate": {
+      "primary": "gemini-3.8-flash",
+      "fallbacks": [
+        "gpt-6-luna"
+      ],
+      "timeout": 120,
+      "retries": 0,
+      "reasoning": {
+        "gemini-3.8-flash": "medium",
+        "gpt-6-luna": "low"
+      },
+      "modality": "text"
     }
   }
 }
