@@ -8,7 +8,7 @@ The only UI is the test page `/talent-search` on `dev.pluginlive.com` (masked PR
 ## What it never changes
 
 Student tables stay one current row per student, and ATS reads them as before. `institute.tier` is
-not used or written (student-created colleges default to tier 1, so it is unreliable).
+not used or written by search (it holds unproven legacy values, so search uses its own evidence).
 The one exception is **going back to a version**, see below.
 
 ## Moving parts
@@ -64,8 +64,16 @@ run `talent_seed`, which also replaces `talent.institute_evidence` and re-tiers 
 Search matches on the name alone, so a name shared across states earns no tier. `institute.tier` is a
 separate live column read by ATS filters, ordering and reports. On PROD it was set for 2,406 institutes
 on 2026-11-06 with name plus state/city checks (`build_prod_tiers.py`, undo with `prod_tier_revert.sql`).
-About 13,000 PROD institutes still hold an unproven tier 1, and student-created colleges default to tier 1.
-DEV and UAT `institute.tier` were not changed.
+About 13,000 PROD institutes still hold an unproven tier 1. DEV and UAT `institute.tier` values were not changed.
+
+**Colleges added by students or forms get no tier (DEV + UAT 2026-11-11, PROD pending).** When a student picks
+"Others" or a form upload brings an unknown college, student-node calls institute-node
+`POST /institutes/crud/studentcollege`. It used to default `tier` to 1, so every typed-in college looked like
+Tier 1 in ATS. Now `institute.tier` is nullable (DB-Scripts `Talent Search/20261111T060101Z__institutes_tier_nullable.sql`)
+and that endpoint leaves it NULL; only a caller with evidence sets one. ATS tier filters (`tier = ANY/IN`) skip
+NULL rows, views pass NULL through, and corporate-node already reads NULL as no tier. Apply the SQL before
+deploying institute-node (Development `d82a1c0`, UAT `97f63b8`), or new student colleges fail on NOT NULL.
+Old student-created rows keep their tier 1; there is no `source` column to pick them out safely.
 
 ## Versions
 
