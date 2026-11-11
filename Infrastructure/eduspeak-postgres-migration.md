@@ -2469,3 +2469,65 @@ renamed. They are unreachable and were left alone.
 - The video-refresh trigger was disabled **only inside the import transaction**: each topic insert queues a `curriculum.video_refresh` event whose consumer (`curriculum-videos`, deployed) runs a YouTube search, and 1,200 of them would exhaust the UAT YouTube quota (~99/day). No events were queued; the trigger is enabled again and a probe insert queues normally. Fetching videos for these topics is a separate decision.
 - **Known quality issue:** class tags in the catalogue are wrong in places (e.g. CBSE Class 9 chapters "Matter in Our Surroundings", "Atoms and Molecules" are tagged Class 7). Treat as placeholder until reviewed.
 - Files and rollback: `~/pilvidya-data-import/curriculum-topics-20261111/` on the DEV box (`apply.sql`, `insert_global_topics.sql`, `README.md`). Undo: `DELETE FROM public.curriculum_topics WHERE is_global AND created_at = '2026-11-11 17:17:33.04399+00';`
+
+## 2026-11-11 (late night) — PilVidya UAT `eb9efe5c`: chat simulations (Phase 0 + 1) + simulation integrity fixes
+
+**The UAT checkout is now on branch `feat/chat-simulations` (`eb9efe5c`), not `main`.** The branch holds `main` plus the simulation work; the next upstream `main` round must merge, not fast-forward, until the branch lands on `main`.
+
+**DB (`eduspeak_uat`, each file applied with `psql -1`, in this order):**
+1. `20261115100000_simulation_integrity_fixes.sql`: students read the sanitized `public.student_simulations` view (no answer key). Only the grading service writes scores. Review submit and decide go through RPCs.
+2. `uat_reconcile_simulations_read.sql`, UAT only. UAT uses the reconciled `simulations_uat_*` policy names, so upstream's DROP misses them. This step recreates `simulations_uat_read` without the student branch, which had exposed answer keys to students.
+3. `20261116090000_chat_simulations_foundation.sql` creates:
+   - **Tables:** `sim_packs`, `sim_pack_versions` (frozen when published), `sim_pack_schools`, `sim_assignments`, `sim_attempts`, `sim_events`, `sim_score_reviews`, `sim_skill_profile`.
+   - **Helpers:** the `sim_*` helpers.
+   - **RPCs:** `publish_sim_pack`, `set_sim_pack_schools`, `retire_sim_pack`.
+   - **Guard triggers:** on packs, versions, assignments, and the consent check on attempts.
+   - **View:** `student_sim_assignments`, sanitized.
+4. `20261116091000_fix_curriculum_video_refresh_language.sql`: the topic-insert trigger fix from the previous section.
+
+All four are in DB-Scripts under `EduSpeak Postgres Migration/20261111T17470{2..5}Z__pilvidya_*`, with PROD pending.
+
+**Grants trap:** `03_grants` re-grants EXECUTE on **all** functions to anon and authenticated. The simulation privileges (41 REVOKE/GRANT statements, plus SELECT-only on `student_sim_assignments`) are appended to `newmigs/20261101T141914Z/uat/lockdown.uat.sql`, so the usual 03 → 05 → 06 → 07 → lockdown order re-asserts them. Do not drop that block.
+
+**Rules of the module:**
+- **Scope:** chat only, organised by Board → Class → Subject → Topic; the language is regional where the topic allows it. Archetypes are `role_play` and `case_discussion`.
+- **Authoring:** an admin or teacher generates a draft. The author edits it and signs the content-safety checklist; an admin signs for admin-created packs, the teacher for their own.
+- **Publishing:** the author publishes to schools. Admins can choose any schools (Select all / Deselect all); teachers only their mapped schools.
+- **Assignment:** students see a pack **only when a teacher assigns it**. Known limit: a teacher who belongs to several schools can assign only in their primary school.
+- **Consent:** students need `ai_data_processing` consent. Without it, `sim-attempt start` refuses.
+- **Scoring:** the AI judge scores each rubric criterion against quoted student lines; a criterion without evidence scores low. AI scores count at **0.6×** in SWOT until a teacher verifies them. A teacher can verify, override (with a reason) or answer a student dispute.
+
+**Edge functions (deployed):**
+- `sim-generate`.
+- `sim-attempt` (start / preview / get / turn / submit).
+- `sim-teacher` (verify / override / resolve).
+
+These call central LiteLLM only: `pl/sim-persona`, `pl/sim-judge`, `pl/sim-generate`, with key alias `aividya-app`. The edge env is `SIM_LLM_GATEWAY_URL=https://uat.pluginlive.com/ai-gateway/v1` plus `SIM_LLM_GATEWAY_KEY`. A missing value makes the call fail explicitly; there is no direct-provider fallback. After changing the env, run `docker compose up -d --force-recreate functions`.
+
+The old `generate-simulation`, `grade-simulation-attempt` and `record_simulation_evidence` stay in `functions.hold`.
+
+**Frontend routes:**
+- `/student/simulations` (subscription-guarded).
+- `/admin/simulations`.
+- The teacher portal's Simulations tab (`/teacher/simulations`). The old sim-review and sim-analytics nav items were removed.
+
+**Verification:**
+- **Live E2E** (`~/pilvidya-checks/chatsim-e2e/e2e.mjs`), all steps passed:
+  - Admin generate took about 30 s (`topic_only` source).
+  - Publish, then assign to student9 only. Student9's view had no hidden fields.
+  - Timings: start 0.2 s, each turn about 1.6 s, submit 5.6 s.
+  - The deliberately weak answers scored 18 (evidence-gated).
+  - Teacher verify updated the skill profile.
+- **Route sweep:** 48 routes, 0 crashes. `/my-simulations` "not found" was already there before this deploy.
+
+**Test data on UAT:**
+- An `ai_data_processing` consent row for student9 (`028807d0…`).
+- The E2E pack.
+- The aborted first run's assignment was withdrawn and its pack retired (`cleanup_run1.sql`).
+
+Files: `~/pilvidya-data-import/newmigs/20261111T174702Z-chat-simulations/` on the DEV box.
+
+**Known gaps:**
+- There is no automatic fact-citation check yet.
+- The catalogue's class tags are wrong in places.
+- `ai-consent-gate` and `ai-swot-report`, both held, read consent columns that do not exist.
