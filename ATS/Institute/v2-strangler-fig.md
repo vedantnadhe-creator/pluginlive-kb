@@ -1830,8 +1830,23 @@ so an invented weight is a visible lie.
 rows the student was ASSIGNED, which cannot distinguish "sat 3 of 6" from "only
 invited to 3". The timeline walks `occRows` and folds the attempt on:
 `not_enrolled` (no assignment row — the run predates them joining the batch, NOT
-a miss), `upcoming`, `in_progress`, `missed` (window closed, no attempt),
-`completed`.
+a miss), `upcoming` (window not open yet), `pending` (window open, student has
+NOT opened it — chip "Pending", amber), `in_progress` (student opened it —
+`attempted=true` — and has not submitted), `missed` (window closed, never
+opened), `completed` (submitted).
+
+**`pending` vs `in_progress` (2026-11-11).** Until then an open window with an
+unopened assignment fell through to `in_progress`, so a TPO saw "In progress"
+for students who had never started (PROD report: `sudheendra.kulkarni@msgfa.christuniversity.in`,
+Communication run #20 of 7 Nov, `status=PENDING attempted=f`, read "In progress"
+on 9 Nov while its 2-day window was still open). `occurrenceStudentStatus` now
+returns `pending` for that case; `in_progress` is reserved for opened-but-unsubmitted
+(an opened run whose window has closed also stays `in_progress`, never `missed`).
+The merged Diagnosis row reads `pending` when no paper is opened or completed
+and at least one is pending. institute-node `b9eb228` (DEV) / `8881ec5` (UAT);
+institute-react-v2 `6a08b87` (DEV) / `102617d` (UAT) adds the `pending` entry to
+`OCC_STATUS` and the timeline status type — ship both together, or an unknown
+status falls back to the "Upcoming" chip. **DEV + UAT. PROD pending.**
 
 **The Diagnosis row is scoped to the pair THAT student sat (2026-08-27).**
 `cd93091` institute-node. **DEV + UAT. PROD pending** (PROD runs
