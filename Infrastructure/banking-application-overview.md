@@ -28,7 +28,7 @@ shared DB. It is a Lovable-generated SPA that talks straight to Supabase
 | Repo | `PluginLive-Technologies/bankingjobreadiness`, branch `main` (Lovable bot `gpt-engineer-app[bot]` commits most of it; ~2,200 commits since 2025-01; force-pushed once on 2026-09-28) |
 | Frontend | Vite + React 18 + TypeScript + shadcn/ui + Tailwind, TanStack Query, react-router |
 | Backend | Supabase: 310 SQL migrations, **99 application edge-function entry points** + `_shared/`, RLS, pgvector for RAG |
-| UAT | `https://banking.uat.pluginlive.com/`, with a self-hosted Supabase stack at `/sb` (containers `banking-sb-{db,rest,auth,storage,functions,realtime,gateway}`, DB `banking_uat`, 226 public tables) |
+| UAT | `https://banking.uat.pluginlive.com/`, with a self-hosted Supabase stack at `/sb` (containers `banking-sb-{db,rest,auth,storage,functions,realtime,gateway}`, DB `banking_uat`, 226 public tables; files in OCI bucket `pl-uat-assessment` under `banking/` since 2026-11-11 — see banking-job-readiness.md "File storage") |
 | PROD / hosted | Lovable-hosted Supabase project `kbwjokmmzkgjwiqelrdc`. We have **no** service-role or DB access, and fixes made on UAT are not applied there |
 | Deploy | On UAT: `~/auto_deploy.sh banking main` dispatches to `~/banking-sb/deploy.sh` for full releases; `~/auto_deploy.sh banking-functions` for reviewed functions-only releases. See the deploy doc |
 

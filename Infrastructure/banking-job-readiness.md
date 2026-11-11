@@ -130,6 +130,53 @@ Any Excel-style scenario (lookups, balance sheets, loan schedules, financial mod
 - **Task stages:** a task whose `stage` list names no real stage in the pack is open at every stage (`slotOpenAt`). AI packs wrote ids like `initial_analysis`, which kept the task shut for the whole run.
 - **Not built:** AI scoring of the candidate's spoken explanation of their workbook.
 
+## File storage — OCI Object Storage (DEV + UAT since 2026-11-11; PROD still local disk)
+
+`banking-sb-storage` (supabase/storage-api v1.11.13) no longer keeps files on the VM disk on DEV and UAT. It runs
+`STORAGE_BACKEND=s3` against **OCI Object Storage** through its S3-compatible API, inside the **existing Assessment
+bucket** of each environment, under the `banking/` prefix (= `TENANT_ID`). The app, edge functions and signed/public
+URLs are unchanged: everything still goes through the storage API (`/sb/storage/v1`), which now proxies to OCI.
+
+| Env | Bucket | LMS prefix | Files (2026-11-11) |
+|---|---|---|---|
+| DEV | `pl_dev_poc` | `banking/` | 179 / 396 MB |
+| UAT | `pl-uat-assessment` | `banking/` | 180 / 396 MB |
+| PROD | — (still `file`, `/data/storage` on Pl-Prod-Banking) | — | ~730 MB, pending go |
+
+Settings in `~/banking-sb/docker-compose.yml` (storage service): `STORAGE_BACKEND: s3`, `GLOBAL_S3_BUCKET: <bucket>`,
+`GLOBAL_S3_ENDPOINT: https://bmv2bqg5gpcd.compat.objectstorage.ap-mumbai-1.oraclecloud.com`,
+`GLOBAL_S3_FORCE_PATH_STYLE: "true"` (required by OCI), `REGION: ap-mumbai-1`,
+`AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY: ${LMS_S3_ACCESS_KEY_ID}/${LMS_S3_SECRET_KEY}` from `.env`. The key is
+currently the env's existing Assessment OCI Customer Secret Key (copied from `corporate-node-v2/.env`); an LMS-only
+key is an open item.
+
+**Object key layout.** File backend on disk: `<path>/<TENANT_ID>/<GLOBAL_S3_BUCKET>/<bucket>/<name>/<version>`. S3
+backend: `<TENANT_ID>/<bucket>/<name>/<version>`, e.g. `banking/videos/audio/<id>.mp3/<version-uuid>`. `version`
+must equal `storage.objects.version`. Content-type and cache-control are object metadata in OCI (set from
+`storage.objects.metadata.mimetype/cacheControl` when migrating) — not xattrs, so the PROD `tar --xattrs` trap
+below does not apply once a stack is on S3.
+
+**Rules / gotchas**
+- **Lifecycle rules on the shared buckets must always have a prefix filter.** Today's rules only touch
+  `verification/`, `proctor/`, `videos/`, `audio/` — a rule with no prefix would delete LMS files (this is how
+  question audio was lost on 2026-11-04). Same for any bucket-wide cleanup script.
+- **Do not upgrade the storage-api image without re-testing on OCI.** v1.11.13 bundles AWS SDK 3.654; SDK ≥ 3.729
+  sends default checksums that OCI's S3 API rejects. Compatibility suite (25 ops incl. 23 MB multipart, range 206,
+  304, upsert, signed/public URLs, copy, move, bulk delete) passed against OCI on 2026-11-11.
+- Non-ASCII object names (e.g. `ü`) are rejected by storage-api itself (`InvalidKey`) on any backend.
+- File bytes still flow through the VM (browser → nginx → storage-api → OCI); the bucket gives durability, not offload.
+- The local volume `banking-sb_banking-storage` is still mounted but empty on DEV/UAT (contents removed after
+  verification). Rollback = copy objects back to the disk layout above and set `STORAGE_BACKEND: file`.
+- `rebuild.sh` drops the DB and volume but not the bucket: after a rebuild, old objects remain under `banking/`.
+
+**Migration procedure (used for DEV/UAT, reuse for PROD)** — scripts in DEV `~/lms-storage-migrate/`
+(`put.sh`, `verify.mjs`, per-env manifests):
+1. Manifest from `storage.objects` (bucket, name, version, mimetype, cacheControl, size); copy files off the volume.
+2. Upload each object to `banking/<bucket>/<name>/<version>` with its content-type/cache-control; diff sizes vs disk.
+3. Back up compose/.env, set the S3 env, confirm the manifest is unchanged, `docker compose up -d --no-deps storage`.
+4. `verify.mjs`: HEAD all objects (size + type), byte-compare 8, gateway signed URL + range, certificate PDF,
+   7 MB upload/read-back/delete. Then remove the disk copy and re-HEAD all objects.
+
 ## PROD — `lms.pluginlive.com` (built 2026-10-31, NOT launched)
 
 Separate OCI VM **`Pl-Prod-Banking`** (compartment `PluginLivePROD`, VCN `Pl-Production`, subnet `pl-prod-static-website-subnet`,
