@@ -130,7 +130,7 @@ Any Excel-style scenario (lookups, balance sheets, loan schedules, financial mod
 - **Task stages:** a task whose `stage` list names no real stage in the pack is open at every stage (`slotOpenAt`). AI packs wrote ids like `initial_analysis`, which kept the task shut for the whole run.
 - **Not built:** AI scoring of the candidate's spoken explanation of their workbook.
 
-## File storage — OCI Object Storage (DEV + UAT since 2026-11-11; PROD still local disk)
+## File storage — OCI Object Storage (DEV, UAT and PROD since 2026-11-11)
 
 `banking-sb-storage` (supabase/storage-api v1.11.13) no longer keeps files on the VM disk on DEV and UAT. It runs
 `STORAGE_BACKEND=s3` against **OCI Object Storage** through its S3-compatible API, inside the **existing Assessment
@@ -141,14 +141,15 @@ URLs are unchanged: everything still goes through the storage API (`/sb/storage/
 |---|---|---|---|
 | DEV | `pl_dev_poc` | `banking/` | 179 / 396 MB |
 | UAT | `pl-uat-assessment` | `banking/` | 180 / 396 MB |
-| PROD | — (still `file`, `/data/storage` on Pl-Prod-Banking) | — | ~730 MB, pending go |
+| PROD | `pl-prod-assessment` | `banking/` | 166 / 727 MB — `/data/storage` on Pl-Prod-Banking kept as rollback copy (not deleted) |
 
 Settings in `~/banking-sb/docker-compose.yml` (storage service): `STORAGE_BACKEND: s3`, `GLOBAL_S3_BUCKET: <bucket>`,
 `GLOBAL_S3_ENDPOINT: https://bmv2bqg5gpcd.compat.objectstorage.ap-mumbai-1.oraclecloud.com`,
 `GLOBAL_S3_FORCE_PATH_STYLE: "true"` (required by OCI), `REGION: ap-mumbai-1`,
 `AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY: ${LMS_S3_ACCESS_KEY_ID}/${LMS_S3_SECRET_KEY}` from `.env`. The key is
-currently the env's existing Assessment OCI Customer Secret Key (copied from `corporate-node-v2/.env`); an LMS-only
-key is an open item.
+currently the env's existing Assessment OCI Customer Secret Key (DEV/UAT: copied from `corporate-node-v2/.env`;
+PROD: from the K8s ConfigMap `api/corp-v2-api-config` `.env`, the same key the PROD Assessment services use;
+PROD file `/opt/banking-sb/.env`). An LMS-only key is an open item.
 
 **Object key layout.** File backend on disk: `<path>/<TENANT_ID>/<GLOBAL_S3_BUCKET>/<bucket>/<name>/<version>`. S3
 backend: `<TENANT_ID>/<bucket>/<name>/<version>`, e.g. `banking/videos/audio/<id>.mp3/<version-uuid>`. `version`
@@ -165,6 +166,11 @@ below does not apply once a stack is on S3.
   304, upsert, signed/public URLs, copy, move, bulk delete) passed against OCI on 2026-11-11.
 - Non-ASCII object names (e.g. `ü`) are rejected by storage-api itself (`InvalidKey`) on any backend.
 - File bytes still flow through the VM (browser → nginx → storage-api → OCI); the bucket gives durability, not offload.
+- PROD switched 2026-11-11 12:04:58Z (storage restart, up in 8 s). Pre-checks: VM → OCI endpoint 200 in 0.13 s and a
+  put/get/delete with the PROD key from inside the storage-api image; `pl-prod-assessment` lifecycle got the `banking/*`
+  exclusion before any LMS file landed. Verified 165/165 + 8 byte-identical + signed range + 7 MB upload; 0 writes to
+  `/data/storage` after the switch. Rollback on PROD = set `STORAGE_BACKEND: file` and restart storage (copy is current
+  only up to the switch).
 - The local volume `banking-sb_banking-storage` is still mounted but empty on DEV/UAT (contents removed after
   verification). Rollback = copy objects back to the disk layout above and set `STORAGE_BACKEND: file`.
 - `rebuild.sh` drops the DB and volume but not the bucket: after a rebuild, old objects remain under `banking/`.
