@@ -69,6 +69,8 @@ The candidates list ignores `moved_back` dispatch rows, so it shows the round th
 - New Aptitude stages default to every section, with topics spread across sections (`completeAptitudeSelection`).
 - Candidates filter: "Current arrears", from the form's current arrears/backlogs answers (the highest).
 - Degree and department search, and filter-panel search, match short forms (CSE, ECE, BE, MBA, btech) via `lib/nameSearch.ts`.
+- Campus invites start **Pending** (`job_role_institute_mapping.status` 0) on both the wizard and the drawer path; the institute accepts or rejects on its Roles page. Apply and evaluation never read that status, so a pending invite does not hold the corporate's flow (`inviteCampuses`, since 2026-11-11; invites made earlier stay Accepted).
+- A Custom Assessment round has no PDF report: the timeline and Export Reports download that candidate's Custom sheet (`exportCandidates`, `.xlsx`) instead (`getRoundReport`).
 - Other colleges count subtracts only the suggested campuses the search returned. The Roles empty state names the search. Role screens say "already applied for this role".
 
 ## Passing score and Auto-Pilot

@@ -18,6 +18,8 @@ list, a per-assessment detail page and a full schedule, all in
 | Schedule | `/v2/schedule` | `dashboard/v2/schedule?from=&to=` |
 | Usage widget (top bar) | both primary screens | `assessments/v2/usage` |
 
+The Assessments sent / taken KPIs (and their all-time figure and per-type breakdown) count **role-evaluation assessments too** (`CorporateDashboardV2.getSummary`, `getPartCandidateGrain({ roleEvaluations: true })`, since 2026-11-11). Active assessments and the lists stay standalone-only. The Usage widget counts the current pack, so the two numbers differ.
+
 All are `GET`, namespaced `/corporates/:corporateId/...`, `isPrivate: true`.
 
 ## Why corporate-node and not corporate-node-v2
