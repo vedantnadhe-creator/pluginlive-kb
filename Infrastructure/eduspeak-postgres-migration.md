@@ -2448,3 +2448,15 @@ renamed. They are unreachable and were left alone.
 - Plan locks hold.
 - Sweep: 44/46 pages ok. The 2 "not found" are student simulations, which upstream hasn't routed.
 - Admin Dashboard, Students, Teachers, System Health and Video Approval render.
+
+## 2026-11-11 (evening) — PilVidya UAT `103f567e` (upstream `0f75cbed` board normalization, + 4 UAT fix commits, not pushed)
+
+**DB:** nothing to apply. The upstream commit is frontend only, with no migrations or edge functions.
+
+**Frontend fixes:**
+- `0f75cbed` imported `SUBJECTS`/`CLASSES` from `lib/curriculum`, which doesn't export them, so the build failed. They now come from
+  `lib/constants`.
+- It also wrote `[...new Set(xs.map(normalizeBoard))).filter(Boolean)]`, calling `.filter` on a `Set`. That crashed the whole Admin
+  Dashboard and Target vs Achievement. Moved the paren.
+- The tsc/esbuild scans don't catch this kind of runtime error. The admin login check (`logins.cjs`) caught it: the admin page had
+  only about 120 characters of text.
