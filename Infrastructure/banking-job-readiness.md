@@ -34,7 +34,7 @@ commit `vX.Y.Z` (bump Z for every PROD deploy). Hotfixes branch from the release
 `DEPLOY_REF=<sha>` still overrides the default ref on DEV/UAT for a one-off.
 
 Starting point: `Development` = `UAT` = `8cd5701e` (= `main` on 2026-11-09); `release/prod-v1.1` = `1be41a69` (PROD, 2026-11-09)
-Tags: `v1.1.0` = `0aaf2f2e`, `v1.1.1` = `1be41a69`, `v1.1.2` = `7f6fc4b9`, `v1.1.3` = `61d23d01`, `v1.1.4` = `98ad9668`, `v1.1.5` = `180822ba` (PROD from 2026-11-10 17:42Z); `UAT` = `main` = `cce235ae`, `Development` = `c6b61541`, `Development` = `498b43b0` (2026-11-09 13:12Z).
+Tags: `v1.1.0` = `0aaf2f2e`, `v1.1.1` = `1be41a69`, `v1.1.2` = `7f6fc4b9`, `v1.1.3` = `61d23d01`, `v1.1.4` = `98ad9668`, `v1.1.5` = `180822ba` (PROD from 2026-11-10 17:42Z); `UAT` = `main` = `2af5dcef`, `Development` = `6be3530b` (2026-11-11), `Development` = `498b43b0` (2026-11-09 13:12Z).
 as running on PROD. `main` is no longer deployed anywhere; it is kept only for history and old PRs.
 DEV copy of the stack (2026-11-09): `~/banking-sb` on the DEV box, DB `banking_dev` on `127.0.0.1:5443`, app worktree
 `~/banking-dev-app`, static files served from `/var/www/banking-dev`; data copied from UAT that day, own JWT secret,
@@ -4566,4 +4566,30 @@ The duplicate `f0ba99ee` was not changed. The affected learner's own user gets t
 same shape with throw-away users (email-less learner + inactive duplicate holding the mobile address), signs in with a known code
 and checks the session user: old code on UAT 2/4 ("got duplicate B"); fixed DEV, UAT and PROD 4/4; test users and rows removed
 (PROD checked: 0 left). `xllive-prod.cjs` 21/21.
+
+## 2026-11-11 — Public sign-up closed; old derived passwords rotated: DEV `6be3530b`, UAT and `main` `2af5dcef` (PROD pending)
+
+Security audit 2026-11-02 items 1–2, re-checked open on PROD 2026-11-11.
+**1. Open sign-up.** GoTrue public sign-up with auto-confirm gave any visitor an authenticated session (and every policy and
+function open to `authenticated`). The only caller was the Candidate/Trainer **Register** form (`Login.tsx`, `auth.signUp`).
+Now the form calls the new edge function **`self-register`** (`verify_jwt = false`): server-side validation
+(`_shared/self-register.ts parseSelfRegistration`), refuses a mobile already in `profiles` or the role table and an email
+already on that role table (a second row makes email sign-in ambiguous), **5 registrations per visitor per hour**
+(bucket in `auth_login_otp_rate_limits`, key = HMAC of the visitor address), creates the pending account with the service
+role (Auth email `<mobile>@bankready.app`, random password, `user_metadata.source = self-register`), writes profile
+(`approval_status = pending`), `students`/`trainers` row and `user_roles`, returns **no session**; a failure deletes the
+half-made user. Sign-in is unchanged (OTP via `candidate-otp-login`). Then **`GOTRUE_DISABLE_SIGNUP: "true"`** in each box's
+`docker-compose.yml` (not in the repo; `deploy.sh` does not touch it), `docker compose up -d auth`; backup
+`docker-compose.yml.bak-<ts>-signup`. Server-side `createUser` (OTP login, imports, admin) is not affected.
+**Visitor address:** the gateway's `/functions/v1/` block sets its own headers, so it adds no `X-Forwarded-For` hop and no
+`X-Real-IP`; the function uses the **last** `X-Forwarded-For` hop (appended by host nginx). `X-Real-IP` and earlier hops come
+from the visitor. Note: `request-login-otp` / `candidate-otp-login` still read `X-Real-IP` first, so their network limit can be
+sidestepped with a forged header (open).
+**2. Derived passwords.** 31 DEV / 32 UAT (31 on PROD) `@bankready.app` accounts still had `Otp_<mobile>_1234`; none admin or
+`admin_password_set`. Replaced with random bcrypt passwords in one transaction (`/tmp/p2/rotate.sql`); sign-in never uses them.
+**Verification (diagnostics, not a Jev run).** `~/banking-checks/signup-check.cjs` (`ENV=dev|uat|prod`): public sign-up refused,
+Register path creates a pending account with student row and role, no session, same mobile refused, test account removed,
+0 derived passwords — DEV and UAT 7/7. `emailless-login.cjs` (OTP sign-in) 4/4 on DEV and UAT with sign-up off.
+`signup-throttle.cjs` (UAT): 7 attempts with forged `X-Forwarded-For`/`X-Real-IP` all counted against the real address.
+**PROD:** pending a go — cherry-pick both commits onto `release/prod-v1.1`, then the compose flip and the rotation SQL.
 
