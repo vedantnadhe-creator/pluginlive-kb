@@ -34,7 +34,7 @@ commit `vX.Y.Z` (bump Z for every PROD deploy). Hotfixes branch from the release
 `DEPLOY_REF=<sha>` still overrides the default ref on DEV/UAT for a one-off.
 
 Starting point: `Development` = `UAT` = `8cd5701e` (= `main` on 2026-11-09); `release/prod-v1.1` = `1be41a69` (PROD, 2026-11-09)
-Tags: `v1.1.0` = `0aaf2f2e`, `v1.1.1` = `1be41a69`, `v1.1.2` = `7f6fc4b9`, `v1.1.3` = `61d23d01`, `v1.1.4` = `98ad9668`, `v1.1.5` = `180822ba` (PROD from 2026-11-10 17:42Z); `UAT` = `main` = `2af5dcef`, `Development` = `6be3530b` (2026-11-11), `Development` = `498b43b0` (2026-11-09 13:12Z).
+Tags: `v1.1.0` = `0aaf2f2e`, `v1.1.1` = `1be41a69`, `v1.1.2` = `7f6fc4b9`, `v1.1.3` = `61d23d01`, `v1.1.4` = `98ad9668`, `v1.1.5` = `180822ba` (PROD from 2026-11-10 17:42Z); `UAT` = `main` = `50655975`, `Development` = `061195cc` (2026-11-11), `Development` = `498b43b0` (2026-11-09 13:12Z).
 as running on PROD. `main` is no longer deployed anywhere; it is kept only for history and old PRs.
 DEV copy of the stack (2026-11-09): `~/banking-sb` on the DEV box, DB `banking_dev` on `127.0.0.1:5443`, app worktree
 `~/banking-dev-app`, static files served from `/var/www/banking-dev`; data copied from UAT that day, own JWT secret,
@@ -4592,4 +4592,35 @@ Register path creates a pending account with student row and role, no session, s
 0 derived passwords — DEV and UAT 7/7. `emailless-login.cjs` (OTP sign-in) 4/4 on DEV and UAT with sign-up off.
 `signup-throttle.cjs` (UAT): 7 attempts with forged `X-Forwarded-For`/`X-Real-IP` all counted against the real address.
 **PROD:** pending a go — cherry-pick both commits onto `release/prod-v1.1`, then the compose flip and the rotation SQL.
+
+## 2026-11-11 — Learner data reads scoped; every service-role function checks its caller: DEV `061195cc`, UAT and `main` `50655975` (PROD pending)
+
+Security audit 2026-11-02 items 3–4.
+**3. Reads.** Migration `20261111160000_scope_learner_data_reads` (rollback `supabase/rollbacks/…down.sql`) drops the blanket
+"authenticated can read" policies on `payment_requests`, `proctoring_events/logs/summary`, `quiz_attempts`, `module_progress`,
+`student_solved_challenges`, `trainer_students`, `module_group_assignments`, and adds one read rule per learner table using
+`private.trainer_can_view_student_data(<student ref>)` (the learner, admins, trainers / institute users for their own learners).
+`module_group_assignments`: rows with no `student_id` (institute/college/cohort scope) stay readable; rows naming a learner follow
+the same rule. Leaderboards read through `leaderboard_quiz_scores()`, `leaderboard_module_progress()`, `leaderboard_coding_solves()`
+(SECURITY DEFINER, authenticated only, shown columns only); `Leaderboard.tsx` and `CodingLeaderboard.tsx` call them.
+`topic_attachments` stays readable (lesson files, no learner data). Metabase views are owner-run and unaffected.
+Known, unchanged: the Leaderboard lists names from `profiles`, which a learner can read only for themself, so it shows just the
+learner (before and after this change).
+**4. Callers.** `_shared/caller.ts requireCaller(req, policy, cors)` (+ import-free `_shared/caller-roles.ts`): service-role bearer =
+internal call; anon key = nobody (401); otherwise `auth.getUser` + `user_roles`. Added first thing in 25 functions —
+signed_in: ai-coach, ai-personal-coach, ai-practice-descriptive/-generate-mcq/-interview, chat, rag-chat, rag-embed-document,
+generate-diagnostic-quiz, generate-lesson-video-quiz, generate-practice-plan, generate-uploaded-video-mcqs, recommend-next-topics,
+generate-video; staff (admin, super_admin, trainer, teacher, institute, taxonomy_editor): generate-coding-challenges,
+generate-section-content, send-feedback-notification, youtube-search; admin: bulk-generate-candidate-paths, bulk-export-worker,
+github-status, regenerate-all-paths, send-test-otp; internal only: daily-practice-plan-cron, generate-daily-practice-plan (nothing
+schedules them; they now call generate-practice-plan with the service key, not the anon key). `generate-video`: a non-staff caller
+may only create a topic's first video with the default provider (409 if one exists). Already guarded and untouched: trainer-bulk-*,
+trainer-export-* (`requireTrainerOrAdmin`); public by design: candidate-otp-login, request-login-otp, request-password-reset,
+certificate-verify, youtube-oauth-callback, download-assessment-report (one-time token), self-register, admin-email-login;
+bootstrap/seed admin functions are inert while `BOOTSTRAP_ADMIN_TOKEN` is unset.
+**Verification (diagnostics, not a Jev run).** Read matrix (learner / trainer / admin / institute, in a rolled-back transaction) 25/26
+on UAT before apply and on DEV + UAT after (the 26th: coding leaderboard empty because `student_solved_challenges` has no rows on
+UAT or PROD). `~/banking-checks/fn-caller-probe.cjs` (`ENV=dev|uat|prod`): 25 stranger + 11 learner probes refused on DEV and UAT;
+`ALLOWED=1` learner/admin calls get past the check. UAT Leaderboard as a learner: loads, no failed API calls, no page errors.
+Tests: `functionCallerChecks.test.ts`; `codingLeaderboard` and `videoLearningReuseHandler` tests updated; full suite baseline unchanged.
 
