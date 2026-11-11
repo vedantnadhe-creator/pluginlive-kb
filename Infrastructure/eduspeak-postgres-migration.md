@@ -2460,3 +2460,4 @@ renamed. They are unreachable and were left alone.
   Dashboard and Target vs Achievement. Moved the paren.
 - The tsc/esbuild scans don't catch this kind of runtime error. The admin login check (`logins.cjs`) caught it: the admin page had
   only about 120 characters of text.
+**Verification:** 10 demo + 13 tester logins pass. Plan locks hold. Sweep: 44/46 pages ok; the 2 not-found are student simulations, which upstream hasn't routed. Admin Dashboard renders.
