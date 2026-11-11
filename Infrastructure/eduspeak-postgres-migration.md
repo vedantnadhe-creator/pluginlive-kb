@@ -2376,3 +2376,44 @@ Coach (`navigate`, `handleSignOut` → `hardLogout`), English Lab (`studentBoard
 plan locks hold.
 
 **2026-11-10 (later):** upstream `a48ef0cd` edited the already-shipped `20261126000000_admin_curriculum_file_storage.sql`, replacing `can_access_sprint_school(tc.school_id)` (missing on their hosted DB) with "school exists". That would let any signed-in user read every school's published teacher-content files. UAT has `can_access_sprint_school()`, so the original, school-scoped version stays applied on UAT; the edit is not applied. Upstream needs to define the function on their side instead.
+
+## 2026-11-11 — PilVidya UAT `fff84b4b` (upstream `42522481`, 29 commits, + 1 UAT fix commit, not pushed)
+
+The UAT checkout is upstream `main` plus one local commit. The previous local commits are kept on branch `uat-local-909d5ac5`. The
+fixes that upstream had not already made were carried forward into `fff84b4b`.
+
+**DB: nothing applied.** Upstream's `20261128000000_institute_users_core.sql` is skipped on UAT, for three reasons:
+- `institute_users` already exists with the columns the app writes (name, email, contact_no, role text, active). The migration's
+  `CREATE TABLE` (no `IF NOT EXISTS`) would fail.
+- Its new `institute_users_read` policy is `USING (true)`, which lets any signed-in user read every institute's staff.
+- Its `teacher_institute_map` table, `institute_user_role` enum and `teacher_profiles.institute_id → schools` FK are used by no code.
+  UAT's `teacher_profiles.institute_id` already points at `institutes`.
+
+**Functions:** no upstream changes. The hold list is unchanged.
+
+**Frontend fixes in `fff84b4b`:**
+- `App.tsx` routed `/student/certificates` to `StudentCertificates` without declaring it, which crashed every App render.
+- `SimulationPlayer` never called its data hooks. It now uses `useSimulation`, `useStudentAttempts` and `useExcelCalculator`.
+- Parent dashboard:
+  - restored the `bootstrapError`/`bootstrapAttempt` state
+  - `sendingMessage` state
+  - a stray `const today` that rendered as JSX text
+  - a per-subject goal bar that sat outside its loop
+  - `GoalSetter` import
+  - `GoalSetter` itself didn't parse
+- Missing icons on Student Entry, Student Progress and Foreign Languages.
+- Re-applied the AI Coach, English Lab and Curriculum fixes.
+
+The 9 admin pages that are lazily declared but unrouted (Attendance, Fee, HR, Library, Transport, …) still reference loaders upstream
+renamed. They are unreachable and were left alone.
+
+**Known upstream gaps (not fixed):**
+- Parent "exam results" calls `today_attendance` as a placeholder. The attendance tables are absent, so parents see a "Couldn't load
+  exam results" toast.
+- Multi-child comparison shows dummy or random scores.
+
+**Verification:**
+- 10 demo + 13 tester logins pass.
+- Plan locks hold.
+- 46-page sweep: 0 crashes, same as baseline.
+- Certificates, Progress, AI Coach, English Lab, Curriculum, Foreign Languages (plan-locked) and Parent pages render.
