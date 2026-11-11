@@ -34,7 +34,7 @@ commit `vX.Y.Z` (bump Z for every PROD deploy). Hotfixes branch from the release
 `DEPLOY_REF=<sha>` still overrides the default ref on DEV/UAT for a one-off.
 
 Starting point: `Development` = `UAT` = `8cd5701e` (= `main` on 2026-11-09); `release/prod-v1.1` = `1be41a69` (PROD, 2026-11-09)
-Tags: `v1.1.0` = `0aaf2f2e`, `v1.1.1` = `1be41a69`, `v1.1.2` = `7f6fc4b9`, `v1.1.3` = `61d23d01`, `v1.1.4` = `98ad9668`, `v1.1.5` = `180822ba` (PROD from 2026-11-10 17:42Z); `UAT` = `main` = `50655975`, `Development` = `061195cc` (2026-11-11), `Development` = `498b43b0` (2026-11-09 13:12Z).
+Tags: `v1.1.0` = `0aaf2f2e`, `v1.1.1` = `1be41a69`, `v1.1.2` = `7f6fc4b9`, `v1.1.3` = `61d23d01`, `v1.1.4` = `98ad9668`, `v1.1.5` = `180822ba`, `v1.1.6` = `21423643` (PROD from 2026-11-11 15:22Z); `UAT` = `main` = `50655975`, `Development` = `061195cc` (2026-11-11), `Development` = `498b43b0` (2026-11-09 13:12Z).
 as running on PROD. `main` is no longer deployed anywhere; it is kept only for history and old PRs.
 DEV copy of the stack (2026-11-09): `~/banking-sb` on the DEV box, DB `banking_dev` on `127.0.0.1:5443`, app worktree
 `~/banking-dev-app`, static files served from `/var/www/banking-dev`; data copied from UAT that day, own JWT secret,
@@ -4567,7 +4567,7 @@ same shape with throw-away users (email-less learner + inactive duplicate holdin
 and checks the session user: old code on UAT 2/4 ("got duplicate B"); fixed DEV, UAT and PROD 4/4; test users and rows removed
 (PROD checked: 0 left). `xllive-prod.cjs` 21/21.
 
-## 2026-11-11 — Public sign-up closed; old derived passwords rotated: DEV `6be3530b`, UAT and `main` `2af5dcef` (PROD pending)
+## 2026-11-11 — Public sign-up closed; old derived passwords rotated: DEV `6be3530b`, UAT and `main` `2af5dcef`, PROD `21423643` (`v1.1.6`)
 
 Security audit 2026-11-02 items 1–2, re-checked open on PROD 2026-11-11.
 **1. Open sign-up.** GoTrue public sign-up with auto-confirm gave any visitor an authenticated session (and every policy and
@@ -4593,7 +4593,7 @@ Register path creates a pending account with student row and role, no session, s
 `signup-throttle.cjs` (UAT): 7 attempts with forged `X-Forwarded-For`/`X-Real-IP` all counted against the real address.
 **PROD:** pending a go — cherry-pick both commits onto `release/prod-v1.1`, then the compose flip and the rotation SQL.
 
-## 2026-11-11 — Learner data reads scoped; every service-role function checks its caller: DEV `061195cc`, UAT and `main` `50655975` (PROD pending)
+## 2026-11-11 — Learner data reads scoped; every service-role function checks its caller: DEV `061195cc`, UAT and `main` `50655975`, PROD `21423643` (`v1.1.6`)
 
 Security audit 2026-11-02 items 3–4.
 **3. Reads.** Migration `20261111160000_scope_learner_data_reads` (rollback `supabase/rollbacks/…down.sql`) drops the blanket
@@ -4623,4 +4623,18 @@ on UAT before apply and on DEV + UAT after (the 26th: coding leaderboard empty b
 UAT or PROD). `~/banking-checks/fn-caller-probe.cjs` (`ENV=dev|uat|prod`): 25 stranger + 11 learner probes refused on DEV and UAT;
 `ALLOWED=1` learner/admin calls get past the check. UAT Leaderboard as a learner: loads, no failed API calls, no page errors.
 Tests: `functionCallerChecks.test.ts`; `codingLeaderboard` and `videoLearningReuseHandler` tests updated; full suite baseline unchanged.
+
+### PROD release `21423643` (`v1.1.6`), 2026-11-11 15:22Z — items 1–4
+Cherry-picks of `25a5f0e9`, `2af5dcef`, `50655975` on `release/prod-v1.1`; `/tmp/p2/prod_deploy51.sh` (backup
+`/data/backups/prod-20261111T152203Z`: DB dump, dist, functions, `docker-compose.yml`): file guard 39 files → build → 120 functions
+(incl. `self-register`) → migration `20261111160000` in one transaction (0 blanket reads left, 3 leaderboard functions) → dist swap →
+`GOTRUE_DISABLE_SIGNUP: "true"` + `docker compose up -d auth` → `rotate.sql` (31 rotated, 0 left).
+**Checks on PROD (diagnostics, not a Jev run):** `signup-check.cjs` 7/7; `emailless-login.cjs` 4/4; `fn-caller-probe.cjs` 36/36 with a
+throw-away learner made through `self-register` (`prod-throwaway.cjs`, deleted after; 0 QA rows/users left); read matrix (learner +
+QA admin, rolled back) 18/19 — the 19th is the empty coding leaderboard (`student_solved_challenges` has no rows); `xllive-prod.cjs`
+21/21 (one earlier run 20/21 on the AI persona's wording, passed on rerun). Rollback: restore `docker-compose.yml` from the backup and
+`docker compose up -d auth`; `supabase/rollbacks/20261111160000_scope_learner_data_reads.down.sql`; dist/functions tarballs.
+Still open from the audit: shared third-party keys UAT/PROD, CSP report-only, answer keys / payment secrets in the browser (not
+re-checked), trainer edits any coding challenge, learner deletes own proctoring logs, `_bak_module_groups_status_20261007` without
+RLS, old secret in git history, setup test data on PROD, login OTP functions trust a forgeable `X-Real-IP`.
 
