@@ -62,6 +62,15 @@ A candidate moved off an assessment round without starting it can no longer take
 
 The candidates list ignores `moved_back` dispatch rows, so it shows the round the candidate is on now.
 
+## Fixes 2026-11-11 (DEV + UAT)
+
+- Closing or cancelling a role closes every assessment round its candidates were sent to (`setRoleAssessmentAccess`, admin-node candidateAccess). Reopening opens only each candidate's current round. A role reaching its end date keeps evaluating.
+- Stage assessments are named "<role> — <stage>" with no stage id. `findMapId` only adopts maps no workflow stage owns, so a duplicated role never joins the original's assessment. The 17 existing UAT names were renamed; a backup is at ~/backups/acm_names_backup_20261111.json on the UAT box.
+- New Aptitude stages default to every section, with topics spread across sections (`completeAptitudeSelection`).
+- Candidates filter: "Current arrears", from the form's current arrears/backlogs answers (the highest).
+- Degree and department search, and filter-panel search, match short forms (CSE, ECE, BE, MBA, btech) via `lib/nameSearch.ts`.
+- Other colleges count subtracts only the suggested campuses the search returned. The Roles empty state names the search. Role screens say "already applied for this role".
+
 ## Passing score and Auto-Pilot
 
 An assessment stage's pass bar is its "Passing score: N%" evaluation parameter. With Auto-Pilot on, that row can't be removed and only its number is editable (0-100; left blank, it goes back to the previous value). Turning Auto-Pilot on, or loading a stage with parameters but no bar, adds the line at the stage's bar or 60, the backend default. A stage with no parameters gets it from the AI build. UI rule only: a save without a bar still runs on 60.
