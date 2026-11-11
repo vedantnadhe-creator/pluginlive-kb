@@ -2417,3 +2417,34 @@ renamed. They are unreachable and were left alone.
 - Plan locks hold.
 - 46-page sweep: 0 crashes, same as baseline.
 - Certificates, Progress, AI Coach, English Lab, Curriculum, Foreign Languages (plan-locked) and Parent pages render.
+
+## 2026-11-11 (later) — PilVidya UAT `774951f3` (upstream `fff9f987`, +9 commits, + 2 UAT fix commits, not pushed)
+
+**DB: nothing to apply.** The 9 upstream commits touch only the frontend. There are no new migrations or edge functions.
+
+**Migration audit:**
+- Every upstream migration is applied on UAT except the two deliberate skips:
+  - `20261128000000_institute_users_core` (see above)
+  - the "school exists" edit to `20261126000000_admin_curriculum_file_storage`
+- The code (`frontend/src` + `supabase/functions`) calls 79 tables and 10 RPCs that exist neither on UAT nor in **any** migration in the repo. They
+  are not missing migrations; upstream never wrote the SQL. Examples:
+  - `rate_limit_rules`/`stats`, `service_health_*`, `attendance_*`
+  - `llm_configs`, `study_group_*`, `webhook_subscriptions`, `fee_default_predictions`
+  - RPCs `check_and_deduct_ai_credits`, `record_audit_log`, `compute_student_risk_score`
+- On 11-11, real UAT traffic only hit Rate Limit Config, System Health, the attendance pages and one SWOT call. SWOT calls
+  `.from("subscription_access_snapshot")`, which is an RPC, not a table. These pages load empty and don't crash.
+- Re-check with: grep `.from()`/`.rpc()` names at HEAD, then check them against `pg_class`/`pg_proc`.
+
+**Frontend fixes in `774951f3`:**
+- Admin Dashboard loader used an undefined `activeSubs`. It threw after loading subscriptions, so board, question and system-health
+  stats didn't load.
+- Students/Teachers bulk plan toast used an undefined `ids`.
+- Teachers `Select` import was missing (render crash).
+- System Health `CardDescription` import was missing (render crash).
+- `StudentCertificates` was declared twice: upstream added it too.
+- `8fac71b0` = the earlier `fff84b4b` fixes, rebased onto `fff9f987`.
+**Verification:**
+- 10 demo + 13 tester logins pass.
+- Plan locks hold.
+- Sweep: 44/46 pages ok. The 2 "not found" are student simulations, which upstream hasn't routed.
+- Admin Dashboard, Students, Teachers, System Health and Video Approval render.
