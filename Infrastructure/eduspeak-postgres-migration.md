@@ -2697,3 +2697,7 @@ QA scripts are on the DEV box in `~/pilvidya-checks`:
   - **SWOT:** reads `rpt_subscription_status`.
 - **Robo Teacher:** see `Infrastructure/pilvidya-robo-teacher.md`.
 - **LiteLLM UAT:** `pl/robo-teacher` and `pl/robo-quiz` added to the policy (backup `policy-backups/tasks-20261112T072144Z.json`) and to the `aividya-app` key.
+
+## 2026-11-12 (night) — PilVidya UAT `4d78037f`: Robo Teacher step 2
+- Migration `20261117130000_robo_teacher_assignments.sql` (DB-Scripts `cb3b13a`): `robo_assignments`, `robo_sessions.assignment_id`, `robo_class_summaries` recreated, `robo_class_events` view. PROD pending.
+- New edge function `robo-speech` (ElevenLabs Scribe; no new secret). Details in `Infrastructure/pilvidya-robo-teacher.md`.

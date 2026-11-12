@@ -59,13 +59,31 @@ French, German, Spanish, Japanese, Mandarin, Russian, Portuguese and Arabic, at 
 - **Medium:** the explanation is in the student's language; the phrases being learned are in the foreign language «inside guillemets» with their meaning, and the student repeats them.
 - **Voice:** the student can tick "Answer in French" to switch the recogniser to that language.
 - **Limits:**
-  - There is no pronunciation scoring yet; `pronunciation-score` or Azure pronunciation assessment would be the next step.
+  - Pronunciation is a word-match proxy (see below), not phoneme scoring.
   - The foreign-language curriculum (CEFR units) is a fixed catalogue, not admin-managed.
   - Plan gating: the Foreign Languages menu is plan-locked for Free Trial users, but the Robo Teacher foreign-language tab is not.
 
+## Step 2 (UAT `4d78037f`, 2026-11-12)
+- **Server speech-to-text (`robo-speech` edge function):**
+  - `transcribe {audio_base64, mime, language}` → `{text}`; `pronounce {…, target_language, expected}` → `{heard, score, words}`.
+  - Engine: ElevenLabs Scribe (`scribe_v1`, ISO 639-3 codes) with the existing `ELEVENLABS_PIL_API_KEY`. aividya has no Deepgram key, so no live relay.
+  - Student session required; audio ≤ 2 MB (~30 s), mime allowlist; failures return 502 "Could not hear that clearly…".
+  - Browser records with MediaRecorder and stops after 1.4 s of silence (25 s cap); falls back to the browser recogniser where recording is unsupported.
+- **Talking avatar:** the mouth follows the TTS audio level (Web Audio analyser); the mic button shows a level ring.
+- **Teacher assignments (migration `20261117130000_robo_teacher_assignments.sql`; DB-Scripts `cb3b13a`):**
+  - `robo_assignments`: class/subject/topic copied from `curriculum_topics` by a guard trigger; whole class (`student_profile_ids` empty) or named students; `due_at`, `target_mastery`, note; withdraw = `cancelled_at`.
+  - RLS: platform admin or the teacher's schools (`sim_teacher_schools()`); `assigned_by`/`school_id` frozen on update.
+  - `robo_sessions.assignment_id`; `start` refuses an assignment that is not the student's or a different topic.
+  - `robo_class_events` view: transcript lines, filtered by `can_access_student`.
+  - Page `/teacher/robo-classes` (teacher menu "Robo Classes"): Assign, Assignments (reached/tried, Withdraw), Results (debrief, misconceptions, transcript).
+- **Coach (`_shared/robo/coach.ts`, action `get_coach`):** assignments, revisions due, subject average (last 5) vs `goal_target`, last class.
+  - Spaced revision: topics below max(60, target) come back after 1/3/7/14 days until mastered.
+  - Shown on the Robo Teacher setup screen, the student dashboard (`RoboCoachCard`) and the parent Daily Digest (`learning_coach`, computed live).
+- **Pronunciation (foreign languages):** "Practise saying it" chips for every «phrase» the teacher says; Hear (browser TTS) / Say (Scribe in the target language).
+  - Score = expected words recognised, weighted by Scribe confidence; accents ignored; Japanese/Chinese compared by character.
+  - Every foreign-language reply, including the greeting, carries at least one «phrase».
+- **Verified:** `~/pilvidya-checks/chatsim-e2e/robo-next.mjs` 15/15 (cross-school assign refused, wrong-topic start refused, transcript ACL, Scribe English/Hindi exact, French pronunciation 97%); browser fake-mic turn answered in 9.5 s; teacher Results + transcript; parent digest section; fr/es/ja openings each carry a phrase.
+
 ## Next steps (not built)
-- Server speech-to-text (Deepgram live relay as in Banking) for Edge and Indic accuracy.
-- Talking avatar, with lip movement driven by audio level.
-- Teacher assigns Robo classes and sees class transcripts.
-- Proactive nudges (dashboard and parent digest) from `robo_class_summaries` against `goal_target`.
-- Spaced revision of topics marked `needs_revision`.
+- Live streaming STT (Deepgram relay) if a Deepgram key is added; phoneme-level pronunciation (Azure pronunciation assessment).
+- Teacher notifications when an assignment is overdue; parent WhatsApp nudge from `learning_coach`.
