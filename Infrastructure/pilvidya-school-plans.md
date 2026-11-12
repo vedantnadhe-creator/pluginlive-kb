@@ -61,3 +61,11 @@ automatically. Live on UAT `dc1a74b9` (2026-11-12); PROD has no aividya yet.
 - "Book a school demo" = mailto contact@aividya.si (no booking form yet). Previews are static HTML, not live data.
 - The app-wide floating theme toggle (`.app-theme-toggle` in App.tsx) is hidden on the home page; the header has its own.
 - Logo is `src/assets/aividya-logo.webp` (11 KB). Still open: `vendor-charts` (~900 KB) loads on the home page via eager imports in App.tsx.
+
+## Student Curriculum page + Nova off (UAT `49936858`, 2026-11-12)
+- Nova floating assistant removed from `AppLayout` (every signed-in page). `NovaAgent.tsx` / `lib/novaStream.ts` stay (practice "Explain this question" uses the stream). The mobile bottom nav "NovaQuest" (→ /student/novaworld) is a separate gamification page and is still there.
+- `/student/curriculum`: board/class/school come from the profile (fixed: the profile board was copied into the state-board field, which flipped the page to "State Board"); no board dropdowns for students.
+- "Pick up where you left off": first in-progress topic, first needs-revision topic, first undone teacher-assigned Robo class (from `get_coach`), else the first not-started topic.
+- Subject cards show topics done and coach mastery vs target. A chosen subject shows subject tabs and a topic list with status and Start/Open/Revise, Lessons, Practise (`/practice?subject&topic&class&board`) and Robo class (`/student/robo-teacher?subject&topic`; only for subjects present in `curriculum_topics`, and only when the plan includes Robo).
+- Robo Teacher preselects from `?subject=&topic=` with loose name matching ("&" = "and").
+- `subjectLabel` maps ai→AI, gk→General Knowledge, evs, it, ict, sst, pe.
