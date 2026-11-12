@@ -34,11 +34,36 @@ commit `vX.Y.Z` (bump Z for every PROD deploy). Hotfixes branch from the release
 `DEPLOY_REF=<sha>` still overrides the default ref on DEV/UAT for a one-off.
 
 Starting point: `Development` = `UAT` = `8cd5701e` (= `main` on 2026-11-09); `release/prod-v1.1` = `1be41a69` (PROD, 2026-11-09)
-Tags: `v1.1.0` = `0aaf2f2e`, `v1.1.1` = `1be41a69`, `v1.1.2` = `7f6fc4b9`, `v1.1.3` = `61d23d01`, `v1.1.4` = `98ad9668`, `v1.1.5` = `180822ba`, `v1.1.6` = `21423643` (PROD from 2026-11-11 15:22Z); `UAT` = `Development` = `bc76bab8` (2026-11-12), `UAT` = `main` = `50655975`, `Development` = `061195cc` (2026-11-11), `Development` = `498b43b0` (2026-11-09 13:12Z).
+Tags: `v1.1.0` = `0aaf2f2e`, `v1.1.1` = `1be41a69`, `v1.1.2` = `7f6fc4b9`, `v1.1.3` = `61d23d01`, `v1.1.4` = `98ad9668`, `v1.1.5` = `180822ba`, `v1.1.6` = `21423643` (PROD from 2026-11-11 15:22Z); `UAT` = `Development` = `8bbfa647` (2026-11-12, Google sign-in), `bc76bab8` (2026-11-12), `UAT` = `main` = `50655975`, `Development` = `061195cc` (2026-11-11), `Development` = `498b43b0` (2026-11-09 13:12Z).
 as running on PROD. `main` is no longer deployed anywhere; it is kept only for history and old PRs.
 DEV copy of the stack (2026-11-09): `~/banking-sb` on the DEV box, DB `banking_dev` on `127.0.0.1:5443`, app worktree
 `~/banking-dev-app`, static files served from `/var/www/banking-dev`; data copied from UAT that day, own JWT secret,
 third-party keys (MSG91, Gemini, ElevenLabs, mail) shared with UAT.
+
+## Google sign-in for students — DEV + UAT 2026-11-12 (`8bbfa647`), PROD not set up
+
+"Continue with Google" on `/lms/login` (and on the classic `/login`, same flag) signs in through our own GoTrue:
+`supabase.auth.signInWithOAuth({ provider: "google" })` → `/sb/auth/v1/authorize?provider=google` → Google →
+`/sb/auth/v1/callback` → back to `/lms/login?next=…`, which sends the signed-in student on. Code: `src/lib/googleSignIn.ts`.
+(Before this the button called Lovable's hosted OAuth broker, which cannot sign anyone into a self-hosted GoTrue.)
+
+- **Who can use it:** `GOTRUE_DISABLE_SIGNUP=true` stays on, so only a Google email that already belongs to an account
+  signs in (GoTrue links the Google identity to that account). Anyone else comes back with
+  `error_description=Signups not allowed…` and sees "No PluginLive account uses this Google email…". Mobile-only
+  accounts (`<mobile>@bankready.app`) cannot use Google unless their real email is on the account.
+- **Google OAuth client:** PluginLive's existing web client `641154247196-9b3p…` (the one user-management-node uses as
+  `OAUTH_CLIENT_ID` / `OAUTH_SECRET`). Authorised redirect URIs added 2026-11-12:
+  `https://banking.dev.pluginlive.com/sb/auth/v1/callback`, `https://banking.uat.pluginlive.com/sb/auth/v1/callback`,
+  `https://lms.pluginlive.com/sb/auth/v1/callback`. The other PluginLive client (`…g44m`) does NOT have them.
+- **Per-environment config** (not in git): `~/banking-sb/docker-compose.yml` auth service has
+  `GOTRUE_EXTERNAL_GOOGLE_{ENABLED,CLIENT_ID,SECRET}` from `.env` `GOOGLE_OAUTH_{ENABLED,CLIENT_ID,SECRET}` (default off)
+  and `GOTRUE_EXTERNAL_GOOGLE_REDIRECT_URI=${API_EXTERNAL_URL}/auth/v1/callback`; apply with
+  `docker compose up -d --no-deps auth`. The app build needs `VITE_GOOGLE_OAUTH_ENABLED="true"` in the app `.env`
+  (`~/banking-dev-app/.env` on DEV, `~/bankingjobreadiness/.env` on UAT); without it the button is hidden.
+  Backups: `docker-compose.yml.bak-google-<ts>`, `.env.bak-google-<ts>`.
+- **Check:** `GET /sb/auth/v1/settings` → `external.google: true`; `~/banking-checks/lmsv2/googlelive.cjs <base>` clicks the
+  button and must land on `accounts.google.com/v3/signin/identifier` (not `signin/oauth/error`).
+- **PROD:** needs the same compose/.env change on `Pl-Prod-Banking` plus the flag in the release build.
 
 ## Student LMS v2 (`/lms/*`) — DEV 2026-11-09, UAT 2026-11-12 (`bc76bab8`), PROD not deployed
 
@@ -269,6 +294,7 @@ nvm use 20 && npm install && npm run build
 
 | Date | Commit | Migration applied | Notes |
 |---|---|---|---|
+| 2026-11-12 **UAT** | `8bbfa647` (`UAT` fast-forwarded) | none | Google sign-in for students: GoTrue Google provider configured on DEV + UAT, `VITE_GOOGLE_OAUTH_ENABLED="true"`. Snapshot `20261112T075944Z`; bundle `index-BmWG63Bh.js`, no DEV URLs. See *Google sign-in for students*. |
 | 2026-11-12 **UAT** | `bc76bab8` (`Development` fast-forwarded into `UAT`; `UAT` first merged back into `Development` to keep the Robo Stereo Mix fix `cdaf47c0`) | `20261109140930_live_session_going_counts`, `20261109141500_coach_quiz_sessions_chapter_size`, `20261111120000_topic_attachments_any_catalog` (rehearsed in a rolled-back transaction first) + data `scripts/lms/import-static-courses.sql` | Student LMS v2 + designer UI (designer hold lifted for UAT only). Snapshot `20261112T045902Z`; bundle `index-D-jIrwJz.js`, no DEV URLs. See *Student LMS v2*. |
 | 2026-08-09 | `6c0429b` | `20260808045623` (as idempotent fixup) | 41 commits; date-fns repin removed the need for `--legacy-peer-deps` |
 | 2026-08-10 | `8877a68` | `20260810100000_admin_subscription_rbac_menu_access` | 18 commits; adds **Subscriptions & Access** and **RBAC & Reports** to the admin nav; edge functions 81 → 82 (`request-password-reset`) |

@@ -41,7 +41,7 @@ The roles live in `user_roles` (enum `app_role`): `candidate`, `student`, `train
 | Route | Who | How |
 |---|---|---|
 | `/login/candidate` | candidates and students | mobile + OTP screen |
-| `/lms/login` → `/lms/dashboard` | candidates and students (DEV + UAT from 2026-11-12) | same OTP; students land on the new LMS — see *Student LMS v2* in `banking-job-readiness.md` |
+| `/lms/login` → `/lms/dashboard` | candidates and students (DEV + UAT from 2026-11-12) | same OTP, or **Continue with Google** for an account whose email matches (no new accounts); students land on the new LMS — see *Student LMS v2* and *Google sign-in for students* in `banking-job-readiness.md` |
 | `/login/trainer` | trainers | mobile + OTP screen |
 | `/login/admin` | admins | email/User ID (including ten-digit mobile) + password. The console is **only** at `/admin/dashboard` |
 
