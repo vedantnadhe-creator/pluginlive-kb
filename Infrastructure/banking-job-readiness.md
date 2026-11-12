@@ -34,7 +34,7 @@ commit `vX.Y.Z` (bump Z for every PROD deploy). Hotfixes branch from the release
 `DEPLOY_REF=<sha>` still overrides the default ref on DEV/UAT for a one-off.
 
 Starting point: `Development` = `UAT` = `8cd5701e` (= `main` on 2026-11-09); `release/prod-v1.1` = `1be41a69` (PROD, 2026-11-09)
-Tags: `v1.1.0` = `0aaf2f2e`, `v1.1.1` = `1be41a69`, `v1.1.2` = `7f6fc4b9`, `v1.1.3` = `61d23d01`, `v1.1.4` = `98ad9668`, `v1.1.5` = `180822ba`, `v1.1.6` = `21423643` (PROD from 2026-11-11 15:22Z); `UAT` = `Development` = `8bbfa647` (2026-11-12, Google sign-in), `bc76bab8` (2026-11-12), `UAT` = `main` = `50655975`, `Development` = `061195cc` (2026-11-11), `Development` = `498b43b0` (2026-11-09 13:12Z).
+Tags: `v1.1.0` = `0aaf2f2e`, `v1.1.1` = `1be41a69`, `v1.1.2` = `7f6fc4b9`, `v1.1.3` = `61d23d01`, `v1.1.4` = `98ad9668`, `v1.1.5` = `180822ba`, `v1.1.6` = `21423643` (PROD from 2026-11-11 15:22Z); `UAT` = `Development` = `7a7a816f` (2026-11-12, video watch gate), `8bbfa647` (2026-11-12, Google sign-in), `bc76bab8` (2026-11-12), `UAT` = `main` = `50655975`, `Development` = `061195cc` (2026-11-11), `Development` = `498b43b0` (2026-11-09 13:12Z).
 as running on PROD. `main` is no longer deployed anywhere; it is kept only for history and old PRs.
 DEV copy of the stack (2026-11-09): `~/banking-sb` on the DEV box, DB `banking_dev` on `127.0.0.1:5443`, app worktree
 `~/banking-dev-app`, static files served from `/var/www/banking-dev`; data copied from UAT that day, own JWT secret,
@@ -81,13 +81,24 @@ The UI is the design team's (`designer` branch, Abimanyu S); the user lifted the
 | Mock pitch | `/lms/practice/voice/:versionId`, `/lms/practice/voice/run/:attemptId` | `sim-voice`; client portrait is a still photo |
 | Trainer curriculum | `/lms/curriculum/:id` | `curriculum_*`; drawn in the course structure: Course overview → chapter (curriculum subject; phase from `metadata.phase`) → Overview of the chapter → sub-chapters with Reading/Video/Quiz → Chapter quiz (pooled topic questions, max 20, after every sub-chapter). Chapter-quiz/overview/watched marks use `cur:<curriculumId>:…` keys in `user_progress_state.context.lms` |
 
+**Video watch gate (DEV + UAT 2026-11-12, `7a7a816f`):** "Mark as watched" opens only after 80% of the lesson video has
+really been played (100% under 2 minutes; every part of a multi-part film, the best of the YouTube alternatives; nothing
+counts above 2x or on a hidden tab) and the step completes on its own at 95% — UI rules in `src/student-lms/watchRules.ts`.
+The **server decides the mark**: `mark_video_watched_v1(module, topic, items, mode, unplayable)` re-checks the playback
+credited in `module_item_progress` with the same thresholds and writes `lesson_video_marks` (learners can read their own
+rows, never write). A video that would not load (blocked player, no length after 15 s) can still be marked; it is stored
+with `verified = false`. The page retries the call for ~12 s because the player reports played ranges every 15 s.
+Course lessons no longer trust `user_progress_state.context.lms.watched` (learner-writable); only curriculum video marks
+(`cur:…` keys, no playback tracking) still use it. Migration `20261112120000_lesson_video_marks`. Check:
+`~/banking-checks/lmsv2/watchgate.cjs` (DEV, local vite) and `gateuat.cjs` (UAT API refusals).
+
 **Lesson documents and films come from Admin → Modules uploads** (`topic_attachments`, private `attachments` bucket, signed
 1-hour links): PDF opens inline, PPT/Word show a download link (no server-side PDF conversion yet), video files play as
 course films. A lesson's own files go with it; module-level files go on the first lesson. Migration
 `20261111120000_topic_attachments_any_catalog` replaced the legacy-only foreign keys with an owner-check trigger, so
 courses that exist only in `admin_modules`/`admin_module_topics` (e.g. the imported ones) accept uploads; files are deleted
 with their module/lesson in either catalog. Other migrations in this release: `20261109140930_live_session_going_counts`,
-`20261109141500_coach_quiz_sessions_chapter_size` (quiz sessions 1–20 questions, for 20-question chapter quizzes).
+`20261109141500_coach_quiz_sessions_chapter_size` (quiz sessions 1–20 questions, for 20-question chapter quizzes), `20261112120000_lesson_video_marks` (2026-11-12).
 DB-Scripts folder: `LMS v2 Student Portal/`.
 
 **Imported courses on UAT (2026-11-12):** Private Banking (`1c0f3c3c-…`, 82 topics) and Fundamentals of Management
@@ -294,6 +305,7 @@ nvm use 20 && npm install && npm run build
 
 | Date | Commit | Migration applied | Notes |
 |---|---|---|---|
+| 2026-11-12 **UAT** | `7a7a816f` (`UAT` fast-forwarded; includes designer `1c9ea6a2` watch-gate UI) | `20261112120000_lesson_video_marks` (rehearsed in a rolled-back transaction first) | Server-side video watch gate. Snapshot `20261112T112740Z`; bundle `index-CVt9-wf5.js`, no DEV URLs. See *Student LMS v2 → Video watch gate*. |
 | 2026-11-12 **UAT** | `8bbfa647` (`UAT` fast-forwarded) | none | Google sign-in for students: GoTrue Google provider configured on DEV + UAT, `VITE_GOOGLE_OAUTH_ENABLED="true"`. Snapshot `20261112T075944Z`; bundle `index-BmWG63Bh.js`, no DEV URLs. See *Google sign-in for students*. |
 | 2026-11-12 **UAT** | `bc76bab8` (`Development` fast-forwarded into `UAT`; `UAT` first merged back into `Development` to keep the Robo Stereo Mix fix `cdaf47c0`) | `20261109140930_live_session_going_counts`, `20261109141500_coach_quiz_sessions_chapter_size`, `20261111120000_topic_attachments_any_catalog` (rehearsed in a rolled-back transaction first) + data `scripts/lms/import-static-courses.sql` | Student LMS v2 + designer UI (designer hold lifted for UAT only). Snapshot `20261112T045902Z`; bundle `index-D-jIrwJz.js`, no DEV URLs. See *Student LMS v2*. |
 | 2026-08-09 | `6c0429b` | `20260808045623` (as idempotent fixup) | 41 commits; date-fns repin removed the need for `--legacy-peer-deps` |
