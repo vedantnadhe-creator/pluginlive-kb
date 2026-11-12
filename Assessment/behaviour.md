@@ -240,7 +240,7 @@ DEV `32c84bb9` / UAT `ab681619`; Assessment-React DEV `6df5f42` / UAT `f93740a`.
 Wizard: admin-react-v2 + institute-react-v2 DEV **0.1.16-custom.17** (admin `f9f0922`,
 institute `2691a07`), UAT **0.1.12-custom.14** (admin `37f0e36`, institute `587abf6`);
 corporate-react-v2 **0.1.2-bugfix.30** on both (DEV `acbdf74`, UAT `af75c6d`).
-**PROD still runs 30** (hotfix-42.4, 2026-11-02) — PROD pending.
+**PROD runs 45 since 2026-11-12** (Hotfix 42.5), except the corporate-react-v2 wizard label (still 30 on PROD).
 
 ## Admin wizard question count
 
@@ -337,6 +337,39 @@ candidate or per cohort, it now shows a **level** on the report's own ladder
   and `allow_verification` like every other type. **Existing rows were not
   backfilled** -- turn proctoring on again via edit details if needed.
 
+## TPO v2 (institute) Behavioural report = corporate drawer parity (DEV + UAT 2026-11-12)
+
+institute-react-v2 now renders the Behavioural student report exactly like the
+corporate v2 candidate drawer (components ported 1:1 from corporate-react-v2).
+Frontend only -- same data (student-node `/reportV2` `mapBehaviour` via
+institute-node); no API, DB or env change.
+
+- **Report drawer / standalone `/v2/reports/behavioural-report`:** two tabs,
+  **Overview** (dark "Behavioural profile" spotlight with the domain, the six
+  competencies named by level -- Beginner, Apprentice, Practitioner, Master,
+  Expert or Unknown -- and the attempt date; strengths / areas-of-improvement
+  chips; "About this report") and **Detailed analysis** (proficiency column
+  chart, competencies table with sub-component behaviours, Low/Medium/High
+  behaviour chart, behaviour insights, strengths and improvement tables), plus the
+  shared proctoring view. No Recommendations tab (removed with the old ladder).
+  Insights prefix the student's name only when the narrative doesn't already.
+- **Assessment detail:** the drawer headline tile reads **Proficiency** (the
+  median competency level, "Median across the competencies") instead of an empty
+  score; the student-wise column is titled **Proficiency** for Behaviour and its
+  dot uses the level colour ramp (`proficiencyColor()` in `_constants.ts`,
+  Beginner amber -> Expert cobalt); the Overview **Competency** card is hidden for
+  Behaviour, and Student Consistency Rate keeps its half-width column.
+- Design-only Behavioural demo (`src/lib/designDemo/behaviouralDemo.ts`) runs only
+  on `*.design.*` hosts; inert on DEV/UAT/PROD.
+
+Revisions: DEV `75b0c99` `483ec05` `a9cbd56` (Development; served from the
+isolated release `~/releases/institute-react-v2/DEV-a9cbd5609a3e-20261112T120818`).
+UAT cherry-picks `799e89f` `84a137d` `e484133` (release
+`UAT-e48413323309-20261112T121652`); no package change, wizard unchanged.
+**PROD pending** -- PROD institute-react-v2 is `release-v1.42-hotfix-4`
+(Hotfix 42.5) and does not yet carry the 2026-11-12 report-drawer design release
+(UAT `aedf986`) these sit on.
+
 ## Status
 
 Role requirements rebuilt from the mapping sheets: **DEV + UAT + PROD 2026-10-12**.
@@ -351,6 +384,13 @@ all of it.
 Roster level / KPI median level / Mix & Match average / levels donut / proctoring
 flag fix: live on **DEV + UAT** as of 2026-10-12 (admin-node, corporate-node,
 institute-node, corporate-react-v2, institute-react-v2). **PROD pending.**
+
+TPO v2 Behavioural report (corporate drawer parity, Proficiency tile/column):
+live on **DEV + UAT** 2026-11-12. **PROD pending.**
+
+Duration 45 min: **PROD live 2026-11-12** (Hotfix 42.5, `release-v1.42-hotfix-4`
+/ assessment-react + admin-react-v2 `release-v1.42-hotfix-3`); corporate-react-v2
+wizard label still says 30 on PROD (needs wizard bugfix.30).
 
 ## Related
 
