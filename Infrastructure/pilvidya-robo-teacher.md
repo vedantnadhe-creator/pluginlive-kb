@@ -84,6 +84,9 @@ French, German, Spanish, Japanese, Mandarin, Russian, Portuguese and Arabic, at 
   - Every foreign-language reply, including the greeting, carries at least one «phrase».
 - **Verified:** `~/pilvidya-checks/chatsim-e2e/robo-next.mjs` 15/15 (cross-school assign refused, wrong-topic start refused, transcript ACL, Scribe English/Hindi exact, French pronunciation 97%); browser fake-mic turn answered in 9.5 s; teacher Results + transcript; parent digest section; fr/es/ja openings each carry a phrase.
 
+## Plan gating
+Robo Teacher and Robo Classes are Enterprise; see `Infrastructure/pilvidya-school-plans.md`.
+
 ## Next steps (not built)
 - Live streaming STT (Deepgram relay) if a Deepgram key is added; phoneme-level pronunciation (Azure pronunciation assessment).
 - Teacher notifications when an assignment is overdue; parent WhatsApp nudge from `learning_coach`.

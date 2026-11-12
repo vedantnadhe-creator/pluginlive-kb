@@ -2701,3 +2701,8 @@ QA scripts are on the DEV box in `~/pilvidya-checks`:
 ## 2026-11-12 (night) — PilVidya UAT `4d78037f`: Robo Teacher step 2
 - Migration `20261117130000_robo_teacher_assignments.sql` (DB-Scripts `cb3b13a`): `robo_assignments`, `robo_sessions.assignment_id`, `robo_class_summaries` recreated, `robo_class_events` view. PROD pending.
 - New edge function `robo-speech` (ElevenLabs Scribe; no new secret). Details in `Infrastructure/pilvidya-robo-teacher.md`.
+
+## 2026-11-12 (night) — PilVidya UAT `dc1a74b9`: school-level plans
+- Migration `20261117140000_school_plans.sql` (DB-Scripts `9f280f4`): `school_subscriptions`, `my_plan()`, `student_menu_enabled()`,
+  Robo/Simulations menu keys, nested tiers, per-student prices; dropped two teacher-writable policies on plan tables. PROD pending.
+- `teacher_subscriptions` / `plan_override` no longer read. Details: `Infrastructure/pilvidya-school-plans.md`.

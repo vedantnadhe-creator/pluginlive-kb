@@ -1,0 +1,52 @@
+# PilVidya (aividya) — School plans and plan access
+
+Plans belong to a **school**, not to a person. Every student, teacher and parent in a school gets the school's plan
+automatically. Live on UAT `dc1a74b9` (2026-11-12); PROD has no aividya yet.
+
+## Plans
+| Plan | Price (per student per year) | Includes |
+|---|---|---|
+| Basic | ₹3,600 | Curriculum, lessons, practice, tests, assessments, progress, report cards, fees, community, teacher school tools, all core parent menus |
+| Advanced | ₹4,800 | Basic + AI Coach / Virtual Tutor, English Lab, Aptitude Lab, Foreign Languages, Competitive Exams, SWOT, **Simulations**; teacher FL content/assessment, AI config; parent insights, wellbeing, learning plan, SWOT |
+| Enterprise | ₹6,000 | Advanced + **Robo Teacher**, Robo Classes, NovaCampus, NovaWorld |
+| Trial (no live term) | — | Same as Basic |
+
+- Annual, **1–5 years** per term. A renewal is booked as a new term that starts after the current one ends (overlaps are refused).
+- Amount = price × licensed students × years by default; admin can type a different amount (discount) or mark it Complimentary.
+- Prices and what each plan includes are admin-editable: Admin → **School Plans** (prices, add/renew/cancel terms) and
+  Admin → **Plan Access Matrix** (menus per plan). Prices live in `plan_pricing.annual_price` (now per student).
+
+## Data and functions (migration `20261117140000_school_plans.sql`; DB-Scripts `9f280f4`)
+- `school_subscriptions`: school_id, plan (basic/advanced/enterprise), start_date, years, generated end_date,
+  licensed_students, amount_inr, payment_mode (MANUAL/GATEWAY/COMPLIMENTARY), payment_reference, notes, cancelled_at.
+  Platform admins only (RLS). Overlap trigger `school_subscriptions_no_overlap`.
+- `school_plan(school)` → plan today, else `free`.
+- `profile_school_id(school_id, school_name)` → school_id, falling back to a name match (old teacher rows).
+- `my_plan(p_role)` → `{plan, school_id, school_name, term, next_term}` for the signed-in user; admin = enterprise;
+  parent = best plan among verified children's schools. Used by `usePlanAccess` / `fetchMyPlan`.
+- `student_menu_enabled(student, menu_key)` → server check; menus without a matrix row stay open.
+- Menu keys added: `student.robo-teacher`, `student.simulations`, `teacher.robo-classes`, `teacher.simulations`, `student.practice`.
+- Dropped `staff_manage_plan_menu_access` and `staff_manage_plan_pricing` (any teacher could rewrite plan access and prices).
+
+## Enforcement
+- Sidebar and route guard (`PlanRouteGuard`) lock menus by the school plan.
+- Server: `robo-teacher` (start), `robo-speech`, `sim-attempt` (start) call `_shared/plan.ts` → 403
+  "… is not included in your school's plan". The check **fails closed**. Other modules are still client-side only.
+
+## What was removed
+- Per-person plans: plan dropdowns on Admin → Students / Teachers, the plan picker on Admin → Roles (role-only now),
+  teacher self-upgrade requests (Subscription Approvals hidden from the menu), the per-teacher Subscriptions tab.
+- `teacher_subscriptions` and `*.plan_override` remain in the DB but nothing reads them. `admin-manage-users`
+  only writes `plan_override` if an old client still sends a plan.
+- Teacher → My Plan is read-only: school plan, dates, renewal, and a menu-by-plan table.
+- Admin Overview revenue = live school terms, amount spread evenly over the term's months; "Schools by plan".
+
+## UAT data (2026-11-12)
+- Every school mapped to a complimentary 1-year Enterprise term (amount 0, licensed students = current count).
+- 7 teacher schools that existed only as typed names were registered in `schools` (`is_public=false`) and the
+  teachers linked by `school_id`. One teacher with a blank school name stays on trial.
+
+## Verified
+- Plan unit tests 438/439 (the 1 failure pre-dates this: an audit-log assertion in `admin-manage-users`).
+- UAT: logins 10/10, Robo 15/15, View-as 26/26, Simulation E2E pass; Test School A switched to Basic → Robo and
+  Simulation start both 403, restored to Enterprise; admin School Plans, Roles, Matrix, Overview and teacher My Plan render with no page errors.
