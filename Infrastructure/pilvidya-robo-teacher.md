@@ -98,10 +98,18 @@ Robo Teacher and Robo Classes are Enterprise; see `Infrastructure/pilvidya-schoo
 - Checked: `~/pilvidya-checks/chatsim-e2e/ko-id-e2e.mjs` 9/9 (Korean A1 + Indonesian B2 start, turn, pronunciation 100% / 99%, unknown theme refused).
 - The Foreign Languages module page uses its own DB catalogue (`foreign_language_catalog`); Korean/Indonesian were not added there.
 
-## Voice and speech-to-text (UAT `8b4e91ed`, 2026-11-12)
-- **Voice:** Robo calls `ai-coach-tts` with `provider: "gemini"`, `pace: "slow"`, `rate: 0.85` → Gemini `gemini-2.5-flash-preview-tts` (retried once, then `gemini-2.5-pro-preview-tts`; Gemini sometimes returns "no audio") with an Indian-teacher prompt and a slow-pace cue right before the text; ElevenLabs only if all Gemini attempts fail. Before: ElevenLabs "Sarah" (American) for English, ~150 wpm.
+## Voice and speech-to-text (UAT `615ede84`, 2026-11-12) — same voices as the Banking LMS
+- **Voice = Banking Robo Play.** Robo calls `ai-coach-tts` with `voiceProfile: "robo"` (optional `gender`, default female). The plan lives in `supabase/functions/_shared/banking-voice.ts` (copied from the banking repo `elevenlabs-tts` + `_shared/llm.ts`; change both apps together):
+  - en, hi, ta, mr, ur, ne, sa → ElevenLabs **Kavya** `O0HDGZKCNpSHnOXD6aq6` (male: **Ranbir M** `2iAXJEMO2o0PqUHzvZwQ`) on `eleven_flash_v2_5`, stability 0.55 / style 0.15 / speed 0.95.
+  - te, kn, ml, bn, gu, pa, or → Sarvam `bulbul:v3` speaker **priya** (male **rahul**; Odia code `od-IN`) first, then ElevenLabs `eleven_v3` Kavya.
+  - as and anything else → ElevenLabs `eleven_v3` Kavya.
+  - Backup: Gemini TTS **Kore** (male **Algenib**), then the browser voice (client).
+  - Live timings (UAT): flash 0.3–1.2 s, Sarvam ~1.7 s, eleven_v3 ~3 s per clip.
+- **AI Coach (`/ai-coach`) = Banking AI Coach:** `voiceProfile: "coach"` → ElevenLabs **Rachel** `21m00Tcm4TlvDq8ikWAM` on `eleven_multilingual_v2` for every language, Gemini Kore as backup. The per-language Voice Settings panel no longer changes the AI Coach voice.
+- **Keys:** ElevenLabs and Gemini keys are the same as Banking's. `SARVAM_API_KEY` is a global row in `app_secrets` (copied from Banking's `llm_provider_configs` robo_voice row), editable in Admin → Provider API Keys.
+- **Chat model:** `pl/robo-teacher` = gemini-2.5-flash (Banking Robo Play's model) → gemini-3-flash-preview → gpt-5.4-mini. Known gap: 2.5-flash sometimes exceeds the "≤4 sentences, <15 words" rule (voice-e2e reply-length check fails ~1 of 3 language samples per run).
+- Before 615ede84: Gemini `gemini-2.5-flash-preview-tts` at a slow pace (`provider: "gemini", pace: "slow"`), Gemini voices Kore/Aoede/Leda; AI Coach used stock ElevenLabs voices per language (Sarah/Alice/Matilda/Lily/Laura).
 - **Playback:** `speechChunks()` splits a reply into a short first sentence + groups ≤160 chars; all are synthesised in parallel and played in order (first audio ~3 s after the reply text arrives). Browser fallback voice rate 0.85.
-- **Measured pace as played:** English ~125 wpm, Hindi ~132, Tamil ~81 (Tamil words are long). Round-trip transcription 100%.
 - **Speech-to-text:** `robo-speech` → gateway task `pl/robo-stt` (gemini-2.5-flash, thinking off → gemini-3.8-flash low, 20 s, modality audio; input_audio wav/webm/ogg/mp4), Scribe as fallback; responses include `engine`. Pronunciation transcribes verbatim and is not told the target phrase.
 - **Teacher wording:** ≤4 sentences under 15 words, plain Indian English, everyday spoken Indian languages in their own script (never romanised), units spoken out.
-- **Timing (UAT):** after the student stops speaking ≈ STT 3 s + reply 2 s + first voiced sentence 3 s. Test: `~/pilvidya-checks/chatsim-e2e/voice-e2e.mjs` (21/21, en/hi/ta).
+- **Timing (UAT):** after the student stops speaking ≈ STT 3 s + reply 2 s + first voiced sentence 3 s. Tests: `~/pilvidya-checks/chatsim-e2e/voice-e2e.mjs` (20/21 after 615ede84 — reply length), live voice routing `~/pilvidya-checks/chatsim-e2e/voicelive.mjs` (8/8).
