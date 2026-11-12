@@ -2686,3 +2686,14 @@ QA scripts are on the DEV box in `~/pilvidya-checks`:
 | `subscription_access_snapshot` | SWOT Analytics | Exists as a **function**; the page queries it as a table | Call it with `rpc()` |
 | `hallucination_metrics` | none (only in commented-out code) | — | Remove the reference |
 | RPC `student_has_curricula_list` | Student Learn page | List curricula available to the student | Create, or use the existing curriculum queries |
+
+## 2026-11-12 (evening) — PilVidya UAT `cfd12102`: quick fixes for missing tables, student targets, Robo Teacher
+- **New tables:**
+  - `goal_target`: per-subject target %. The dashboard used to write every subject onto one row (`subject_id null`) and never loaded targets back.
+  - `daily_quests`: lesson XP, server-credited, once per lesson per day.
+- **Admin screens:**
+  - **System Health and Production Readiness:** now read the live `health-check` plus `production_readiness_checklist`.
+  - **Rate Limits:** now read-only. It shows the limits enforced in code and the live `rate_limit_buckets` counters; its fetch also re-ran on every render.
+  - **SWOT:** reads `rpt_subscription_status`.
+- **Robo Teacher:** see `Infrastructure/pilvidya-robo-teacher.md`.
+- **LiteLLM UAT:** `pl/robo-teacher` and `pl/robo-quiz` added to the policy (backup `policy-backups/tasks-20261112T072144Z.json`) and to the `aividya-app` key.
