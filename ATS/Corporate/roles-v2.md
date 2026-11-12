@@ -69,7 +69,12 @@ The candidates list ignores `moved_back` dispatch rows, so it shows the round th
 - New Aptitude stages default to every section, with topics spread across sections (`completeAptitudeSelection`).
 - Candidates filter: "Current arrears", from the form's current arrears/backlogs answers (the highest).
 - Degree and department search, and filter-panel search, match short forms (CSE, ECE, BE, MBA, btech) via `lib/nameSearch.ts`.
-- Campus invites start **Pending** (`job_role_institute_mapping.status` 0) on both the wizard and the drawer path; the institute accepts or rejects on its Roles page. Apply and evaluation never read that status, so a pending invite does not hold the corporate's flow (`inviteCampuses`, since 2026-11-11; invites made earlier stay Accepted).
+- Campus invites: an institute with an ATS subscription (`institute.institute_subscription.accessLevel` 1 = ATS or 3 = ATS + Assessment) gets the invite **Pending** (status 0) and approves or rejects it on its Roles page; every other institute is accepted at once (status 1). The wizard (`inviteCampuses`) and the role page's Invite institutes drawer, re-invites included, both apply it through `CorporateSavedAssetsV2.acceptNonAtsInvites`. Apply and evaluation never read that status (since 2026-11-12; earlier invites keep theirs).
+- Duplicate role saves the copy at step 2, so the wizard opens on Role details and never re-runs the AI JD fill over the copied fields.
+- Apply form: a date question whose label names a work end date (`end`, `leaving`, `last working`, e.g. "End Month-Year") offers "Currently working here". Ticking it answers `Present`; corporate-node `validateAnswers` accepts that even on a required question and stores a blank end date, which normalization reads as still employed. A date or the tick is required.
+- Setup evaluation on a new role keeps the "Designing the evaluation process" loader until every assessment stage is built (a role-based paper takes about 40 s), or a build fails, or 90 s pass. Stages still building later show "AI is building…" on their row.
+- Add contact details (TPO contacts) mounts 100 colleges at a time as it scrolls and only the open college's fields.
+- A user without dashboard access lands on Roles whenever the company has Roles (`DashboardAccessGate`).
 - A Custom Assessment round has no PDF report: the timeline and Export Reports download that candidate's Custom sheet (`exportCandidates`, `.xlsx`) instead (`getRoundReport`).
 - Other colleges count subtracts only the suggested campuses the search returned. The Roles empty state names the search. Role screens say "already applied for this role".
 
