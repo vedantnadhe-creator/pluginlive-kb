@@ -298,6 +298,31 @@ Current behaviour:
 
 Tests: `test/mixMatchVerification.test.js` (retry adoption, late-retry resume, `force`, failed float cleanup). admin-node `e0aefeb` DEV / `38598bd` UAT.
 
+### Resend restarts the candidate's validity window (UAT 2026-11-12, PROD pending)
+
+A float with `mix_match_groups.assessment_validity_days` gives every candidate a personal
+window: `min(map end_time, max(map start_time, assignment created_at in IST) + validity_days)`.
+Three readers use that same formula, all anchored on `assessment_assigned_students.created_at`:
+the invite mailer (`assessmentInviteEmail.js` `resolveAssignmentWindow`, which refuses to send
+when expired: `sendAssessmentInviteEmail` returns `false`), student-node's start gate
+(`helpers/assessmentWindow.js` `candidateEndTime`, which prefers `valid_until` when set), and the
+AI Interview handler.
+
+**Symptom before the fix:** the assessment was still Live, but a candidate whose days had run out
+could not be resent. corporate-react-v2 showed *"Nobody was resent — none of the selected
+candidates could be mailed (the assessment window may have closed)."* The resend did reset the
+attempt (archive + wipe), but `sendFloatInvites` mailed nobody, and the link would have opened
+"expired" anyway. On PROD (Knack Rcm Pluginlive, validity 5 days, Live to 5 Dec) everyone invited
+before the 5 Nov opening had a deadline of 10 Nov. The workaround people used was remove + re-add.
+
+**Fix:** `resendInvitesToStudents`'s reset `updateMany` now also sets `createdAt: new Date()`, so a
+resend gives a fresh `validity_days` window that the map's `end_time` still caps. No schema change,
+and PROD has no `valid_until` column. Note: the roster's invited date moves to the resend date.
+Test: `test/resendInvitesSetPreservation.spec.js` ("restarts the per-candidate validity clock").
+admin-node DEV `05baffa` (local, not yet pushed) / UAT `808c60d`. Verified on UAT: a candidate
+invited 16 Oct on a 6-day float was resent on 12 Nov → `successCount: 1`, OTP invite accepted,
+`created_at` = resend time.
+
 ## A signed-in student enters from the v1 dashboard (2026-08-20)
 
 Corporate candidates arrive by invite and v2 is the whole journey for them.
