@@ -766,6 +766,45 @@
         "gpt-6-luna": "low"
       },
       "modality": "text"
+    },
+    "pl/robo-teacher": {
+      "primary": "gemini-3-flash-preview",
+      "fallbacks": [
+        "gpt-5.4-mini"
+      ],
+      "timeout": 20,
+      "retries": 0,
+      "reasoning": {
+        "gemini-3-flash-preview": "disable",
+        "gpt-5.4-mini": "none"
+      },
+      "modality": "text"
+    },
+    "pl/robo-quiz": {
+      "primary": "gemini-3.8-flash",
+      "fallbacks": [
+        "gpt-6-luna"
+      ],
+      "timeout": 90,
+      "retries": 0,
+      "reasoning": {
+        "gemini-3.8-flash": "medium",
+        "gpt-6-luna": "low"
+      },
+      "modality": "text"
+    },
+    "pl/doubt-answer": {
+      "primary": "gemini-3-flash-preview",
+      "fallbacks": [
+        "gpt-5.4-mini"
+      ],
+      "timeout": 30,
+      "retries": 0,
+      "reasoning": {
+        "gemini-3-flash-preview": "disable",
+        "gpt-5.4-mini": "none"
+      },
+      "modality": "text"
     }
   }
 }
