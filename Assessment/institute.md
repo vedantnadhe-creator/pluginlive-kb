@@ -635,3 +635,16 @@ Development-only Schedules column layout fixes (`2519f92`, `b6bb95d`, `3d6aa48`)
 ## Create assessment in the TPO portal (2026-10-08, DEV + UAT; PROD pending)
 
 institute-react-v2 has **Create assessment** (`/v2/assessments/new`, the shared wizard, segment `college`). Visible only when the admin turns on Feature Access → **Allow assessment creation** for the institute (off by default) or when a PluginLive user is checked in. Details: `Assessment/shared-assessment-creation.md` → "Institute portal creation".
+
+## TPO portal UI release 720fb4d (DEV 2026-11-12, UAT 2026-11-12; PROD pending)
+
+Full notes: changelog `pl-uat-public-docs/changelogs/institute-react-v2-dev-720fb4d-changelog-2026-11-12.html`. What TPOs see now:
+- **Assessments list**: Search and Filters sit in the top band beside Schedule-wise / Student-wise; the type legend is in the table card header; the filter panel scrolls inside the viewport. Student-wise drawer opens the student's report page; a sortable **Consistency trend** column (also in CSV).
+- **Assessment detail (one-time)**: the Student Consistency Rate donut and the department pie open the Student-wise Details drawer pre-filtered; **Attempt Status** column + filter (Completed, In progress, Not started, Not attempted, Dropped off, Preparing Report, Report Delayed) replaces Attempt Rate; "Average time taken" → **Time taken**.
+- **Student report drawer** is the shared `src/components/report-drawer/` (corporate parity; `REPORT_DRAWER_FEATURES[entity]` switches parts; General Details off for institute): header shows Degree · Department, tabs Overview · Detailed analysis · Recommendations (AI Interview, Role Based) · Proctoring (integrity score, snapshot proof, event timeline).
+- **AI Interview report**: full-interview recording with waveform scrubber and question markers, per-type Candidate's Response, Points to Note panel, Hiring Recommendation callout.
+- **Wizard**: step 3 cohort reminder is a 4-second snackbar on Continue; the Usage pill styling fix (`.sub-wrap > .btn.sub-cta`).
+- Design-demo shim (`src/lib/designDemo/`) only runs on `*.design.*` hosts.
+
+UAT `aedf986` = Development `6a08b87..720fb4d` applied on the UAT line (keeps UAT's own on-call/Pending-chip differences and wizard lineage). Release `UAT-aedf98612a14-20261112T084649`.
+
