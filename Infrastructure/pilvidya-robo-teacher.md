@@ -31,7 +31,7 @@ foreign-language theme. Live on UAT from 2026-11-12 (`feat/chat-simulations` `cf
   - prompts and strict JSON schemas;
   - quiz validation and scoring, mastery, and target nudges.
 - **LLM:** central LiteLLM only, through key alias `aividya-app`.
-  - `pl/robo-teacher`: gemini-3-flash-preview → gpt-5.4-mini, 20 s.
+  - `pl/robo-teacher`: gemini-2.5-flash (thinking off) → gemini-3-flash-preview → gpt-5.4-mini, 20 s (same model as Banking Robo Play, from 2026-11-12).
   - `pl/robo-quiz`: gemini-3.8-flash medium → gpt-6-luna low, 90 s.
   - Both were registered with `apply_policy.py` on 2026-11-12, and the forced fallback was verified for both.
 - **Tables (migration `20261117120000_robo_teacher.sql`; DB-Scripts `c2e8384`):**
