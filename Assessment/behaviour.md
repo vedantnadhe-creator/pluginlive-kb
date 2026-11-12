@@ -366,9 +366,11 @@ Revisions: DEV `75b0c99` `483ec05` `a9cbd56` (Development; served from the
 isolated release `~/releases/institute-react-v2/DEV-a9cbd5609a3e-20261112T120818`).
 UAT cherry-picks `799e89f` `84a137d` `e484133` (release
 `UAT-e48413323309-20261112T121652`); no package change, wizard unchanged.
-**PROD pending** -- PROD institute-react-v2 is `release-v1.42-hotfix-4`
-(Hotfix 42.5) and does not yet carry the 2026-11-12 report-drawer design release
-(UAT `aedf986`) these sit on.
+**PROD live 2026-11-12 13:16Z** on `release-v1.42-hotfix-4` (`9e43a92`, image
+`pl-institute-react-v2:2026-11-12-13-16-03-…`), together with the report-drawer design
+release it builds on (UAT `aedf986`) and the degree/department filter tree. PROD
+carries one extra commit that drops the held attempt-integrity fields from the
+design-only demos (otherwise the PROD type check fails). No backend change.
 
 ## Status
 
@@ -386,7 +388,7 @@ flag fix: live on **DEV + UAT** as of 2026-10-12 (admin-node, corporate-node,
 institute-node, corporate-react-v2, institute-react-v2). **PROD pending.**
 
 TPO v2 Behavioural report (corporate drawer parity, Proficiency tile/column):
-live on **DEV + UAT** 2026-11-12. **PROD pending.**
+live on **DEV + UAT + PROD** 2026-11-12.
 
 Duration 45 min: **PROD live 2026-11-12** (Hotfix 42.5, `release-v1.42-hotfix-4`
 / assessment-react + admin-react-v2 `release-v1.42-hotfix-3`); corporate-react-v2
