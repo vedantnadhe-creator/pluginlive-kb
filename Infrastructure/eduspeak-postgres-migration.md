@@ -2632,3 +2632,57 @@ QA scripts are on the DEV box in `~/pilvidya-checks`:
 - Chat simulations: browser 14/14 with the service worker on, API 21/21.
 - RBAC matrix as intended.
 - New QA scripts in `~/pilvidya-checks`: `ui-audit.cjs`, `rbac-switch.cjs`, `dash-capture.cjs` (`LOCAL=1` serves local Vite code under the UAT origin) and `viewas-ui.cjs`.
+
+## 2026-11-12 (later) — PilVidya UAT `cfd13575`: data cleanup, BI wiring, curriculum-only student AI Coach
+
+**Data cleanup (UAT data, product-owner request; DB-Scripts `a6ccfaa`):**
+- **Demo school:** "Pilvidya Demo School" is now a registered school (`schools`, code `PILVIDYA-DEMO`, with its seeded main branch). All 43 students that had no `school_id` are linked to it, and their `school_name` is set to match.
+  - Every dashboard now shows 5 schools.
+  - Pilvidya Demo School tops School Analytics with 43 students.
+- **Rename:** the other spelling, "PilVidya Demo School" (one teacher), is now "Aividya Demo school".
+- **Boards:** CBSE was stored as `CBSE`, `cbse` and `cbsc`; it is now one value, `cbse`, on student and teacher profiles. "Teachers by Board" shows CBSE 24 and STATE 2.
+  - Other boards still have case variants (ICSE/icse, state/State Board). The app's `normalizeBoard` already folds them for display and queries.
+- **Backups and rollback:** touched rows are in `qa_backup.cleanup_20261112_students` and `qa_backup.cleanup_20261112_teachers`; the rollback is in the script.
+- **Gotcha:** `student_profiles.user_id_fkey` is NOT VALID and an orphan test row exists, so Postgres re-checks the foreign key for any row updated twice in one transaction. Update each row once.
+
+**BI dashboard `/analytics` (migration `20261117100000_analytics_rollups.sql`, DB-Scripts `08620af`):**
+- **New function:** `refresh_analytics_rollups(from, to)` rebuilds the four rollup tables from real records:
+  - `app_usage_events` → `user_engagement_metrics`, which now has `event_count`;
+  - `llm_provider_attempts` → `provider_performance_metrics`;
+  - `ai_video_assets` → `video_analytics` and `content_quality_trends`.
+- **`analytics-dashboard`:**
+  - refreshes the requested range before reading;
+  - is admin-only;
+  - returns usage aggregated per screen and role (events, users) and per provider and feature;
+  - fixes `total_videos` → `total_videos_submitted`.
+- **Page:** shows Events and Users per screen and the provider name (it read the non-existent `p.provider`).
+- **Video panels stay 0** until AI lesson videos are generated (`ai_video_assets` is empty on UAT).
+- **After applying a migration that adds functions, run `NOTIFY pgrst, 'reload schema';`**, otherwise PostgREST answers "Could not find the function … in the schema cache".
+
+**AI Coach for students (curriculum only):**
+- **Page:** a student gets board and class from their profile (locked) and picks subject and topic from `curriculum_topics` (global plus their school's).
+  - No free-text topic, no extra instruction, no General mode; the title is "AI Coach".
+  - Staff keep the full "AI Coach – Content Creation".
+- **Server, `ai-coach-generate` subject/topic/general path:** this path previously had no caller check at all.
+  - **Staff:** unchanged.
+  - **Students:** must send their session (`student_profile_id` + `session_token`) and a `curriculum_topic_id` or `subject_id` that exists for their board, class and school. Board, class, subject and topic come from the database and instructions are dropped.
+  - **Anyone else:** refused.
+  - Refusals are HTTP 200 with `{error}`, so the page can show them.
+
+**The 18 tables (+1 function) the frontend reads but no migration creates:** what they are for and what to do. The screens that read them show empty data or silently fail to save.
+
+| Table | Screen | Purpose | Suggested action |
+|---|---|---|---|
+| `goal_target` | Student Dashboard | Per-subject target score set by the student (since 11-10) | Create table (student-owned RLS) |
+| `student_messages` | Student → Messages | Inbox of messages to the student | Create, or read existing `parent_messages`/`counselor_messages` |
+| `live_class_chat` | Live classes (teacher + student) | Chat during a live class | Create (with Realtime off on UAT, poll) |
+| `teacher_coach_questions` | Teacher → Ask AI Coach | History of a teacher's coach questions | Create, or reuse `ai_coach_lesson_history` |
+| `daily_quests` | Student Curriculum | Records a completed daily quest | Repoint to existing `nova_quests` / `nova_quest_progress` |
+| `attendance_leave_types`, `attendance_leave_requests`, `attendance_condonations`, `attendance_shortage_alerts` | Admin Leave Management, Condonation & Shortage | Student leave and attendance-condonation workflow | Create (already requested upstream 11-09) |
+| `service_health_checks`, `service_health_stats` | Admin System Health | Service status list and stats | Repoint to existing `platform_health_checks`, `provider_health_checks`, `system_health_metrics` |
+| `production_readiness_checks`, `production_readiness_metrics` | Admin Production Readiness | Go-live checklist | Repoint to existing `production_readiness_checklist` |
+| `rate_limit_rules`, `rate_limit_stats` | Admin Rate-limit Config | Configure limits, top consumers | Repoint to existing `rate_limit_buckets`, or create |
+| `certificate_certifications` | Admin Certificate Generate (no route) | Issued certificates list | Repoint to `curriculum_certifications` |
+| `subscription_access_snapshot` | SWOT Analytics | Exists as a **function**; the page queries it as a table | Call it with `rpc()` |
+| `hallucination_metrics` | none (only in commented-out code) | — | Remove the reference |
+| RPC `student_has_curricula_list` | Student Learn page | List curricula available to the student | Create, or use the existing curriculum queries |
