@@ -97,3 +97,11 @@ Robo Teacher and Robo Classes are Enterprise; see `Infrastructure/pilvidya-schoo
 - Phrases inside «» are written in the language's own script (Hangul, kana/kanji, Cyrillic, Arabic…) with optional pronunciation in brackets after, so pronunciation practice matches Scribe's transcript. Before this, Korean/Japanese phrases came romanised and scored badly.
 - Checked: `~/pilvidya-checks/chatsim-e2e/ko-id-e2e.mjs` 9/9 (Korean A1 + Indonesian B2 start, turn, pronunciation 100% / 99%, unknown theme refused).
 - The Foreign Languages module page uses its own DB catalogue (`foreign_language_catalog`); Korean/Indonesian were not added there.
+
+## Voice and speech-to-text (UAT `8b4e91ed`, 2026-11-12)
+- **Voice:** Robo calls `ai-coach-tts` with `provider: "gemini"`, `pace: "slow"`, `rate: 0.85` → Gemini `gemini-2.5-flash-preview-tts` (retried once, then `gemini-2.5-pro-preview-tts`; Gemini sometimes returns "no audio") with an Indian-teacher prompt and a slow-pace cue right before the text; ElevenLabs only if all Gemini attempts fail. Before: ElevenLabs "Sarah" (American) for English, ~150 wpm.
+- **Playback:** `speechChunks()` splits a reply into a short first sentence + groups ≤160 chars; all are synthesised in parallel and played in order (first audio ~3 s after the reply text arrives). Browser fallback voice rate 0.85.
+- **Measured pace as played:** English ~125 wpm, Hindi ~132, Tamil ~81 (Tamil words are long). Round-trip transcription 100%.
+- **Speech-to-text:** `robo-speech` → gateway task `pl/robo-stt` (gemini-2.5-flash, thinking off → gemini-3.8-flash low, 20 s, modality audio; input_audio wav/webm/ogg/mp4), Scribe as fallback; responses include `engine`. Pronunciation transcribes verbatim and is not told the target phrase.
+- **Teacher wording:** ≤4 sentences under 15 words, plain Indian English, everyday spoken Indian languages in their own script (never romanised), units spoken out.
+- **Timing (UAT):** after the student stops speaking ≈ STT 3 s + reply 2 s + first voiced sentence 3 s. Test: `~/pilvidya-checks/chatsim-e2e/voice-e2e.mjs` (21/21, en/hi/ta).

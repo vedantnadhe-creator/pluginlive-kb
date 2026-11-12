@@ -805,6 +805,19 @@
         "gpt-5.4-mini": "none"
       },
       "modality": "text"
+    },
+    "pl/robo-stt": {
+      "primary": "gemini-2.5-flash",
+      "fallbacks": [
+        "gemini-3.8-flash"
+      ],
+      "timeout": 20,
+      "retries": 0,
+      "reasoning": {
+        "gemini-2.5-flash": "disable",
+        "gemini-3.8-flash": "low"
+      },
+      "modality": "audio"
     }
   }
 }
