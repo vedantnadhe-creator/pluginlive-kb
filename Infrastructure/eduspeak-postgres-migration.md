@@ -2531,3 +2531,41 @@ Files: `~/pilvidya-data-import/newmigs/20261111T174702Z-chat-simulations/` on th
 - There is no automatic fact-citation check yet.
 - The catalogue's class tags are wrong in places.
 - `ai-consent-gate` and `ai-swot-report`, both held, read consent columns that do not exist.
+
+## 2026-11-12 — PilVidya UAT `6f15d049`: full-journey QA fixes (frontend only, no DB changes)
+
+QA of the admin, teacher, student and parent journeys on `eb9efe5c` found the following; all fixed on `feat/chat-simulations` and deployed:
+- **Service worker cached API data.** `public/sw.js` served every GET whose URL did not contain `supabase` cache-first, with no expiry. On the self-hosted stack the API is `/sb/...`, so PostgREST reads were cached forever: lists went stale (an admin's freshly generated simulation did not appear), and because the cache is keyed by URL only, the next user on the same device could be served the previous user's rows. `index.html` was cache-first too, so users could stay on an old build after a deploy. The worker now caches only same-origin static files (`/assets/`, images, fonts), loads pages network-first (cached shell only offline), and uses `static-v2`/`images-v2` cache names so activation deletes the old caches (`skipWaiting` + `clients.claim`). A regression test in `sprint10-12-surface.regression.test.ts` fails if API URLs are intercepted again. **Browser tests before this deploy must block service workers** or they see stale data.
+- **Teacher "My Lessons" crash** (React #31): `TeacherContentUploadPanel` and `PaperBuilderPanel` rendered `SUBJECTS` entries as text after upstream `263be25c` made them objects. They now show and store `subject.name`.
+- `SimulationPlayer` hook dependency arrays read `node`/`isLastNode` before declaration (TDZ; latent because `useHotkeys` is a stub). Removed.
+- Chat simulations assign dialog explains its empty student list. A teacher sees only students they teach (`is_teacher_for_student`: `teacher_student_profiles`, class teacher of the student's class, or principal/HOD of the school); whole-class assignment still works. UAT fixture: the 20261019 test teacher is class teacher of Test School A class 9A.
+
+**Verification on UAT:** chat simulations through the real screens with the service worker on, 14/14:
+1. Admin generates a draft (about 25 s), publishes it to one school.
+2. The teacher sees and previews it, then assigns it to one student.
+3. The student plays and submits; scoring is evidence-gated (on-topic answers 65–94, off-topic 0).
+4. The teacher verifies; the student sees the best score.
+
+API checks, 21/21:
+- A student without consent is refused.
+- School isolation holds for students, teachers and overrides.
+- Dispute accept with a new score, and teacher override, both work.
+- A Hindi case discussion generates.
+- A teacher cannot create a platform pack.
+
+Logins 10/10. The teacher sidebar and tab crawl is clean.
+
+**Open, upstream (no migration anywhere in the repo):** 17 tables or RPCs the frontend reads:
+- `goal_target`: student target scores (11-10) are silently not saved.
+- `teacher_coach_questions`: AI Coach history.
+- `service_health_checks` / `service_health_stats`.
+- `student_messages`, `daily_quests`, `live_class_chat`.
+- The attendance tables.
+- `student_has_curricula_list`.
+
+**Also open:** principals see the "AI Configuration" menu, but `llm-config` allows only admins and teachers, so it returns 403.
+
+QA scripts are on the DEV box in `~/pilvidya-checks`:
+- `journeys.cjs`: every sidebar item and tab, per role.
+- `chatsim-ui.cjs`: the browser journey. `SW=allow` turns the service worker on.
+- `chatsim-e2e/extra.mjs` and `cleanup.mjs`.
