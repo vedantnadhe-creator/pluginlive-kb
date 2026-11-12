@@ -2569,3 +2569,66 @@ QA scripts are on the DEV box in `~/pilvidya-checks`:
 - `journeys.cjs`: every sidebar item and tab, per role.
 - `chatsim-ui.cjs`: the browser journey. `SW=allow` turns the service worker on.
 - `chatsim-e2e/extra.mjs` and `cleanup.mjs`.
+
+## 2026-11-12 — PilVidya UAT `6ef7968d`: shared app shell, Back/Home/Logout, dashboard counts, RBAC, admin "View as"
+
+**Navigation and layout (frontend):**
+- **Shared layout everywhere:** 23 learning routes, wrapped in `SubscriptionGuarded` (AI Coach, Tutor, Practice, Lessons, Mock Tests, labs, Curriculum, Simulations, NovaCampus/NovaWorld), now render inside `AppLayout`.
+  - Before, they had no menu and a floating logo overlapped page content.
+  - Three play routes stay full-screen through `ImmersiveGuarded`: competition play, FL assessment, and the legacy simulation player.
+- **Top bar on every screen:** Back, Home and Logout.
+  - Logout is `hardLogout()` for every role, in both sidebars. Before, students kept their Supabase token and parents landed on `/admin/login`.
+  - Sidebar "Home" goes to the role's own home, not the public landing page.
+  - Teachers now land on their Dashboard tab instead of the Question Bank.
+- **Crashes fixed:**
+  - Teacher Profile, Teacher Dashboard and School LLM Config: `Button asChild` with two children.
+  - Teacher Dashboard: selected the non-existent `teacher_profiles.class_level`, which showed a false "not assigned to a school".
+  - `/analytics`: always "Failed to load"; it unpacked `invokeEdge`'s return value as `{data, error}`. PronunciationScore and FunctionCapacityDashboard had the same bug.
+- **Dashboard counts:**
+  - "Schools" means registered schools from the `schools` table on every dashboard (Overview had 12, School Analytics 13, Admin 360 4).
+  - Plan distribution counts one plan per teacher, including `advanced`.
+  - Garbled text (₹, —, emoji) repaired.
+  - Student 360 shows "—" instead of 0% when nothing is recorded.
+  - Admin 360 labels its mastery figure as all learners.
+  - **Still open, data:** 43 of 58 UAT students are not linked to a registered school; "CBSC" appears as a board; duplicate demo school names.
+
+**Access control (RBAC):**
+- `StaffRoute` guards `/teacher` and `/teacher/*`; `StudentPathGuard` guards `/student/*` on learning routes. Other roles are sent to their own home.
+- The Auth page no longer calls `signOut()` for a signed-in user of another role. A student who followed a teacher link used to be left half-signed-out, with every query failing "permission denied".
+- **`_shared/staff-guard.ts` `requireStaff` accepts `user_roles` teacher, principal and hod.** Before, only teacher was accepted, so principals got "staff access required" across the Teacher Portal.
+  - `trainer` is not an `app_role` value. Putting it in the `.in()` filter failed the whole query and briefly refused all staff on 2026-11-12.
+- Principals and HODs no longer see AI Configuration or Subscription; `llm-config` and `admin-set-secret` refuse them.
+- SIS/ERP Integrations checked admin rights through a localStorage key that admin login never sets; it now uses `useAuth`.
+
+**Admin "View as" (read-only impersonation):** `/admin/view-as` (menu: Role Journeys → View as user).
+- **What it does:** a platform admin searches for a student, a staff member (teacher, principal or counselor) or a parent, and opens the app as them for up to 30 minutes. The admin's own browser session is parked in a localStorage snapshot under `aividya_view_as` and restored on Exit. A banner with a countdown shows on every screen.
+- **Identity:** the `admin-view-as` function issues it.
+  - **Students and staff:** a 30-minute HS256 JWT for the target's auth user, carrying `impersonated_by` and `view_as_session_id`. GoTrue accepts it (it has no `session_id`).
+  - **Students and parents:** a `va_<48 hex>` token, stored only as a SHA-256 hash in `admin_view_as_sessions`. `student_verify_device_session` and the parent session checks accept it while the session is open; `_shared/parent-auth.ts` provides `parentSessionMatches` and `parentIdForViewAsToken`.
+  - **Refused:** admin targets, users who have never signed in, and starting a preview from inside a preview.
+- **Read-only, enforced on the server:**
+  1. **API:** PostgREST `PGRST_DB_PRE_REQUEST=public.pilvidya_pre_request` sets `transaction_read_only` for any JWT with `impersonated_by`, so writes fail with "cannot execute … in a read-only transaction".
+  2. **Storage:** a `storage.objects` trigger refuses writes under such a JWT.
+  3. **Functions:** `_shared/view-as-guard.ts`, called by the UAT-local router `~/eduspeak-sb/functions/main/index.ts`, allows only read functions and read actions (`list*`, `get*`, `bootstrap`, `portal_*`, …). It replies HTTP 200 with `ok:false` and "Read-only preview…", the same convention as `fail()`.
+- **Audit:** every session is a row in `admin_view_as_sessions` and in `admin_audit_log` (`view_as_start`). The page lists recent previews.
+- **Verification on UAT:**
+  - Browser journey 23/23: student, teacher and parent each get their own menus and data; a write attempt is refused; Exit restores the admin.
+  - API suite 26/26 (`~/pilvidya-checks/chatsim-e2e/viewas-api.mjs`).
+  - Guard unit tests 3/3.
+
+**UAT infrastructure changes (backups next to each file):**
+- `~/eduspeak-sb/docker-compose.yml`: rest service gets `PGRST_DB_PRE_REQUEST: public.pilvidya_pre_request`.
+- `~/eduspeak-sb/functions-secrets.env`: `JWT_SECRET`, copied from `.env`, so `admin-view-as` can sign preview tokens.
+- `~/eduspeak-sb/functions/main/index.ts` (UAT-local; `deploy-frontend.sh` excludes `main/`): imports and calls `viewAsGate`.
+- `~/eduspeak-sb/gateway.conf`, `/functions/v1/` location: `proxy_http_version 1.1` and `Connection ""`.
+  - Small gzip function replies are sent chunked, and nginx's HTTP/1.0 upstream default could not delimit them; they hung until `proxy_read_timeout`.
+  - This affected any short `ok({})` reply requested with `Accept-Encoding`, i.e. every browser.
+- **Gotcha:** `docker compose up -d --force-recreate rest functions` gives the containers new IPs. The gateway keeps proxying to the old ones (502) until `docker compose exec -T gateway nginx -s reload`. This caused a roughly 3-minute API outage on 2026-11-12. `docker compose restart` keeps the IP.
+- **Lockdown:** `lockdown.uat.sql` now also revokes `view_as_token_valid` from authenticated and limits `admin_view_as_sessions` to SELECT. DB-Scripts commit `0b3546b`.
+
+**Regression after deploy:**
+- Logins 10/10; route sweep 47/48 (`/my-simulations` already missing).
+- Every menu, every role: Home and Logout present, no crash, no sideways scroll.
+- Chat simulations: browser 14/14 with the service worker on, API 21/21.
+- RBAC matrix as intended.
+- New QA scripts in `~/pilvidya-checks`: `ui-audit.cjs`, `rbac-switch.cjs`, `dash-capture.cjs` (`LOCAL=1` serves local Vite code under the UAT origin) and `viewas-ui.cjs`.
