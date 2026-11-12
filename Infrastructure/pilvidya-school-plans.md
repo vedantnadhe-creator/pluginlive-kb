@@ -57,6 +57,7 @@ automatically. Live on UAT `dc1a74b9` (2026-11-12); PROD has no aividya yet.
 - Sections: hero with a Robo class preview, Robo Teacher, chat simulations, English + 13 Indian languages and 8 world
   languages (with pronunciation), NEET/JEE Main/JEE Advanced/MHT CET/CUET actual-mock preview (patterns from
   `lib/CompetitiveExam/ExamConfigs.ts`), boards + learning picker, role sign-in (`LoginRoleSwitcher`), school plans, promises + FAQ.
+- Header "Sign in" opens a role menu (Student → /student-entry, Teacher → /auth?role=teacher, Parent → /parent/login, School admin → /admin/login); UAT `6253116f`.
 - "Book a school demo" = mailto contact@aividya.si (no booking form yet). Previews are static HTML, not live data.
 - The app-wide floating theme toggle (`.app-theme-toggle` in App.tsx) is hidden on the home page; the header has its own.
 - Logo is `src/assets/aividya-logo.webp` (11 KB). Still open: `vendor-charts` (~900 KB) loads on the home page via eager imports in App.tsx.
