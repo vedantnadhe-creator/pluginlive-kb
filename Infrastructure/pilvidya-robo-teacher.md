@@ -90,3 +90,10 @@ Robo Teacher and Robo Classes are Enterprise; see `Infrastructure/pilvidya-schoo
 ## Next steps (not built)
 - Live streaming STT (Deepgram relay) if a Deepgram key is added; phoneme-level pronunciation (Azure pronunciation assessment).
 - Teacher notifications when an assignment is overdue; parent WhatsApp nudge from `learning_coach`.
+
+## Foreign languages: 10 languages, A1–B2, 30 themes per level (UAT `a5003bf3`, 2026-11-12)
+- Languages: French, German, Spanish, Japanese, Mandarin, Russian, Portuguese, Arabic, **Korean (ko-KR, Scribe kor)**, **Indonesian (id-ID, Scribe ind)**.
+- Levels A1, A2, B1 and **B2**, 30 themes each (`FL_THEMES` in `_shared/robo/teacher.ts`; the page list `FL_LEVEL_THEMES` must match, enforced by `frontend/src/test/foreignLanguageThemes.test.ts`). The original 6 per level are kept first.
+- Phrases inside «» are written in the language's own script (Hangul, kana/kanji, Cyrillic, Arabic…) with optional pronunciation in brackets after, so pronunciation practice matches Scribe's transcript. Before this, Korean/Japanese phrases came romanised and scored badly.
+- Checked: `~/pilvidya-checks/chatsim-e2e/ko-id-e2e.mjs` 9/9 (Korean A1 + Indonesian B2 start, turn, pronunciation 100% / 99%, unknown theme refused).
+- The Foreign Languages module page uses its own DB catalogue (`foreign_language_catalog`); Korean/Indonesian were not added there.
