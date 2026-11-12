@@ -50,3 +50,13 @@ automatically. Live on UAT `dc1a74b9` (2026-11-12); PROD has no aividya yet.
 - Plan unit tests 438/439 (the 1 failure pre-dates this: an audit-log assertion in `admin-manage-users`).
 - UAT: logins 10/10, Robo 15/15, View-as 26/26, Simulation E2E pass; Test School A switched to Basic → Robo and
   Simulation start both 403, restored to Enterprise; admin School Plans, Roles, Matrix, Overview and teacher My Plan render with no page errors.
+
+## Home page (UAT `8de6d747`, 2026-11-12)
+- The public home page (`frontend/src/pages/Index.tsx`) lists the three plans with prices from `public_plan_prices()`
+  (anon-callable, returns basic/advanced/enterprise `annual_price`; DB-Scripts above). Falls back to 3600/4800/6000 if the call fails.
+- Sections: hero with a Robo class preview, Robo Teacher, chat simulations, English + 13 Indian languages and 8 world
+  languages (with pronunciation), NEET/JEE Main/JEE Advanced/MHT CET/CUET actual-mock preview (patterns from
+  `lib/CompetitiveExam/ExamConfigs.ts`), boards + learning picker, role sign-in (`LoginRoleSwitcher`), school plans, promises + FAQ.
+- "Book a school demo" = mailto contact@aividya.si (no booking form yet). Previews are static HTML, not live data.
+- The app-wide floating theme toggle (`.app-theme-toggle` in App.tsx) is hidden on the home page; the header has its own.
+- Logo is `src/assets/aividya-logo.webp` (11 KB). Still open: `vendor-charts` (~900 KB) loads on the home page via eager imports in App.tsx.
