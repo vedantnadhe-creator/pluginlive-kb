@@ -34,11 +34,54 @@ commit `vX.Y.Z` (bump Z for every PROD deploy). Hotfixes branch from the release
 `DEPLOY_REF=<sha>` still overrides the default ref on DEV/UAT for a one-off.
 
 Starting point: `Development` = `UAT` = `8cd5701e` (= `main` on 2026-11-09); `release/prod-v1.1` = `1be41a69` (PROD, 2026-11-09)
-Tags: `v1.1.0` = `0aaf2f2e`, `v1.1.1` = `1be41a69`, `v1.1.2` = `7f6fc4b9`, `v1.1.3` = `61d23d01`, `v1.1.4` = `98ad9668`, `v1.1.5` = `180822ba`, `v1.1.6` = `21423643` (PROD from 2026-11-11 15:22Z); `UAT` = `main` = `50655975`, `Development` = `061195cc` (2026-11-11), `Development` = `498b43b0` (2026-11-09 13:12Z).
+Tags: `v1.1.0` = `0aaf2f2e`, `v1.1.1` = `1be41a69`, `v1.1.2` = `7f6fc4b9`, `v1.1.3` = `61d23d01`, `v1.1.4` = `98ad9668`, `v1.1.5` = `180822ba`, `v1.1.6` = `21423643` (PROD from 2026-11-11 15:22Z); `UAT` = `Development` = `bc76bab8` (2026-11-12), `UAT` = `main` = `50655975`, `Development` = `061195cc` (2026-11-11), `Development` = `498b43b0` (2026-11-09 13:12Z).
 as running on PROD. `main` is no longer deployed anywhere; it is kept only for history and old PRs.
 DEV copy of the stack (2026-11-09): `~/banking-sb` on the DEV box, DB `banking_dev` on `127.0.0.1:5443`, app worktree
 `~/banking-dev-app`, static files served from `/var/www/banking-dev`; data copied from UAT that day, own JWT secret,
 third-party keys (MSG91, Gemini, ElevenLabs, mail) shared with UAT.
+
+## Student LMS v2 (`/lms/*`) — DEV 2026-11-09, UAT 2026-11-12 (`bc76bab8`), PROD not deployed
+
+Every student/candidate now lands on the new LMS after login (`STUDENT_HOME_PATH` = `/lms/dashboard`; the login page is
+`/lms/login`, same email/mobile OTP as before — auth itself did not change). Trainers, institutes and admins are unchanged.
+The UI is the design team's (`designer` branch, Abimanyu S); the user lifted the designer hold **for UAT only** on
+2026-11-12 — PROD stays held until UAT is signed off.
+
+| Screen | Route | Data |
+|---|---|---|
+| Dashboard | `/lms/dashboard` | assigned modules (`loadAssignedModules`), progress, streak/learning time (`student_usage_daily`), skills radar from `sim_attempts.scores`, live sessions (`module_live_sessions`, RPC `live_session_going_counts`) |
+| Courses | `/lms/courses` | modules + trainer curricula (`my_assigned_curricula`) |
+| Course page | `/lms/courses/:moduleId?topic=N&step=reading\|video\|workspace\|quiz` | `admin_module_topics` (weeks/days/chapters from `metadata.lms`; modules without it are one chapter of lessons), `module_item_progress` (reading + video via `record_learning_activity_v1`), `student_module_topic_progress` (quiz ≥ 70), `user_progress_state.context.lms` (passed chapter quizzes, seen overviews, videos marked as watched) |
+| Workspace step | inside the course page | sim packs from `sim-attempt` `list` (best score, resume, workbook flag); role-play and voice call; every workbook (task + scratch) opens in `WorkbookDialog` |
+| Mock pitch | `/lms/practice/voice/:versionId`, `/lms/practice/voice/run/:attemptId` | `sim-voice`; client portrait is a still photo |
+| Trainer curriculum | `/lms/curriculum/:id` | `curriculum_*`; drawn in the course structure: Course overview → chapter (curriculum subject; phase from `metadata.phase`) → Overview of the chapter → sub-chapters with Reading/Video/Quiz → Chapter quiz (pooled topic questions, max 20, after every sub-chapter). Chapter-quiz/overview/watched marks use `cur:<curriculumId>:…` keys in `user_progress_state.context.lms` |
+
+**Lesson documents and films come from Admin → Modules uploads** (`topic_attachments`, private `attachments` bucket, signed
+1-hour links): PDF opens inline, PPT/Word show a download link (no server-side PDF conversion yet), video files play as
+course films. A lesson's own files go with it; module-level files go on the first lesson. Migration
+`20261111120000_topic_attachments_any_catalog` replaced the legacy-only foreign keys with an owner-check trigger, so
+courses that exist only in `admin_modules`/`admin_module_topics` (e.g. the imported ones) accept uploads; files are deleted
+with their module/lesson in either catalog. Other migrations in this release: `20261109140930_live_session_going_counts`,
+`20261109141500_coach_quiz_sessions_chapter_size` (quiz sessions 1–20 questions, for 20-question chapter quizzes).
+DB-Scripts folder: `LMS v2 Student Portal/`.
+
+**Imported courses on UAT (2026-11-12):** Private Banking (`1c0f3c3c-…`, 82 topics) and Fundamentals of Management
+(`123dd436-…`, 5 topics) via `scripts/lms/import-static-courses.sql`. Not assigned to anyone — assign through Module Groups.
+
+**Known issues (2026-11-12):**
+- **Course lists take ~10 s on UAT.** Reading `module_group_assignments` as a student runs `private.staff_can_manage_student`
+  and `private.trainer_can_view_student_data` on every row (4,726 rows → 9.8 s for 19 visible), from the
+  "Scope assignments, or the learner's own" policy added by the 2026-11-11 security release (also on PROD v1.1.6).
+  Every page that lists the learner's courses waits on it. Not fixed yet.
+- `/lms` without a path returns 403: `public/lms/` (design assets) makes nginx treat it as a directory. `/lms/dashboard`
+  and every other `/lms/*` page work; login goes straight to `/lms/dashboard`.
+- `~/banking-checks/mod.cjs` is stale: its `/edit/i` button match hits "More actions for Credit Card". Not a regression.
+- A voice call started while a typed role-play of the same scenario is in progress continues that attempt (existing behaviour).
+
+Checks (DEV box, `~/banking-checks/lmsv2/`): `lmsuat.cjs <uid>` (UAT dashboard/courses/course page at 1440 and 390 px,
+JWT minted like `../asuser.cjs`; UAT tester `cert-uat-test@pluginlive.com` = `b1dc35d0-…`), `lmstrace3.cjs <uid> x`
+(course-list and course-page load times), `uatattach.cjs` (admin upload to an imported course, cleans up). DEV-only
+scripts (DEV fixtures): `files.cjs`, `curstruct.cjs`, `curquiz.cjs`, `wbdialog*.cjs`, `wbtask.cjs`, `wbvoice.cjs`, `navicons.cjs`.
 
 ## Trainer assessment review (2026-10-30)
 
@@ -226,6 +269,7 @@ nvm use 20 && npm install && npm run build
 
 | Date | Commit | Migration applied | Notes |
 |---|---|---|---|
+| 2026-11-12 **UAT** | `bc76bab8` (`Development` fast-forwarded into `UAT`; `UAT` first merged back into `Development` to keep the Robo Stereo Mix fix `cdaf47c0`) | `20261109140930_live_session_going_counts`, `20261109141500_coach_quiz_sessions_chapter_size`, `20261111120000_topic_attachments_any_catalog` (rehearsed in a rolled-back transaction first) + data `scripts/lms/import-static-courses.sql` | Student LMS v2 + designer UI (designer hold lifted for UAT only). Snapshot `20261112T045902Z`; bundle `index-D-jIrwJz.js`, no DEV URLs. See *Student LMS v2*. |
 | 2026-08-09 | `6c0429b` | `20260808045623` (as idempotent fixup) | 41 commits; date-fns repin removed the need for `--legacy-peer-deps` |
 | 2026-08-10 | `8877a68` | `20260810100000_admin_subscription_rbac_menu_access` | 18 commits; adds **Subscriptions & Access** and **RBAC & Reports** to the admin nav; edge functions 81 → 82 (`request-password-reset`) |
 | 2026-08-12 | `bade695` | **none** | 9 commits; multilingual AI coach; edge functions 82 → 83 (`elevenlabs-tts`). Ships **three upstream defects** — see *Upstream defects in the 2026-08-12 release*. One needed a local patch to avoid data loss. |
