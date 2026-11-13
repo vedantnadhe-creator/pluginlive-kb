@@ -264,6 +264,27 @@ Question-bank TTS audio (`audio/google_audio_*`: Listening clips, Dictation sent
 
 **Recovered on PROD 2026-11-05.** The audio for every question on an active set was regenerated to its original object key: 1,903 files (320 Listening, 1,600 Dictation rows), 456,270 characters, about $13.69, voice `en-IN-Chirp-HD-O`, in the same bucket. After the run every active key exists (883 Listening, 4,283 Dictation, 0 missing). Questions only on retired sets were not regenerated. Three Listening file names had been shared by two different passages (an old same-second naming collision), so one question of each pair moved to a `_b` key (`questions.object_key`, 3 rows). **Method:** build the list from a bucket listing, not key dates. Run `generate_google_audio(text, custom_filename=<key without .mp3>)` in the DEV `fastapi` container with `GOOGLE_APPLICATION_CREDENTIALS=/app/credentials.json`, using `questions.question_text` for Listening and `sub_questions.question_text` for Dictation. Upload with `oci os object bulk-upload --object-prefix audio/ --content-type audio/mpeg --no-overwrite`. Google allows about 30 Chirp HD requests a minute and live set generation shares that quota, so pace at about 25 a minute.
 
+## DB-driven retention (Route 2) — in progress
+
+Goal: stop deciding deletion by folder name. A student-node job will check each object
+against the database (any question/content reference → keep; only candidate references past
+retention → expire) and **rename** expired objects to `_expired/<YYYYMMDD>/<original key>`.
+Rename needs OBJECT_CREATE + OBJECT_OVERWRITE, not OBJECT_DELETE, and resets last-modified,
+so the bucket rule below gives a 14-day undo window (rename back to restore).
+
+| Bucket | `expired-delete-14d` (`_expired/`, DELETE 14d, excl. `banking/*`) | Prefix DELETE rules |
+|---|---|---|
+| `pl_dev_poc` | LIVE 2026-11-13 (8 rules) | still active |
+| `pl-uat-assessment` | LIVE 2026-11-13 (8 rules) | still active |
+| `pl-prod-assessment` | not applied (7 rules) | active |
+
+The job is **not built yet**, so nothing is renamed into `_expired/` today and the prefix
+rules still do all deletion. They are removed in the same PUT that the job goes live with —
+removing them earlier would stop the 14-day verification deletion and leave bytes behind
+after the sweep's sunset nulls the DB pointers. Rule file: `script/ociLifecycleRules.json`
+(8 rules, local commit 6b4d45cb on Development, not pushed). Design + DEV dry run:
+`~/designs/assessment-media-retention-engine.md` on the DEV box.
+
 ## PROD deployment checklist — next release
 
 **Status: PARTLY DONE.** On **2026-10-01** the OCI IAM statement for `pl-prod-assessment` was
