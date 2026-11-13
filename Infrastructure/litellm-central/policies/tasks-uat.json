@@ -830,6 +830,32 @@
       "retries": 0,
       "reasoning": {},
       "modality": "decision"
+    },
+    "pl/report-remarks": {
+      "primary": "gemini-3-flash-preview",
+      "fallbacks": [
+        "gpt-5.4-mini"
+      ],
+      "timeout": 35,
+      "retries": 0,
+      "reasoning": {
+        "gemini-3-flash-preview": "disable",
+        "gpt-5.4-mini": "none"
+      },
+      "modality": "text"
+    },
+    "pl/homework-mark": {
+      "primary": "gemini-2.5-flash",
+      "fallbacks": [
+        "gpt-5.4-mini"
+      ],
+      "timeout": 25,
+      "retries": 0,
+      "reasoning": {
+        "gemini-2.5-flash": "disable",
+        "gpt-5.4-mini": "none"
+      },
+      "modality": "text"
     }
   }
 }

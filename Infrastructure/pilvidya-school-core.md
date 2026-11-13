@@ -1,4 +1,4 @@
-# aividya — School core: setup, promotion, My Day, My Class, exams → report cards, parent messages, fees (UAT, feat/chat-simulations 10daf180)
+# aividya — School core: setup, promotion, My Day, My Class, exams → report cards, parent messages, fees (UAT, feat/chat-simulations 2c80ab0c)
 
 The day-to-day running of a school. Every write is a SECURITY DEFINER function that checks the caller; the browser
 never writes these tables directly. Migrations: `20261118210000_school_setup_day_and_exams.sql`,
@@ -26,6 +26,11 @@ never writes these tables directly. Migrations: `20261118210000_school_setup_day
 - **Fees**: `fee_record_payment` locks the invoice, refuses more than is due, needs a reference for UPI/cheque/DD/bank transfer, writes `payment_receipts` with `RCT-<school code>-<year>-<00001>` from `fee_receipt_counters`. Trigger `trg_fee_invoices_guard_paid` blocks direct `amount_paid`/paid status edits by signed-in users (service role and platform admins allowed, so reconcile/Razorpay functions still work).
 - `terms` / `academic_years`: any teacher could write them before; now only the setup functions (principal) and platform admins.
 
+## Teacher-assist AI (suggestions only, the teacher saves)
+- **Draft remarks with AI** (Exams & Marks → Remarks · class): `school-ai` action `draft_remarks` → `exam_remark_context` (class teacher / principal / HOD only) → gateway task `pl/report-remarks`. 1–2 sentences per student from this exam's marks, attendance and homework; no exact marks, rank or comparisons. Fills only empty remark boxes; nothing is saved until Save remarks.
+- **Suggest** (Homework → submission): `school-ai` action `suggest_homework_mark` → `homework_ai_context` (teacher of the homework or school leader) → reads the written answer and up to 3 photos (jpg/png/webp ≤ 4 MB; PDF/Word skipped and listed) → gateway task `pl/homework-mark` → marks (half marks, clamped to max) + feedback filled in; nothing is saved until Mark.
+- Measured on UAT 2026-11-13: remarks ~2 s for a class of 2, photo marking ~4 s.
+
 ## How promotion and the curriculum work
 - The student's class (`student_profiles.class_id` + `class_level`) changes; every student page reads the class from the profile, so the next class's curriculum, timetable and homework show automatically.
 - Past-year data (homework, exam marks, attendance, report cards, Robo/practice history) stays in place; homework and exams screens show only the current class, so the past is shown in **My Years**.
@@ -33,6 +38,7 @@ never writes these tables directly. Migrations: `20261118210000_school_setup_day
 - Subject-teacher rows are per class (`teacher_class_mappings_class_unique` includes class_id), so the same teacher can hold 10 A Maths in two years.
 
 ## Gotchas
+- Removed 2026-11-13: `frontend/src/components/ai/` (56 files nothing imported), `AdminClassRegistry` page and `admin-manage-classes` function (replaced by School setup). Still declared in `App.tsx` but never routed: TargetVsAchievement, AdminParentRegistry, AdminFeeManagement, AdminAttendanceDashboard, AdminCommunicationGateway, AdminLibraryManagement, AdminCertificateGenerate, AdminReportCardGenerate, AdminHRManagement, AdminTransportManagement, AdminCurriculumManagement.
 - UAT has no Razorpay keys: "Pay link" fails; offline payments with receipts work.
 - New alerts/messages are in-app only (no WhatsApp/SMS provider on UAT).
 - My Day is empty until the school enters a timetable (School Operations → Timetable).
