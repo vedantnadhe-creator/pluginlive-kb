@@ -79,4 +79,20 @@ class PolicyTests(unittest.TestCase):
         must_ask=self.tasks['pl/interview-must-ask']
         self.assertEqual(must_ask['timeout'],4 if must_ask['primary']=='gemini-3.1-flash-lite' else 6)
 
+    def test_decision_models_stay_in_decision_tasks(self):
+        def task(primary, fallbacks, modality):
+            return {'primary':primary,'fallbacks':fallbacks,'timeout':15,'retries':0,'reasoning':{},'modality':modality}
+        policy.validate_policy('pl/proctor-phone', task('gemini-decision-1',['openai-decision-gpt-6-luna'],'decision'))
+        with self.assertRaises(ValueError):
+            policy.validate_policy('pl/x', task('gemini-decision-1',['gpt-6-luna'],'decision'))
+        with self.assertRaises(ValueError):
+            policy.validate_policy('pl/x', task('gemini-3.8-flash',['openai-decision-gpt-6-luna'],'text'))
+        with self.assertRaises(ValueError):
+            policy.validate_policy('pl/x', task('gemini-decision-1',[],'image'))
+        data=policy.route_task({'model':'pl/proctor-phone'},{'pl/proctor-phone':task('gemini-decision-1',['openai-decision-gpt-6-luna'],'decision')})
+        self.assertEqual(data['fallbacks'],[{'model':'openai-decision-gpt-6-luna'}])
+        with self.assertRaises(policy.HTTPException):
+            policy.deployment_params({'model':'openai/gpt-6-luna','metadata':data['metadata']})
+        self.assertIsNotNone(policy.deployment_params({'model':'pldecision/openai-decision-gpt-6-luna','metadata':data['metadata']}))
+
 if __name__=='__main__':unittest.main()

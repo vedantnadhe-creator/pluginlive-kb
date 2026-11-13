@@ -30,6 +30,8 @@ from litellm.integrations.custom_logger import CustomLogger
 OPENAI_FALLBACK_MODEL = re.compile(r"(^|/)gpt-(5\.4-mini|6-luna)$")
 GEMINI_ONLY_PARAMS = ("thinking", "thinking_config", "thinkingConfig", "top_k")
 GEMINI_NO_THINKING = (None, "disable", "minimal")
+# Registered as pldecision/<name>; served by pl_decisions.DecisionProvider.
+DECISION_MODELS = frozenset({"gemini-decision-1", "openai-decision-gpt-6-luna"})
 # Reasoning shares the completion budget, so a cap sized for a no-thinking Gemini
 # call would leave nothing for the answer.
 MIN_REASONING_COMPLETION_TOKENS = 4096
@@ -67,13 +69,46 @@ def to_openai_params(kwargs: dict) -> dict:
 
     response_format = kwargs.get("response_format")
     if isinstance(response_format, dict) and response_format.get("type") == "json_schema":
+        json_schema = response_format.get("json_schema", {})
         # Schemas are generated for Gemini; OpenAI strict mode rejects most of them
-        # (it needs additionalProperties: false and every property required).
+        # (it needs additionalProperties: false and every property required). A
+        # schema whose every property is already required keeps strict mode, so
+        # the fallback returns the same shape the primary is held to; any other
+        # schema is sent non-strict, as before.
+        strict_schema = to_openai_strict_schema(json_schema.get("schema")) if json_schema.get("strict") else None
         kwargs["response_format"] = {
             **response_format,
-            "json_schema": {**response_format.get("json_schema", {}), "strict": False},
+            "json_schema": {**json_schema, "schema": strict_schema, "strict": True} if strict_schema
+            else {**json_schema, "strict": False},
         }
     return kwargs
+
+
+def to_openai_strict_schema(schema):
+    """The schema with additionalProperties: false on every object, or None when
+    it cannot be strict without changing what the caller accepts (an optional
+    property, or a root that is not an object)."""
+    if not isinstance(schema, dict) or schema.get("type") != "object" or not isinstance(schema.get("properties"), dict):
+        return None
+
+    def convert(node):
+        if isinstance(node, list):
+            converted = [convert(item) for item in node]
+            return None if any(item is None for item in converted) else converted
+        if not isinstance(node, dict):
+            return node
+        if isinstance(node.get("properties"), dict):
+            if set(node.get("required") or []) != set(node["properties"]):
+                return None
+            node = {**node, "additionalProperties": False}
+        converted = {}
+        for key, value in node.items():
+            converted[key] = convert(value) if isinstance(value, (dict, list)) else value
+            if isinstance(value, (dict, list)) and converted[key] is None:
+                return None
+        return converted
+
+    return convert(schema)
 
 
 def load_policies():
@@ -95,6 +130,12 @@ def validate_policy(task, policy):
     if policy["modality"] in ("audio", "grounding", "image"):
         if any(not model.startswith("gemini-") for model in models):
             raise ValueError("This task requires a compatible Gemini chain")
+    # Decision models (pl_decisions.py) answer one yes/no probability, not text:
+    # a decision task may use only them, and no other task may use them.
+    if (policy["modality"] == "decision") != all(model in DECISION_MODELS for model in models):
+        raise ValueError("Decision tasks must use only decision models")
+    if policy["modality"] != "decision" and any(model in DECISION_MODELS for model in models):
+        raise ValueError("Decision models serve only decision tasks")
     return policy
 
 

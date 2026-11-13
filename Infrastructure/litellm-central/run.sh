@@ -9,7 +9,7 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 [ -s litellm.env ] || { echo "litellm.env missing: provider keys + DATABASE_URL" >&2; exit 1; }
-python3 test_task_policy.py >/dev/null && python3 test_pl_openai_fallback.py >/dev/null || { echo "hook unit test failed; not recreating" >&2; exit 1; }
+python3 test_task_policy.py >/dev/null && python3 test_pl_openai_fallback.py >/dev/null && python3 test_pl_decisions.py >/dev/null || { echo "hook unit test failed; not recreating" >&2; exit 1; }
 IMAGE="${LITELLM_IMAGE:-$(docker inspect litellm -f '{{.Image}}' 2>/dev/null || echo ghcr.io/berriai/litellm:main-stable)}"
 docker rm -f litellm >/dev/null 2>&1 || true
 docker run -d --name litellm --network litellm-net --restart unless-stopped \
@@ -18,6 +18,7 @@ docker run -d --name litellm --network litellm-net --restart unless-stopped \
   --env-file litellm.env \
   -v "$PWD/config.yaml:/app/config.yaml" \
   -v "$PWD/pl_openai_fallback.py:/app/pl_openai_fallback.py:ro" \
+  -v "$PWD/pl_decisions.py:/app/pl_decisions.py:ro" \
   -v "$PWD/policies:/app/policies:ro" \
   "$IMAGE" --config /app/config.yaml --port 4000 >/dev/null
 for _ in $(seq 1 90); do

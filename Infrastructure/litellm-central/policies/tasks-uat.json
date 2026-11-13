@@ -820,6 +820,16 @@
         "gemini-3.8-flash": "low"
       },
       "modality": "audio"
+    },
+    "pl/proctor-phone": {
+      "primary": "gemini-decision-1",
+      "fallbacks": [
+        "openai-decision-gpt-6-luna"
+      ],
+      "timeout": 15,
+      "retries": 0,
+      "reasoning": {},
+      "modality": "decision"
     }
   }
 }
