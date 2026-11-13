@@ -59,3 +59,4 @@ Live on UAT since 2026-11-13 (`feat/chat-simulations` a0af4e96 + 01a7bfd6 + 20a2
 - DB access by role (rolled-back transaction, real UAT users): `~/pilvidya-checks/school-ops/rls-roles-test.sql` (47 checks); `principal-rls-test.sql` (24). Both must run inside their own `BEGIN … ROLLBACK` — without a transaction `SET LOCAL ROLE` does nothing and the writes commit as the owner.
 - Browser: `~/pilvidya-checks/school-ops/{admin-teachers,institute-users,institutes,ops-e2e,ops-menu-check}.cjs` (UAT 2026-11-13: 12 + 15 + 10 + 23/24 then fixed + 6); `principal-ui.cjs` (19) and `subjects-ui.cjs` (4) on 6f6051fd; test data cleanup `cleanup-uat.sh`.
 - The ops menu does not open modules from a "nobody has an ops role" fallback any more (it miscounted under RLS and opened Hostel/Payroll for every teacher).
+- School setup, promotion, My Day, My Class, exams → report cards, parent messages and fee receipts: see `pilvidya-school-core.md`.

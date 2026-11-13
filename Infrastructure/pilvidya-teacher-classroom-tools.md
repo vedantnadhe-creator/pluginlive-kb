@@ -31,3 +31,4 @@ Live on UAT `66fecda5` (2026-11-12). Menu items for teachers; plan keys `teacher
   NOT seeded (topic order ≠ chapter order).
 - Question bank has no topic tags for e.g. Class 9 Science (104 questions with empty topic), so topic filters/quiz slides are thin there.
 - `curriculum_content` has only 61 rows (59 published); most topics use the topic-lesson fallback.
+- Teacher My Day, My Class (message parents) and Exams & Marks: see `pilvidya-school-core.md`.
