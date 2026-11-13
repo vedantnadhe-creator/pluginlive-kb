@@ -1223,6 +1223,32 @@ baked at build, so recreate with `-e`). `EMBEDDING_PROVIDER=gemini` (model
 just flip `EMBEDDING_PROVIDER` to openai** — the pgvector store is embedded in the Gemini
 vector space, so a provider switch needs a full re-embed first.
 
+### Gotcha — CV parse is attempted once per row; a failed parse is never retried
+
+`normalization_worker` skips the CV parse when `validation_logs` already holds a `cv_parse` **or `cv_parse_error`**
+row for the `raw_data_id` (`has_cv_validation_log`), then falls back to `fetch_existing_cv_data` (often empty). So a
+row whose parse failed (e.g. the UAT OCI outage, see `document-parsers.md`) stays CV-less on every re-run. To re-parse
+one row: delete its `cv_parse`/`cv_parse_error` rows in `candidate_ingestion_schema.validation_logs`, then set
+`candidates_raw_data.normalization_status='pending'`. The recruiter-upload CV link in `raw_data` is a presigned URL
+valid 7 days, so old rows may no longer download.
+
+Re-running a row whose student is **already mapped to the role** does not touch the shared profile (`student.*`):
+student-node only refreshes `student_role_mapping.role_resume_snapshot` (what the role view shows), for
+`source = TALLY_FORM`. Corporate-only leads (`access_level=[2]`, `is_corporate`) and ERP rows are the exceptions that
+refresh the profile.
+
+### Behavior — `currentCourse` level/degree/department filled from the matching education row (2026-11-13)
+
+`currentCourse.degreeId` comes from the resolved pg/ug degree id, but its `educationLevel`/`degree`/`department` only
+from `highest_qualification_*` slugs. A CV-only recruiter row (every sheet column "N/A") gets the degree from the CV
+gap-fill as `education_ug_*`, so `currentCourse` went out with a `degreeId` and `educationLevel: ""` and student-node
+rejected the whole create-full (`body/currentCourse/educationLevel must be equal to one of the allowed values`).
+`_fill_current_course_from_education` (called from `_sanitize_payload_cumulative_types`) now copies the blanks from
+the `education[]` row with the same `degreeId`; no match leaves it blank so the call still fails loudly. Development
+`f15b889`, UAT `eb08ea6`; PROD pending. Test: `python3 tests/test_current_course_level_from_education.py`.
+Known gap: student-node then drops that `education` row (currentCourse owns the level) and the row's matched
+`institutionId` goes with it; the CV gap-fill leaves `institutionName` blank, so the college is not shown for these rows.
+
 ### Gotcha — `cumulativeType` enum rejection (FST_ERR_VALIDATION)
 
 student-node's create-full Fastify schema restricts both `currentCourse.cumulativeType`

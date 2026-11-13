@@ -340,6 +340,13 @@ OCI_CONFIG_FILE=/app/oci_config
 
 ⚠️ **The engine `.env` is not tracked but IS fragile on UAT.** An append to it vanished between the edit and the build during one deploy — the rebuilt image had the OCI *files* but not the OCI *vars*, and `parseResumeAndUpload` still 500'd. Verify `grep -c '^OCI_' .env` **immediately before** `docker buildx build`, not just after editing.
 
+**It happened (found 2026-11-13).** UAT's `.env` and `.env.uat` held only `OCI_NAMESPACE`, so every form/recruiter CV on UAT failed
+`parseResumeAndUpload` from 2026-08-19 to 2026-11-13 (83 rows, `validation_logs.log_type='cv_parse_error'`, remark
+"OCI storage is not configured"). Students were created with only the sheet's fields. Fixed by appending
+`OCI_BUCKET_NAME`, `OCI_REGION`, `OCI_CONFIG_FILE` to both files, `docker cp .env fastapiai:/app/.env`, `docker restart fastapiai`.
+DEV was fine. Check: `docker exec fastapiai grep -c '^OCI_' /app/.env` must print 4. Re-parsing an old row needs the
+FDN steps in `form-data-normalization.md` ("CV parse is attempted once per row").
+
 ### Callers, after the switch
 
 | Caller | Env var | Now calls |
