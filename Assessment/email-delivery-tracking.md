@@ -370,9 +370,31 @@ Only what the DELIVERY column can act on:
 | hard bounce | `bounced`, carrying the bounce code and SMTP status |
 | accept **with** an `errorType` (e.g. `Recipient suppressed`) | `failed` |
 | clean accept | **nothing** — it only repeats what the row already says |
-| **soft** bounce | **nothing, deliberately** — OCI retries for hours and the message commonly lands, so writing it would show an admin a dead candidate who is about to be reached |
+| **soft** bounce (inbox full `4.2.2`, policy block, `message-expired` …) | `failed`, reason `Temporary bounce: <category> <code> <smtpStatus>` (since 2026-11-13, DEV + UAT; PROD pending). **Not** `bounced`, so the reminder crons (which skip only `bounced`) still try the address |
 | complaint | nothing — delivered then marked spam is a deliverability question, not a delivery one |
 | opens / clicks | nothing — `candidate_journey_events` already records the click on our own link |
+
+**Why soft bounces are failures (2026-11-13).** The old rule assumed OCI retries
+a soft bounce. It does not: on PROD 2026-11-06..12, **0 of 79** soft-bounced
+messages (77 Gmail `quota-issues 4.2.2` "inbox out of storage", 2 `message-expired
+4.4.7`) were ever relayed afterwards. Each gets exactly one bounce event about a
+minute after accept, then nothing, so those rows stayed `accepted` and the
+candidate read **Processing** forever (e.g. two Meesho AI-interview candidates
+whose 4 emails each never arrived). `failed` is terminal, so a later `relay`
+cannot lift it. If OCI ever starts retrying, add a non-terminal `deferred` status.
+
+**Plain-English reasons.** `email_events.error` keeps OCI's raw text; both
+admin-node (`app/helpers/emailFailureReasons.js`, used by `DeliveryFunnelService`)
+and its corporate-node mirror rewrite it on read, keyed on OCI's bounce category,
+e.g. *"Candidate's inbox is full, so their email provider refused the message —
+ask them to free space or share another email, then resend (4.2.2)"*. Unmapped
+temporary reasons read `Not delivered: …`; other unmapped text passes through.
+
+**Rows from before the fix stay `accepted`.** OCI does not replay old logs to the
+webhook. To correct history, pull soft-bounce records with `oci logging-search`
+(PROD: compartment `PluginLivePROD`, log group `Default_Group`, `where
+data.errorType = 'soft'`) and POST each record's `logContent` to
+`/delivery-feedback/email/oci` with `x-webhook-secret: $OCI_LOG_WEBHOOK_SECRET`.
 
 ### Correlation strips the angle brackets
 
