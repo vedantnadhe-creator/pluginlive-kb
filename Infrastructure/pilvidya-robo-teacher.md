@@ -84,6 +84,11 @@ French, German, Spanish, Japanese, Mandarin, Russian, Portuguese and Arabic, at 
   - Every foreign-language reply, including the greeting, carries at least one «phrase».
 - **Verified:** `~/pilvidya-checks/chatsim-e2e/robo-next.mjs` 15/15 (cross-school assign refused, wrong-topic start refused, transcript ACL, Scribe English/Hindi exact, French pronunciation 97%); browser fake-mic turn answered in 9.5 s; teacher Results + transcript; parent digest section; fr/es/ja openings each carry a phrase.
 
+## Turn output format (UAT `d96ab82c`, 2026-11-13)
+- Each turn asks `pl/robo-teacher` for JSON `{reply, advance, answer_assessment, misconception}`. History teacher turns are plain text, so gemini-2.5-flash sometimes replied in prose; the gateway retry did the same and the class stopped with "The AI partner gave an unusable answer" (seen on a Class 6 Gravitation class after a long spoken answer; replay 4/5 valid).
+- Fix: a final system message "Format: answer with the JSON object only — keys reply, advance, answer_assessment, misconception" (replay 10/10 valid), and `callSimTask(..., proseFallback)`: if the second answer is still prose (not starting with `{`, `[` or a fence, ≤ 1500 chars) it becomes `{reply: text, advance: false, answer_assessment: "none"}` — the class continues without advancing or scoring that turn. Log line `gateway_prose_fallback`. Malformed JSON is never masked; other sim tasks are unchanged.
+- Check: `~/pilvidya-checks/chatsim-e2e/robo-prose-check.mjs` (live, 8 rambling answers; 2026-11-13: 8/8 turns ok, 9/9 calls valid first time).
+
 ## Plan gating
 Robo Teacher and Robo Classes are Enterprise; see `Infrastructure/pilvidya-school-plans.md`.
 
