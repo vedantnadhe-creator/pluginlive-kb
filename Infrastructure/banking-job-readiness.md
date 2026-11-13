@@ -34,7 +34,7 @@ commit `vX.Y.Z` (bump Z for every PROD deploy). Hotfixes branch from the release
 `DEPLOY_REF=<sha>` still overrides the default ref on DEV/UAT for a one-off.
 
 Starting point: `Development` = `UAT` = `8cd5701e` (= `main` on 2026-11-09); `release/prod-v1.1` = `1be41a69` (PROD, 2026-11-09)
-Tags: `v1.1.0` = `0aaf2f2e`, `v1.1.1` = `1be41a69`, `v1.1.2` = `7f6fc4b9`, `v1.1.3` = `61d23d01`, `v1.1.4` = `98ad9668`, `v1.1.5` = `180822ba`, `v1.1.6` = `21423643` (PROD from 2026-11-11 15:22Z); `UAT` = `Development` = `b5d8f735` (2026-11-13, page speed), `7a7a816f` (2026-11-12, video watch gate), `8bbfa647` (2026-11-12, Google sign-in), `bc76bab8` (2026-11-12), `UAT` = `main` = `50655975`, `Development` = `061195cc` (2026-11-11), `Development` = `498b43b0` (2026-11-09 13:12Z).
+Tags: `v1.1.0` = `0aaf2f2e`, `v1.1.1` = `1be41a69`, `v1.1.2` = `7f6fc4b9`, `v1.1.3` = `61d23d01`, `v1.1.4` = `98ad9668`, `v1.1.5` = `180822ba`, `v1.1.6` = `21423643` (PROD from 2026-11-11 15:22Z); `UAT` = `Development` = `29a018ac` (2026-11-13, course-index design), `b5d8f735` (2026-11-13, page speed), `7a7a816f` (2026-11-12, video watch gate), `8bbfa647` (2026-11-12, Google sign-in), `bc76bab8` (2026-11-12), `UAT` = `main` = `50655975`, `Development` = `061195cc` (2026-11-11), `Development` = `498b43b0` (2026-11-09 13:12Z).
 as running on PROD. `main` is no longer deployed anywhere; it is kept only for history and old PRs.
 DEV copy of the stack (2026-11-09): `~/banking-sb` on the DEV box, DB `banking_dev` on `127.0.0.1:5443`, app worktree
 `~/banking-dev-app`, static files served from `/var/www/banking-dev`; data copied from UAT that day, own JWT secret,
@@ -118,6 +118,9 @@ DB-Scripts folder: `LMS v2 Student Portal/`.
   first version saved it and refreshed course pages went blank (fixed `b5d8f735`). LMS data stays fresh 5 min; finishing
   a run (`LmsDebrief`) or leaving a curriculum invalidates `["lms"]`. Checks: `~/banking-checks/lmsv2/perf.cjs <uid>`
   (timings), `refreshall.cjs` (every page type by full load + F5, no page errors).
+- Reading step shows stored lesson text as plain paragraphs, so AI-written topics show raw Markdown (`#`, `##`, `**`);
+  fix = render topic content as Markdown in `ReadingBody` (`LmsCourseDetail.tsx`). Open as of 2026-11-13.
+- Course index no longer has a "Course index" heading (since `29a018ac`): checks wait for `Sub-chapter n of N` instead.
 - `/lms` without a path returns 403: `public/lms/` (design assets) makes nginx treat it as a directory. `/lms/dashboard`
   and every other `/lms/*` page work; login goes straight to `/lms/dashboard`.
 - `~/banking-checks/mod.cjs` is stale: its `/edit/i` button match hits "More actions for Credit Card". Not a regression.
@@ -314,6 +317,7 @@ nvm use 20 && npm install && npm run build
 
 | Date | Commit | Migration applied | Notes |
 |---|---|---|---|
+| 2026-11-13 **UAT** | `29a018ac` (`UAT` fast-forwarded; 17 designer commits by Abimanyu S) | none | LMS design only: course index as Phase › Chapter › Sub-chapter accordion with a topic stepper (DS Stepper states, Ionicons), progress rings, green chapter bar, text-size slider (`localStorage` `lms-text-size`), category tag on every course card (title-derived fallback, else "General"), role-readiness gauge always shown ("Not scored yet" when `swot_readiness_scores` is empty), DS radius tokens 12→8 / 16→12 px. No DB/API changes. Snapshot `20261113T083939Z`; bundle `index-DIpo1zO4.js`. |
 | 2026-11-13 **UAT** | `b5d8f735` (`05b8c5ef` + cache fix; `UAT` fast-forwarded) | `20261113090000_module_group_assignments_read_speed` | Student LMS page loads 10–11 s → 0.3–1.4 s (policy rewrite, same rows per role) + tab cache. Snapshots `20261113T031107Z`, `20261113T031754Z`; bundle `index-BZ9q-qgS.js`. |
 | 2026-11-12 **UAT** | `7a7a816f` (`UAT` fast-forwarded; includes designer `1c9ea6a2` watch-gate UI) | `20261112120000_lesson_video_marks` (rehearsed in a rolled-back transaction first) | Server-side video watch gate. Snapshot `20261112T112740Z`; bundle `index-CVt9-wf5.js`, no DEV URLs. See *Student LMS v2 → Video watch gate*. |
 | 2026-11-12 **UAT** | `8bbfa647` (`UAT` fast-forwarded) | none | Google sign-in for students: GoTrue Google provider configured on DEV + UAT, `VITE_GOOGLE_OAUTH_ENABLED="true"`. Snapshot `20261112T075944Z`; bundle `index-BmWG63Bh.js`, no DEV URLs. See *Google sign-in for students*. |
