@@ -1,4 +1,4 @@
-# aividya — Student learning journey: Curriculum, Subject Lessons, My Portal, Foreign Languages (UAT, feat/chat-simulations 7c50c729)
+# aividya — Student learning journey: Curriculum, Subject Lessons, My Portal, Foreign Languages (UAT, feat/chat-simulations 121e7e94)
 
 ## Which page is which
 - **Curriculum** (`/student/curriculum`): the student's own syllabus, fixed to their board and class (`curriculum_content` + `curriculum_topics` + `student_curriculum_progress`), with topic progress and Robo mastery vs target. Teacher uploads (`student-360` `portal_content`) appear in a **From your teachers** section grouped subject → topic ("Whole subject" for uploads without a topic), inline under the matching topic row, and as a count on each subject card.
@@ -25,5 +25,12 @@
 ## Teacher material opens
 - The lesson page calls `record_material_view` (open, then completed) → `teacher_content_views`, used by Teacher Growth. See `pilvidya-teacher-growth.md`.
 
+## Dashboard: Due today & next 7 days (UAT `121e7e94`, 2026-11-13)
+- `StudentDueTodayPanel` on `/student`: counters Overdue / Today / Next 7 days / Fees to pay (₹), type chips with counts; both drill down. Items grouped Overdue → Today → Next 7 days → No due date; tap opens Start (assessment `/assessment-submit/<id>`, test `/student/test-series`), Pay (`/student/fees`), Open (Robo `/student/robo-teacher?subject=&topic=`, simulations, tasks `/student/progress`).
+- Data: `student_due_items(p_days)` (SECURITY DEFINER, `current_student_profile_id()` + own school/class): pending/in-progress assessment assignments, chat sim assignments not scored (`sim_assignments` + `sim_attempts`), test-series items (class in `class_levels`), fee invoices not paid/void with amount left, school events (audience all/students/class_N), live classes, `student_learning_tasks` not completed. Overdue window 60 days. Robo assignments (not done) and spaced revisions come from `robo-teacher get_coach` (`lib/dueItems.ts roboItems`).
+- Fixed: `trg_emit_alert_scan()` read `NEW.school_id`; `assessment_assignments` has no such column, so every assignment insert failed (none on UAT since 2026-10-22). Now `to_jsonb(NEW)->>'school_id'`.
+- No homework table exists; library returns / transport dues not included.
+
 ## Tests
+- `~/pilvidya-checks/due-items/` — `due-items-test.sql` (rolled back), `ui-check.cjs` (LIVE=1 for live), `seed-live.sql` / `cleanup-live.sql`.
 - `~/pilvidya-checks/student-journey.cjs` (BASE=UAT URL; 16 checks: upload→approve→publish, My Portal + Curriculum listing, Start for teacher and curriculum lessons, written notes, goals, languages, French videos).
