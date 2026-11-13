@@ -34,3 +34,4 @@
 ## Tests
 - `~/pilvidya-checks/due-items/` — `due-items-test.sql` (rolled back), `ui-check.cjs` (LIVE=1 for live), `seed-live.sql` / `cleanup-live.sql`.
 - `~/pilvidya-checks/student-journey.cjs` (BASE=UAT URL; 16 checks: upload→approve→publish, My Portal + Curriculum listing, Start for teacher and curriculum lessons, written notes, goals, languages, French videos).
+- Homework (Student → Homework) and Timetable & Attendance (Student → Timetable & Attendance): see `pilvidya-homework-timetable.md`.
