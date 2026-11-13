@@ -34,7 +34,7 @@ commit `vX.Y.Z` (bump Z for every PROD deploy). Hotfixes branch from the release
 `DEPLOY_REF=<sha>` still overrides the default ref on DEV/UAT for a one-off.
 
 Starting point: `Development` = `UAT` = `8cd5701e` (= `main` on 2026-11-09); `release/prod-v1.1` = `1be41a69` (PROD, 2026-11-09)
-Tags: `v1.1.0` = `0aaf2f2e`, `v1.1.1` = `1be41a69`, `v1.1.2` = `7f6fc4b9`, `v1.1.3` = `61d23d01`, `v1.1.4` = `98ad9668`, `v1.1.5` = `180822ba`, `v1.1.6` = `21423643` (PROD from 2026-11-11 15:22Z); `UAT` = `Development` = `7a7a816f` (2026-11-12, video watch gate), `8bbfa647` (2026-11-12, Google sign-in), `bc76bab8` (2026-11-12), `UAT` = `main` = `50655975`, `Development` = `061195cc` (2026-11-11), `Development` = `498b43b0` (2026-11-09 13:12Z).
+Tags: `v1.1.0` = `0aaf2f2e`, `v1.1.1` = `1be41a69`, `v1.1.2` = `7f6fc4b9`, `v1.1.3` = `61d23d01`, `v1.1.4` = `98ad9668`, `v1.1.5` = `180822ba`, `v1.1.6` = `21423643` (PROD from 2026-11-11 15:22Z); `UAT` = `Development` = `b5d8f735` (2026-11-13, page speed), `7a7a816f` (2026-11-12, video watch gate), `8bbfa647` (2026-11-12, Google sign-in), `bc76bab8` (2026-11-12), `UAT` = `main` = `50655975`, `Development` = `061195cc` (2026-11-11), `Development` = `498b43b0` (2026-11-09 13:12Z).
 as running on PROD. `main` is no longer deployed anywhere; it is kept only for history and old PRs.
 DEV copy of the stack (2026-11-09): `~/banking-sb` on the DEV box, DB `banking_dev` on `127.0.0.1:5443`, app worktree
 `~/banking-dev-app`, static files served from `/var/www/banking-dev`; data copied from UAT that day, own JWT secret,
@@ -105,10 +105,19 @@ DB-Scripts folder: `LMS v2 Student Portal/`.
 (`123dd436-…`, 5 topics) via `scripts/lms/import-static-courses.sql`. Not assigned to anyone — assign through Module Groups.
 
 **Known issues (2026-11-12):**
-- **Course lists take ~10 s on UAT.** Reading `module_group_assignments` as a student runs `private.staff_can_manage_student`
-  and `private.trainer_can_view_student_data` on every row (4,726 rows → 9.8 s for 19 visible), from the
-  "Scope assignments, or the learner's own" policy added by the 2026-11-11 security release (also on PROD v1.1.6).
-  Every page that lists the learner's courses waits on it. Not fixed yet.
+- **Fixed 2026-11-13 (`05b8c5ef`, DEV + UAT): course lists took ~10 s.** The `module_group_assignments` read policies ran
+  `private.trainer_can_view_student_data` / `private.staff_can_manage_student` on every row (4,730 rows → 9.8 s for a
+  learner). Migration `20261113090000_module_group_assignments_read_speed` computes the caller's own student ids
+  (`private.my_student_refs()`) and staff status (`private.is_student_data_staff()`) once per query and runs the per-row
+  checks only for staff — identical rows for every role (verified per user with a row-id digest on DEV and UAT), learner read
+  3 ms. Trainer/institute reads of this table are still ~14–17 s (separate, not on the student side). PROD pending.
+- **Page loads (UAT, 2026-11-13):** dashboard 11.3 s → 1.4 s, courses 10.5 s → 0.3 s, course page 10.5 s → 0.3 s,
+  curriculum 0.6 s. The LMS also keeps its own react-query data in `sessionStorage` (`lms-cache:v2:<uid>`,
+  `src/student-lms/lmsCache.ts`; cleared on sign-out, 12 h max) and restores it as stale on refresh, so pages paint at once
+  and refetch in the background. Queries whose data holds functions (the plan-access `allowed`) are never saved — the
+  first version saved it and refreshed course pages went blank (fixed `b5d8f735`). LMS data stays fresh 5 min; finishing
+  a run (`LmsDebrief`) or leaving a curriculum invalidates `["lms"]`. Checks: `~/banking-checks/lmsv2/perf.cjs <uid>`
+  (timings), `refreshall.cjs` (every page type by full load + F5, no page errors).
 - `/lms` without a path returns 403: `public/lms/` (design assets) makes nginx treat it as a directory. `/lms/dashboard`
   and every other `/lms/*` page work; login goes straight to `/lms/dashboard`.
 - `~/banking-checks/mod.cjs` is stale: its `/edit/i` button match hits "More actions for Credit Card". Not a regression.
@@ -305,6 +314,7 @@ nvm use 20 && npm install && npm run build
 
 | Date | Commit | Migration applied | Notes |
 |---|---|---|---|
+| 2026-11-13 **UAT** | `b5d8f735` (`05b8c5ef` + cache fix; `UAT` fast-forwarded) | `20261113090000_module_group_assignments_read_speed` | Student LMS page loads 10–11 s → 0.3–1.4 s (policy rewrite, same rows per role) + tab cache. Snapshots `20261113T031107Z`, `20261113T031754Z`; bundle `index-BZ9q-qgS.js`. |
 | 2026-11-12 **UAT** | `7a7a816f` (`UAT` fast-forwarded; includes designer `1c9ea6a2` watch-gate UI) | `20261112120000_lesson_video_marks` (rehearsed in a rolled-back transaction first) | Server-side video watch gate. Snapshot `20261112T112740Z`; bundle `index-CVt9-wf5.js`, no DEV URLs. See *Student LMS v2 → Video watch gate*. |
 | 2026-11-12 **UAT** | `8bbfa647` (`UAT` fast-forwarded) | none | Google sign-in for students: GoTrue Google provider configured on DEV + UAT, `VITE_GOOGLE_OAUTH_ENABLED="true"`. Snapshot `20261112T075944Z`; bundle `index-BmWG63Bh.js`, no DEV URLs. See *Google sign-in for students*. |
 | 2026-11-12 **UAT** | `bc76bab8` (`Development` fast-forwarded into `UAT`; `UAT` first merged back into `Development` to keep the Robo Stereo Mix fix `cdaf47c0`) | `20261109140930_live_session_going_counts`, `20261109141500_coach_quiz_sessions_chapter_size`, `20261111120000_topic_attachments_any_catalog` (rehearsed in a rolled-back transaction first) + data `scripts/lms/import-static-courses.sql` | Student LMS v2 + designer UI (designer hold lifted for UAT only). Snapshot `20261112T045902Z`; bundle `index-D-jIrwJz.js`, no DEV URLs. See *Student LMS v2*. |
