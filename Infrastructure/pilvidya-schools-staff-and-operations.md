@@ -1,4 +1,4 @@
-# aividya — Schools, staff accounts and School Operations (UAT)
+# aividya — Schools, staff accounts and School Operations (UAT, feat/chat-simulations 6f6051fd)
 
 Live on UAT since 2026-11-13 (`feat/chat-simulations` a0af4e96 + 01a7bfd6 + 20a2aa73; DB migration `20261118100000_school_operations_scope`, DB-Scripts `EduSpeak Postgres Migration/…__school_operations_working_school_scope.sql`). PROD: none (no aividya PROD).
 
@@ -14,6 +14,8 @@ Live on UAT since 2026-11-13 (`feat/chat-simulations` a0af4e96 + 01a7bfd6 + 20a2
 - One menu; Add teacher dialog and Edit dialog share `TeacherPlacementFields` (searchable School / Institute picker: one option per campus "school · campus · city"; fills board and location).
 - `admin-create-teacher` saves `branch_id` and `board`; `updateTeacherProfile` accepts `school_id` / `branch_id` (name taken from the school).
 - Non-teaching institute staff (Principal, School Admin, Admission Manager…) are not listed here.
+- **No sign-in** badge = `teacher_profiles.user_id` is NULL (11 imported profiles on UAT; those teachers get an error on sign-in). Edit → *Link sign-in* (`admin-manage-users` `linkTeacherLogin`, admin or the school's principal): links the existing login with that email (`auth_user_id_by_email`, service role only) or creates one with a temporary password, adds the teacher role, audited.
+- `admin-set-secret` and `llm-config` find a teacher's school by `teacher_profiles.user_id` (before 2026-11-13: by display name, which 403'd or matched another school).
 
 ## Admin → Institute Users (`/admin#institute-users`)
 - Creates real staff sign-ins (`admin-manage-users` `createInstituteUser` / `updateInstituteUser`): auth user + profile + `teacher_profiles` on the school (this scopes all data) + roles + `institute_users` row. Role catalogue `supabase/functions/_shared/institute-roles.ts` (frontend copy `lib/instituteRoles.ts`, parity test):
@@ -42,10 +44,18 @@ Live on UAT since 2026-11-13 (`feat/chat-simulations` a0af4e96 + 01a7bfd6 + 20a2
 - The 10 server functions (admission-offer-generate, admission-screen, fee-reconcile, fee-reminders-send, razorpay-payment-link, transport-optimize, library-overdue-summary, payroll-run-generate, timetable-generate, principal-morning-brief) call `_shared/ops-auth.ts` `opsCaller`: signed-in staff/admin with a working school; data calls run as the caller (school rules apply). Before 2026-11-13 they had no caller check at all.
 - Public admissions (`/admissions/apply`, `/admissions/enquire`) require a school: `public_admission_schools()` lists active public schools; a school can share `/admissions/apply?school=<id>`. Enquiries/applications from before this have no school and are not visible.
 
-## Tests
-- DB access by role (rolled-back transaction, real UAT users): `~/pilvidya-checks/school-ops/rls-roles-test.sql` (47 checks).
-- Browser: `~/pilvidya-checks/school-ops/{admin-teachers,institute-users,institutes,ops-e2e,ops-menu-check}.cjs` (UAT 2026-11-13: 12 + 15 + 10 + 23/24 then fixed + 6); test data cleanup `cleanup-uat.sh`.
-- The ops menu does not open modules from a "nobody has an ops role" fallback any more (it miscounted under RLS and opened Hostel/Payroll for every teacher).
+## Principal = admin of their own school (2026-11-13)
+- `is_admin_user()` / `security_is_platform_admin()` = the platform **admin** role only. Principals no longer pass the ~120 platform-admin policies (user_roles, plan pricing, gateway configs, every school's subscriptions).
+- School-scoped rights come from `is_school_admin_of(school)` / `is_school_admin_of_student(student)` (principal of that school): edit school details (teachers no longer can), staff and student profiles, parent links/messages, announcements, simulations, live sessions; read own school's institute users and subscription.
+- **Teacher → School Admin** (`/teacher/school-admin`, principals only; menu key `teacher.school-admin`): *Staff & roles* = Institute Users locked to the school (`admin-manage-users` principal actions: create/update institute user, reset password, activate, link teacher login — own school only, cannot grant admin); *Menu access* = switch student / teacher / parent menus off for the school.
+- `school_menu_access (school_id, role, menu_key, enabled)`: no row = the plan decides. Enforced in the sidebar and route guard (`usePlanAccess.schoolOff`, page shows "turned off by your school") and for students' paid modules in `student_menu_enabled()`. Principals and admins are never switched off. A school cannot switch on what its plan excludes.
+- `usePlanAccess` read the plan matrix with an object key before 2026-11-13, so plan menu limits never applied in menus; fixed.
 
-## Known open issue
-- `is_admin_user()` (and `security_is_platform_admin()`) counts **principal** as a platform admin; ~100 policies use it (user_roles writes, subscriptions, plan pricing, gateway configs). Not yet fixed.
+## Boards, classes and subjects
+- Class 11/12 with no stream picked lists the base subjects plus every stream's (Science, Commerce: Accountancy, Business Studies, Economics; Humanities: History, Political Science, Geography, Sociology, Psychology; Computer Science) — `lib/subjectMatrix.ts`.
+- `curriculum_topics` seeded (migration `20261118130000`, 1086 global rows, generator `supabase/seed/curriculum_topics_commerce_arts_ib.py`): those 11/12 subjects in NCERT chapter order for cbse / icse / state, and IB PYP / MYP / DP topics per class. IB is in every board dropdown.
+
+## Tests
+- DB access by role (rolled-back transaction, real UAT users): `~/pilvidya-checks/school-ops/rls-roles-test.sql` (47 checks); `principal-rls-test.sql` (24). Both must run inside their own `BEGIN … ROLLBACK` — without a transaction `SET LOCAL ROLE` does nothing and the writes commit as the owner.
+- Browser: `~/pilvidya-checks/school-ops/{admin-teachers,institute-users,institutes,ops-e2e,ops-menu-check}.cjs` (UAT 2026-11-13: 12 + 15 + 10 + 23/24 then fixed + 6); `principal-ui.cjs` (19) and `subjects-ui.cjs` (4) on 6f6051fd; test data cleanup `cleanup-uat.sh`.
+- The ops menu does not open modules from a "nobody has an ops role" fallback any more (it miscounted under RLS and opened Hostel/Payroll for every teacher).
