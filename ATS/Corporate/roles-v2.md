@@ -200,3 +200,5 @@ Multiple Assessments stages are not dispatched. 12th and Certifications eligibil
 ## Testing the form by script
 
 The file part name must be the normalized label (`upload cv pdf`). Any other name is ignored silently, the application still returns 200, and the CV answer is stored as null.
+
+- Complete AI Interview stages open built (since 2026-11-13): the stage prefill does what the five-step form's Generate does — role parameters from admin-node `suggest-parameters` (max 7), Communication & Language first at 20 with the rest sharing 100, one flow row per parameter (Introduction voice, then subjective, 2 questions each), `maxQuestions` and `interviewDuration` from the flow (`prefillCompleteAiInterview` in `stageConfigService.js`). A flow or parameters already set are kept. Complete AI Interview is offered only to companies subscribed to `AI_Interview_v2`; Multiple Assessments stays hidden because dispatch can't send it yet.
