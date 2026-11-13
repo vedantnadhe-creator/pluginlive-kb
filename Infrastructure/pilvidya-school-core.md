@@ -1,4 +1,4 @@
-# aividya — School core: setup, promotion, My Day, My Class, exams → report cards, parent messages, fees (UAT, feat/chat-simulations 31e375c5)
+# aividya — School core: setup, promotion, My Day, My Class, exams → report cards, parent messages, fees (UAT, feat/chat-simulations 10daf180)
 
 The day-to-day running of a school. Every write is a SECURITY DEFINER function that checks the caller; the browser
 never writes these tables directly. Migrations: `20261118210000_school_setup_day_and_exams.sql`,
@@ -8,7 +8,8 @@ never writes these tables directly. Migrations: `20261118210000_school_setup_day
 | Screen | Who | What |
 |---|---|---|
 | School Admin → **School setup** (`/teacher/school-admin`, first tab) | Principal | Academic years (one current), terms (inside the year, no overlap), classes & sections (Nursery, LKG, UKG, 1–12; section upper-cased), class teacher, subject teacher per class, move students in/out of a section; banner with students in no section |
-| School Admin → **Year-end promotion** | Principal | "Create next year's classes" (grade + 1, same section; lowest grade kept); per class choose the target class, tick who is held back; Class 12 → graduated; new year becomes current; re-running skips students already moved (`student_promotions`) |
+| School Admin → **Year-end promotion** | Principal | "Create next year's classes" (grade + 1, same section; lowest grade kept) also copies **subject teachers** from the same grade + section of the old year into new classes that have none (class teachers are not copied); per class it warns about old-year exams not published and a missing published annual exam, and Promote stays disabled until "Promote anyway" is ticked; choose the target class, tick who is held back; Class 12 → graduated; new year becomes current; re-running skips students already moved (`student_promotions`) |
+| **My Years** (`/student/history`, `student.history`); parent Report Cards → "Year by year"; My Class → click a student | Student, linked parent, staff of the school | `student_year_history()`: one card per academic year — class (current class, or `student_promotions.from_class` for past years), promotion outcome, attendance %, report cards, published exam marks by subject, homework set/handed in/average mark. Nothing is copied at promotion; past rows are read by year |
 | **My Day** (`/teacher/today`, `teacher.my-day`) | Teachers | Today's periods from `timetable_slots` (+ cover periods from `teacher_substitutions`), Now badge, "Take attendance" per period (starts from the day's register, so absentees stay absent); class teacher's register; to-do: homework to mark, exam marks to enter, escalated doubts, homework due in 2 days |
 | **My Class** (`/teacher/my-class?class=`, `teacher.my-class`) | Class / subject teachers, principal, HOD | Per student: attendance % and absences (30 d), homework done/set (30 d), last **locked or published** exam %, parents linked; flags <75% attendance, 2+ homework missing, <40% exam. Message parents: presets Absent today / Homework missing / Needs attention / Whole class, or ticked students |
 | **Exams & Marks** (`/teacher/exams`, `teacher.exams`) | Principal/HOD create & publish; subject teacher enters marks; class teacher writes remarks | Exam = class level + subjects (max, pass, date) + optional term. Status draft → marks open → marks locked → published (locked/published can reopen; unpublish deletes the exam's report cards) |
@@ -25,10 +26,16 @@ never writes these tables directly. Migrations: `20261118210000_school_setup_day
 - **Fees**: `fee_record_payment` locks the invoice, refuses more than is due, needs a reference for UPI/cheque/DD/bank transfer, writes `payment_receipts` with `RCT-<school code>-<year>-<00001>` from `fee_receipt_counters`. Trigger `trg_fee_invoices_guard_paid` blocks direct `amount_paid`/paid status edits by signed-in users (service role and platform admins allowed, so reconcile/Razorpay functions still work).
 - `terms` / `academic_years`: any teacher could write them before; now only the setup functions (principal) and platform admins.
 
+## How promotion and the curriculum work
+- The student's class (`student_profiles.class_id` + `class_level`) changes; every student page reads the class from the profile, so the next class's curriculum, timetable and homework show automatically.
+- Past-year data (homework, exam marks, attendance, report cards, Robo/practice history) stays in place; homework and exams screens show only the current class, so the past is shown in **My Years**.
+- Publish every exam before promoting: an unpublished exam lists students by their *current* class, so after promotion it no longer finds them.
+- Subject-teacher rows are per class (`teacher_class_mappings_class_unique` includes class_id), so the same teacher can hold 10 A Maths in two years.
+
 ## Gotchas
 - UAT has no Razorpay keys: "Pay link" fails; offline payments with receipts work.
 - New alerts/messages are in-app only (no WhatsApp/SMS provider on UAT).
 - My Day is empty until the school enters a timetable (School Operations → Timetable).
 - The 56 held edge functions (`~/eduspeak-sb/functions.hold`) are not needed by these screens and stay held.
-- Checks: `~/pilvidya-checks/school-core/` — `school-core-test.sql` (54) + `messaging-fees-test.sql` (27) rolled back; `ui-check.cjs` (28, stubbed); `live-check.cjs` with `seed-live.sql` / `cleanup-live.sql` (live UAT).
+- Checks: `~/pilvidya-checks/school-core/` — `school-core-test.sql` (54) + `messaging-fees-test.sql` (27) + `year-end-test.sql` (18) rolled back; `year-end-live-check.cjs` + `year-end-cleanup.sql`; `ui-check.cjs` (28, stubbed); `live-check.cjs` with `seed-live.sql` / `cleanup-live.sql` (live UAT).
 - PROD: none (no aividya PROD).
