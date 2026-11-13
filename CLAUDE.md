@@ -37,6 +37,7 @@ When working on a feature, check the relevant file here **before asking the user
 - `Infrastructure/document-parsers.md` — CV & JD parsers, now inside fastapi-ai-engine (`/cv-parser/*`, `/jd-parser/*`); per-route PDF extractors are pinned, retired `CV_BE_BASE_URL`/`JD_BE_BASE_URL`, retirement checklist for the old standalone services
 - `Infrastructure/pg-vector-search.md` — PG Vector Search / Entity Normalizer service (Python/FastAPI, multi-signal RRF ranking, pgvector, port 8002)
 - `Infrastructure/prod-k8s-rollouts.md` — PROD k8s deploy path (`~/autodeploy.sh` → `kubectl set image`), cherry-pick onto the running branch, **readiness-probe rule for single-replica deployments** (institute-node probe added 2026-11-03), rollback records
+- `Infrastructure/pilvidya-schools-staff-and-operations.md` — aividya (EduSpeak) admin Institutes / Teachers / Institute Users (staff roles) and **School Operations working-school access rules** (staff vs admin school picker, sensitive-module gates, ops function caller checks)
 - `Infrastructure/uat-docker-build.md` — UAT image builds failing on apt (`exit code: 100`), the deb.debian.org HTTP stall, why the package layer rebuilds every deploy, rollback tagging
 
 Read only what's relevant to the current task. Do not read all files upfront.
