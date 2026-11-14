@@ -60,3 +60,4 @@ Live on UAT since 2026-11-13 (`feat/chat-simulations` a0af4e96 + 01a7bfd6 + 20a2
 - Browser: `~/pilvidya-checks/school-ops/{admin-teachers,institute-users,institutes,ops-e2e,ops-menu-check}.cjs` (UAT 2026-11-13: 12 + 15 + 10 + 23/24 then fixed + 6); `principal-ui.cjs` (19) and `subjects-ui.cjs` (4) on 6f6051fd; test data cleanup `cleanup-uat.sh`.
 - The ops menu does not open modules from a "nobody has an ops role" fallback any more (it miscounted under RLS and opened Hostel/Payroll for every teacher).
 - School setup, promotion, My Day, My Class, exams → report cards, parent messages and fee receipts: see `pilvidya-school-core.md`.
+- Platform admin (roles, onboarding, billing, renewals, seats, health, support, DPDP, branding, messages): see `pilvidya-platform-admin.md`.
