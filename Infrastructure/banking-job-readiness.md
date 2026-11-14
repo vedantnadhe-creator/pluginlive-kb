@@ -4829,3 +4829,20 @@ keep their earlier **beginner until 2026-12-04** — set a plan/validity there i
 8/8; `emailless-login.cjs` 4/4; `xllive-prod.cjs` 21/21; `fn-caller-probe.cjs` not run (the 5-per-hour registration limit stopped
 the throw-away learner; none of those functions changed in this release). DB-Scripts entry marked PROD applied.
 
+
+### PROD data round 2, 2026-11-14 03:30Z — every learner in an institute / corporate
+User decisions. `/tmp/p2/prod-plan-data2.sql` (one transaction, service rights for the trainer-row guard; guard: rolls back unless
+0 learners are left without an institute). Snapshot `/data/backups/prod-20261114T033048Z-plans2/` (students, profiles, trainers,
+institutes, institute_subscriptions CSVs).
+- **Pluginlive Tech**: default plan `beginner`; contract = `institute_subscriptions` row `beginner`, active, ends **2027-01-31 23:59 IST**,
+  so later joiners get Beginner to 31 Jan 2027 by the plan rule; all 701 members (and its trainer) set to that.
+- 16 learners with no company + 5 test entries (Test Institute, Test University, DEMO COLLEGE OF ENGINEERING) → Pluginlive Tech.
+- Onboarded (active, onboarded_at set, names as learners gave them): institutes **VIT, IIT Mumbai, Keraleeya Samajam Model College,
+  Model College, Swami Vivekanand Education Society of Arts, Science and Commerce, Pillai HOC College of Arts, Science and Commerce,
+  Dhalakshmi**; corporates **Wipro Technologies Ltd** (2 learners incl. "Wipro tech"), **Yes Securities** (no learner — its one
+  learner was already under Bank of America - Gift city via their profile). The four corporates from round 1 moved from `draft` to
+  `active`. City/address/contact are empty on these — complete them in the institute screen.
+- Result: **learners without an institute 0 of 1,822**; profile/learner mismatches 0; `xllive-prod.cjs` 21/21 (one 20/21 run on
+  the AI persona wording, passed on rerun).
+Still to decide: 13 learners on a paid plan with **no end date** (individual overrides, mostly enterprise: demo quality 2,
+demo test quality 2, QualityKiosk 2, Bank of America 2, IIT Chennai 2, IIT Mumbai 1, Rajeev Gandhi 1, Dhalakshmi 1).
