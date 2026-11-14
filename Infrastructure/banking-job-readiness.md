@@ -4859,3 +4859,42 @@ User decisions. `/tmp/p2/prod-plan-data3.sql` (one transaction, guarded; snapsho
   learners). **Dhalakshmi** → **Dhanalakshmi Medical College**, location "Perambalur, Trichy" (user wrote "Preambular"). **IIT Mumbai**
   location Powai, Mumbai. Learners' college / profile institute text updated to the new names.
 - `xllive-prod.cjs` 21/21 after the change.
+
+## 2026-11-14 — Menu history, Back to the previous screen, logout always signs out: UAT and `main` `bb1e0e92`, PROD `d947a77d` (`v1.1.9`)
+
+Frontend only (no functions, no migration). DEV/`Development` not updated (still `a2a8fd8d`).
+
+**Browser Back follows the menus the user opened.** Rule: a menu or tab click adds a history entry, and the open menu is read from the URL.
+- **Trainer** (`/journey/trainer`) and **institute** (`/journey/institute`) journeys now keep the open menu in `?tab=`. Before, they kept it in component state, so the URL never changed and Back left the journey.
+- If `?tab=` names an unknown tab, a plan-locked tab, or (institute only) a tab from the other track, the page shows the dashboard. A deep link cannot open a locked menu.
+- These now push history instead of replacing it:
+  - **admin panel** tabs (`/admin?tab=`);
+  - **admin journey** (`/journey/admin`);
+  - **institute workspace** (`/journey/institute/workspace`).
+- Back to the bare journey URL returns to the first menu.
+- Track switches (`?track=`), automatic corrections (the taxonomy-editor redirect, an invalid-tab fallback) and login/logout redirects still replace history on purpose.
+
+**In-app Back buttons go to the screen the user came from.** `src/hooks/useGoBack.ts`:
+- If react-router's `history.state.idx > 0`, it calls `navigate(-1)`.
+- Otherwise (the page was opened from a link, a new tab or a reload) it goes to a fallback route.
+- Used on:
+  - assessment results (fallback `/assessments`; the label is now "Back");
+  - the module detail arrow (fallback `/modules?…`);
+  - skill profile (fallback: the simulations tab);
+  - coding history (fallback `/practice/coding`).
+- Buttons labelled "Dashboard" (Resume Analyzer, Knowledge Hub) still go to `/dashboard`.
+
+**Logout always clears the browser session.**
+- The problem: supabase-js keeps the stored session when `/auth/v1/logout` answers anything other than 401/403/404 (a 500, a timeout, offline). The user saw "Signed out", yet browser Back reopened `/dashboard` or `/admin`.
+- The fix: `src/lib/signOutLocally.ts`. On such an error it removes `sb-*-auth-token` from localStorage, and `/logout` and `AuthContext.signOut` hard-reload `/` so the in-memory session goes too.
+- The storage key is `sb-banking-auth-token` on DEV/UAT and `sb-lms-auth-token` on PROD (taken from the first label of the host).
+
+**Checks:** `~/banking-checks/nav-audit.cjs` (`BASE`, `ROLES`, `STEPS`; sessions from `/tmp/p2/jev/<role>.json`). It clicks sidebar menus, presses Back through the trail, then checks that the session is kept, that a reload stays on the same view, and Home, Logout, and Back after logout.
+- UAT: student, trainer, admin and institute all report 0 issues.
+- PROD: QA Banking Admin only, 0 issues.
+- Test sessions made by `mksess` have no `session_id`, so the server logout returns 500 for them. That means they exercise the failure path.
+
+PROD release `d947a77d` (`v1.1.9`), 2026-11-14 05:02Z, `/tmp/p2/prod_deploy54.sh`:
+- Backup: `/data/backups/prod-20261114T050225Z` (dist + src).
+- The guard checked 15 files; the bundle has no foreign hosts.
+- Cherry-pick conflict in `AuthContext.tsx`: PROD has no `clearLmsCache` (LMS v2 is still held for PROD), so the PROD version omits it.
