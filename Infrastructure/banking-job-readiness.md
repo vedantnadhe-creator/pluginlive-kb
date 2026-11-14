@@ -34,7 +34,7 @@ commit `vX.Y.Z` (bump Z for every PROD deploy). Hotfixes branch from the release
 `DEPLOY_REF=<sha>` still overrides the default ref on DEV/UAT for a one-off.
 
 Starting point: `Development` = `UAT` = `8cd5701e` (= `main` on 2026-11-09); `release/prod-v1.1` = `1be41a69` (PROD, 2026-11-09)
-Tags: `v1.1.0` = `0aaf2f2e`, `v1.1.1` = `1be41a69`, `v1.1.2` = `7f6fc4b9`, `v1.1.3` = `61d23d01`, `v1.1.4` = `98ad9668`, `v1.1.5` = `180822ba`, `v1.1.6` = `21423643`, `v1.1.7` = `21a0d29c` (PROD from 2026-11-14 02:36Z); `UAT` = `Development` = `ebd05488` (2026-11-13, student LMS switch; UAT off), `29a018ac` (2026-11-13, course-index design), `b5d8f735` (2026-11-13, page speed), `7a7a816f` (2026-11-12, video watch gate), `8bbfa647` (2026-11-12, Google sign-in), `bc76bab8` (2026-11-12), `UAT` = `main` = `Development` = `a2a8fd8d` (2026-11-14), `Development` = `498b43b0` (2026-11-09 13:12Z).
+Tags: `v1.1.0` = `0aaf2f2e`, `v1.1.1` = `1be41a69`, `v1.1.2` = `7f6fc4b9`, `v1.1.3` = `61d23d01`, `v1.1.4` = `98ad9668`, `v1.1.5` = `180822ba`, `v1.1.6` = `21423643`, `v1.1.7` = `21a0d29c`, `v1.1.8` = `80206bda` (PROD from 2026-11-14 03:18Z); `UAT` = `Development` = `ebd05488` (2026-11-13, student LMS switch; UAT off), `29a018ac` (2026-11-13, course-index design), `b5d8f735` (2026-11-13, page speed), `7a7a816f` (2026-11-12, video watch gate), `8bbfa647` (2026-11-12, Google sign-in), `bc76bab8` (2026-11-12), `UAT` = `main` = `Development` = `a2a8fd8d` (2026-11-14), `Development` = `498b43b0` (2026-11-09 13:12Z).
 as running on PROD. `main` is no longer deployed anywhere; it is kept only for history and old PRs.
 DEV copy of the stack (2026-11-09): `~/banking-sb` on the DEV box, DB `banking_dev` on `127.0.0.1:5443`, app worktree
 `~/banking-dev-app`, static files served from `/var/www/banking-dev`; data copied from UAT that day, own JWT secret,
@@ -4782,7 +4782,7 @@ Unit Test - 115) were left as they are. DB-Scripts entry marked PROD applied.
 `signup-check.cjs` 7/7; `fn-caller-probe.cjs` 36/36 (throw-away learner, deleted); `xllive-prod.cjs` 21/21 (uses QA Banking Admin,
 still active).
 
-## 2026-11-14 — Institute / corporate plans per learner; every learner in an institute: DEV + UAT + `main` `a2a8fd8d` (PROD pending)
+## 2026-11-14 — Institute / corporate plans per learner; every learner in an institute: DEV + UAT + `main` `a2a8fd8d`, PROD `80206bda` (`v1.1.8`)
 
 **Rule (user, 2026-11-14):** a learner's plan runs **from their own onboarding date for the institute's plan validity, capped at the
 institute's contract end**. Migration `20261114120000_institute_plan_validity_per_learner`:
@@ -4812,4 +4812,20 @@ NGO** and learners mapped by what they typed (also QualityKiosk, AQM, Pluginlive
 follow their learner row's institute and learner rows follow the profile's plan (4 + 2 mismatches → 0); **Thiagarajar School of
 Management**: plan validity 3 months, all 1,000 → advanced until 3 months from the run. 33 learners stay unmapped (16 blank, test
 names, single colleges/companies not set up as institutes).
+
+### PROD release `80206bda` (`v1.1.8`) + data clean-up, 2026-11-14 03:18Z
+Cherry-pick of `a2a8fd8d`; PROD's three replaced functions were checked identical (md5 of body) to the UAT base first.
+`/tmp/p2/prod_deploy53.sh`, backup `/data/backups/prod-20261114T031832Z` (DB dump, dist, functions, and `students-plan-before.csv` /
+`profiles-plan-before.csv` taken just before the data step). Data (`/tmp/p2/prod-plan-data.sql`, one transaction, user decisions):
+676 bulk-upload learners + trainer Jershini Yesudhas → **Pluginlive Tech** (corporate); new corporates **TNS India Foundation**
+(user: TNS India = TNS India Foundation), **Unity Bank, Swadha Foundation, Akshayapatra NGO**; learners mapped by what they typed →
+680 Pluginlive Tech, 10 TNS India Foundation, 7 Swadha, 6 Unity Bank, 3 Akshayapatra, 2 QualityKiosk, 1 AQM, 1 QA institute;
+**Thiagarajar School of Management**: validity 3 months, all 1,000 → **advanced** until 2027-02-14; one learner row aligned to its
+profile's institute (Bank of America - Gift city). Result: learners without an institute 741 → **30** (16 blank, test names, single
+colleges/companies not onboarded: VIT, IIT Mumbai, Keraleeya Samajam Model College, Model College, Swami Vivekanand, Pillai HOC,
+Dhalakshmi, Wipro ×2, Yes Securities, DEMO COLLEGE); profile/learner mismatches 0. **Pluginlive Tech's plan is free**, so its 676
+keep their earlier **beginner until 2026-12-04** — set a plan/validity there if they need more.
+**Checks on PROD (diagnostics, not a Jev run):** the 11 plan scenarios (rolled back) all ok, Activate/Extend works; `signup-check.cjs`
+8/8; `emailless-login.cjs` 4/4; `xllive-prod.cjs` 21/21; `fn-caller-probe.cjs` not run (the 5-per-hour registration limit stopped
+the throw-away learner; none of those functions changed in this release). DB-Scripts entry marked PROD applied.
 
