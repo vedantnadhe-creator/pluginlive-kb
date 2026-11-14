@@ -34,7 +34,7 @@ commit `vX.Y.Z` (bump Z for every PROD deploy). Hotfixes branch from the release
 `DEPLOY_REF=<sha>` still overrides the default ref on DEV/UAT for a one-off.
 
 Starting point: `Development` = `UAT` = `8cd5701e` (= `main` on 2026-11-09); `release/prod-v1.1` = `1be41a69` (PROD, 2026-11-09)
-Tags: `v1.1.0` = `0aaf2f2e`, `v1.1.1` = `1be41a69`, `v1.1.2` = `7f6fc4b9`, `v1.1.3` = `61d23d01`, `v1.1.4` = `98ad9668`, `v1.1.5` = `180822ba`, `v1.1.6` = `21423643` (PROD from 2026-11-11 15:22Z); `UAT` = `Development` = `ebd05488` (2026-11-13, student LMS switch; UAT off), `29a018ac` (2026-11-13, course-index design), `b5d8f735` (2026-11-13, page speed), `7a7a816f` (2026-11-12, video watch gate), `8bbfa647` (2026-11-12, Google sign-in), `bc76bab8` (2026-11-12), `UAT` = `main` = `Development` = `4a1c0582` (2026-11-14), `Development` = `498b43b0` (2026-11-09 13:12Z).
+Tags: `v1.1.0` = `0aaf2f2e`, `v1.1.1` = `1be41a69`, `v1.1.2` = `7f6fc4b9`, `v1.1.3` = `61d23d01`, `v1.1.4` = `98ad9668`, `v1.1.5` = `180822ba`, `v1.1.6` = `21423643`, `v1.1.7` = `21a0d29c` (PROD from 2026-11-14 02:36Z); `UAT` = `Development` = `ebd05488` (2026-11-13, student LMS switch; UAT off), `29a018ac` (2026-11-13, course-index design), `b5d8f735` (2026-11-13, page speed), `7a7a816f` (2026-11-12, video watch gate), `8bbfa647` (2026-11-12, Google sign-in), `bc76bab8` (2026-11-12), `UAT` = `main` = `Development` = `4a1c0582` (2026-11-14), `Development` = `498b43b0` (2026-11-09 13:12Z).
 as running on PROD. `main` is no longer deployed anywhere; it is kept only for history and old PRs.
 DEV copy of the stack (2026-11-09): `~/banking-sb` on the DEV box, DB `banking_dev` on `127.0.0.1:5443`, app worktree
 `~/banking-dev-app`, static files served from `/var/www/banking-dev`; data copied from UAT that day, own JWT secret,
@@ -4744,7 +4744,7 @@ Still open from the audit: shared third-party keys UAT/PROD, CSP report-only, an
 re-checked), trainer edits any coding challenge, learner deletes own proctoring logs, `_bak_module_groups_status_20261007` without
 RLS, old secret in git history, setup test data on PROD, login OTP functions trust a forgeable `X-Real-IP`.
 
-## 2026-11-14 — Rate limits use the visitor's real address; open backup table dropped: DEV + UAT + `main` `4a1c0582` (PROD pending)
+## 2026-11-14 — Rate limits use the visitor's real address; open backup table dropped: DEV + UAT + `main` `4a1c0582`, PROD `21a0d29c` (`v1.1.7`)
 
 **Forgeable address.** `request-login-otp` and `candidate-otp-login` keyed their per-network limits on `X-Real-IP` (then
 CF-Connecting-IP / first `X-Forwarded-For` hop) and `download-assessment-report` on the first `X-Forwarded-For` hop. Host nginx
@@ -4768,4 +4768,17 @@ Journey, E2E Test User ×2, Test Candidate E2E, institutes "QA Banking E2E Insti
 quality" / "demo test quality" / "Pluginlive Tech", module "Banking app testing", curricula "new cuur" and "Unit Test - 115".
 Prepared: `/tmp/p2/prod-deactivate-test.sql` deactivates (profiles.is_active = false) the 15 clear test accounts; dry run on PROD
 matched exactly those 15 and was rolled back.
+
+### PROD release `21a0d29c` (`v1.1.7`), 2026-11-14 02:36Z
+Cherry-pick of `4a1c0582`; `/tmp/p2/prod_deploy52.sh`, backup `/data/backups/prod-20261114T023614Z` (DB dump, functions, nginx
+conf, and `_bak_module_groups_status_20261007-prod.csv`). Functions only (no frontend rebuild); migration dropped the backup table;
+host nginx `banking-prod.conf` now sets `X-Real-IP $remote_addr` (5 places); `/tmp/p2/prod-deactivate-test.sql` set
+`profiles.is_active = false` for 15 test accounts (13 "QA Banking … 20261015" except **QA Banking Admin**, E2E Journey,
+E2E Test User ×2, Test Candidate E2E) — undo: `is_active = true` for the same names. The QA institutes and the "needs a decision"
+items (Demo accounts, sailesh -tester, Test Candidate 0502, demo institutes, Pluginlive Tech, Banking app testing, new cuur,
+Unit Test - 115) were left as they are. DB-Scripts entry marked PROD applied.
+**Checks on PROD (diagnostics, not a Jev run):** forged `X-Real-IP`/`X-Forwarded-For`/`CF-Connecting-IP` on
+`download-assessment-report` → all 3 attempts recorded the real address (rows removed); `emailless-login.cjs` 4/4;
+`signup-check.cjs` 7/7; `fn-caller-probe.cjs` 36/36 (throw-away learner, deleted); `xllive-prod.cjs` 21/21 (uses QA Banking Admin,
+still active).
 
