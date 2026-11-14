@@ -1,4 +1,4 @@
-# aividya — Platform admin (aividya team running many schools) (UAT, feat/chat-simulations 0794f3ff)
+# aividya — Platform admin (aividya team running many schools) (UAT, feat/chat-simulations 4b9081ed)
 
 Migration `20261118250000_admin_platform.sql`. Every new function checks the caller's **admin area** (internal role).
 
@@ -10,6 +10,23 @@ roles, reset password, all accounts, admin users, Admin Team & Roles, My Two-fac
 Platform · Previews. Removed from the menu: AI Meta Dashboard, School Analytics, Audit Summary. Removed code: 9 unrouted
 admin pages (fee, HR, transport, library, attendance, parent registry, communication gateway, report-card generate,
 curriculum management) and 11 dead route declarations.
+
+## One way to add a school, one place to maintain it (18c0a8da)
+- **New schools only via School onboarding** (`/admin/onboard-school`, `?new=1` opens the wizard). **Schools & Institutes**
+  (`/admin#institutes`, the Institute master) edits name/board/address/contact and active/inactive only; its button
+  "Set up a new school" opens the wizard; `?edit=<school id>` opens a school's editor, `?q=<name>` filters.
+- Old creators redirect: `/admin/onboarding` (Admin Setup) and `/admin/school-setup` → wizard; `/admin/institutes`
+  (Institute Registry) → master; `#add-institute` → wizard. Functions `admin-create-school` and
+  `admin-manage-institutes` were deleted (no other callers). Duplicate school names are refused by `schools_name_unique`.
+- Admin search links schools to the master filtered by name; the go-live board links each school to the master.
+
+## Navigation (4b9081ed)
+- `lib/goBack.ts`: Back = previous in-app page when React Router's `history.state.idx > 0`, else the role home. Used by
+  the header Back (was `window.history.length`) and 23 pages' generic in-page back arrows (were fixed `/student`,
+  `/teacher`, `/admin`…). Arrows labelled with a destination (Back to sign in, Dashboard, My Portal, Home) keep it.
+- Logout (`hardLogout`) revokes the session globally (all devices) and clears `pilvidya_*` / `sb-*` keys.
+- Check: `~/pilvidya-checks/nav/nav-check.cjs` (every menu item per role: header Back, browser Back/Forward, reload keeps
+  session, Home, Logout + back/protected URL → sign-in), `inpage-back.cjs`.
 
 ## Roles and two-factor
 - `platform_admin_roles` (super_admin, sales, support, content, finance). **An admin with no row is a super admin.**
