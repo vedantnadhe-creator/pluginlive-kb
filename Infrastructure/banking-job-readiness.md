@@ -4898,3 +4898,43 @@ PROD release `d947a77d` (`v1.1.9`), 2026-11-14 05:02Z, `/tmp/p2/prod_deploy54.sh
 - Backup: `/data/backups/prod-20261114T050225Z` (dist + src).
 - The guard checked 15 files; the bundle has no foreign hosts.
 - Cherry-pick conflict in `AuthContext.tsx`: PROD has no `clearLmsCache` (LMS v2 is still held for PROD), so the PROD version omits it.
+
+## 2026-11-14 — Robo 3D avatar with audio-driven lip-sync (male + female): DEV + UAT + `main` `0558db95`
+
+Frontend only (no functions, no migration). `Development`, `UAT` and `main` all fast-forwarded to `0558db95` (DEV also picked up `bb1e0e92`). New dependency `three@0.187.0` (`npm ci` ran on both boxes). PROD not deployed.
+
+**What candidates see.** On the Robo voice screens (`SimulationVoiceBrief`, `SimulationVoiceLive`, `LmsVoiceBrief`, `LmsVoiceCall`, `AvatarPip`) the default banker face is now a lit 3D bust instead of the still photo with a stretched jaw:
+- **Male:** Microsoft Rocketbox `Business_Male_05`. **Female:** `Business_Female_01`. Both are MIT-licensed; the licence is shipped in `public/avatars/robo-3d/LICENSE-rocketbox.txt`. The persona gender comes from `_shared/voice-gender.ts`, the same rule as the voice.
+- **Face:** 14 Oculus visemes (`AA_VI_*` morphs), blinks, brows, a slight smile, small head drift, a nod into loud syllables, and pose cues (listen = attentive brows + tilt, think = eyes up and aside). A dark mouth cavity is added at runtime because the source heads have no mouth interior.
+- **Fallback:** the 2D portrait shows while the 3D loads, and stays when WebGL is missing, the load fails, the screen is `still`, a pack has its own approved portrait, or a pack has an approved GLB (the existing `GlbAvatarStage`).
+- **Switch:** `VITE_ROBO_AVATAR_3D=off` at build time, or `?avatar=2d` per page.
+
+**How the lips are driven** (`src/lib/avatar/visemes.ts`):
+- The playback meter (`src/lib/voice/mouthMeter.ts`) now uses an analyser with fftSize 1024. `shape()` returns `visemes` alongside `wide`/`round`. The engine is language- and provider-agnostic: ElevenLabs, Sarvam and Gemini audio all work, there is no phoneme timing, and it adds no latency.
+- Per frame, mean analyser bytes in 10 bands feed a 6-class logistic model (closed / open / round / spread / fricative / consonant). The model was trained on 40 Azure Neural TTS clips in en/hi/ta/te/gu/mr, labelled with Azure's own viseme events.
+- Lips close only on quiet frames, because a shut mouth under loud sound looks wrong.
+- Smoothing: attack 20 ms, release 45 ms, frame-rate independent.
+
+**Tooling and assets:**
+- Tools in `scripts/avatar/`: `rocketbox-to-bust.mjs` (FBX → bust GLB; arms posed down, chest-up crop, 28 morphs, mouth anchor in `Head.extras`), `azure-viseme-clips.py`, `train-visemes.py`, `score-visemes.py`.
+- Model parity fixture: `src/test/fixtures/viseme-frames.json`; tests in `src/test/robo3dAvatar.test.tsx`.
+- Assets (`public/avatars/robo-3d/{male,female}`): GLB 0.68 / 0.77 MB, head and body JPG 1024 px, hair WebP 512 px. The lazy chunk `Avatar3DStage-*.js` is about 166 KB gzipped.
+- nginx does not gzip `.glb` (served as `application/octet-stream`). Gzip would make the GLB about 4× smaller; this is an open optional infra tweak.
+
+**Measured (before deploy):**
+
+| Measure | Result |
+|---|---|
+| Open/closed agreement with Azure visemes | 88% (offline, 60 fps) |
+| Mean lag | ~14 ms offline, ~5 ms in-browser |
+| Vowel-shape agreement | ~50% (chance 33%) |
+| p/b/m closures caught | 58–80% |
+| Mouth start after `play()` | median 3 ms |
+| Languages driving the mouth from audio | all 12 Indian languages, male and female |
+
+ElevenLabs Robo clips: the mouth is closed ~37% of frames, mostly real pauses.
+
+**Checks:**
+- `~/banking-checks/robo3dcheck.cjs` (`ENV=dev|uat`, uid `db051318…`). It starts real attempts for a male (Vikram Sharma) and a female (Meera Iyer) persona in en-IN and hi-IN, taps Start, and reads `window.__roboAvatar3d` (needs `localStorage.roboAvatarDebug=1`). It checks the 3D stage is ready with the right gender, the visemes come from the audio, there are ≥3 distinct shapes, frames advance, and there are no page errors. Screenshots: `/tmp/robo3d_<env>_<gender>_<lang>.png`. It deletes its attempts.
+- Results: DEV 16/16 PASS and UAT 16/16 PASS (ready 1.2–5.9 s on the shared box with software GL), and admin5 5/5 on UAT.
+- `robosttcheck.cjs`'s mouth step looks for the 2D `mouth-opening`, so run it with `?avatar=2d` or rely on `robo3dcheck.cjs` for the face.
