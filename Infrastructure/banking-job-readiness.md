@@ -4846,3 +4846,16 @@ institutes, institute_subscriptions CSVs).
   the AI persona wording, passed on rerun).
 Still to decide: 13 learners on a paid plan with **no end date** (individual overrides, mostly enterprise: demo quality 2,
 demo test quality 2, QualityKiosk 2, Bank of America 2, IIT Chennai 2, IIT Mumbai 1, Rajeev Gandhi 1, Dhalakshmi 1).
+
+### PROD data round 3, 2026-11-14 03:42Z — all plans to 31 Dec 2026, institute tidy-up
+User decisions. `/tmp/p2/prod-plan-data3.sql` (one transaction, guarded; snapshot `/data/backups/prod-20261114T034206Z-plans3/`).
+- **Every learner plan ends 2026-12-31 23:59 IST**: all 1,778 paid learner rows (`students`) and 101 paid learner profiles (status
+  active), including the 13 that had no end date. Staff profiles (admin / trainer / institute / taxonomy editor roles, 24 paid) and
+  trainer rows were **not** changed, so trainers are not signed out on 1 Jan.
+- **Every institute contract ends 2026-12-31 23:59 IST**: Pluginlive Tech's contract moved from 31 Jan 2027; an active contract on
+  each of the other institutes with a paid default plan (10 active in total), so later joiners are capped too (Thiagarajar's
+  3-month validity now ends at 31 Dec 2026 at the latest).
+- **Yes Securities** removed (no members). **Model College** merged into **Keraleeya Samajam Model College** (location Dombivli; 2
+  learners). **Dhalakshmi** → **Dhanalakshmi Medical College**, location "Perambalur, Trichy" (user wrote "Preambular"). **IIT Mumbai**
+  location Powai, Mumbai. Learners' college / profile institute text updated to the new names.
+- `xllive-prod.cjs` 21/21 after the change.
