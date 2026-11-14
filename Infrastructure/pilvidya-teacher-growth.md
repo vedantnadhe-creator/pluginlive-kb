@@ -6,7 +6,7 @@ own previous period; principals see teachers alphabetically, never ranked.
 ## Where
 - **Teacher → My Growth** (`/teacher/growth`, menu key `teacher.growth`): period This term (Apr–Sep / Oct–Mar) or Last 30 days; three dimension cards (score 0–100, level, change since previous period), every metric with weight, "Needs data (n of min)" and a next step when < 60; lesson observations (mark next step done); classes & subjects editor.
 - **Principal → School Admin → Teacher growth**: school averages, teachers needing support (a dimension at Emerging or down ≥ 10), table with View (full detail) and Record observation.
-- **Teacher → Lesson Content → School library**: colleagues' approved material; Adopt counts towards the author's reuse.
+- **Teacher → Lesson Content → Shared with me** (was School library): only material colleagues shared with this teacher or with the whole school; Adopt (approved + published items) counts towards the author's reuse. See `pilvidya-teacher-content-sharing-qr.md`.
 - **Student → My Portal → Weekly check-in**: 3 questions per subject per week, anonymous.
 
 ## Data

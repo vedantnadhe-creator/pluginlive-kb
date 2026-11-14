@@ -12,6 +12,8 @@ Live on UAT `66fecda5` (2026-11-12). Menu items for teachers; plan keys `teacher
 - Pen overlay on every slide (4 colours, eraser, clear), resets per slide (not saved). Arrow keys / PageUp/Down, F = full screen.
 - "Mark as taught" upserts `topic_portion` (section '') with today's date.
 
+- **Live poll** (on the Teach Mode setup screen): question + 2–6 options for a whole class level or one section; students answer on their dashboard (`LivePollCard`, polls every 10 s); teacher tally refreshes every 3 s. Edge function `class-polls`, tables `class_polls` / `class_poll_responses` (service-role only). See `pilvidya-teacher-content-sharing-qr.md`.
+
 ## Portion Tracker (`/teacher/portion`)
 - My class: class + optional section + subject → topics in syllabus order with textbook ref, planned date, taught date,
   status (Not planned / Planned / Overdue = planned in the past and not taught / Taught), Taught today, Teach shortcut.
