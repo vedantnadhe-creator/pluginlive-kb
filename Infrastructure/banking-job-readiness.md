@@ -34,7 +34,7 @@ commit `vX.Y.Z` (bump Z for every PROD deploy). Hotfixes branch from the release
 `DEPLOY_REF=<sha>` still overrides the default ref on DEV/UAT for a one-off.
 
 Starting point: `Development` = `UAT` = `8cd5701e` (= `main` on 2026-11-09); `release/prod-v1.1` = `1be41a69` (PROD, 2026-11-09)
-Tags: `v1.1.0` = `0aaf2f2e`, `v1.1.1` = `1be41a69`, `v1.1.2` = `7f6fc4b9`, `v1.1.3` = `61d23d01`, `v1.1.4` = `98ad9668`, `v1.1.5` = `180822ba`, `v1.1.6` = `21423643` (PROD from 2026-11-11 15:22Z); `UAT` = `Development` = `ebd05488` (2026-11-13, student LMS switch; UAT off), `29a018ac` (2026-11-13, course-index design), `b5d8f735` (2026-11-13, page speed), `7a7a816f` (2026-11-12, video watch gate), `8bbfa647` (2026-11-12, Google sign-in), `bc76bab8` (2026-11-12), `UAT` = `main` = `50655975`, `Development` = `061195cc` (2026-11-11), `Development` = `498b43b0` (2026-11-09 13:12Z).
+Tags: `v1.1.0` = `0aaf2f2e`, `v1.1.1` = `1be41a69`, `v1.1.2` = `7f6fc4b9`, `v1.1.3` = `61d23d01`, `v1.1.4` = `98ad9668`, `v1.1.5` = `180822ba`, `v1.1.6` = `21423643` (PROD from 2026-11-11 15:22Z); `UAT` = `Development` = `ebd05488` (2026-11-13, student LMS switch; UAT off), `29a018ac` (2026-11-13, course-index design), `b5d8f735` (2026-11-13, page speed), `7a7a816f` (2026-11-12, video watch gate), `8bbfa647` (2026-11-12, Google sign-in), `bc76bab8` (2026-11-12), `UAT` = `main` = `Development` = `4a1c0582` (2026-11-14), `Development` = `498b43b0` (2026-11-09 13:12Z).
 as running on PROD. `main` is no longer deployed anywhere; it is kept only for history and old PRs.
 DEV copy of the stack (2026-11-09): `~/banking-sb` on the DEV box, DB `banking_dev` on `127.0.0.1:5443`, app worktree
 `~/banking-dev-app`, static files served from `/var/www/banking-dev`; data copied from UAT that day, own JWT secret,
@@ -4743,4 +4743,29 @@ QA admin, rolled back) 18/19 — the 19th is the empty coding leaderboard (`stud
 Still open from the audit: shared third-party keys UAT/PROD, CSP report-only, answer keys / payment secrets in the browser (not
 re-checked), trainer edits any coding challenge, learner deletes own proctoring logs, `_bak_module_groups_status_20261007` without
 RLS, old secret in git history, setup test data on PROD, login OTP functions trust a forgeable `X-Real-IP`.
+
+## 2026-11-14 — Rate limits use the visitor's real address; open backup table dropped: DEV + UAT + `main` `4a1c0582` (PROD pending)
+
+**Forgeable address.** `request-login-otp` and `candidate-otp-login` keyed their per-network limits on `X-Real-IP` (then
+CF-Connecting-IP / first `X-Forwarded-For` hop) and `download-assessment-report` on the first `X-Forwarded-For` hop. Host nginx
+set neither, and the gateway's `/functions/v1/` block adds none, so a visitor's own values arrived untouched and a made-up value
+per request opened a fresh bucket. Fix, two layers: (A) host nginx sets `proxy_set_header X-Real-IP $remote_addr;` wherever it
+forwards `X-Forwarded-For` (DEV `banking-dev.conf`, UAT `banking-react.conf`; backups `*.bak-20261114T…-realip`; script
+`/tmp/p2/realip.sh`); (B) all four rate-limited functions use `_shared/client-network.ts clientNetwork` = the **last**
+`X-Forwarded-For` hop (the one host nginx appends), as `certificate-verify` already did. Check: UAT `download-assessment-report`
+with forged `X-Real-IP` / `X-Forwarded-For` / `CF-Connecting-IP` → `report_download_attempts.ip` = the real address for all 3.
+**Backup table.** `public._bak_module_groups_status_20261007` — 10 rows (id, name, status) copied before the 2026-10-07 bulk
+publish of module groups (AQM Technologies, Axis Securities, Equity Derivatives Certification Examination, Industrial Engineering &
+Management, Life Insurance, MBA - Finance - 1st Semester, Orientation & Wealth Sales Foundation, Syrma SGS - Tech Skills, Yes
+Securities → published; Banking Testing stays draft). No RLS: anon read, authenticated write/truncate; read by nothing. Exported to
+`~/banking-sb/snapshots/manual/_bak_module_groups_status_20261007-<env>.csv`, then migration `20261114100000_drop_module_groups_status_backup`
+(rollback recreates it locked down). DB-Scripts: `Banking LMS Security Hardening/20261114T022731Z__drop_module_groups_status_backup.sql`.
+**Regression (UAT, diagnostics):** `emailless-login.cjs` 4/4, `fn-caller-probe.cjs` 36/36, `signup-check.cjs` 7/7.
+**PROD test data (read-only review 2026-11-14, nothing changed):** 168 sign-in accounts / 1,822 learner records / 28 trainers /
+14 institutes. Clearly test: 13 "QA Banking … 20261015" accounts (keep **QA Banking Admin 20261015** — PROD checks use it), E2E
+Journey, E2E Test User ×2, Test Candidate E2E, institutes "QA Banking E2E Institute 20261015" and "QA Banking Isolation Institute
+20261015". Needs a product decision: Demo Admin/Trainer/Candidate, "sailesh -tester", "Test Candidate 0502", institutes "demo
+quality" / "demo test quality" / "Pluginlive Tech", module "Banking app testing", curricula "new cuur" and "Unit Test - 115".
+Prepared: `/tmp/p2/prod-deactivate-test.sql` deactivates (profiles.is_active = false) the 15 clear test accounts; dry run on PROD
+matched exactly those 15 and was rolled back.
 
