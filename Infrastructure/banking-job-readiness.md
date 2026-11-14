@@ -4899,9 +4899,9 @@ PROD release `d947a77d` (`v1.1.9`), 2026-11-14 05:02Z, `/tmp/p2/prod_deploy54.sh
 - The guard checked 15 files; the bundle has no foreign hosts.
 - Cherry-pick conflict in `AuthContext.tsx`: PROD has no `clearLmsCache` (LMS v2 is still held for PROD), so the PROD version omits it.
 
-## 2026-11-14 — Robo 3D avatar with audio-driven lip-sync (male + female): DEV + UAT + `main` `0558db95`
+## 2026-11-14 — Robo 3D avatar with audio-driven lip-sync (male + female): DEV + UAT + `main` `0558db95`; PROD `ef09a5d5`
 
-Frontend only (no functions, no migration). `Development`, `UAT` and `main` all fast-forwarded to `0558db95` (DEV also picked up `bb1e0e92`). New dependency `three@0.187.0` (`npm ci` ran on both boxes). PROD not deployed.
+Frontend only (no functions, no migration). `Development`, `UAT` and `main` all fast-forwarded to `0558db95` (DEV also picked up `bb1e0e92`). New dependency `three@0.187.0` (`npm ci` ran on both boxes). PROD uses the production-specific branch `release/prod-v1.2`: `64486037` was the avatar cherry-pick onto the existing PROD release, and `ef09a5d5` adds the compatibility fix described below. The PROD bundle was built on the PROD VM with its PROD `.env`.
 
 **What candidates see.** On the Robo voice screens (`SimulationVoiceBrief`, `SimulationVoiceLive`, `LmsVoiceBrief`, `LmsVoiceCall`, `AvatarPip`) the default banker face is now a lit 3D bust instead of the still photo with a stretched jaw:
 - **Male:** Microsoft Rocketbox `Business_Male_05`. **Female:** `Business_Female_01`. Both are MIT-licensed; the licence is shipped in `public/avatars/robo-3d/LICENSE-rocketbox.txt`. The persona gender comes from `_shared/voice-gender.ts`, the same rule as the voice.
@@ -4933,6 +4933,13 @@ Frontend only (no functions, no migration). `Development`, `UAT` and `main` all 
 | Languages driving the mouth from audio | all 12 Indian languages, male and female |
 
 ElevenLabs Robo clips: the mouth is closed ~37% of frames, mostly real pauses.
+
+**Promotion and live checks (2026-11-14):**
+- UAT 3D matrix: male/female × en-IN/hi-IN, 16/16 PASS; all sessions used real Robo audio, the correct gender, at least 3 viseme shapes, advancing frames and zero page errors.
+- UAT conversation path: en-IN, hi-IN and ta-IN, 24/24 PASS for opening language, captions/mic meter, live server transcription, same-language reply, latency and page errors. Three temporary attempts were deleted.
+- The first PROD smoke test found `ReferenceError: still is not defined`. This was a PROD-base compatibility gap: UAT already had the `still` portrait prop, but the older PROD base did not. No user session was saved; the temporary attempt was deleted.
+- `ef09a5d5` adds the missing `still` compatibility to `PortraitStage` and `useAvatarFrame`. It is frontend-only and was deployed after `64486037` with backups `/data/backups/prod-20261114T075407Z` and `/data/backups/prod-20261114T080700Z`.
+- Final PROD 3D matrix: 16/16 PASS (male/female × en-IN/hi-IN); all had the right gender, 4–5 audio-driven shapes, advancing frames and zero page errors. Final PROD conversation path: 24/24 PASS for en-IN, hi-IN and ta-IN; all temporary attempts were deleted. PROD is at `ef09a5d5` on `release/prod-v1.2`.
 
 **Checks:**
 - `~/banking-checks/robo3dcheck.cjs` (`ENV=dev|uat`, uid `db051318…`). It starts real attempts for a male (Vikram Sharma) and a female (Meera Iyer) persona in en-IN and hi-IN, taps Start, and reads `window.__roboAvatar3d` (needs `localStorage.roboAvatarDebug=1`). It checks the 3D stage is ready with the right gender, the visemes come from the audio, there are ≥3 distinct shapes, frames advance, and there are no page errors. Screenshots: `/tmp/robo3d_<env>_<gender>_<lang>.png`. It deletes its attempts.
