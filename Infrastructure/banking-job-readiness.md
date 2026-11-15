@@ -5059,3 +5059,11 @@ The full Admin journey and creation paths were tested end to end on UAT with thr
 **UAT rollout:** GitHub `UAT` and `main` are at `2e64a3e76`; the stale first build was replaced after an explicit fetch with snapshot `20261115T132503Z`, 124 functions, and bundle `index-tVEl3nso.js`. The live site returned HTTP 200. Post-deploy browser checks for Management, Curriculum Uploads, AI Coach Audit and GitHub Sync were clean: no page errors, blank pages or API responses ≥400. The UAT database migration and function ACL repair completed successfully.
 
 The PROD-safe cherry-pick is pushed to `release/prod-v1.1` as `66f826c41` and tag `v1.1.13`; it contains only these six admin files and the coach-contract migration and excludes the held student LMS/video-watch work. PROD deployment is the next step.
+
+## 2026-11-15 — Admin journey schema hardening live on PROD: `66f826c4`, tag `v1.1.13`
+
+The PROD-safe admin fix was pushed to `release/prod-v1.1` as `66f826c41` and tagged `v1.1.13`. The release contains only the four admin panels, the existing coach-contract migration correction, and the new `20261115130000_fix_coach_contract_list_alias.sql`; the permanent student LMS and lesson-video watch-gate holds remain absent.
+
+**PROD rollout:** backup `/data/backups/prod-20261115T133106Z` contains the `banking_prod` dump, functions, dist, environment and release marker. The exact six-file guard passed, the migration rehearsal rolled back cleanly (`coach alias ok`), 124 functions and 3 fixups synced, the migration applied, PostgREST restarted, and the frontend was rebuilt with the PROD environment. The first automated HTTP check found nginx returning 403 because the temporary build directory had mode 700 and replaced `/opt/banking/app`'s directory mode; restoring `/opt/banking/app` to mode 755 fixed it before any user-facing verification. The final site returns HTTP 200 with bundle `index-B8QoppHj.js`, and the bundle has no DEV/UAT/hosted Supabase addresses.
+
+**Live browser verification:** Management, Curriculum Uploads, AI Coach Audit and GitHub Sync all render on `https://lms.pluginlive.com` with no blank pages, page errors or API responses ≥400. `coach_contract_v1` contains the corrected `graph` alias, the release marker is `66f826c4`, the production backup is present, and every `banking-sb` service is healthy.
