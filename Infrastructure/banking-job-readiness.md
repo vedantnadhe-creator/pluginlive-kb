@@ -5045,3 +5045,17 @@ PROD-safe port of the UAT `9f6001e7` release, built on the live PROD base `77817
 **Verified on UAT** (throwaway college, removed after, incl. 2 storage objects): faculty upload → process → `ready` (direct) → playback URL → video bytes 200 `video/mp4`; `.mkv` refused with the MP4 advice; daily run 200 with service key, 403 for a user; section import "1 matched; 2 not found". **PROD** (`/tmp/p2/prod_deploy57.sh`, backup `/data/backups/prod-20261115T102452Z`, bundle `index-Czf6JDE3.js`): hold guard clean, 10 files, migration applied (service-role only), function fixes present, daily job ran once (200, templates not configured) and is in crontab. DB-Scripts `Banking LMS College Mode/…college_guardian_alerts_daily_run.sql` (DEV/UAT/PROD applied).
 
 **WhatsApp template:** `college_parent_alert_v1` (UTILITY, en, one `{{1}}` = the one-line alert; payload `/home/ubuntu/jobs-mail-mcp/whatsapp-templates/college_parent_alert_v1.json`, MSG91 template id 5001339820143415) submitted 2026-11-15 ~10:30Z, **pending Meta approval**. To switch sending on once approved: add `COLLEGE_GUARDIAN_WA_TEMPLATE=college_parent_alert_v1` (plus `MSG91_AUTHKEY` and `MSG91_INTEGRATED_NUMBER=916380485173` if absent) to `functions-secrets.env` on UAT and PROD and restart the functions container. If UTILITY review stalls (seen 17 h before), resubmit as `college_parent_alert_v1_mkt` (MARKETING). SMS still needs a DLT template under PILTEC (`COLLEGE_GUARDIAN_SMS_TEMPLATE_ID`).
+
+## 2026-11-15 — Admin journey schema hardening: UAT `2e64a3e7`, PROD release `66f826c4` (PROD deploy pending)
+
+The full Admin journey and creation paths were tested end to end on UAT with throwaway records, then cleaned up. The crawl covered 45 legacy admin menus plus the consolidated Admin Journey and exercised module/topic creation, module groups, manual assessments with MCQ questions, coding challenges, admin creation, institute onboarding, and locations.
+
+**Fixes in `cd9c7618` (UAT cherry-pick `2e64a3e7`):**
+- Admin Management no longer selects the deployed schema's missing `user_roles.created_at` column; admin rows show an em dash for that timestamp.
+- Curriculum Uploads uses the Radix Select sentinel `__module_level__` instead of an empty SelectItem, preventing the runtime crash and blank page.
+- AI Coach Audit calls the deployed `coach-contract-v1` list signature and applies optional filters client-side. The SQL alias collision in `coach_contract_v1` is repaired by migration `20261115130000_fix_coach_contract_list_alias`.
+- GitHub Sync uses the signed-in session JWT and reads the compact deployed `github_sync_events` schema, including realtime rows.
+
+**UAT rollout:** GitHub `UAT` and `main` are at `2e64a3e76`; the stale first build was replaced after an explicit fetch with snapshot `20261115T132503Z`, 124 functions, and bundle `index-tVEl3nso.js`. The live site returned HTTP 200. Post-deploy browser checks for Management, Curriculum Uploads, AI Coach Audit and GitHub Sync were clean: no page errors, blank pages or API responses ≥400. The UAT database migration and function ACL repair completed successfully.
+
+The PROD-safe cherry-pick is pushed to `release/prod-v1.1` as `66f826c41` and tag `v1.1.13`; it contains only these six admin files and the coach-contract migration and excludes the held student LMS/video-watch work. PROD deployment is the next step.
