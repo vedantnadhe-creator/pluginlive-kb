@@ -1,7 +1,9 @@
-# aividya — Teacher Growth (UAT, feat/chat-simulations 7c50c729)
+# aividya — Teacher Growth (UAT, feat/chat-simulations 104a20c9)
 
 Measures each teacher on three dimensions from what students and teachers actually do. Growth is against the teacher's
 own previous period; principals see teachers alphabetically, never ranked.
+
+The teacher-facing Growth and Development retention surfaces are documented in `pilvidya-teacher-workspace-ux.md`.
 
 ## Where
 - **Teacher → My Growth** (`/teacher/growth`, menu key `teacher.growth`): period This term (Apr–Sep / Oct–Mar) or Last 30 days; three dimension cards (score 0–100, level, change since previous period), every metric with weight, "Needs data (n of min)" and a next step when < 60; lesson observations (mark next step done); classes & subjects editor.
