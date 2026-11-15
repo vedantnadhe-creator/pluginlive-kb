@@ -1,10 +1,12 @@
-# aividya — School core: setup, promotion, My Day, My Class, exams → report cards, parent messages, fees (UAT, feat/chat-simulations 104a20c9)
+# aividya — School core: setup, promotion, My Day, My Class, exams → report cards, parent messages, fees (UAT, feat/chat-simulations 701c4b8f)
 
 The day-to-day running of a school. Every write is a SECURITY DEFINER function that checks the caller; the browser
 never writes these tables directly. Migrations: `20261118210000_school_setup_day_and_exams.sql`,
 `20261118220000_parent_messaging_and_fee_collection.sql`.
 
-Teacher workspace navigation and retention surfaces are documented in `pilvidya-teacher-workspace-ux.md`.
+Teacher workspace navigation and retention surfaces are documented in `pilvidya-teacher-workspace-ux.md`. Parent shell
+navigation, Today actions, session recovery and parent-facing retention surfaces are documented in
+`pilvidya-parent-experience.md`.
 
 ## Who sees what
 | Screen | Who | What |

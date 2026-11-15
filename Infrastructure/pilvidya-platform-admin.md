@@ -1,4 +1,4 @@
-# aividya — Platform admin (aividya team running many schools) (UAT, feat/chat-simulations 4b9081ed)
+# aividya — Platform admin (aividya team running many schools) (UAT, feat/chat-simulations 701c4b8f)
 
 Migration `20261118250000_admin_platform.sql`. Every new function checks the caller's **admin area** (internal role).
 
@@ -73,6 +73,14 @@ curriculum management) and 11 dead route declarations.
   > 0.7 ignored).
 - **Messages to schools**: `platform_messages` to all or chosen schools, principals (+ teachers optional),
   `my_platform_messages`, `platform_message_read`, read counts.
+
+## Parent experience release (701c4b8f)
+- The admin **Parent Journey** preview opens the current parent shell read-only. The parent shell is documented in
+  [`pilvidya-parent-experience.md`](pilvidya-parent-experience.md); use it when validating a school’s parent-facing
+  experience after changes to attendance, homework, fees, messages, report cards, notifications, or curriculum.
+- This release changed the parent frontend only; it adds no database migration or new admin function. Parent access
+  remains controlled by the existing parent session, child-link checks, plan menu access, and school RLS/function
+  boundaries.
 
 ## Checks
 `~/pilvidya-checks/school-core/admin-platform-test.sql` (51, rolled back); `~/pilvidya-checks/admin/admin-journey.cjs`
