@@ -119,3 +119,6 @@ Robo Teacher and Robo Classes are Enterprise; see `Infrastructure/pilvidya-schoo
 - **Speech-to-text:** `robo-speech` → gateway task `pl/robo-stt` (gemini-2.5-flash, thinking off → gemini-3.8-flash low, 20 s, modality audio; input_audio wav/webm/ogg/mp4), Scribe as fallback; responses include `engine`. Pronunciation transcribes verbatim and is not told the target phrase.
 - **Teacher wording:** ≤4 sentences under 15 words, plain Indian English, everyday spoken Indian languages in their own script (never romanised), units spoken out.
 - **Timing (UAT):** after the student stops speaking ≈ STT 3 s + reply 2 s + first voiced sentence 3 s. Tests: `~/pilvidya-checks/chatsim-e2e/voice-e2e.mjs` (20/21 after 615ede84 — reply length), live voice routing `~/pilvidya-checks/chatsim-e2e/voicelive.mjs` (8/8).
+
+
+**2026-11-15 (d28ddf6e):** subject list now includes the school's state language (e.g. Tamil for a Tamil Nadu school) with "Teach me in" defaulting to it; topic dropdown dedupes sub-lesson rows. See `pilvidya-state-language-and-journey-fixes.md`.

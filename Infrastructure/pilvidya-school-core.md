@@ -45,3 +45,6 @@ never writes these tables directly. Migrations: `20261118210000_school_setup_day
 - The 56 held edge functions (`~/eduspeak-sb/functions.hold`) are not needed by these screens and stay held.
 - Checks: `~/pilvidya-checks/school-core/` — `school-core-test.sql` (54) + `messaging-fees-test.sql` (27) + `year-end-test.sql` (18) rolled back; `year-end-live-check.cjs` + `year-end-cleanup.sql`; `ui-check.cjs` (28, stubbed); `live-check.cjs` with `seed-live.sql` / `cleanup-live.sql` (live UAT).
 - PROD: none (no aividya PROD).
+
+
+**2026-11-15 (d28ddf6e):** student/parent fee totals count part payments (paid part under Paid, balance under Pending/Overdue; `partial` shows under the Pending filter with a "Part paid" badge); teacher Fees tab checks `can_collect_fees` before requesting dues; parent-fees no longer fails on a phantom `school_id` column. See `pilvidya-state-language-and-journey-fixes.md`.
