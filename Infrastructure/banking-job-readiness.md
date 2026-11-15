@@ -5082,3 +5082,11 @@ The trainer journey fixes found in the end-to-end menu and creation tests are li
 No database migration was needed. `institute-trainer-actions` is configured with JWT verification and is the 125th synced UAT function.
 
 **UAT rollout:** snapshot `20261115T153208Z`; bundle `index-D3pxb7jY.js`; site HTTP 200; bundle audit found no DEV, localhost Supabase, or hosted Supabase URLs; unauthenticated calls to the new function return 401. The institute workspace rendered without page errors or API responses ≥400, and a throwaway trainer was created through the Invite Trainer UI and removed afterwards. Focused security tests passed 12/12 and the UAT tree built successfully.
+
+## 2026-11-15 — Trainer journey and institute trainer management: PROD `ce1281c9b`, tag `v1.1.14`
+
+The trainer journey fixes from UAT are now live on the PROD-safe `release/prod-v1.1` lane. The permanent LMS v2 and lesson-video watch-gate/checker holds remain absent; this release has no database migration.
+
+**PROD rollout:** GitHub `release/prod-v1.1` moved from `66f826c4` to `ce1281c9b` and tag `v1.1.14` was created. The PROD VM built the frontend from that checkout with the PROD `.env`, after taking backup `/data/backups/prod-20261115T154327Z` (database dump, previous dist, functions and app source). The new `institute-trainer-actions` function and the other 124 functions were synced with the existing three fixups; the functions runtime restarted. Release markers are `release/prod-v1.1` and the full `ce1281c9b5b0f5411242049071c3a9f4d02c5eb1` commit.
+
+**Verification:** `https://lms.pluginlive.com` returns HTTP 200 with bundle `index-CL6doAnJ.js`; the PROD bundle contains no DEV, UAT, localhost Supabase or hosted Supabase addresses. All `banking-sb` services are healthy, the new function is present, and an unauthenticated call to it returns 401. The existing PROD QA profile for the institute workspace has no matching `auth.users` row, so an authenticated browser smoke could not be run without creating or repairing PROD test identity data; no PROD data was changed for this release.
