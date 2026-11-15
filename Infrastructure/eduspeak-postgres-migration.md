@@ -2706,3 +2706,10 @@ QA scripts are on the DEV box in `~/pilvidya-checks`:
 - Migration `20261117140000_school_plans.sql` (DB-Scripts `9f280f4`): `school_subscriptions`, `my_plan()`, `student_menu_enabled()`,
   Robo/Simulations menu keys, nested tiers, per-student prices; dropped two teacher-writable policies on plan tables. PROD pending.
 - `teacher_subscriptions` / `plan_override` no longer read. Details: `Infrastructure/pilvidya-school-plans.md`.
+
+## 2026-11-15 — PilVidya UAT student Today summary (`104a20c9`)
+
+- Applied `20261115T125311Z__pilvidya_student_today_learning_summary.sql` from DB-Scripts commit `19dfd1f` to `eduspeak_uat`.
+- The migration adds `topic_lesson_cache`, the scoped `student_learning_summary(uuid)` RPC, `student_question_history.created_at`, the recent-activity index, and student-scoped question-history policies. It is additive and idempotent; PROD remains pending and aividya DEV remains the hosted Supabase environment.
+- The first browser check after DDL returned RPC 404 because PostgREST had not refreshed its schema cache. `NOTIFY pgrst, 'reload schema'` fixed it; the authenticated student `9820065335` then received RPC HTTP 200, rendered `/student`, and produced no page errors or failed requests.
+- Rule: after a UAT migration that adds or replaces a function, run `NOTIFY pgrst, 'reload schema';` (or restart only the REST container if the notification is unavailable) before UI verification.

@@ -1,4 +1,4 @@
-# aividya — Student learning journey: Curriculum, Subject Lessons, My Portal, Foreign Languages (UAT, feat/chat-simulations 121e7e94)
+# aividya — Student learning journey: Curriculum, Subject Lessons, My Portal, Foreign Languages (UAT, feat/chat-simulations 104a20c9)
 
 ## Which page is which
 - **Curriculum** (`/student/curriculum`): the student's own syllabus, fixed to their board and class (`curriculum_content` + `curriculum_topics` + `student_curriculum_progress`), with topic progress and Robo mastery vs target. Teacher uploads (`student-360` `portal_content`) appear in a **From your teachers** section grouped subject → topic ("Whole subject" for uploads without a topic), inline under the matching topic row, and as a count on each subject card.
@@ -30,6 +30,16 @@
 - Data: `student_due_items(p_days)` (SECURITY DEFINER, `current_student_profile_id()` + own school/class): pending/in-progress assessment assignments, chat sim assignments not scored (`sim_assignments` + `sim_attempts`), test-series items (class in `class_levels`), fee invoices not paid/void with amount left, school events (audience all/students/class_N), live classes, `student_learning_tasks` not completed. Overdue window 60 days. Robo assignments (not done) and spaced revisions come from `robo-teacher get_coach` (`lib/dueItems.ts roboItems`).
 - Fixed: `trg_emit_alert_scan()` read `NEW.school_id`; `assessment_assignments` has no such column, so every assignment insert failed (none on UAT since 2026-10-22). Now `to_jsonb(NEW)->>'school_id'`.
 - No homework table exists; library returns / transport dues not included.
+
+## Student Today and Progress summary (UAT 104a20c9, database 2026-11-15)
+
+- `/student` is the student's single home: it opens on the next best action, due work, fees, weekly activity, resume items, weak topics and a question of the day instead of the former multi-dashboard landing experience.
+- `/student/progress` reuses the same learning summary so streaks, recent activity and weak-topic recommendations do not disagree between screens.
+- `public.student_learning_summary(uuid)` is the scoped RPC used by the browser and `parent-weekly-insights`. It accepts the student's profile id only when the caller is the student, linked parent, same-school teacher or platform admin; the service role is allowed only for already-authorised edge functions.
+- The RPC counts a learning day only for a real action (answer, completed topic/quiz, homework submission, assessment, Robo class or practice), uses India time for streaks, and returns resume items, weak topics, subject trends and a class/board-matched question of the day.
+- `public.topic_lesson_cache` is an RLS-protected service-role cache used by `topic-lesson`; students do not receive direct table access. `student_question_history.created_at` and `sqh_student_created_idx` support the summary's recent-activity queries.
+- The migration is recorded in DB-Scripts as `EduSpeak Postgres Migration/20261115T125311Z__pilvidya_student_today_learning_summary.sql` (`19dfd1f`); UAT is applied to `eduspeak_uat`, DEV is hosted Supabase, and PROD remains pending.
+- After applying this migration or any new RPC on UAT, run `NOTIFY pgrst, 'reload schema';` and verify the authenticated student path. The live check for student `9820065335` returned RPC HTTP 200 with no page errors or failed requests.
 
 ## Tests
 - `~/pilvidya-checks/due-items/` — `due-items-test.sql` (rolled back), `ui-check.cjs` (LIVE=1 for live), `seed-live.sql` / `cleanup-live.sql`.
