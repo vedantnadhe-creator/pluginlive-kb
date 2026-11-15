@@ -101,6 +101,11 @@ curriculum management) and 11 dead route declarations.
 - Focused regression coverage is in `frontend/src/test/adminParentExperience.test.ts`, with the existing admin role
   navigation and platform-area tests updated for the new tab. No database migration or new Edge Function was introduced.
 
+**UAT deployment verification (2026-11-15).** GitHub `feat/chat-simulations` and the UAT checkout are at `8dfa2869`.
+The PilVidya frontend was rebuilt on the UAT host with the UAT environment as `eduspeakreact:8dfa2869`; the served
+manifest reports the same version, the site returns HTTP 200, and the bundle contains no `*.dev.pluginlive.com`
+hostnames. No database migration was required.
+
 ## Checks
 `~/pilvidya-checks/school-core/admin-platform-test.sql` (51, rolled back); `~/pilvidya-checks/admin/admin-journey.cjs`
 (menu crawl of 59 items + new flows; `LIVE=1 BASE=https://pilvidya.uat.pluginlive.com` for no stubs),
