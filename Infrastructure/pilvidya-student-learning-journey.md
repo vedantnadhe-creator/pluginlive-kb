@@ -35,3 +35,25 @@
 - `~/pilvidya-checks/due-items/` — `due-items-test.sql` (rolled back), `ui-check.cjs` (LIVE=1 for live), `seed-live.sql` / `cleanup-live.sql`.
 - `~/pilvidya-checks/student-journey.cjs` (BASE=UAT URL; 16 checks: upload→approve→publish, My Portal + Curriculum listing, Start for teacher and curriculum lessons, written notes, goals, languages, French videos).
 - Homework (Student → Homework) and Timetable & Attendance (Student → Timetable & Attendance): see `pilvidya-homework-timetable.md`.
+
+## Curriculum topic page = 5-step learn flow (UAT 2e1d2b71, 2026-11-15)
+
+`components/student/TopicLearnFlow.tsx` (+ pure helpers `lib/topicLearnFlow.ts`) replaces the old long topic page.
+
+- **Steps**: Learn (lesson split by `####` sections, one per screen, "Listen" via Robo Teacher TTS in the subject's
+  language) → Example (AI `examples` from topic-lesson, previously discarded) → Key points (the lesson's "Key Points"
+  list + summary) → Quiz (one question at a time, Check answer → why; "Different questions" = fresh AI set) → Done
+  (score, Revise with Robo Teacher, Ask AI Coach, Quiz again, mock test for Class 6+, Print or save notes). Steps
+  without real content are skipped.
+- **Only real content**: the fallback pack's template lesson / quiz (`mappedTopicToContentRow`) is never displayed —
+  skeleton while generating, one automatic retry, then "This lesson isn't ready yet · Try again". Removed for students:
+  template takeaways, coaching tips (invented institutes), case studies, study materials, study meter, YouTube-API
+  button, Regenerate / Create more / AI PDF search, duplicate PDF + mock-test buttons, prerequisite tip (it compared
+  rows across subjects).
+- **Language subjects** (tamil, kannada, marathi, …) request the AI lesson and quiz in that language and get larger body
+  text; "AI starter lesson" chip only when no published lesson exists (`mapped_only`).
+- **Notes**: browser print of `#topic-print-notes` (index.css print rule) replaces the jsPDF export, which could not
+  render Indian scripts.
+- **Progress fix**: `saveTopicProgress` sent the curriculum_topics id as `curriculum_content_id` for mapped topics →
+  FK 409 → progress for curriculum-table topics never saved. Now null for mapped rows; quiz scores save.
+- Live check: `~/pilvidya-checks/student-9820065335/learnflow-live.cjs <Subject> "<Topic>" <tag>` (screenshots in `flow/`).
