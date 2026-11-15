@@ -1,6 +1,6 @@
-# aividya — Schools, staff accounts and School Operations (UAT, feat/chat-simulations 6f6051fd)
+# aividya — Schools, staff accounts and School Operations (UAT, feat/chat-simulations f869e794)
 
-Live on UAT since 2026-11-13 (`feat/chat-simulations` a0af4e96 + 01a7bfd6 + 20a2aa73; DB migration `20261118100000_school_operations_scope`, DB-Scripts `EduSpeak Postgres Migration/…__school_operations_working_school_scope.sql`). PROD: none (no aividya PROD).
+Live on UAT since 2026-11-15 (`feat/chat-simulations` f869e794; DB migration `20261118100000_school_operations_scope`, DB-Scripts `EduSpeak Postgres Migration/…__school_operations_working_school_scope.sql`). PROD: none (no aividya PROD).
 
 ## One school model
 - **`schools`** is the school record everything uses (teachers, students, plans, pickers). `school_branches` holds campuses; a DB trigger creates the `MAIN` campus on school insert.
@@ -41,6 +41,11 @@ Live on UAT since 2026-11-13 (`feat/chat-simulations` a0af4e96 + 01a7bfd6 + 20a2
 - **Sensitive modules** (payroll, HR employees, vendors, procurement, hostel) also need `ops_module_allowed`: admin, principal, or the matching ops role (finance / procurement_officer / warden; finance may read vendors and POs).
 - New rows get `school_id` from the working school (`set_school_id_from_teacher` trigger, now using `current_ops_school_id`).
 - Admin tools: admissions, fees, transport, library, hostel, HR, payroll, vendors, procurement, events, calendar, timetable, SIS, principal brief, leadership, UDISE, compliance, accreditation, tenant audit, ops roles.
+- **Principal / School Admin operations home (`#overview`, f869e794):** leadership staff and platform admins start with an action-led control tower instead of the full catalogue. P0 shows the four first decisions (attendance, timetable coverage, family follow-up, and fees/admissions; platform admins see admissions, timetable, fees, and the selected-school leadership snapshot). The school name is shown in the header and operation context so staff can confirm scope before opening a module.
+- **P1 workflow:** the home links the existing modules through Prepare → Run the day → Review learning → Close the loop. The linked module remains the source of truth; the home does not invent counts or duplicate transactions. Leadership users can open School setup from the home.
+- **P2 continuity:** the last five operations opened are stored in browser local storage (`pilvidya_operations_recent_tabs`) and can be reopened from the home. This is device-local convenience data, not school data.
+- **P3 rhythm:** the home provides Monday / mid-week / Friday shortcuts for the recurring leadership review. The full catalogue remains available through search, the “Show all operations” toggle, or a direct hash link. Existing operation hashes and role gates remain supported.
+- **Staff identity fallback:** login and `StaffRoute` now recognise an active, allow-listed `institute_users.role` even when a legacy `user_roles` row is missing. `TeacherOps` and School Admin show a scoped repair message when the membership exists but its `teacher_profiles` school scope is missing; they do not fall back to arbitrary school data. Vice Principals and School Admins (`institute_admin`) can open the school-admin workspace when they have a provisioned school-scoped teacher profile.
 - The 10 server functions (admission-offer-generate, admission-screen, fee-reconcile, fee-reminders-send, razorpay-payment-link, transport-optimize, library-overdue-summary, payroll-run-generate, timetable-generate, principal-morning-brief) call `_shared/ops-auth.ts` `opsCaller`: signed-in staff/admin with a working school; data calls run as the caller (school rules apply). Before 2026-11-13 they had no caller check at all.
 - Public admissions (`/admissions/apply`, `/admissions/enquire`) require a school: `public_admission_schools()` lists active public schools; a school can share `/admissions/apply?school=<id>`. Enquiries/applications from before this have no school and are not visible.
 
