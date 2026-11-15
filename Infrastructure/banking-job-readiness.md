@@ -5067,3 +5067,18 @@ The PROD-safe admin fix was pushed to `release/prod-v1.1` as `66f826c41` and tag
 **PROD rollout:** backup `/data/backups/prod-20261115T133106Z` contains the `banking_prod` dump, functions, dist, environment and release marker. The exact six-file guard passed, the migration rehearsal rolled back cleanly (`coach alias ok`), 124 functions and 3 fixups synced, the migration applied, PostgREST restarted, and the frontend was rebuilt with the PROD environment. The first automated HTTP check found nginx returning 403 because the temporary build directory had mode 700 and replaced `/opt/banking/app`'s directory mode; restoring `/opt/banking/app` to mode 755 fixed it before any user-facing verification. The final site returns HTTP 200 with bundle `index-B8QoppHj.js`, and the bundle has no DEV/UAT/hosted Supabase addresses.
 
 **Live browser verification:** Management, Curriculum Uploads, AI Coach Audit and GitHub Sync all render on `https://lms.pluginlive.com` with no blank pages, page errors or API responses ≥400. `coach_contract_v1` contains the corrected `graph` alias, the release marker is `66f826c4`, the production backup is present, and every `banking-sb` service is healthy.
+
+## 2026-11-15 — Trainer journey and institute trainer management: UAT `2bf2c0bc`
+
+The trainer journey fixes found in the end-to-end menu and creation tests are live on UAT. GitHub `UAT` and `main` now point at `2bf2c0bc9`.
+
+| Area | Current behavior |
+|---|---|
+| Trainer → Manage Candidates | Single-candidate onboarding uses the server-side `trainer-bulk-import` start/process/finish flow, so a trainer never attempts a direct browser insert into the RLS-protected `students` table. The existing CSV flow is unchanged. |
+| Institute → Trainers | Create, edit, approve/reject and delete use the tenant-checked `institute-trainer-actions` Edge Function. It accepts an institute manager or admin JWT, resolves the institute from profile membership, validates email/mobile uniqueness, writes canonical `institute_id`/`college` fields, and sends the existing welcome-email flow when configured. The browser no longer performs privileged trainer writes. |
+| Institute workspace | Tenant lookup uses `profiles.institute_id`/name and deployed institute columns. Overview counts avoid the removed `cohorts.status`, use `module_progress.is_completed`, and clear the loading state on success or failure. Trainer lists read both canonical institute mappings and legacy college names, with duplicate rows removed. |
+| Admin → Trainer Assignments | The list projection includes `mobile` and `location`, so editing a trainer name no longer clears those fields. |
+
+No database migration was needed. `institute-trainer-actions` is configured with JWT verification and is the 125th synced UAT function.
+
+**UAT rollout:** snapshot `20261115T153208Z`; bundle `index-D3pxb7jY.js`; site HTTP 200; bundle audit found no DEV, localhost Supabase, or hosted Supabase URLs; unauthenticated calls to the new function return 401. The institute workspace rendered without page errors or API responses ≥400, and a throwaway trainer was created through the Invite Trainer UI and removed afterwards. Focused security tests passed 12/12 and the UAT tree built successfully.
