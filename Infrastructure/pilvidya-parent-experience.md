@@ -1,4 +1,4 @@
-# aividya — Parent experience (UAT, feat/chat-simulations 701c4b8f)
+# aividya — Parent experience (UAT, feat/chat-simulations ce01ad9f)
 
 The parent portal is a calm, child-first shell for a linked parent or guardian. This release is frontend-only: no
 database migration was added. Existing parent session, child-link, plan-access, RLS and edge-function boundaries remain
@@ -52,7 +52,7 @@ timestamps and school-provided data before AI explanation.
 
 ## Verification
 
-Focused frontend checks for 701c4b8f:
+Focused frontend checks for ce01ad9f:
 
 - `parentExperience.test.tsx`: five navigation groups, no duplicate destinations, actionable attendance and family
   learning prompt.
@@ -61,3 +61,6 @@ Focused frontend checks for 701c4b8f:
 - `commercialPlanMenus.regression.test.ts`: parent plan-menu gating remains intact.
 
 The focused suite passed 13 tests before the UAT push. There is no aividya PROD deployment.
+
+The first UAT smoke after 701c4b8f found a missing `CalendarCheck2` import in the authenticated parent home. The
+one-line fix is included in ce01ad9f; the parent login smoke must be rerun after deployment.
