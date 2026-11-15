@@ -1,9 +1,9 @@
-# aividya — Platform admin (aividya team running many schools) (UAT, feat/chat-simulations ce01ad9f)
+# aividya — Platform admin (aividya team running many schools) (UAT, feat/chat-simulations 8dfa2869)
 
 Migration `20261118250000_admin_platform.sql`. Every new function checks the caller's **admin area** (internal role).
 
 ## Admin menu (rebuilt 2026-11-14)
-Overview (Overview, School health, Admin 360, Learning usage, Predictive, Dropout) · Schools (School onboarding, Schools &
+Overview (Overview, School health, Parent experience, Admin 360, Learning usage, Predictive, Dropout) · Schools (School onboarding, Schools &
 Institutes, Branches & Boards, School Staff Accounts, School Operations) · Billing (School Plans, Billing & Renewals, Plan
 Menus) · Support (Support Desk, Messages to Schools, View as user, Data Requests) · Users & Access (students, teachers,
 roles, reset password, all accounts, admin users, Admin Team & Roles, My Two-factor) · Curriculum & AI · School Tools ·
@@ -83,6 +83,23 @@ curriculum management) and 11 dead route declarations.
   renders successfully. Parent access
   remains controlled by the existing parent session, child-link checks, plan menu access, and school RLS/function
   boundaries.
+
+## Parent experience control tower (8dfa2869)
+- The admin Overview now links to **Parent experience** (`/admin#parent-experience`), a read-only control tower for the
+  family journey. It is available under the health area and therefore follows the same internal admin-area checks as
+  School health.
+- The control tower shows a configurable 7/30/90-day signal window and school filter, with four transparent measures:
+  verified family-link activation, active parent sessions, recent digest coverage, and open follow-ups. It deliberately
+  does not invent a child or family risk score.
+- The activation funnel counts students → verified parent link → active parent signal → recent digest signal. School pulse
+  rows show activation percentage, active parents, digest signal count, and an operational status. The attention queue
+  points admins to the existing Students, Messages to Schools, Roles, and View as Parent workflows; the new screen does
+  not mutate parent records or expose parent contact details or message bodies.
+- Data trust is explicit. Existing `parent_profiles`, `parent_student_links`, `parent_digests`, `parent_messages`, and
+  `notifications` records are read opportunistically; if an optional source is unavailable, the screen labels it as
+  needing review instead of treating missing data as family inactivity.
+- Focused regression coverage is in `frontend/src/test/adminParentExperience.test.ts`, with the existing admin role
+  navigation and platform-area tests updated for the new tab. No database migration or new Edge Function was introduced.
 
 ## Checks
 `~/pilvidya-checks/school-core/admin-platform-test.sql` (51, rolled back); `~/pilvidya-checks/admin/admin-journey.cjs`
