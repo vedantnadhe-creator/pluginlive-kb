@@ -20,6 +20,10 @@ tags: [service, frontend, uat, supabase, lovable]
 > `kbwjokmmzkgjwiqelrdc`.** See `Infrastructure/banking-postgres-migration.md` — read it before
 > touching UAT `.env`, migrations or edge functions.
 
+## Separate v2 app at `/v2` — lmsv2 (2026-11-16)
+
+`https://<banking host>/v2/` (DEV, UAT, and `lms.pluginlive.com/v2` on PROD) is **not this app**: it is `lmsv2`, a separate copy with its own repo (`PluginLive-Technologies/lmsv2`), stack (`lmsv2-sb-*`), database and files. The banking nginx sites only `include snippets/lmsv2-v2.conf`. Do not deploy banking code to `/v2` or lmsv2 code to `/`. See [lmsv2.md](lmsv2.md).
+
 ## Branching strategy (from 2026-11-09)
 
 | Env | Branch | Deploy |
