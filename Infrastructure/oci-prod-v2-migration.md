@@ -153,3 +153,6 @@ Config lives in OCI Vault `pl-v2-svc-<service>`; generator `tools/gen_v2_config.
 | Google sign-in | OAuth client `641154247196-9b3p…` lists `https://auth.v2.pluginlive.com` and `https://api-auth.v2.pluginlive.com/auth/google/callback` (added 2026-11-16). |
 
 Go-live order for messaging: stop PROD crons and background jobs, turn on the three auth-node switches, remove the mail domain rule and `[v2]` tag, set PROD's Slack tag, point the MSG91 delivery webhook at v2.
+
+### Branch policy (2026-11-16)
+v2 deploys from a `v2-release` branch in each repo: `release-v2` (v2-only fixes) merged with PROD's current release branch, so v2 runs PROD code plus what v2 needs, against its PROD-copy schema. First build: PROD `release-v1.42-hotfix-4` (admin/corporate/institute/student), with `scoring_issues` applied to the v2 DB. Later PROD hotfixes: merge into `v2-release`, rebuild what changed, apply any DB script PROD applied after the copy. A new release branch is cut at go-live. Not UAT: UAT code needs 46 UAT-only DB scripts and carries Attempt Integrity, which is held for PROD.
