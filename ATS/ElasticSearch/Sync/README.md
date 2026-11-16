@@ -128,3 +128,5 @@ All endpoints are **POST** and return a success message on completion.
 - **SQL → ES pipeline:** Reads from PostgreSQL views/tables, transforms, and bulk-inserts into ES
 - **Index aliasing:** Uses timestamped indices with aliases for zero-downtime reindexing
 - **Index config:** All ES index mappings and settings defined in `sync/index/indexConfig.ts` (~249KB)
+
+**Error text when search-service gives no response (DEV + UAT, 2026-11-16).** institute-node `ElasticSearchService.create`/`delete` read `err.response.status` unguarded, so a network error (search-service down or `ELASTICSEARCH_URL` unset) surfaced in the admin UI as "Cannot read properties of undefined (reading 'status')" — e.g. Admin → System Config → College create on OCI PROD v2, where the college was still saved. They now return `err.response?.status` and `err.response?.data?.message ?? err.message`, so the UI shows the real cause (e.g. `connect ECONNREFUSED`). The record is written before the search call, as before. PROD unchanged.

@@ -75,5 +75,5 @@ The Onboarding module manages the registration of new corporates and institutes 
 - **Dual onboarding:** Separate flows for corporates and institutes
 - **Onboarding links:** Send email invites for self-registration
 - **Master data:** Full country → state → city cascading lookups via ElasticSearch
-- **S3 file uploads:** Document upload via signed URLs
+- **S3 file uploads:** Document upload via signed URLs. user-management-node `app/utils/fileController.js` signs with the AWS SDK; optional `S3_ENDPOINT` (unset on DEV/UAT/PROD = AWS) points it at an S3-compatible store with path-style URLs. OCI PROD v2 sets it to OCI Object Storage (see `Infrastructure/oci-prod-v2-migration.md`). The same opt-in exists in corporate-node (`app/helpers/utils.js` `uploadFileToS3`, `src/utils/S3Helper.js`) and student-node (`app/helpers/s3Client.js`, `app/helpers/generatePDF.js`). Since 2026-11-16 `downloadFromS3`/`updloadFromS3` no longer log the access keys or the upload params (DEV + UAT).
 - **Location lookups:** Both institute and corporate location searches

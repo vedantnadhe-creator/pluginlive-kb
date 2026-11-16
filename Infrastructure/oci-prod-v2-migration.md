@@ -137,3 +137,19 @@ original **₹21.3–23.3k/month** estimate used 1 OCPU and must be revised afte
 
 The detailed runnable procedure and rollback-aware checks are in
 `~/pl-oci-v2-infra/deploy/PERFORMANCE.md`.
+
+## v2 fixes, 2026-11-04 to 2026-11-16
+
+Config lives in OCI Vault `pl-v2-svc-<service>`; generator `tools/gen_v2_config.py` and guard `tools/check_v2_config.py` in `pl-oci-v2-infra` (branch `release-v2`); details in its `deploy/DEV-HANDOFF-20261103.md`.
+
+| Area | Current v2 behaviour |
+|---|---|
+| Uploads (`/signedURL`, server-side S3 uploads) | Go to private OCI bucket `pl-v2-uploads` through the S3-compatible API (`S3_ENDPOINT`, OCI keys in the `AWS_*` variables); read through a bucket-scoped read-only pre-authenticated link set as `CLOUDFRONT_URL` (listing denied, expires 2027-11-04). AWS is not used. |
+| Public student documents (CVs) | `PUBLIC_OCI_BUCKET_NAME=pl-v2-public-docs`, public read without listing (PROD: `pl-uat-public-docs`, ObjectRead). 25 CVs uploaded earlier to the private bucket were moved and their links rewritten. |
+| CV parse-and-store / JD parse | fast-api `cv-parser/parseResumeAndUpload` stores to `pl-v2-uploads` with an API key of `pl-v2-storage-bot`; form-data-normalization `PDF_PARSER_URL` points at it. |
+| Search-service writes | institute, corporate and student services use `ELASTICSEARCH_URL=http://search-service.pl-api.svc.cluster.local` (workers on pl-v2-app: `https://search.v2.pluginlive.com`) with search-service's admin key, as PROD does. Blank values made college/degree/stream create fail after saving. |
+| Normalisation | API and worker use v2 values for `BASE_URL`, `ENTITY_NORMALIZER_API_URL`, `EXPORT_LINK_BASE_URL` and LiteLLM (own key `v2-form-data-normalization`); the code defaults point at live PROD. `form-data-normalization-cron` runs on pl-v2-app and registers v2's own Drive webhook; the copied PROD `drive_state.webhook_data` was cleared first because registration stops the previous channel. The Google Forms API 403 per form (also on PROD) only slows ingest. |
+| Email, SMS, WhatsApp, Slack | PROD keys copied. Slack is live (posts tagged V2). SMS, WhatsApp and WhatsApp OTP stay off (`SMS_ENABLED=false`, `WHATSAPP_DISABLED=true`, `WA_OTP_ENABLED=false`) and mail-server only delivers to `@pluginlive.com` until go-live. v2 auth-node has no phone allow-list code. |
+| Google sign-in | OAuth client `641154247196-9b3p…` lists `https://auth.v2.pluginlive.com` and `https://api-auth.v2.pluginlive.com/auth/google/callback` (added 2026-11-16). |
+
+Go-live order for messaging: stop PROD crons and background jobs, turn on the three auth-node switches, remove the mail domain rule and `[v2]` tag, set PROD's Slack tag, point the MSG91 delivery webhook at v2.
