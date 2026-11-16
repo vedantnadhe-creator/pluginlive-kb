@@ -27,7 +27,7 @@ Live on UAT since 2026-11-14 (`eduspeak-india` `feat/chat-simulations` 850a3fa9)
 ## QR answer sheets (Teacher → Operations → Alt intake → QR answer sheets)
 
 - Print: one A4 page per assigned student; QR text `PVSHEET:1:<assessment_id>:<student_profile_id>` top-right.
-- Scan: phone (handoff `answer_sheets`, QR read on the phone with jsQR) or bulk upload on desktop (QR read in the browser) → `_shared/answer-sheets.ts`: assessment must be in the caller's school, student must be assigned → page stored at `assessment-submissions/<assessment>/<student>/…` → vision transcription (llm-resolver task `alt-submission-ingest`) → `assessment_alt_submissions` row + `assessment_assignments.submission_text/submission_url`, status completed → `descriptive-auto-grade` (internal call) writes `ai_score`.
+- Scan: phone (handoff `answer_sheets`, QR read on the phone with jsQR) or bulk upload on desktop (QR read in the browser) → `_shared/answer-sheets.ts`: assessment must be in the caller's school, student must be assigned → page stored at `assessment-submissions/<assessment>/<student>/…` → vision transcription (llm-resolver task `alt-submission-ingest`) → `assessment_alt_submissions` row + `assessment_assignments.submission_text/submission_url`, status completed. Pages for the same student are joined, not overwritten → `descriptive-auto-grade` (internal call) writes an AI **draft** to the teacher-only `assessment_grade_reviews`; the teacher approves and releases marks — see `pilvidya-answer-paper-review.md` (2026-11-16).
 - `alt-submission-ingest` and `descriptive-auto-grade` now require a staff session and same-school scope (both were callable with only the anon key).
 - Live check 2026-11-14: typed sample sheet read in ~8–10 s, graded 78–88/100.
 
