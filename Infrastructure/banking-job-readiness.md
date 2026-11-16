@@ -5111,3 +5111,11 @@ The second migration fixes a delete failure found during that clean-up.
 bundle `index-CyH6jp85.js`, 126 functions + 3 fixups, bundle audit clean, site 200, function 401 without a session, REST exposes
 `curriculum_builds`, rolled-back SQL test passed. Held LMS v2 / video-watch work stays absent. Gateway task `pl/college-curriculum`
 registered on UAT and PROD (see the agent page). Note: the PROD key lists `pl/banking-curriculum`, but the PROD policy has no such task.
+
+## 2026-11-16 — Curriculum agent reconcile + Re-check (UAT `e6096148a`); SRM Easwari on Anna University curricula (UAT data)
+
+UAT `deploy.sh` snapshot `20261116T172758Z` (no migration, 126 functions, bundle `index-DDjU49gG.js`, no DEV/hosted hosts).
+New deterministic reconcile and **Re-check against syllabus** in the curriculum agent; SRM Easwari's 22 programmes rebuilt from
+37 official Anna University R2021/R2025 PDFs and published on UAT. Details and the review rule:
+[banking-college-curriculum-agent.md](banking-college-curriculum-agent.md#srm-easwari-engineering-college-on-uat--anna-university-curricula-2026-11-16).
+PROD not changed.
