@@ -1,4 +1,4 @@
-# aividya — Schools, staff accounts and School Operations (UAT, feat/chat-simulations f869e794)
+# aividya — Schools, staff accounts and School Operations (UAT, feat/chat-simulations 2c50808e)
 
 Live on UAT since 2026-11-15 (`feat/chat-simulations` f869e794; DB migration `20261118100000_school_operations_scope`, DB-Scripts `EduSpeak Postgres Migration/…__school_operations_working_school_scope.sql`). PROD: none (no aividya PROD).
 
@@ -41,6 +41,7 @@ Live on UAT since 2026-11-15 (`feat/chat-simulations` f869e794; DB migration `20
 - **Sensitive modules** (payroll, HR employees, vendors, procurement, hostel) also need `ops_module_allowed`: admin, principal, or the matching ops role (finance / procurement_officer / warden; finance may read vendors and POs).
 - New rows get `school_id` from the working school (`set_school_id_from_teacher` trigger, now using `current_ops_school_id`).
 - Admin tools: admissions, fees, transport, library, hostel, HR, payroll, vendors, procurement, events, calendar, timetable, SIS, principal brief, leadership, UDISE, compliance, accreditation, tenant audit, ops roles.
+- **Library:** School Operations → Library is school-scoped. Staff can create titles/copies, issue, return, renew, mark loss/damage, cancel holds, review overdue/fines and record stocktakes. The student surface is `/student/library`; platform admin library operations use the same guarded RPCs. See `pilvidya-library-management.md` for the data and release boundary.
 - **Principal / School Admin operations home (`#overview`, f869e794):** leadership staff and platform admins start with an action-led control tower instead of the full catalogue. P0 shows the four first decisions (attendance, timetable coverage, family follow-up, and fees/admissions; platform admins see admissions, timetable, fees, and the selected-school leadership snapshot). The school name is shown in the header and operation context so staff can confirm scope before opening a module.
 - **P1 workflow:** the home links the existing modules through Prepare → Run the day → Review learning → Close the loop. The linked module remains the source of truth; the home does not invent counts or duplicate transactions. Leadership users can open School setup from the home.
 - **P2 continuity:** the last five operations opened are stored in browser local storage (`pilvidya_operations_recent_tabs`) and can be reopened from the home. This is device-local convenience data, not school data.

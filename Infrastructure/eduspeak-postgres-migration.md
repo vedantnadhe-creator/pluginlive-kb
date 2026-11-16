@@ -1,6 +1,6 @@
 # EduSpeak: hosted Supabase → PluginLive PostgreSQL (UAT)
 
-**Status:** UAT live on PluginLive PostgreSQL since 2026-08-05; current release `8290aba0` (2026-10-30).
+**Status:** UAT live on PluginLive PostgreSQL since 2026-08-05; current release `2c50808e` (2026-11-16).
 DEV still uses hosted Supabase. PROD does not exist yet. Historical release details follow below.
 
 **UAT hostname is `pilvidya.uat.pluginlive.com` since 2026-08-06** — see
@@ -12,6 +12,11 @@ EduSpeak (`pilvidya.uat.pluginlive.com`, repo `PluginLive-Technologies/eduspeak-
 Lovable-generated app whose real backend was a hosted Supabase SaaS project. UAT now runs entirely
 on our own infrastructure: data in our OCI PostgreSQL, auth/REST/storage/functions in our own
 containers. **Nothing in the app makes a request to `*.supabase.co` any more.**
+
+**2026-11-16 library release:** `EduSpeak Postgres Migration/20261116T101241Z__pilvidya_library_operations_hardening.sql`
+(`436cd4c`) is applied to `eduspeak_uat`. It adds school-scoped library vendor ownership and
+atomic catalogue, issue, return, renewal, reservation and stocktake operations. PilVidya DEV is
+hosted Supabase and remains marked `n/a` for this UAT-only migration; PROD remains pending.
 
 ## Why not a rewrite
 
