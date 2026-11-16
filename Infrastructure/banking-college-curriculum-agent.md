@@ -70,13 +70,23 @@ and regulation (`AU R2021` / `AU R2025`), all **published**. Kit: `~/banking-che
 
 **Review rule applied (as the reviewing admin):** accept non-elective courses with a real course code in the semesters the
 regulation covers; elective slot rows ("PROFESSIONAL ELECTIVE – I") rejected; a semester whose accepted credits exceed the printed
-total is **held** (rejected, old courses kept): R2021 Civil Sem 5–6, CSBS Sem 7, IT Sem 5, and R2025 M.E. Structural Sem 3
+total is **held** (rejected, old courses kept; hand-corrected the same day, see below): R2021 Civil Sem 5–6, CSBS Sem 7, IT Sem 5, and R2025 M.E. Structural Sem 3
 (no printed totals, 17 courses). Result: **887** Anna University section courses placed; **1,132** old script courses removed from
 sections that received agent courses (backup CSV `~/banking-sb/snapshots/srm_script_courses_removed_20261116.csv` on UAT); 40 old
 courses remain only in the held semesters; 0 empty sections; 500 student memberships unchanged. R2021 Sem 5–8 carry few core
 credits by design (most credits are elective slots), so the red total checks on those versions count the slot rows.
 
-Caveat: SRM Easwari is an **autonomous** institution with its own R2023 curriculum (codes like `231CSC301T`); Anna University's
+**Held semesters hand-corrected 2026-11-16 (user confirmed Anna University's affiliated curriculum is right for SRM Easwari).**
+New versions copied from the published ones (no AI), corrected from the PDF scheme tables, published (old versions archived):
+R2021 Civil Sem 5 CE3501/CE3502/CE3503/CE3511 lab/CE3512 project (12 cr = 21 − 3 PE) and Sem 6 CE3601/CE3602/AG3601/CE3611 lab
+(11 cr = 23 − 3 PE − OE); R2021 CSBS Sem 7 GE3791 (2 cr = 14 − 4 slots); R2021 IT Sem 5 CS3591/IT3501/CS3551/CS3691/IT3511 lab
+(16 cr = 22 − 2 PE); R2025 M.E. Structural Sem 2 ST25201/ST25202/ST25203/ST25204 lab (12 cr; 5 elective options removed) and
+Sem 3 ST25301 training + ST25302 Project Work I (8 cr). Mixed-in elective options became unplaced electives; corrected rows are
+marked `edited` (kept on regenerate). Script `~/banking-checks/srm-anna/held_fix.sql` (one transaction, temporary admin removed).
+The last 40 script courses were removed (CSV `srm_script_courses_removed_held_20261116.csv` in UAT `~/banking-sb/snapshots/`).
+**SRM on UAT now: 899 section courses, all from the agent, 37 published versions, 0 empty sections.**
+
+Caveat (resolved — user confirmed Anna University's curriculum is correct): SRM Easwari is an **autonomous** institution with its own R2023 curriculum (codes like `231CSC301T`); Anna University's
 affiliated-college curriculum was used on the user's instruction.
 
 ## Known gaps
