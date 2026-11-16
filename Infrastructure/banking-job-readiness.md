@@ -5094,3 +5094,20 @@ The trainer journey fixes from UAT are now live on the PROD-safe `release/prod-v
 **PROD rollout:** GitHub `release/prod-v1.1` moved from `66f826c4` to `ce1281c9b` and tag `v1.1.14` was created. The PROD VM built the frontend from that checkout with the PROD `.env`, after taking backup `/data/backups/prod-20261115T154327Z` (database dump, previous dist, functions and app source). The new `institute-trainer-actions` function and the other 124 functions were synced with the existing three fixups; the functions runtime restarted. Release markers are `release/prod-v1.1` and the full `ce1281c9b5b0f5411242049071c3a9f4d02c5eb1` commit.
 
 **Verification:** `https://lms.pluginlive.com` returns HTTP 200 with bundle `index-CL6doAnJ.js`; the PROD bundle contains no DEV, UAT, localhost Supabase or hosted Supabase addresses. All `banking-sb` services are healthy, the new function is present, and an unauthenticated call to it returns 401. The existing PROD QA profile for the institute workspace has no matching `auth.users` row, so an authenticated browser smoke could not be run without creating or repairing PROD test identity data; no PROD data was changed for this release.
+
+## 2026-11-16 — College curriculum agent: UAT `20686f31c`, PROD `e6f88e08`, tag `v1.1.15`
+
+New **Academics → Curriculum agent**: syllabus / textbook PDFs → checked, versioned semester-wise curriculum → published into the
+sections, plus lessons per unit from the textbook. Full description: [banking-college-curriculum-agent.md](banking-college-curriculum-agent.md).
+
+**UAT:** GitHub `UAT` = `main` fast-forwarded `2bf2c0bc9` → `6071c0e5` → `ffe3e8fd` → `20686f31c`; `deploy.sh` snapshots `20261116T151447Z`,
+`20261116T152244Z`, `20261116T152756Z` (migrations `20261116150000_college_curriculum_agent`, `20261116160000_curriculum_agent_offering_link_no_fk`,
+126 functions, bundle `index-BzSa_dfv.js`, no DEV/hosted hosts). End-to-end with a QA college: 131 courses, all semester totals matched,
+published 56 section courses in 8 sections, one textbook unit built and linked; QA data and files removed afterwards.
+The second migration fixes a delete failure found during that clean-up.
+
+**PROD:** cherry-picks on `release/prod-v1.1` (`ce1281c9b` → `e6f88e08`), tag `v1.1.15`. Deploy `/tmp/prod_cag_deploy.sh` on the VM
+(= `prod_trainer_deploy.sh` + the two migrations, each `-1`, then `notify pgrst`): backup `/data/backups/prod-20261116T153304Z`, entry
+bundle `index-CyH6jp85.js`, 126 functions + 3 fixups, bundle audit clean, site 200, function 401 without a session, REST exposes
+`curriculum_builds`, rolled-back SQL test passed. Held LMS v2 / video-watch work stays absent. Gateway task `pl/college-curriculum`
+registered on UAT and PROD (see the agent page). Note: the PROD key lists `pl/banking-curriculum`, but the PROD policy has no such task.
