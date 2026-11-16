@@ -5119,3 +5119,10 @@ New deterministic reconcile and **Re-check against syllabus** in the curriculum 
 37 official Anna University R2021/R2025 PDFs and published on UAT. Details and the review rule:
 [banking-college-curriculum-agent.md](banking-college-curriculum-agent.md#srm-easwari-engineering-college-on-uat--anna-university-curricula-2026-11-16).
 PROD not changed.
+
+## 2026-11-16 — PROD `de9bbd5c7`, tag `v1.1.16`: curriculum agent reconcile + Re-check; SRM Easwari Anna University curriculum on PROD
+
+Cherry-pick of UAT `e6096148a` onto `release/prod-v1.1` (`e6f88e08` → `de9bbd5c7`). Deploy `/tmp/prod_cag_deploy16.sh` on the VM (no migration):
+backup `/data/backups/prod-20261116T175918Z`, entry bundle `index-DRT37_PY.js`, 126 functions + 3 fixups, bundle audit clean, site 200,
+function 401 without a session. Then SRM Easwari's confirmed UAT curriculum (899 section courses, 37 published versions) was copied to PROD;
+see [banking-college-curriculum-agent.md](banking-college-curriculum-agent.md). Held LMS v2 / video-watch work still absent.

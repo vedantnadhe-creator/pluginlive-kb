@@ -1,6 +1,6 @@
 # Banking LMS — College curriculum agent
 
-Live on **UAT** (`e6096148a` with reconcile + Re-check, 2026-11-16; first release `20686f31c`) and **PROD** `lms.pluginlive.com` (`release/prod-v1.1` `e6f88e08`, tag `v1.1.15`, 2026-11-16).
+Live on **UAT** (`e6096148a` with reconcile + Re-check, 2026-11-16; first release `20686f31c`) and **PROD** `lms.pluginlive.com` (`release/prod-v1.1` `e6f88e08`, tag `v1.1.15`, 2026-11-16; reconcile + Re-check `de9bbd5c7`, tag `v1.1.16`).
 Code: `bankingjobreadiness` — `supabase/functions/college-curriculum-agent`, `supabase/functions/_shared/curriculum-agent-checks.ts`,
 `src/components/college/CurriculumAgentPanel.tsx`, `src/lib/curriculumAgentApi.ts`. Migrations `20261116150000_college_curriculum_agent.sql`,
 `20261116160000_curriculum_agent_offering_link_no_fk.sql` (DB-Scripts folder *Banking LMS College Mode*).
@@ -59,9 +59,11 @@ DEV banking uses the UAT gateway. Tags `service:banking-app,module:college-curri
   A cut-off answer is a retryable 503; the browser retries each range twice (240 s timeout) before showing "Retry this part".
 - The UAT gateway path cuts a single call at about 60 s; ranges are sized to stay under it.
 
-## SRM Easwari Engineering College on UAT — Anna University curricula (2026-11-16)
+## SRM Easwari Engineering College — Anna University curricula (UAT + PROD, 2026-11-16)
 
-UAT only (PROD still has the 2026-11-15 script data). Source: Anna University CAC pages for **non-autonomous affiliated
+**PROD (2026-11-16 ~18:05Z, user's go):** the confirmed UAT result was copied, not re-generated: 37 PDFs uploaded to PROD storage at the same paths; `curriculum_sources` (37), `curriculum_builds` (37 published + 4 archived), `curriculum_build_courses` (7,787) and the 899 `course_offerings` imported with the same ids (institute, programme and section ids are identical on UAT and PROD); the 1,172 modelled courses removed (no activity; backup `/data/backups/srm_prod_old_offerings_20261116.csv` on the PROD VM). Fingerprint of (section, code, credits) identical on UAT and PROD; 0 empty sections, 500 memberships unchanged.
+
+ Source: Anna University CAC pages for **non-autonomous affiliated
 colleges** (`cac.annauniv.edu/aidetails/ai_ug_cands_2021ft.html`, `…ug_cands_2025ft.html`, `…pg_cands_2025ft.html`).
 Batches → regulation: 2023/2024 batches (Sem 5–8) **R2021 (Revised)**, 2025/2026 batches (Sem 1–4) **R2025**; PG (2025/2026
 batches) R2025. 37 official PDFs (15 UG × 2 + 7 PG; R2021 books 337–421 pages), one syllabus source + one version per programme
