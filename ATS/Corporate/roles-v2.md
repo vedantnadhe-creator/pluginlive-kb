@@ -241,3 +241,7 @@ What a company can use is the live `assessment.subscribed_corporates` rows (Role
 ## Role assessments stay off the Assessments surfaces (2026-11-16)
 
 `NOT_ROLE_EVALUATION` (`helpers/corporateAssessmentSql.js`; Assessments list, candidate view, dashboard, calendar) now excludes every id in `ROLE_EVALUATION_IDS`: `workflow_stages.assessment_corporate_map_id`, `config.mixMatch.groupId` + `parts[].mapId`, older per-part `config.assessments[].settings.assessmentCorporateMapId`, and each dispatch row's `external_ref` (`assessmentCorporateMapId`, `mixMatchGroupId`, `parts[].mapId`). Before, a Multiple Assessments (Mix & Match) round and a round's re-built assessment showed on the corporate Assessments page (UAT: "AR caller (experience) — Operations Technical Round"). One uncorrelated array per query, nulls dropped; ~20 ms over 1,471 UAT maps. corporate-node DEV be660d78, UAT 2ba03fee.
+
+## Select lists above stacked drawers (2026-11-16)
+
+Select option lists (`.sf-panel`, and the assessment module's `ul.pl-assessment-overlay.sf-panel`) use `--z-popover` (90). Manage evaluation process → Review assessment opens a drawer at z 71 (above the modal scrim at `--z-tooltip` 70), so lists at 70 opened behind it and e.g. the AI Interview primary/second language could not be changed. corporate-react-v2 DEV 78d5f6d, UAT 306244b (`src/styles/ds/app.css`).
