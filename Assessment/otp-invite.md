@@ -52,6 +52,15 @@ CREATE TABLE assessment.assessment_invite_short_links (
 - The old paths/models are **kept as thin aliases** for backward compatibility — already-issued AI Interview invite links keep working.
 - The OTP record stores: hashed OTP, expiry, `assessment_assigned_id`, `assessment_type`, `email`, attempt counter, resend timestamp.
 
+### Shared code service (2026-11-17, DEV + UAT)
+
+The invite code and the auth.<env> sign-in code now come from one service, user-management-node
+`app/services/otpService.js`, stored in `user_management.assessment_invite_otps` with `purpose = 'invite'` for invite
+codes (default — existing rows are unchanged) and `'login'` for sign-in codes. Invite behaviour and responses are
+unchanged; the service fixed two weaknesses on the way: the 5-try limit is now taken atomically before comparing
+(parallel guesses cannot exceed it) and a code is consumed atomically (single use under concurrency). Same hash
+formula as before, so codes sent just before the deploy still verify. See `ATS/auth-react-login-app.md`.
+
 ## Email flow
 
 When `is_otp_invite = true` the admin-node assignment handler **suppresses both** the portal-signup email and the legacy "complete your assessment" reminder, and sends only the OTP invite-link email.

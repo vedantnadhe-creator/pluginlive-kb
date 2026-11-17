@@ -78,3 +78,46 @@ call under `/v2/sb`, none to v1 `/sb`), `~/lmsv2-setup/checks/authcheck.sh <back
   course list until it expires (5 min).
 - Capacity: each stack adds ~2.3 GB RAM (Metabase ~1.3 GB). The DEV root disk was ~1.9 GB free on 2026-11-16;
   lmsv2 DEV lives on `/data` for that reason.
+
+## Sign-in through auth.<env>.pluginlive.com (DEV + UAT 2026-11-17, PROD pending)
+
+LMS people sign in on the PluginLive sign-in page, with a password or a one-time code (see
+`ATS/auth-react-login-app.md`). The LMS's own login pages send signed-out visitors there
+(`PluginLiveLoginGate`, on when `VITE_PLUGINLIVE_AUTH_URL` is set), and sign-out returns there.
+
+| Env | LMS address | Callback |
+|---|---|---|
+| DEV | admins https://admin.dev.pluginlive.com/lms, candidates https://corporate.dev.pluginlive.com/lms/candidate (moved off `/v2` on 2026-11-17) | `<address>/oauth/callback#code=…` |
+| UAT | https://banking.uat.pluginlive.com/v2 (one address for admins and candidates) | `https://banking.uat.pluginlive.com/v2/oauth/callback#code=…` |
+
+How it fits together:
+- user-management-node `app/services/lmsProvider.js` calls the LMS edge function **`pluginlive-oauth`**
+  server to server (header `x-client-secret`): `/verify` (email + LMS password), `/lookup` (where to send a code),
+  `/signin` (after user-management-node checked the code), `/issue` + `/check` + `/grant` + `/revoke` (LMS tab /
+  LMS access for PluginLive admins — UI on DEV only). Every route answers 401 without the secret.
+- A match comes back with a one-time **LMS code** (`oauth_login_codes`, SHA-256 stored, 5 min, single use).
+  Picking the LMS account redirects to `<LMS>/oauth/callback#code=`; the LMS trades it at `pluginlive-oauth/token`
+  for its own session. No PluginLive token or cookie is issued for an LMS pick.
+- `/signin` for a trainer or candidate runs the same account set-up as the LMS's own code login
+  (`_shared/login-otp-session.ts`, shared with `candidate-otp-login`): trainer-row backfill, find/create the Auth
+  user (mobile identity `<mobile>@bankready.app`), link records, institute plan sync, email confirm.
+- With `PLUGINLIVE_AUTH_URL` set in the functions env, every LMS email links to auth.<env> and new admins get the
+  code steps instead of a temporary password (`_shared/login-links.ts`, `onboarding-email.ts`).
+
+Configuration (box-local, not in git):
+
+| Where | DEV | UAT |
+|---|---|---|
+| user-management-node `.env.<env>` | `LMS_PROVIDER_URL=http://172.17.0.1:8240/functions/v1/pluginlive-oauth`, `LMS_PROVIDER_CLIENT_SECRET`, `LMS_PROVIDER_ANON_KEY`, `LMS_ADMIN_FE_URL`, `LMS_CANDIDATE_FE_URL` | same keys; both FE URLs = `https://banking.uat.pluginlive.com/v2` |
+| `~/lmsv2-sb/docker-compose.yml` gateway | extra port `172.17.0.1:8240:80` so the `auth` container reaches the LMS | same (added 2026-11-17) |
+| `~/lmsv2-sb/functions-secrets.env` | `PLUGINLIVE_OAUTH_CLIENT_SECRET`, `PLUGINLIVE_AUTH_URL=https://auth.dev.pluginlive.com` | same, `https://auth.uat.pluginlive.com` |
+| LMS app `.env` | `VITE_PLUGINLIVE_AUTH_URL=https://auth.dev.pluginlive.com` | `https://auth.uat.pluginlive.com` |
+
+Gotcha: `docker restart lmsv2-sb-functions` does **not** reload `functions-secrets.env`; use
+`docker compose up -d --no-deps functions`.
+
+UAT commits (cherry-picked, lmsv2 `UAT` `407d67b44`): auth.pluginlive sign-in + `/oauth/callback`, no LMS landing
+page / sign-out to auth, LMS tab handoff (backend only), LMS access check/grant/revoke, code sign-in. The LMS's
+own code login (`candidate-otp-login`, `request-login-otp`) still exists and is reachable only by direct URL;
+removing it is open. Migration `20261117090000_pluginlive_oauth_codes` (DB-Scripts `LMS v2 PluginLive Sign-in/
+20261117T060901Z__oauth_login_codes.sql`) applied on DEV + UAT.

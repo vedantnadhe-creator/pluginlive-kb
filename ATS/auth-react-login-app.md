@@ -208,3 +208,26 @@ the user's app, with no login form.
     -H 'Content-Type: application/json' -d '{}'
   # 404 "Session resume is disabled." = flag off (UAT); 401 "Refresh token missing" = on
   ```
+
+## Sign in with a one-time code — email or mobile (2026-11-17, DEV + UAT, PROD pending)
+
+The sign-in page (auth.<env>.pluginlive.com) now starts with **"Email or mobile number" → Send code → 6-digit
+code → Sign In**. The answer is the same as a password sign-in: straight to the person's app, or **"Choose an
+account"** when the email/mobile has several accounts — including the **LMS** (lmsv2) account, labelled "LMS".
+"Sign in with a password instead" keeps the old email + password form.
+
+| Piece | Where |
+|---|---|
+| Screen | auth-react `src/components/CodeSignIn.js` (+ `pages/login.js` toggle). DEV `0e2c159` (redesigned page); UAT `4872419` is a port to the UAT page design, plus `01443e9` (the "LMS" label in Choose an account). |
+| API | user-management-node `POST /user/signin/otp/request { identifier }` and `POST /user/signin/otp/verify { identifier, otp }` (DEV `5b51e1b`, UAT `56ff22b`). After the code, `finishSignIn` — the same code a correct password runs (student-record check, LMS account, single account → redirect + refresh cookie, several → sessionToken + accounts). Verify is audited like `/user/signin` (`AUTH_SIGNED_IN` / `AUTH_SIGN_IN_FAILED`). |
+| Code rules | `app/services/otpService.js`, shared with the assessment / AI-interview invite code: 6 random digits, only an HMAC stored, 5-minute expiry, 30 s between codes, 5 tries per code counted atomically, single use. Sign-in codes also have **5 per hour and 10 per day per email/mobile**; an optional per-network cap is off unless `LOGIN_OTP_MAX_PER_NETWORK_HOUR` is set. |
+| Storage | `user_management.assessment_invite_otps` with `purpose = 'login'` (`'invite'` for invite codes) and `network_hash`. DB-Scripts `Central OTP Sign-in/20261117T092054Z__otp_purpose_for_login_codes.sql` (DEV + UAT applied, PROD pending). The identifier key is the lower-cased email, or `mobile:<10 digits>`. |
+| Delivery | Email identifier → email. Mobile identifier → SMS (MSG91 OTP template) when `SMS_ENABLED=true` (it is on UAT); with SMS off, the code goes to the account's email only when that number belongs to exactly one email, otherwise "sign in with your email". Mobile matching covers every stored phone form (encrypted or plain, with or without +91). |
+| Password switch | `LOGIN_PASSWORD_ENABLED=false` in user-management-node `.env.<env>` makes `/user/signin` answer 403 and the page falls back to the code. Unset = password still works (both envs today). |
+
+**Known trade-off:** like the password form, the request step says "No account found for …" for an unknown
+email/mobile (account existence is visible). Kept for usability; the hourly/daily caps limit probing.
+
+**Test accounts (DEV and UAT, same set-up):** `ravi.kotadiya+pl.only@pluginlive.com` (PluginLive admin only →
+admin portal), `ravi.kotadiya+lms.both@pluginlive.com` (PluginLive admin + LMS admin → Choose an account),
+`ravi.kotadiya+lms.only@pluginlive.com` (LMS admin only → LMS). Codes arrive in Ravi's inbox (plus-addressing).
