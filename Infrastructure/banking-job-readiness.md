@@ -5261,3 +5261,4 @@ email/mobile — the registered-email guard refuses a second row with his email)
   **Learn → Curriculum & Modules** after My Robo Play. UAT `0064e1447`, PROD `11ff8b190` (v1.1.23, backup prod-20261117T154519Z).
   `verify-9820065335.cjs` now starts on /journey/student/tech?tab=modules; 6/6 UAT + PROD. Note: its clean-up
   (/tmp/undo-test.sql) deletes the account's consents from the last 30 min — only run it when the test printed CONSENTED_BY_TEST.
+- 2026-11-17 evening: Robo Faculty menu icon (Presentation) + one-line hints "Job role-play practice" (My Robo Play) / "AI teacher for courses" (Robo Faculty) — UAT 5c082133d, PROD 2d84cc4ef (v1.1.24, backup prod-20261117T165611Z). verify-9820065335.cjs has MENU_ONLY=1 (no class started); remove a consent only if the run printed CONSENTED_BY_TEST.
