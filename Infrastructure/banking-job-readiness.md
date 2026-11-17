@@ -5182,3 +5182,46 @@ ai-content are revision-keyed; the new bank is not).
 diagnostic, descriptive, YouTube search, TTS; same learner never repeated. admin5 5/5, anon probes blocked, site 200.
 **Pre-existing, not fixed:** `generate-image` returns "No image returned by the model" on DEV and UAT (gateway answers the
 `google/gemini-2.5-flash-image` call with text) — only the AI Tools sandbox uses it.
+
+## 2026-11-17 — Journey transaction tests + fixes, Robo Faculty Indian voice: UAT `3381430fa` (PROD not deployed)
+
+Deploys `5a8837d38` (snapshot `20261117T073506Z`) and `3381430fa` (snapshot `20261117T075541Z`). Migrations
+`20261117130000_trainer_reads_own_new_builder_module`, `20261117131000_trainer_reads_linked_learner_profiles`,
+`20261117132000_module_progress_accepts_admin_modules` (rehearsed BEGIN…ROLLBACK; DB-Scripts `Banking LMS College Mode/20261117T07295[7-9]Z__*`,
+DEV + UAT applied, PROD pending).
+
+**How it was tested:** besides the menu crawl (all 7 roles, 0 errors), real transactions per role on UAT with throwaway QA users
+(fixtures `~/banking-checks/journeys/fixture.sql` + `fixture-flow.sql`, cleanup `cleanup.sql` + `cleanup-flow.sql`; note
+`coach_source_ledger` blocks auth-user deletes). Scripts in `~/banking-checks/flows/`: `learner.cjs`, `trainer.cjs` (one step per run —
+a new magic link for the same user signs out the previous session), `admin.cjs`, `college.cjs` (+ `college-api.cjs`, `college-rls.cjs`),
+`verify-learner.cjs`, `verify-robo-voice.cjs`. Headless Chromium "Page crashed" on module pages with YouTube embeds happens on the
+loaded DEV box — not an app error.
+
+**Fixed (all verified on UAT unless noted):**
+- Learner: module "Mark as Complete" never saved — `module_progress.module_id` FK pointed at legacy `modules`; replaced by a trigger
+  accepting `admin_modules` or `modules` (legacy deletes still cascade). ModuleDetail upserts and shows a save error. Topic completions
+  ("Mark content complete", `student_module_topic_progress`, keyed by auth id) now count toward the module list's progress
+  (`StudentModulesView` reads both id kinds). Candidate home shows assigned modules/assessments only (`loadAssignedModules` +
+  `filterAssessmentsByStudentModuleAccess`); Reminders lists only assigned assessments. Quiz errors no longer masked by
+  "context.clone is not a function".
+- Trainer: Module Content Builder "Create module" was 42501 for every trainer-only account (STABLE `private.trainer_module_ids()` can't
+  see the row in INSERT…RETURNING) → policy "Trainers read own builder modules" on `metadata->>'created_by_trainer'`. Reports/grading
+  dropped attempts of onboarded/linked learners outside the trainer's institute (profiles unreadable → name filter) → policy
+  "Trainers read linked learner profiles" via `private.my_linked_student_user_ids()` (one array per statement). Add Candidate shows the
+  server's reason (e.g. trainer not mapped to an institute/corporate — that 409 is a deliberate guard). Roster published before the
+  progress queries so New Group / Schedule pickers aren't empty for 20–30 s.
+- Admin: Create Assessment institute picker listed the empty legacy `colleges` table → institutes master. Bulk upload links
+  `institute_id` by institute name (server side, case-insensitive). User edit syncs name/email/mobile/location/institute to
+  `students`/`trainers`. AI topic generation shows the server message. Module card "1 topic · …" text; edit/delete icon buttons labelled.
+- College: principal can reopen signed-off (unpublished) results from the overview; leave-request toast wording; corporate track
+  banner/candidate stats hidden on My Courses / College overview / My Mentees; Upgrade hidden for Enterprise.
+- Robo Faculty: quiz options shuffled per student (model kept the answer in one slot). **Voice:** replies were read by the American
+  ElevenLabs default (no gender sent → `21m00Tcm…`). Now Indian voice by default — Kavya (female, `O0HDGZKC…`) or Ranbir (male,
+  `2iAXJEMO…`), student's choice remembered (`robo-faculty-voice` in localStorage), low-latency `realtime` path, opening line spoken;
+  prompt `SPOKEN_STYLE` = conversational Indian classroom style, Indian context, everyday spoken Hindi/Tamil/… with English technical
+  words. Verified in the UI on UAT: request `en-IN / indian / female / realtime` → Kavya, audio played.
+- Data (UAT only): demo candidate 9100000021 had no `students` row and no assignments (every learning screen empty) → student row
+  (Enterprise, copied from profile) + "Micro Finance" group assignment.
+
+**Not fixed / open:** deactivating a trainer leaves `trainers.status = approved`; 14 profiles without a name show "—" in the module-group
+grant list; Robo quiz/home progress for legacy `module_progress` rows unchanged; DEV is behind (Development branch has no college mode).
