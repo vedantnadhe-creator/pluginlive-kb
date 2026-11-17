@@ -218,7 +218,7 @@ account"** when the email/mobile has several accounts — including the **LMS** 
 
 | Piece | Where |
 |---|---|
-| Screen | auth-react `src/components/CodeSignIn.js` (+ `pages/login.js` toggle). DEV `0e2c159` (redesigned page); UAT `4872419` is a port to the UAT page design, plus `01443e9` (the "LMS" label in Choose an account). |
+| Screen | auth-react `src/components/CodeSignIn.js` (+ `pages/login.js` toggle). DEV `0e2c159`; UAT `95a3cbd` (UAT now carries the same tree as Development, see below). |
 | API | user-management-node `POST /user/signin/otp/request { identifier }` and `POST /user/signin/otp/verify { identifier, otp }` (DEV `5b51e1b`, UAT `56ff22b`). After the code, `finishSignIn` — the same code a correct password runs (student-record check, LMS account, single account → redirect + refresh cookie, several → sessionToken + accounts). Verify is audited like `/user/signin` (`AUTH_SIGNED_IN` / `AUTH_SIGN_IN_FAILED`). |
 | Code rules | `app/services/otpService.js`, shared with the assessment / AI-interview invite code: 6 random digits, only an HMAC stored, 5-minute expiry, 30 s between codes, 5 tries per code counted atomically, single use. Sign-in codes also have **5 per hour and 10 per day per email/mobile**; an optional per-network cap is off unless `LOGIN_OTP_MAX_PER_NETWORK_HOUR` is set. |
 | Storage | `user_management.assessment_invite_otps` with `purpose = 'login'` (`'invite'` for invite codes) and `network_hash`. DB-Scripts `Central OTP Sign-in/20261117T092054Z__otp_purpose_for_login_codes.sql` (DEV + UAT applied, PROD pending). The identifier key is the lower-cased email, or `mobile:<10 digits>`. |
@@ -231,3 +231,15 @@ email/mobile (account existence is visible). Kept for usability; the hourly/dail
 **Test accounts (DEV and UAT, same set-up):** `ravi.kotadiya+pl.only@pluginlive.com` (PluginLive admin only →
 admin portal), `ravi.kotadiya+lms.both@pluginlive.com` (PluginLive admin + LMS admin → Choose an account),
 `ravi.kotadiya+lms.only@pluginlive.com` (LMS admin only → LMS). Codes arrive in Ravi's inbox (plus-addressing).
+
+## Redesigned sign-in pages on UAT (2026-11-17)
+
+UAT auth-react now matches Development exactly (UAT `95a3cbd`, `git diff origin/UAT origin/Development` is empty):
+the 2026-10-28 redesign (`5ebcfa5`) of sign-in, Choose an account, forgot password and reset password —
+`AuthLayout` with the brand panel (testimonial carousel, client logos, hover-only WebGL background
+`BrandShader`, static card without WebGL / with reduced motion), design-system tokens (`src/styles/ds-tokens.css`,
+`auth.css`), Satoshi + JetBrains Mono fonts loaded from fontshare.com / Google Fonts in `public/index.html`,
+Contact and Terms dialogs. Same React app, same `package.json`, same build and Docker image — no new stack;
+Ant Design stays installed but these pages no longer use it. The earlier UAT-only ports (`37ea0d0` session resume,
+`4872419` code sign-in) are replaced by the Development versions. Session resume still depends on
+`SESSION_RESUME_ENABLED` in user-management-node (off on UAT), so UAT keeps showing the form.
