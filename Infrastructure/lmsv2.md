@@ -121,3 +121,7 @@ page / sign-out to auth, LMS tab handoff (backend only), LMS access check/grant/
 own code login (`candidate-otp-login`, `request-login-otp`) still exists and is reachable only by direct URL;
 removing it is open. Migration `20261117090000_pluginlive_oauth_codes` (DB-Scripts `LMS v2 PluginLive Sign-in/
 20261117T060901Z__oauth_login_codes.sql`) applied on DEV + UAT.
+
+## ATS training assignment (`ats-training`, DEV + UAT 2026-11-17, PROD pending)
+
+Edge function used by corporate-node to list trainings and enrol hires; see `ATS/Corporate/roles-v2.md` "Assign Training". Secret `ATS_SHARED_KEY` in `~/lmsv2-sb/functions-secrets.env` (DEV also `CANDIDATE_SITE_URL` for the welcome-email link; UAT falls back to `SITE_URL`). Reached by corporate-node on `172.17.0.1:8240`. Learners it creates carry `students.metadata.source = 'ats'`; corporates it creates have `notes` "Created from the PluginLive ATS".

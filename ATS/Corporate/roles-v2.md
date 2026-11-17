@@ -137,6 +137,18 @@ The Roles bulk bar resends each candidate's current assessment round, through `P
 
 A Move can carry a reason per candidate (`moves[].reason`, 500 characters). It is stored as the dispatch's `move_reason` and shown in the activity feed as "Reason: …". The engine's default reason is not shown. An offer answer (accepted or rejected) no longer needs the offered step: `/applicants/offers` moves the candidate into Offer first, and the final round accepts it from `offered` or `offer_sent`. A candidate marked not selected can't get an answer recorded. Deploy the backend before the frontend, because the frontend no longer sends the offered step.
 
+## Assign Training (LMS, since 2026-11-17, DEV + UAT)
+
+Hires whose offer is accepted (`_applyRoleStatus` SELECTED and `_offerStatus` ACCEPTED) can be given an LMS training from the bulk bar: **Assign Training (n)**, needs `assignTraining`. The LMS is **lmsv2**; the ATS only assigns, and learning, progress and certificates stay in the LMS.
+
+- **Catalogue:** `GET /corporates/:corporateId/trainings` (BFF `GET /api/trainings`) lists **every published** lmsv2 module group ("Programmes": name, module count, total `learning_minutes`) and every published module. It is not limited to the corporate's own LMS content. Ids are `group:<uuid>` or `module:<uuid>`.
+- **Assign:** `POST .../roles/v2/:roleId/applicants/training { applicantIds (1-500), trainingId }`. The training is re-checked against the catalogue; hires without an accepted offer, without an email, or who already have that training are skipped with the reason. One training per hire: a new pick replaces the old one, and the LMS removes the old access.
+- **Delivery:** each assignment is a row in `corporate.training_assignments` (`queued` -> `assigned` | `failed`), delivered by the roles v2 worker job `training.enroll` (5 attempts, exponential backoff from 30 s; on an env with the engine off it is sent in-process, one attempt). An LMS 4xx is final at once. The row shows "Training: <name>", "sending to the LMS" while queued, and "Not delivered · Retry" (risk colour, error in the tooltip) when failed. Retry: `POST .../applicants/training/retry { applicantIds }`. Activity log: `training.assigned`.
+- **LMS side** (lmsv2 edge function `ats-training`, routes `/catalogue` and `/enroll`): server to server only, gateway anon key plus header `x-ats-key` compared with the function secret `ATS_SHARED_KEY`. `/enroll` finds the learner by email or creates a `students` row (`metadata.source = 'ats'`) under the corporate's LMS entity, then grants a group (`module_group_assignments`, scope `student`) or a module (`user_module_access`, or `pending_module_access` until first sign-in). It is idempotent. New learners get the LMS welcome email and sign in with their email and a one-time code; the first sign-in creates their login and releases held module access.
+- **Corporate <-> LMS entity:** `corporate.corporates.lms_institute_id`. If it's empty, the LMS matches a `corporate` institute by exact name (case-insensitive) or creates one (`notes` "Created from the PluginLive ATS"), and the ATS stores the id. Two LMS corporates with the same name answer 409; set `lms_institute_id` by hand then.
+- **Env (corporate-node):** `LMS_ATS_URL` (`http://172.17.0.1:8240/functions/v1/ats-training` on DEV and UAT, the lmsv2 gateway's bridge port), `LMS_ATS_ANON_KEY` (lmsv2 anon key), `LMS_ATS_KEY` (= lmsv2 `ATS_SHARED_KEY`). Missing values fail loudly ("Couldn't load trainings"). The secret is read when the edge-runtime container is created: after changing it run `docker compose up -d --no-deps functions` in `~/lmsv2-sb`, not a restart.
+- **DB:** DB-Scripts `ATS LMS Training Assignment/20261117T064737Z__ats_lms_training_assignments.sql` (DEV + UAT applied, PROD pending). Apply it before corporate-node: the applicants list joins `training_assignments`.
+
 ## Apply form colleges
 
 `GET /public/roles/v2/:roleId/apply/colleges?search=&limit=` searches active colleges by name or city (2+ characters, 25 results, 300 per minute per IP). It returns id, name and city, never contacts. The College field lists invited colleges first, then the search, and removes duplicate master rows by name and city. Submit accepts any active college and stores it by name, like Others. Off-campus roles show no College field, because the answer was never saved (`collegeSearch` on the apply response). Every CV upload is an autofill call, limited to 60 per 10 minutes per IP.
@@ -179,7 +191,7 @@ Corporate users land on `/v2/signin#token=` and then `/v2/dashboard`, on DEV and
 
 24 Application Tracking actions in `app/helpers/corporatePermissions.js` (same list as the frontend `ActionKey`). Routes declare `can: "<action>"`; `helpers/requireAction.js` answers 403 and caches a user's access for 30 s. `GET .../users/v2/me/access` returns `knownActions`, which turns frontend enforcement on.
 
-`shareRoleLink` and `editInviteEmail` only hide buttons; `assignTraining` has no endpoint yet.
+`shareRoleLink` and `editInviteEmail` only hide buttons. `assignTraining` guards the training catalogue, Assign Training and Retry (see below).
 
 **Order matters:** run `scripts/sql/backfill-application-tracking-permissions.sql` before the corporate-node deploy, or saved users lose Roles access. A missing key means off.
 
