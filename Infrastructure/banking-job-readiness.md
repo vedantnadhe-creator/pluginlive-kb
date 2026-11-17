@@ -5248,3 +5248,12 @@ functions + 3 fixups. **v1.1.19** `951b758a8` = the TTS sign-in fix, `/tmp/prod_
 generate-image 401 without a session, `ai_content_bank` + exposures 42501 for anon, `ai_content_take` 401, `tts-cache` bucket, both new
 policies, old `module_progress_module_id_fkey` gone. No signed-in PROD browser test (no PROD QA identity; PROD data untouched).
 Held LMS v2 / video-watch work stays absent.
+
+## 2026-11-17 — Robo Faculty in the left menu; admins enrolled as students can take classes: UAT `2321f5a04`, PROD `243cc35a4` (v1.1.22)
+Student sidebar has **Robo Faculty** (under My Courses, same visibility: only accounts with college courses) → `/my-courses?robo=1`
+(banner "pick a course"; the course opens on the Robo Faculty tab). `robo_faculty_role` now returns `student` for anyone enrolled in
+the course's section before `staff` (migration `20261117170000`), so an admin enrolled as a learner can start classes; faculty/HOD/
+principal unchanged. **Demo login:** Prakash (9820065335, user db051318…, admin) is enrolled on UAT and PROD in SRM Easwari section
+`2e8bef2e…` (Semester 1, 11 courses) via `~/banking-checks/robo-faculty/enrol-9820065335.sql` (students row `7d000000-…-a1`, no
+email/mobile — the registered-email guard refuses a second row with his email); undo `unenrol-9820065335.sql`. Check
+`verify-9820065335.cjs` 6/6 on UAT and PROD (menu → course → class, Kavya voice); the test's consent and class were removed after.
