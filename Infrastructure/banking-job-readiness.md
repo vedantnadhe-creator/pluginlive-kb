@@ -5257,3 +5257,7 @@ principal unchanged. **Demo login:** Prakash (9820065335, user db051318…, admi
 `2e8bef2e…` (Semester 1, 11 courses) via `~/banking-checks/robo-faculty/enrol-9820065335.sql` (students row `7d000000-…-a1`, no
 email/mobile — the registered-email guard refuses a second row with his email); undo `unenrol-9820065335.sql`. Check
 `verify-9820065335.cjs` 6/6 on UAT and PROD (menu → course → class, Kavya voice); the test's consent and class were removed after.
+- 2026-11-17 later: the Robo Faculty item was inside the "My Courses" group (Progress, collapsed) and easy to miss → moved to
+  **Learn → Curriculum & Modules** after My Robo Play. UAT `0064e1447`, PROD `11ff8b190` (v1.1.23, backup prod-20261117T154519Z).
+  `verify-9820065335.cjs` now starts on /journey/student/tech?tab=modules; 6/6 UAT + PROD. Note: its clean-up
+  (/tmp/undo-test.sql) deletes the account's consents from the last 30 min — only run it when the test printed CONSENTED_BY_TEST.
