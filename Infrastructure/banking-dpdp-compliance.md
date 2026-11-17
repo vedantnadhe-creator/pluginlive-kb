@@ -67,3 +67,17 @@ go through the LiteLLM gateway with task attribution.
 - Checks: `~/banking-checks/dpdp/flow.cjs` (18/18 on UAT; erases the QA learner from `journeys/fixture-flow.sql`), `capture.cjs`.
 - **Not done (needs go / business):** PROD release; PROD backup pruning (71 release dumps + 4 app dirs = 1.8 GB, keep newest 5;
   UAT storage copy 391 MB on the PROD VM); DPAs with processors; institute data-processing addendum; counsel review of the text.
+
+## 2026-11-17 — Student-journey DPDP test + fixes: UAT `a4a9d9fbd`
+Test `~/banking-checks/dpdp/student.cjs` (steps gate assess interview download requests api withdraw college erase; fixtures
+`journeys/fixture-flow.sql` + `fixture.sql` + override of the proctored "Banking KYC AML Assessment May 2026"; the erase step deletes
+the QA learner): **49/49 PASS** on UAT after the fixes below. Leftover scan used by the erase step: `/tmp/leftover.sql` pattern
+(every public table's user_id/student_id/learner_* columns + storage owner).
+Fixed:
+- `b1ce9a160` — consent/request records could be rewritten (03_grants gives authenticated full UPDATE): trigger
+  `private.privacy_record_guard` sets accepted_at/created_at/due_at to server time, consent only withdrawable once (at now()),
+  requesters can't change requests; download reads `proctoring_violations` through the learner's attempts (no student_id column).
+- `a4a9d9fbd` — erasure left 11 tables with the person's id (no FK: usage stats, coach usage, menu permissions, report tokens,
+  module-group assignment, error logs …): `erase_user_data` sweeps user_id/student_id/learner columns, clears authorship columns,
+  keeps `payment_requests` (legal retention) and `data_requests` (proof); the admin function stops if anything is skipped.
+DB-Scripts 155e7f4 + e4de44b (DEV+UAT applied, PROD pending). Sign-out from the consent prompt lands on `/` (session cleared) by design.
