@@ -77,3 +77,10 @@ Related: [School curriculum agent](pilvidya-school-curriculum-agent.md), [Robo T
   - **State board Classes 6-10, English medium:** 6th and 7th Std Mathematics Term 1-3 and Science & Social Science Term 1-3; 8th Std English, Mathematics, Science and Social Science; 9th and 10th Std English, Mathematics, Science and Social Science.
   - **Tamil subject:** Tamil books for CBSE schools for Classes 1-7 (`<n>_Std_Tamil_CBSE.pdf`); for Classes 8-10 the Tamil books `8th Std Tamil.pdf`, `9th_Std_Tamil`, `10th_Tamil`.
   - Once the PDFs are supplied, they are extracted the same way as NCERT. State rows must be scoped to Tamil Nadu schools (school rows, like the state language), because global `state` rows would apply to every state. State Class 6-10 topics stay hidden until then. State Class 11-12 keeps the NCERT-list copies (accepted).
+
+## Topic dropdowns show each topic once (`50621000`)
+
+- School rows store one row per sub-lesson under the same topic name: the state language rows (Tamil, Kannada) and school-textbook builds. Topic pickers therefore repeated names ("Literature - Prose" ×3).
+- `uniqueTopics(rows, keepId?)` in `frontend/src/lib/curriculum.ts` keeps one row per subject + topic. It is used by Ask AI (`AICoach.tsx`), student Robo Teacher and teacher Robo Classes. Teacher pages that use `loadClassTopics` already group by topic.
+- AI Topic Lessons (`/topic-lessons`, `TopicLessons.tsx`) now lists `curriculum_topics` for the student's board, class and school. It used a built-in pre-2024 NCERT list ("Knowing Our Numbers"); that list is now only a fallback for subjects with no rows.
+- UAT check: `~/pilvidya-checks/curriculum-source/dropdown-dups.cjs <mobile>` checks every Ask AI subject for repeats and AI Topic Lessons Maths. 9/9 on `50621000`.
