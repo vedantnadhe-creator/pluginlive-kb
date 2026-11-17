@@ -81,3 +81,16 @@ Fixed:
   module-group assignment, error logs …): `erase_user_data` sweeps user_id/student_id/learner columns, clears authorship columns,
   keeps `payment_requests` (legal retention) and `data_requests` (proof); the admin function stops if anything is skipped.
 DB-Scripts 155e7f4 + e4de44b (DEV+UAT applied, PROD pending). Sign-out from the consent prompt lands on `/` (session cleared) by design.
+
+## 2026-11-17 — PROD `v1.1.20` (`53aa8a802`) + `v1.1.21` (`8c4d8ce9a`)
+`release/prod-v1.1` `951b758a8` → cherry-picks of 40fc816e0, b1ce9a160, a4a9d9fbd (DPDP priority-1 + integrity + erasure sweep),
+then 7fa528d04 (download skips `video_quiz_sessions`: no learner SELECT on PROD, it holds answer keys). Migrations 140000/150000/160000
+rehearsed BEGIN…ROLLBACK on `banking_prod`, applied by `/tmp/prod_deploy20.sh` (backup `/data/backups/prod-20261117T142433Z`);
+v1.1.21 frontend only (backup `prod-20261117T142920Z`). PROD cron 21:15 UTC `/opt/banking-sb/privacy-retention-daily.sh /opt/banking-sb`
+→ `~/logs/privacy-retention.log` (first run removed 0). On PROD the consent-rewrite attempt is refused by column grants as well as
+the trigger (PROD deploy doesn't run 03_grants). Verified: site + `/privacy` 200, privacy functions refuse anonymous callers, tables
+42501 for anon, triggers present; signed-in smoke `~/banking-checks/dpdp/prod.cjs` with a throwaway from `prod-throwaway.cjs`
+(gate → consent stored, download own rows only, erasure request → erase via service caller → login 403) — 7/7, throwaways erased
+(two completed erasure requests with requester qa-probe-…@example.com remain as proof records).
+Still open: PROD backup pruning (needs explicit yes), grievance mailbox confirmation, DPAs, institute addendum, counsel review,
+medium items 6–11.
