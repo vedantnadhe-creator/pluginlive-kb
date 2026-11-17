@@ -1,6 +1,6 @@
 # PilVidya (aividya) — Board curriculum: official sources
 
-Status as of 2026-11-17: live on UAT (`73caac86`, branch `feat/chat-simulations`). Source file `supabase/seed/official_curriculum_2026_27_sources.json` and generator `official_curriculum_2026_27_topics.py`; both were renamed from `cbse_2026_27_*`. The latest migration is `20261203030000_official_curriculum_topics_languages_icse.sql`. There is no PilVidya PROD deployment.
+Status as of 2026-11-17: live on UAT (`ddb480ec`, branch `feat/chat-simulations`). Source file `supabase/seed/official_curriculum_2026_27_sources.json` and generator `official_curriculum_2026_27_topics.py`; both were renamed from `cbse_2026_27_*`. The latest migration is `20261203030000_official_curriculum_topics_languages_icse.sql`. There is no PilVidya PROD deployment.
 
 ## Where a student's subjects and topics come from
 
@@ -68,3 +68,12 @@ Status as of 2026-11-17: live on UAT (`73caac86`, branch `feat/chat-simulations`
 - About 15 open Robo assignments and 15 portion entries point at retired topics, so teachers need to reassign them.
 
 Related: [School curriculum agent](pilvidya-school-curriculum-agent.md), [Robo Teacher](pilvidya-robo-teacher.md).
+
+## ICSE labels and Tamil Nadu download list (`ddb480ec`)
+
+- ICSE topics carry `textbook_name` "ICSE 2027 Syllabus: <subject>, Class IX|X (CISCE)". The product decision is to use the ICSE 2027 syllabus for Class 9 too, until CISCE publishes 2028.
+- ICSE shows the `computer` subject as **Computer Applications**: `boardSubjectName()` in `constants.ts` changes the label only. Ids, targets and queries are unchanged.
+- Tamil Nadu: the official book lists (TN SCERT / EMIS, `scert.tnschools.gov.in/textbook`) are saved in `~/pilvidya-checks/curriculum-source/tn/std*.json` (English medium) and `std*_tm.json` (Tamil medium). Each download needs a human arithmetic check, so we don't automate it.
+  - **State board Classes 6-10, English medium:** 6th and 7th Std Mathematics Term 1-3 and Science & Social Science Term 1-3; 8th Std English, Mathematics, Science and Social Science; 9th and 10th Std English, Mathematics, Science and Social Science.
+  - **Tamil subject:** Tamil books for CBSE schools for Classes 1-7 (`<n>_Std_Tamil_CBSE.pdf`); for Classes 8-10 the Tamil books `8th Std Tamil.pdf`, `9th_Std_Tamil`, `10th_Tamil`.
+  - Once the PDFs are supplied, they are extracted the same way as NCERT. State rows must be scoped to Tamil Nadu schools (school rows, like the state language), because global `state` rows would apply to every state. State Class 6-10 topics stay hidden until then. State Class 11-12 keeps the NCERT-list copies (accepted).
