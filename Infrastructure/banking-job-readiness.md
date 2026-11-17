@@ -5126,3 +5126,26 @@ Cherry-pick of UAT `e6096148a` onto `release/prod-v1.1` (`e6f88e08` → `de9bbd5
 backup `/data/backups/prod-20261116T175918Z`, entry bundle `index-DRT37_PY.js`, 126 functions + 3 fixups, bundle audit clean, site 200,
 function 401 without a session. Then SRM Easwari's confirmed UAT curriculum (899 section courses, 37 published versions) was copied to PROD;
 see [banking-college-curriculum-agent.md](banking-college-curriculum-agent.md). Held LMS v2 / video-watch work still absent.
+
+## 2026-11-17 — Five-journey test on UAT + fixes: UAT `4e92d5dd5`, PROD `d7b27b46d` tag `v1.1.17`
+
+**Test (real UAT backend, read-only menu crawl):** candidate (9100000021), trainer (9100000022), admin (demo.admin, both consoles),
+and — on SRM Easwari with temporary QA logins — college principal, HOD (CSE), faculty (12 courses) and college student. Sessions come
+from a magic link through the auth admin API (the OTP 1234 shortcut is gone). Kit `~/banking-checks/journeys/` (`sess.cjs`, `crawl.cjs`,
+`college.cjs`, `verify.cjs`, `fixture.sql` / `approve.sql` / `cleanup.sql`; trainer approval needs admin JWT claims because of
+`prevent_trainer_self_approval`; `generate_link` creates an auth user if the email does not exist — cleanup deletes by email too).
+After the fixes: 281 screens across 7 roles, 0 page errors, 0 failed API calls, 0 error screens. QA logins removed.
+
+**Fixed:**
+- My Courses → This semester listed every semester a learner is placed in (upcoming Sem 2 above the running Sem 1). `my_courses()` now
+  returns `term_starts_on` / `term_ends_on` (migration `20261116190000_my_courses_term_dates.sql`, drop + recreate, same body and grants);
+  the page shows the running term (else the last started, else the first upcoming) with a caption naming the next semester.
+- Admins saw My Courses and `student_record_header` raised P0002 → HTTP 500. The menu now needs college courses for admins too; a missing
+  college record is an empty state (the RPC still answers 500 on a direct URL visit, but nothing is shown as an error).
+- Module certificates: the locks query no longer returns `undefined` when the service omits `institute_ids`.
+
+**PROD:** cherry-pick on `release/prod-v1.1` (`de9bbd5c7` → `d7b27b46d`), `/tmp/prod_deploy17.sh` (= v1.1.15 script with this migration),
+backup `/data/backups/prod-20261117T015647Z`, entry `index-Coy06dYS.js`, bundle clean, site 200, agent function 401 without a session.
+
+**Repo e2e specs (mocked backend):** 30/47 pass; the same 5 `qa-*` failures happen on unchanged UAT code — the specs expect college-only
+trainer menus for an ordinary trainer and use the old hosted Supabase URL. Updating them is for the GPT tester ("Ask Jev to test it").
