@@ -837,6 +837,12 @@ draft).
   Two independent checks, neither trusting the other: corporate-node's tenant
   guard plus a confirmation that the key is on this candidate's registration for
   this float, then student-node's own `ownsFile` re-check.
+- **AI Interview resume** (corporate-node `795750d5`, DEV + UAT since 2026-11-17) — the
+  resume attached on the AI Interview's resume step is stored by student-node on
+  `session_metadata.resumeFile` (`key`, `name`). The candidate profile read returns
+  it as `resume: { name, fileKey }` (tenant-scoped through the float's map ids, newest
+  session wins) and `registration-file` accepts that key as well as registration
+  attachments; student-node's `ownsFile` still re-checks before signing.
 - **Older answers carry no `key`**, so their filenames still render as plain text
   with nothing to click, rather than linking to a file that was never uploaded.
 
