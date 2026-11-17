@@ -5284,3 +5284,12 @@ email/mobile — the registered-email guard refuses a second row with his email)
   test OK; illustration 10 s first time, 2 s reused; 2 diagrams drawn; fallback proven with Higgsfield on + invalid key → 401 →
   gateway image (12 s). PROD needs: gateway task on PROD + banking-app-prod key, migration, provider rows, release.
 - 2026-11-17 18:00Z: Robo Faculty illustrations now **unique per student, reused across students** (UAT b6f89082e): ai_content_bank kind robo_faculty_visual with learner exposures; new image (rotating angle in visualPrompt) only when the student has seen the whole pool; class keeps its picture in robo_faculty_sessions.illustration (migration 20261117190000, DB-Scripts DEV+UAT). Check ~/banking-checks/robo-faculty/visual-pool.cjs 5/5 (new 9.7 s, reuse 0.03 s).
+- **2026-11-17 18:15Z PROD v1.1.25** (`4318007a5`, backup `/data/backups/prod-20261117T181045Z`): cherry-picks 3db15a321 (TTS blob URLs),
+  235fece16 (CSP fonts, repo), afe0a20ab + 03e0c3551 + b6f89082e (Robo Faculty diagrams + topic illustrations unique per student).
+  PROD gateway task `pl/robo-faculty-image` + banking-app-prod key (policy backup tasks-20261117T180849Z.json; image call 200 in 7 s).
+  Migrations 180000/190000 rehearsed + applied. Provider rows: image_generation higgsfield **off, no key**; litellm on (PROD gateway
+  key). PROD nginx `/etc/nginx/snippets/lms-security-headers.conf` now allows api/cdn.fontshare.com (backup .bak-20261117-fontshare).
+  Verified on PROD with a throwaway learner (prod-throwaway.cjs, moved into SRM + section 2e8bef2e, erased after): outline as
+  student, class start, illustration 10 s via gateway and publicly served, reopen keeps picture, reply carries a steps diagram.
+  Note: throwaway learners are in the QA institute — `check_section_student` refuses enrolment until students/profiles institute_id
+  is SRM.
