@@ -282,3 +282,7 @@ profile**: an applicant without a snapshot would show blank profile fields and d
 - **Gender** = the frozen profile gender, else the apply form's `gender` answer (`FORM_ANSWER_SQL("gender")` over
   `job_role_response`). The drawer already showed the form answer, so a candidate whose profile had no gender showed "Male" in
   the drawer but never matched the Male filter. Fixed: corporate-node DEV `6ccf54fe`, UAT `ccf44bbb`.
+
+## Behaviour results on the candidates table (since 2026-11-17)
+
+A Behaviour assessment has no score: its result is a level. Round results (`services/evaluation/scores.js` `loadRoundResults`) carry `level` on a single Behaviour round and on each Mix & Match part, as the median of the attempt's `assessment.behavior_proficiency_scores` levels (`helpers/behaviorLevel`, the assessment roster's rule; an even count takes the lower middle). The applicants list passes it through (`results[].level`, `results[].parts[].level`), and the Performance column shows the level ("Practitioner") instead of "Preparing Report"; "Preparing Report" now means completed with neither a score nor a level. Behaviour still counts as unscored in the Performance average. Known gap: a Mix & Match round only gets a combined score once every part has one, so a round with a Behaviour part never gets one and its current stage reads "Sat it — awaiting scoring". corporate-node DEV 0d3284cd / UAT 09095a35; corporate-react-v2 DEV 8d2a04b / UAT cfca8fb.
