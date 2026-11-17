@@ -5225,3 +5225,26 @@ loaded DEV box — not an app error.
 
 **Not fixed / open:** deactivating a trainer leaves `trainers.status = approved`; 14 profiles without a name show "—" in the module-group
 grant list; Robo quiz/home progress for legacy `module_progress` rows unchanged; DEV is behind (Development branch has no college mode).
+
+## 2026-11-17 — PROD `6c20c7253` (v1.1.18) + `951b758a8` (v1.1.19): Robo Faculty, AI content bank, journey fixes; TTS sign-in; UAT `f8f79c42a`
+
+**UAT** `60b32a019`: deactivating a user also sets an approved trainer record to `inactive` (reactivate → `approved`; pending/rejected
+untouched). `f8f79c42a`: `elevenlabs-tts` now requires a signed-in caller (before, anyone with the public anon key could generate paid
+ElevenLabs speech and, since the TTS cache, store it; every app caller already sends the session token). UAT data: 11 profiles with no
+name, email, phone, sign-in or activity (Aug migration shells + `9560781888@bankready.app`) deleted with their auth users (backup of
+profiles/user_roles/students: UAT `~/banking-sb/snapshots/pre_nameless_delete_20261117.dump`); 3 nameless but real logins named instead
+(raj@gmail.com → Raj, demo.candidate@bankready.app → "Demo Candidate (QA login)", cert-uat-test@pluginlive.com → "Certificate Test
+Learner" — the last two are used by ~10 `~/banking-checks` scripts).
+
+**PROD v1.1.18** — `release/prod-v1.1` `d7b27b46d` → `6c20c7253`: cherry-picks of dc0904cdf (Robo Faculty), 293be07f4 (AI content bank),
+fdaa0e8b8 (interview bank), 4b627579e (Robo Indian voice), 5a8837d38 (journey fixes — `src/student-lms/QuizPlayer.tsx` hunk dropped: held
+LMS v2 is not on PROD), 3381430fa, 60b32a019. Gateway: `pl/robo-faculty` + `pl/robo-faculty-plan` added to the PROD task policy (backup
+`policy-backups/tasks-20261117T082937Z.json`, script on DEV `/tmp/robo_prod_gw.sh` run on 140.245.25.134) and to key `banking-app-prod`;
+normal + forced-fallback calls from the VM: 200 / fallback gemini-3-flash-preview and gpt-6-luna. Migrations rehearsed BEGIN…ROLLBACK on
+`banking_prod`, then `/tmp/prod_deploy18.sh` (= v1.1.17 script + 5 migrations; source staged with `git archive HEAD | ssh … tar x -C
+/opt/banking/app.release-ready`): backup `/data/backups/prod-20261117T083106Z`, all 5 migrations applied, bundle audit clean, 127
+functions + 3 fixups. **v1.1.19** `951b758a8` = the TTS sign-in fix, `/tmp/prod_deploy19.sh` (no migrations), backup
+`/data/backups/prod-20261117T083447Z`. Verified: site 200 (`index-DLuUmvtB.js`), robo-faculty / elevenlabs-tts / ai-practice-interview /
+generate-image 401 without a session, `ai_content_bank` + exposures 42501 for anon, `ai_content_take` 401, `tts-cache` bucket, both new
+policies, old `module_progress_module_id_fkey` gone. No signed-in PROD browser test (no PROD QA identity; PROD data untouched).
+Held LMS v2 / video-watch work stays absent.
