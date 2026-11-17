@@ -50,3 +50,4 @@ Observed: 2–9 s per call; 76-page book drafted in ~90 s, 176-page book in ~95 
   India" (QA-E2E edition) — left published there as sample data. NCERT's site TLS-fails from DEV/UAT; archive.org copies used.
 - Variability: regenerating gives different topic granularity run to run — review the diff before publishing.
 - Not yet: EPUB, per-medium student filter, NCF competency codes.
+- Board-wide (global) topics and their official sources: [pilvidya-board-curriculum-sources.md](pilvidya-board-curriculum-sources.md).

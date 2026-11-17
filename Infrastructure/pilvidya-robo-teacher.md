@@ -4,7 +4,7 @@ A spoken, one-to-one class with "Robo Vidya" on a curriculum topic (Board → Cl
 foreign-language theme. Live on UAT from 2026-11-12 (`feat/chat-simulations` `cfd12102`); no PROD yet.
 
 ## Student flow (`/student/robo-teacher`, menu Learn → Robo Teacher)
-1. **Setup:** the student picks a subject and a topic from their own curriculum (`curriculum_topics`: global plus their school's), or a foreign language, a CEFR level (A1/A2/B1) and a theme. They pick the teaching language (14 Indian languages) and can set their subject target (`goal_target`).
+1. **Setup:** the student picks a subject and a topic from their own curriculum (`curriculum_topics`: global plus their school's), or a foreign language, a CEFR level (A1/A2/B1) and a theme. They pick the teaching language (14 Indian languages) and can set their subject target (`goal_target`). Global CBSE 3-10 topics follow the official 2026-27 books, and languages are grouped apart in the picker: see [pilvidya-board-curriculum-sources.md](pilvidya-board-curriculum-sources.md).
 2. **Class:** the stages are Warm-up → Teach → Worked example → Case study → Video → Check understanding → Assessment → Wrap-up.
    - The video is the topic's approved curriculum video (`curriculum-videos`, cached; loaded in the background, and the stage is skipped if there is none).
    - Teaching is grounded in curriculum material (`loadCurriculumMaterial`), uses Indian everyday contexts, asks one question per turn, and steers off-topic requests back to the lesson.
