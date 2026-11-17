@@ -5263,3 +5263,23 @@ email/mobile — the registered-email guard refuses a second row with his email)
   (/tmp/undo-test.sql) deletes the account's consents from the last 30 min — only run it when the test printed CONSENTED_BY_TEST.
 - 2026-11-17 evening: Robo Faculty menu icon (Presentation) + one-line hints "Job role-play practice" (My Robo Play) / "AI teacher for courses" (Robo Faculty) — UAT 5c082133d, PROD 2d84cc4ef (v1.1.24, backup prod-20261117T165611Z). verify-9820065335.cjs has MENU_ONLY=1 (no class started); remove a consent only if the run printed CONSENTED_BY_TEST.
 - 2026-11-17 17:30Z: console CSP warnings on My Courses/Robo Faculty fixed on UAT: TTS audio now blob: URLs (3db15a321, media-src allows blob: not data:); CSP style-src/font-src allow api/cdn.fontshare.com (Satoshi) — UAT nginx /etc/nginx/snippets/lms-security-headers.conf (backup .bak-20261117-fontshare), repo infra/hardening. PROD pending go (release + PROD nginx snippet). 'Failed to fetch' in content-all.js = browser extension, not the app.
+
+## 2026-11-17 — Robo Faculty visuals (diagrams + topic illustrations): UAT `03e0c3551` (PROD not deployed)
+- **Diagrams (A):** the faculty turn schema has an optional `diagram` (`steps` 3–6 / `compare` 2–3 columns); `cleanDiagram`
+  validates it, it is stored on `robo_faculty_events.visual` and drawn as text boxes (`RoboFacultyVisuals.tsx`) — labels exact, no
+  image model. Note: `publicView` must pass `visual` (first deploy dropped it; fixed in 03e0c3551).
+- **Illustrations (B):** action `visual {session_id}` → `_shared/topic-visual.ts`: one image per course topic, providers from
+  `llm_provider_configs` where `application_feature='image_generation'` and enabled, by priority: **Higgsfield** (`higgsfield`,
+  `https://api.higgsfield.ai`, model `z-image/turbo`, key `KEY_ID:KEY_SECRET`, submit + poll `status_url`, 16:9 1k) then the
+  **LiteLLM gateway** (`litellm`, `/images/generations`, task `pl/robo-faculty-image` = gemini-2.5-flash-image, no gateway
+  fallback model works on UAT: Imagen 404, OpenAI keys invalid). Image copied to public bucket `robo-faculty-visuals`
+  (topic text only, no personal data), cached via ai_content_bank kind `robo_faculty_visual`; failures are not cached.
+- **Admin → LLM and System Config:** new card "AI image generation (Robo Faculty visuals)" (same component as video
+  providers); action `test-image-config` checks credentials without a billable image (Higgsfield status lookup → 401 on a bad
+  key; gateway `/models` lists the route).
+- **UAT state:** Higgsfield row present, **off, no key** (awaiting the user's Higgsfield key + budget); gateway row on (banking-app
+  key). Gateway task added on UAT (backup policy-backups/tasks-20261117T174114Z.json) and on banking-app key. Migration
+  `20261117180000_robo_faculty_visuals` (DB-Scripts e115e4f, DEV+UAT, PROD pending).
+- **Checks** `~/banking-checks/robo-visuals/flow.cjs` (STEP=admin|student|reuse, fixture journeys/fixture.sql): admin section + gateway
+  test OK; illustration 10 s first time, 2 s reused; 2 diagrams drawn; fallback proven with Higgsfield on + invalid key → 401 →
+  gateway image (12 s). PROD needs: gateway task on PROD + banking-app-prod key, migration, provider rows, release.
