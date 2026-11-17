@@ -482,6 +482,20 @@ that is a separate project.
 
 ---
 
+### Gender, DOB and phone from `admin` (2026-11-17)
+
+create-full carries the candidate's gender, dob and phone on `admin`; the new-student path copies them onto
+`studentPersonalProfile` (`common.js`). Payload capture only took the **name** from `admin`, so an existing student whose
+profile had no gender/dob got a frozen copy with none — the new ATS Gender and Age filters dropped them while the drawer
+showed the form's answer. `personalOverlayFromAdmin` in `payloadSnapshot.js` now overlays gender (only values of the
+`gender` enum, upper-cased), dob and phone (`helpers/formatAdminPhone.js`, shared with `common.js`); empty values are
+skipped. student-node DEV `3304558d`, UAT `9c89d300`. Applies to new applications only; existing rows are covered for
+Gender by the ATS form-answer fallback (`ATS/Corporate/roles-v2.md`), not for Age.
+
+Flag state on 2026-11-17: `APPLIED_SNAPSHOT_READS=true` on DEV + UAT (both services); `APPLIED_SNAPSHOT_PAYLOAD_CAPTURE`
+**true on UAT, unset on DEV** (so DEV still freezes the live profile for existing students). UAT snapshots: 910 apply /
+13,012 backfill / 610 payload, 0 applied rows missing; DEV 109 / 596 / 1 recovered, 0 missing.
+
 ## Two defects found during UAT validation (2026-08-11)
 
 Both were found by testing the deployed build against real UAT data, not by unit

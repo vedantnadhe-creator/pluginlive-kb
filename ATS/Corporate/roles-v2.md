@@ -245,3 +245,19 @@ What a company can use is the live `assessment.subscribed_corporates` rows (Role
 ## Select lists above stacked drawers (2026-11-16)
 
 Select option lists (`.sf-panel`, and the assessment module's `ul.pl-assessment-overlay.sf-panel`) use `--z-popover` (90). Manage evaluation process → Review assessment opens a drawer at z 71 (above the modal scrim at `--z-tooltip` 70), so lists at 70 opened behind it and e.g. the AI Interview primary/second language could not be changed. corporate-react-v2 DEV 78d5f6d, UAT 306244b (`src/styles/ds/app.css`).
+
+## Candidate profile facts are frozen at apply; Gender falls back to the form (since 2026-11-17)
+
+The candidates list, filters, facets, drawer and export (`corporate-node` `app/models/RoleApplicantsV2.js`, `baseCte`) read the
+candidate's profile from the **applied-role snapshot** (`student.role_application_*`, see
+`ATS/Student/AppliedRoles/applied-role-snapshots.md`) when `APPLIED_SNAPSHOT_READS=true` (DEV + UAT), joined on
+`(student_id, role_id)` from `corporate.job_role_student_map` (`is_applied = 1`). There is **no per-row fallback to the live
+profile**: an applicant without a snapshot would show blank profile fields and drop out of every profile filter
+(coverage on 2026-11-17: DEV 97/97, UAT 766/766 PluginLive-form applicants).
+
+- Profile-based filters (frozen): gender, institute, degree, department, passing year, marks per level, skills (must hold all),
+  age, experience. Degree/department match on text, case-insensitive.
+- Application-based filters (live): search, stage, fit, score, applied date, form answers.
+- **Gender** = the frozen profile gender, else the apply form's `gender` answer (`FORM_ANSWER_SQL("gender")` over
+  `job_role_response`). The drawer already showed the form answer, so a candidate whose profile had no gender showed "Male" in
+  the drawer but never matched the Male filter. Fixed: corporate-node DEV `6ccf54fe`, UAT `ccf44bbb`.
