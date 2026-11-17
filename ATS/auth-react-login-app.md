@@ -170,3 +170,41 @@ curl -s -o /dev/null -w '%{http_code}\n' -X POST \
 # sign in, then check the token really lasts 2 days:
 #   the redirectLink's ?token= payload should have exp - iat == 172800
 ```
+
+## Already signed in? The sign-in page skips the form (2026-11-17, DEV on / UAT off / PROD pending)
+
+Opening the auth URL (or any app in a new tab with no local token, which bounces
+to the auth URL) while this browser already has a live session goes straight to
+the user's app, with no login form.
+
+- **How:** on load (unless `?code=` from Google is present) `src/pages/login.js` calls
+  `POST /user/session/resume` with credentials and a **5 s timeout**. The
+  `pl_refresh_token` cookie is on the parent domain (`.dev.` / `.uat.` /
+  `.pluginlive.com`), so a session started in any app is visible here.
+  - 200 → `{ redirectLink }` (same hand-off link a fresh sign-in returns:
+    `getLoginUrl(journey, access_level)` + `withLoginToken`) → `location.replace`.
+  - anything else (no/expired cookie, flag off, timeout) → normal form.
+- **Backend** (`user-management-node`): `exports.resumeSession` in
+  `app/handlers/user.js`; it shares `rotateSessionUser` with `/user/token/refresh`, so
+  the call rotates the cookie (same 60 s two-tab grace applies).
+- **Per-env switch:** `SESSION_RESUME_ENABLED=true` in the UMS env. When unset, the
+  endpoint returns **404 "Session resume is disabled."** and the page shows the form.
+  - DEV: **on** (`.env.dev`).
+  - UAT: **off by design.** Testers must be able to sign in as a different user
+    without logging out. Code is deployed (UMS `b046d3e`, auth-react `37ea0d0`
+    UAT port for the older UAT login UI).
+  - PROD: intended **on**. Not shipped yet. Before enabling, confirm
+    `REFRESH_COOKIE_DOMAIN` resolves to `.pluginlive.com`.
+- **Logout must clear the cookie,** or a logged-out user is bounced straight back in.
+  Legacy apps send `users/signout` with `withCredentials`. The v2 Next apps forward the
+  browser `Cookie` header through `/api/logout`. On Development all apps do;
+  the 2026-11-17 UAT checkouts of admin/corporate-react-v2 did not yet.
+- **Limit:** with it on, switching user means logging out first. The multi-account
+  `mat` token is not re-issued on resume, so the account switcher only appears
+  after a password sign-in.
+- **Verify:**
+  ```bash
+  curl -s -X POST https://api-auth.<env>.pluginlive.com/user/session/resume \
+    -H 'Content-Type: application/json' -d '{}'
+  # 404 "Session resume is disabled." = flag off (UAT); 401 "Refresh token missing" = on
+  ```
