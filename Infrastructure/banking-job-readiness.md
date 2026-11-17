@@ -5149,3 +5149,36 @@ backup `/data/backups/prod-20261117T015647Z`, entry `index-Coy06dYS.js`, bundle 
 
 **Repo e2e specs (mocked backend):** 30/47 pass; the same 5 `qa-*` failures happen on unchanged UAT code — the specs expect college-only
 trainer menus for an ordinary trainer and use the old hosted Supabase URL. Updating them is for the GPT tester ("Ask Jev to test it").
+
+## 2026-11-17 — Robo Faculty + shared AI content bank: UAT `fdaa0e8b8` (PROD not deployed)
+
+Deployed with `~/banking-sb/deploy.sh` (snapshot `20261117T045538Z`, entry `index-B5ayb8XQ.js`). Migrations
+`20261117090000_robo_faculty` and `20261117120000_ai_content_bank` (rehearsed in BEGIN…ROLLBACK first; DB-Scripts
+`Banking LMS College Mode/20261117T034933Z__…` and `…043841Z__…`, UAT applied, PROD pending).
+
+**Robo Faculty** (college courses): a "Robo Faculty" tab in My Courses → course for students (unit/topic from the course's own
+syllabus, modes Teach me / Solve an example / Industry case / Viva / Revision sprint, English + 8 Indian languages, voice, 5-question
+quiz → mastery + debrief) and in the staff course workspace (per-unit instructor playbook with ideal trainer capabilities, cached;
+usage insights). Edge function `robo-faculty` (+ `_shared/robo-faculty.ts`); tables `robo_faculty_sessions/_events/_playbooks`.
+Gateway tasks `pl/robo-faculty` (turns) and `pl/robo-faculty-plan` (quiz/wrap-up/playbook) on the UAT gateway, key `banking-app`.
+**PROD gateway does not have them yet — register on `banking-app-prod` before any PROD deploy.**
+
+**Shared AI content bank** — every AI-generated learner item is stored once and reused for other learners; a learner never receives
+the same item twice. Tables `ai_content_bank` (kind, scope_key, fingerprint = SHA-256 of normalised text, payload) and
+`ai_content_exposures` (learner × item delivered); RPCs `ai_content_take` / `ai_content_put` / `ai_content_seen` (service role only;
+anon/authenticated have no table or execute rights). Helper `supabase/functions/_shared/ai-content-bank.ts`: `bankedItems()` serves
+unseen banked items first and calls the LLM only for the shortfall (telling it what the learner already had); `cachedItem()` = one
+shared item per key. A bank outage falls back to plain generation. Wired: `ai-practice-generate-mcq`, `generate-diagnostic-quiz`,
+`ai-practice-descriptive`, `generate-video-quiz`, `ai-practice-interview` (generate), Robo Faculty quiz; shared caches for
+`youtube-search`, `generate-image` and `elevenlabs-tts` (non-realtime narration, audio in private bucket `tts-cache`).
+`generate-image` and `generate-video-quiz` now require a signed-in caller. Already reusing before this (own learning bank, unchanged):
+`ai-quiz`, `ai-content` "More AI Generated Content". Per-learner by nature (not banked): chat, coaches, mentor, Robo Faculty
+conversation turns, grading, reports. **Known limit:** banked items are not invalidated when module content changes (ai-quiz /
+ai-content are revision-keyed; the new bank is not).
+
+**Verified on UAT** (QA users on SRM Easwari "Applied Physics – I", removed afterwards; banked items kept):
+`~/banking-checks/robo-faculty/flow.cjs` (`RF_OFF=<offering>`, fixtures `fixtures-uat.sql` + `approve-uat.sql`) 19/19 PASS;
+`~/banking-checks/content-bank/reuse.cjs` — second learner served from the bank in 32–72 ms vs 27–57 s fresh for practice MCQs,
+diagnostic, descriptive, YouTube search, TTS; same learner never repeated. admin5 5/5, anon probes blocked, site 200.
+**Pre-existing, not fixed:** `generate-image` returns "No image returned by the model" on DEV and UAT (gateway answers the
+`google/gemini-2.5-flash-image` call with text) — only the AI Tools sandbox uses it.
