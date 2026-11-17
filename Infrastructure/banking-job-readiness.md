@@ -5293,3 +5293,4 @@ email/mobile — the registered-email guard refuses a second row with his email)
   student, class start, illustration 10 s via gateway and publicly served, reopen keeps picture, reply carries a steps diagram.
   Note: throwaway learners are in the QA institute — `check_section_student` refuses enrolment until students/profiles institute_id
   is SRM.
+- 2026-11-17 18:25Z: **Monthly illustration budget ₹1,000** (UAT 52dd8a25e, PROD v1.1.26 b57fddadd, backup prod-20261117T182141Z): metadata.monthly_budget_inr on image_generation rows + cost_per_image_inr (higgsfield 0.6, litellm 3.3); topic-visual skips a provider whose next image would cross the month's spend (illustrations created this UTC month × cost); admin card shows/saves it (manage-llm-providers image-budget / save-image-budget). Check ~/banking-checks/robo-visuals/budget.cjs 8/8 on UAT. PROD this month: 1 illustration ≈ ₹3.3.
