@@ -5283,3 +5283,4 @@ email/mobile — the registered-email guard refuses a second row with his email)
 - **Checks** `~/banking-checks/robo-visuals/flow.cjs` (STEP=admin|student|reuse, fixture journeys/fixture.sql): admin section + gateway
   test OK; illustration 10 s first time, 2 s reused; 2 diagrams drawn; fallback proven with Higgsfield on + invalid key → 401 →
   gateway image (12 s). PROD needs: gateway task on PROD + banking-app-prod key, migration, provider rows, release.
+- 2026-11-17 18:00Z: Robo Faculty illustrations now **unique per student, reused across students** (UAT b6f89082e): ai_content_bank kind robo_faculty_visual with learner exposures; new image (rotating angle in visualPrompt) only when the student has seen the whole pool; class keeps its picture in robo_faculty_sessions.illustration (migration 20261117190000, DB-Scripts DEV+UAT). Check ~/banking-checks/robo-faculty/visual-pool.cjs 5/5 (new 9.7 s, reuse 0.03 s).
