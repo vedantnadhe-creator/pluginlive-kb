@@ -45,3 +45,25 @@ go through the LiteLLM gateway with task attribution.
    1-year access-log retention (ship nginx/auth logs to OCI Object Storage); breach runbook + contact list.
 3. Before 13 May 2027: processor register + DPAs (Google, OpenAI, ElevenLabs, Deepgram, Sarvam, MSG91, Resend/mail relay);
    institute data-processing addendum; age declaration + verifiable parental consent path for under-18 learners; counsel review.
+
+## 2026-11-17 — Priority-1 (high) gaps fixed on UAT `40fc816e0` (PROD pending go)
+- **Notice:** public `/privacy` (data, purposes, processors incl. foreign AI/speech, retention, rights, grievance contact
+  `VITE_PRIVACY_CONTACT_EMAIL` → default privacy@pluginlive.com — mailbox must exist), linked from sign-in. Version constant
+  `PRIVACY_NOTICE_VERSION` in `src/lib/privacy.ts`; bump it to re-ask everyone.
+- **Consent:** `PrivacyConsentGate` (App level, all roles incl. admins) blocks until the user agrees; stored in `privacy_consents`
+  (purpose platform/proctoring/recording, notice version, user agent, withdrawn_at).
+- **Rights:** My Profile and Trainer profile → "Privacy & my data": download my data (JSON, own rows via RLS, ~40 tables),
+  requests (correction, erasure, full copy, nominee, grievance) in `data_requests` with 30-day `due_at`, withdraw consent
+  (signs out; gate blocks until re-agreed). Admin console → Users → **Privacy Requests** queue; **Erase account** runs edge fn
+  `privacy-requests` (admin only): user's storage objects (owner) → `erase_user_data` (nullable refs unlinked, required ones
+  deleted, students/profile/roles) → auth user; request kept with user_id null as proof.
+- **Capture consent:** proctored assessments (TakeAssessment, StudentAssessmentTaker) and interview recording (practice
+  interview, video interview runner) show what is captured + require a tick before camera/mic; stored per purpose.
+- **Retention:** edge fn `privacy-retention` (service-role only) deletes `assessment-media/proctoring/*` and `interview-recordings/*`
+  older than `PRIVACY_MEDIA_RETENTION_DAYS` (default 180) and clears `proctoring_logs.photo_url`; UAT cron 21:15 UTC
+  `~/banking-sb/privacy-retention-daily.sh` → `~/logs/privacy-retention.log`.
+- **AI minimisation:** agent-runtime tools no longer return learner mobile numbers to the model.
+- Migration `20261117140000_dpdp_consent_requests_retention` (DB-Scripts `c8adf4b`, DEV+UAT applied, PROD pending).
+- Checks: `~/banking-checks/dpdp/flow.cjs` (18/18 on UAT; erases the QA learner from `journeys/fixture-flow.sql`), `capture.cjs`.
+- **Not done (needs go / business):** PROD release; PROD backup pruning (71 release dumps + 4 app dirs = 1.8 GB, keep newest 5;
+  UAT storage copy 391 MB on the PROD VM); DPAs with processors; institute data-processing addendum; counsel review of the text.
