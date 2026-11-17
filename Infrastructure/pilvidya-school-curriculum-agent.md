@@ -72,3 +72,16 @@ Observed: 2–9 s per call; 76-page book drafted in ~90 s, 176-page book in ~95 
   - `~/pilvidya-checks/curriculum-agent/sources-e2e.mjs`: CISCE PDF link, CBSE page listing, Standard Ebooks EPUB (64 sections), 5 internal addresses refused, teacher refused, test books deleted. 13/13.
   - `ui-sources.cjs`: 6/6.
   - vitest `bookSources.test.ts`: 8 tests.
+
+## End-to-end curriculum journey (`84f1aec7`, UAT 2026-11-17)
+
+- **Journey run in Test School A:**
+  - The principal added the CBSE AI (417) Class 10 Facilitator Handbook by link. Draft: 48 topics in 6 chapters, published 287 rows.
+  - The teacher sees Class 10 AI in Robo Classes, Portion Tracker, Teach Mode and Worksheets, and assigned a Robo class.
+  - The student sees the subject in My Curriculum (47 topics), Robo Teacher (assignment, class started, tutor replied), Ask AI and AI Topic Lessons.
+- **Kit:** `~/pilvidya-checks/curriculum-journey/`: `principal.cjs`, `publish.cjs`, `teacher.cjs`, `student.cjs`, `subjects.cjs`. The "[QA-JOURNEY]" book and one Robo assignment are left in School A as sample data.
+- **Fixed:**
+  - The Curriculum Setup Subject list now shows the board's subjects for the class (subject matrix) plus the global subjects and this school's own. Before, it showed only subjects that already had topics, including other schools' rows, so new subjects such as AI could not be chosen.
+  - Robo subject names come from one shared map (`_shared/robo/coach.ts`: ai = "Artificial Intelligence", ctai, computer, informatics…). Before, Robo showed and prompted "Ai".
+  - Each generation step is retried twice (3 s, 8 s) before the screen asks for Continue (`stepWithRetry` in `lib/schoolCurriculum.ts`).
+- **Not covered yet:** finishing the full seven-stage Robo class with its assessment, and the teacher's Results view after it.
