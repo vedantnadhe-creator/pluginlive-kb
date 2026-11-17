@@ -73,7 +73,7 @@ Each assessment stage's config carries `candidateValidityDays` (days each candid
 
 ## Applied vs in screening (since 2026-11-17, DEV + UAT)
 
-Applied = in (ACTIVE), in no stage or round, and untouched by screening: no AI match score/summary/error, no `screening_results` row, no fit override (`helpers/rolesV2.AWAITING_SCREENING_SQL`; same rule as the frontend's `isApplied`). `GET /roles/v2` sends `pipeline.applied` and leaves those out of `underEvaluation` (roles-list "N Applied" caption). Each applicant carries `awaitingScreening` with the same rule.
+Applied = in (ACTIVE), in no stage or round, and untouched by screening: no AI match score/summary/error, no `screening_results` row, no fit override (`helpers/rolesV2.AWAITING_SCREENING_SQL`; same rule as the frontend's `isApplied`). `GET /roles/v2` sends `pipeline.applied` and leaves those out of `underEvaluation` (the bar's Applied segment). The roles-list caption "N Applied" under the bar is everyone who applied (`pipeline.applicants`), not that segment (corporate-react-v2 `3e657d6`, UAT `37cb7ae`, 2026-11-17). Each applicant carries `awaitingScreening` with the same rule.
 
 ## Dashboard "Actions to be taken" (since 2026-11-17, DEV + UAT)
 
