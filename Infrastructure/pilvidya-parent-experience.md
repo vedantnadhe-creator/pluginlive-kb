@@ -13,7 +13,7 @@ the source of truth.
   support, and Language progress.
 - **School**: Messages, News, Upcoming, Attendance, and Meetings.
 - **Money & transport**: Fees and Transport.
-- **Family & settings**: Wellbeing, Alert Preferences, and Family & privacy.
+- **Family & settings**: Wellbeing, Alert Preferences, and Family & privacy. Family & privacy exports the linked child's data (parent session required) and files erasure requests for the admin queue; see [pilvidya-dpdp-compliance.md](pilvidya-dpdp-compliance.md).
 
 The tab configuration lives in `frontend/src/components/parent/parentNavigationConfig.ts`; the shell is rendered by
 `ParentDashboard` and remains compatible with the existing `/parent#<tab>` links.

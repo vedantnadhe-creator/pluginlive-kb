@@ -67,7 +67,8 @@ curriculum management) and 11 dead route declarations.
 - **Data requests** (`/admin/data-requests`): `privacy_requests` queue with 30-day target; `admin_privacy_export` (JSON,
   no password hash), `admin_privacy_erase` (type ERASE; anonymises profile, clears written answers/doubts, unlinks
   parents; marks/attendance kept unnamed; audit-logged), `admin_privacy_resolve`; whole-school export via
-  `admin_school_export_page` (11 tables, 1000 rows/page, one JSON download).
+  `admin_school_export_page` (11 tables, 1000 rows/page, one JSON download). Parents' own export and erasure-request flow and the DPDP gap list:
+  [pilvidya-dpdp-compliance.md](pilvidya-dpdp-compliance.md).
 - **Branding**: `schools.logo_path` (storage `branding/<school>/logo-*.png|jpg|webp`, ≤ 1 MB) and `brand_color`;
   `my_school_branding()` → header logo + `--primary` for that school's students/teachers/parents (colours with luminance
   > 0.7 ignored).
