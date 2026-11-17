@@ -1,6 +1,6 @@
 # PilVidya (aividya) — Board curriculum: official sources
 
-Status as of 2026-11-17: live on UAT (frontend `8e5f4172`, data `f7a0e5d3`, branch `feat/chat-simulations`). There is no PilVidya PROD deployment.
+Status as of 2026-11-17: live on UAT (`73caac86`, branch `feat/chat-simulations`). Source file `supabase/seed/official_curriculum_2026_27_sources.json` and generator `official_curriculum_2026_27_topics.py`; both were renamed from `cbse_2026_27_*`. The latest migration is `20261203030000_official_curriculum_topics_languages_icse.sql`. There is no PilVidya PROD deployment.
 
 ## Where a student's subjects and topics come from
 
@@ -23,6 +23,29 @@ Status as of 2026-11-17: live on UAT (frontend `8e5f4172`, data `f7a0e5d3`, bran
 - Rollback: `UPDATE curriculum_topics SET board='cbse', is_global=true WHERE board='cbse-retired'`, then delete the inserted 2026-27 rows.
 - Before this fix, Class 11 Maths held the Class 9 list and Class 12 Physics, Chemistry and Biology repeated Class 11 chapters. Global CBSE (and ICSE/State) Classes 6-10 Maths, Science and Social held the old NCERT **Class 9** syllabus copied into every class. English was 6 placeholders, and CT & AI had no topics while the card said "Computer Science".
 
+## Added 2026-11-17 (round 3): 132 books, 1235 chapters
+
+- **Hindi, Classes 1-12** (NCERT): Sarangi 1-2, Veena 3-5, Malhar 6-8, Ganga 9, Kshitij 2 and Kritika 2 (Hindi Course A) for 10, Aroh and Vitan (Hindi Core) for 11-12.
+- **Sanskrit, Classes 6-12** (NCERT): Deepakam 6-8, Sharada 9, Shemushi 10, Bhaswati (Core) 11-12.
+- Devanagari topics are stored in Unicode with `medium` Hindi or Sanskrit.
+  - pdftotext garbles these books, so they are read with PyMuPDF (`curriculum-source/fetch_contents_u.py`).
+  - The older books (Kshitij, Aroh, Vitan, Shemushi, Bhaswati) use the legacy Kruti Dev font, so their titles were decoded by hand.
+  - The Malhar 7 title list was checked against a rendered image of its contents page.
+- **CBSE 11-12 AI**: subject `ai`, from the CBSE skill curriculum 843 Part B (`skilleducation.cbseit.in/web_material/curriculums/2026-2027/srsec/843-AI-XI.pdf` and `-XII.pdf`). NCERT has no AI book.
+- **CBSE PE**: Class 11 from the NCERT book Health and Physical Education (`kehp1`). Class 12 from the CBSE Physical Education curriculum units (NCERT has no Class 12 book).
+- **CBSE Fine Art 11-12**: subject `art_education`, NCERT An Introduction to Indian Art, Parts I and II.
+- **CBSE Philosophy** is retired and dropped from the CBSE subject list: CBSE and NCERT have no Philosophy course.
+- **ICSE 9-10**: from CISCE "Regulations and Syllabuses ICSE 2027" (`cisce.org/wp-content/uploads/2025/03/*.pdf`), the latest published; there is no 2028 page yet, so its Class IX section is used for Class 9.
+  - Subjects: Maths, Physics, Chemistry, Biology, History & Civics (subject `history`, topics prefixed Civics: or History:), Geography, Economics, Computer Applications (subject `computer`), and English (Appendix I prescribed texts: Julius Caesar, Treasure Chest).
+  - The ICSE 9-10 subject list now shows the separate sciences and humanities, not combined Science and Social.
+  - cisce.org is behind Cloudflare: use a real browser (`curriculum-source/probe/cisce*.cjs`); its PDFs download with curl.
+- **Retired with no official source**: ICSE 6-8 (CISCE publishes no Class 6-8 syllabus) and State 6-10. These were all the copied CBSE Class 9 list.
+- **Tamil Nadu State board books**: official source TN SCERT `https://scert.tnschools.gov.in/textbook` (EMIS e-learn list API, captured in `curriculum-source/tn/std*.json` for English-medium Classes 6-10).
+  - The download sits behind a human arithmetic check, so it is not automated.
+  - To add State topics, download those PDFs manually, or have schools upload them through Curriculum Setup (school curriculum agent).
+  - The site also has Tamil books for CBSE schools (for example `1st_Std_Tamil_CBSE.pdf`). That is the right source for the Tamil language subject, whose school rows are still generic placeholders.
+- UAT: retired rows: cbse 408, icse 271, state 275. Backup: `curriculum-source/backups/global_topics_pre_lang_icse_*.csv`. Checks with `robo-ui-senior.cjs` all pass: CBSE 6 Hindi, Sanskrit and Maths; CBSE 12 AI, Hindi and PE; ICSE 10 Physics, Maths, History and English.
+
 ## Subjects
 
 - `ctai` "Computational Thinking & AI" replaces `computer` and `ai` for **CBSE Classes 3-8** (`subjectMatrix.ts`). ICSE, State and IB are unchanged.
@@ -32,7 +55,7 @@ Status as of 2026-11-17: live on UAT (frontend `8e5f4172`, data `f7a0e5d3`, bran
 
 - `ncert.nic.in` serves an incomplete TLS chain, so use `curl -k` and check the content. `cbseacademic.nic.in` works normally.
 - Kit: `~/pilvidya-checks/curriculum-source/` (`fetch_contents.sh <codes>` keeps only the contents text, `contents/*.txt`). The NCERT book codes come from the JS on `textbook.php`.
-- Hindi and Sanskrit NCERT PDFs extract as garbled Devanagari, so they are not seeded. Enter them manually or publish them through the school curriculum agent.
+- Hindi and Sanskrit: use `fetch_contents_u.py` (PyMuPDF); decode Kruti Dev books by hand and check them against a rendered page image.
 
 ## Checks
 
@@ -41,8 +64,7 @@ Status as of 2026-11-17: live on UAT (frontend `8e5f4172`, data `f7a0e5d3`, bran
 
 ## Open
 
-- ICSE and State Classes 6-10 global rows are still the copied Class 9 list. They need official sources (CISCE / state textbook corporations) or school builds.
-- CBSE Classes 11-12 subjects without an NCERT book (AI, Hindi, Physical Education, Philosophy, Art) keep their old rows.
+- State boards (Classes 6-10) have no global topics, and State 11-12 rows are still copies of the NCERT lists. Tamil Nadu needs its SCERT books, downloaded manually or uploaded per school. ICSE 6-8 has no public CISCE syllabus, so schools need to upload their books.
 - About 15 open Robo assignments and 15 portion entries point at retired topics, so teachers need to reassign them.
 
 Related: [School curriculum agent](pilvidya-school-curriculum-agent.md), [Robo Teacher](pilvidya-robo-teacher.md).
