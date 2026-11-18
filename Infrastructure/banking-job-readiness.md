@@ -5319,7 +5319,7 @@ PROD remains `v1.1.27`; these corrections have not been deployed to PROD.
 - The Admin image-budget panel validates its response and shows a retryable error instead of crashing the settings page. Failed saves do not show success; clearing the budget input does not remove the cap (an explicit zero is required).
 
 **Database:** `20261118130000_rbac_audit_actor.sql`, also tracked in DB-Scripts as
-`Banking Supabase to Postgres/20261118T073654Z__rbac_audit_stamp_actor.sql` (DEV/UAT applied; PROD pending).
+`Banking Supabase to Postgres/20261118T073654Z__rbac_audit_stamp_actor.sql` (DEV/UAT/PROD applied 2026-11-18).
 The UAT migration was rehearsed inside BEGIN/ROLLBACK before deployment. The release preserves the existing function ACLs around the self-hosted grants scripts.
 
 **Verification and limits:** live retest evidence is being collected in
@@ -5356,3 +5356,16 @@ Snapshot `20261118T083547Z`, bundle `index-Cl2W2v9V.js`; GitHub `UAT` and `main`
 Final UAT snapshot `20261118T085018Z`, bundle `index-DAV_H3nn.js`; GitHub `UAT`/`main` both at `70dd72d06`. `f67366c34` extends the shared duplicate-label rule to the native module-group filter; `dccbb43ba` restores student names/locations/degrees in admin dashboard reads and adds learner identifiers to dashboard/usage exports, with explicit headers on every usage worksheet. `70dd72d06` updates the stale sheet-name test contract to the established Candidate Summary terminology.
 
 83 targeted tests passed, 218 sidebar destinations were checked across eight roles, and 95 files were validated. The 10 regenerated admin workbooks have distinct learner rows and valid headers; the full descriptive browser flow and the corrected principal sign-off checks pass. All owned QA identities/students/programme/section/offering are removed. Existing full-project TypeScript diagnostics are unchanged; historical blank actor/contact fields are retained. PROD was not changed. See [the completed QA report](banking-qa-20261118.md) for scope, evidence and test-harness corrections.
+
+
+## 2026-11-18 — Journey QA fixes promoted to PROD v1.1.28
+
+The completed UAT QA corrections are live on PROD. `release/prod-v1.1` and tag `v1.1.28` are `c4da74ce2`, based on `v1.1.27` with only the ten QA commits and the case-label/CSV follow-ups cherry-picked. The initial 67 expected changed files passed the source guard; all source bytes in the final 68-file release match the committed archive on the live VM (environment/generated MCP excluded). Permanent LMS v2 and lesson-video watch-gate/checker holds remain excluded.
+
+PROD was built on Pl-Prod-Banking with its PROD environment through `auto_deploy.sh banking release/prod-v1.1`; final bundle `index-BN3iuF76.js`, 129 functions and 3 fixups, HTTP 200, no foreign environment hosts. Full pre-promotion backup: `/data/backups/prod-20261118T125813Z`; final follow-up backup: `/data/backups/prod-20261118T131501Z`. The RBAC audit-actor migration was rehearsed/rolled back, applied, then verified again in a rolled-back transaction; DB-Scripts marks all three environments applied.
+
+PROD data exposed a further dropdown case: separate values differing only in capitalisation/whitespace produced visually equal short references. `895362dda` (UAT/main; snapshot `20261118T130716Z`, bundle `index-DQksB0iM.js`) and PROD port `5180ed8ca` add stable numbered references for these cases and case-insensitive prefix checking. Original option values and records are preserved. The final 18-file targeted test run passes **87/87**. See [the QA report](banking-qa-20261118.md) for the live verification, source/release evidence and isolated test scope.
+
+`ebb982619` / PROD `c4da74ce2` also correct the institute candidate CSV's row assembly with the existing matrix writer; the pre-existing expression spread joined text into characters. Real Export-button tests cover quoted names, filtering, empty values and header-only results. Latest UAT snapshot `20261118T131422Z`, bundle `index-NeiMhnMf.js`; `UAT`/`main` now point to `ebb982619`.
+
+Post-deploy PROD verification: eight roles, 21 distinct screens, eight validated downloads (six XLSX, one CSV, one PDF); no outstanding live-smoke issues. The practice PDF's two pages are aligned, dashboard/usage exports retain distinct learner IDs and empty-sheet headers, case-only dropdowns are distinct, and the provider/budget page loads. TypeScript has its unchanged 19 baseline diagnostics. All eight synthetic identities and their consents, two students, four trainers and the owned college structure are removed; no real user's consent or data was used/reset. See the QA report and `/home/ubuntu/banking-checks/journeys/prod-release-20261118/summary.json`.
