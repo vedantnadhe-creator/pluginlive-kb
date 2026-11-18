@@ -1,4 +1,4 @@
-# aividya — Platform admin (aividya team running many schools) (UAT, feat/chat-simulations 8dfa2869)
+# aividya — Platform admin (aividya team running many schools) (UAT, feat/chat-simulations 51c60207)
 
 Migration `20261118250000_admin_platform.sql`. Every new function checks the caller's **admin area** (internal role).
 
@@ -106,6 +106,12 @@ curriculum management) and 11 dead route declarations.
 The PilVidya frontend was rebuilt on the UAT host with the UAT environment as `eduspeakreact:8dfa2869`; the served
 manifest reports the same version, the site returns HTTP 200, and the bundle contains no `*.dev.pluginlive.com`
 hostnames. No database migration was required.
+
+## Reports and downloads (2026-11-18)
+- Admin audit-log export honours the date filter; CSV downloads use Excel-compatible UTF-8, correct escaping and spreadsheet-formula protection.
+- Subscription-report tabs clear stale rows before loading and have corrected PDF table widths. Dropout generation is restricted to authorised staff and replaces the selected school/period's report rows when producing a new report.
+- Board/school/model dropdown duplicates are removed, and same-name people/campuses carry identifying details. Database-export pagination orders by `id` when available; SQL downloads handle JSONB and array values correctly.
+- Current UAT release and the limits of the completed checks: [reports, downloads, dropdowns and timetable validation](pilvidya-reports-downloads-and-dropdowns.md).
 
 ## Checks
 `~/pilvidya-checks/school-core/admin-platform-test.sql` (51, rolled back); `~/pilvidya-checks/admin/admin-journey.cjs`

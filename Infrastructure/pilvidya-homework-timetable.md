@@ -1,4 +1,4 @@
-# aividya — Homework and student Timetable & Attendance (UAT, feat/chat-simulations eea8c505)
+# aividya — Homework and student Timetable & Attendance (UAT, feat/chat-simulations 51c60207)
 
 The daily school loop: the teacher sets homework, the student submits an answer and/or photos, and the teacher marks
 it or returns it for a redo. Students also see their own periods for the day and week, and their attendance.
@@ -8,6 +8,11 @@ it or returns it for a redo. Students also see their own periods for the day and
 - **Student → Homework** (`/student/homework`, `student.homework`): tabs To do / Submitted / Marked. Submit = text answer + up to 5 files (jpg/png/webp/heic/pdf/doc, ≤ 10 MB each). Resubmit allowed until marked; a returned item goes back to To do with the teacher's note. Late = submitted after `due_at` (flagged, still accepted).
 - **Student → Timetable & Attendance** (`/student/timetable`, `student.timetable`): Today with **Now** / **Next**, the week grid, and attendance: this month %, present/late/absent/excused, warning below 75%, last 30 days, last-90-days line.
 - **Student dashboard → Due today & next 7 days**: homework not yet submitted (or returned) appears as kind "Homework" (Start → `/student/homework`).
+
+## Teacher timetable validation (2026-11-18)
+- `/teacher/ops#timetable` keeps each period's mapped subject teacher rather than stamping the saving teacher on every period.
+- UI and `teacher_replace_timetable_slots(uuid,jsonb)` reject assigning the same teacher to another class at the same day/period in that school. Duplicate day/period slots and invalid periods are rejected; selected teachers must belong to the school.
+- Migration `20261205010000_timetable_subject_teachers.sql` is applied on UAT. The `51c60207` frontend was deployed after verifying the database function already matched. See [release and validation results](pilvidya-reports-downloads-and-dropdowns.md).
 
 ## Data (migration `20261118200000_homework_and_student_timetable.sql`)
 | Object | What | Access |
@@ -25,7 +30,7 @@ Attendance on the student page reads the student's own `attendance_records` (las
 attended; excused is left out of the percentage.
 
 ## Gotchas
-- UAT has no real `timetable_slots`: students see "Your school has not published a timetable" until staff add periods (School Admin → timetable).
+- Students see "Your school has not published a timetable" when staff have not added periods for their class (School Operations → timetable).
 - Students without a `class_id` see every section's periods of their grade.
 - Checks: `~/pilvidya-checks/homework/` (`homework-test.sql` 23 DB checks rolled back; `ui-check.cjs` stubbed; `live-check.cjs` + `seed-live.sql` + `cleanup-live.sh` for a live UAT run).
 - PROD: none (no aividya PROD).

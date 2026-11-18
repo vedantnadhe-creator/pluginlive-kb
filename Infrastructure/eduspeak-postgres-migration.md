@@ -1,6 +1,9 @@
 # EduSpeak: hosted Supabase → PluginLive PostgreSQL (UAT)
 
-**Status:** UAT live on PluginLive PostgreSQL since 2026-08-05; current release `2c50808e` (2026-11-16).
+**Status:** UAT live on PluginLive PostgreSQL since 2026-08-05; current release `51c60207` (2026-11-18).
+
+Latest release: [reports, downloads, dropdowns and timetable validation](pilvidya-reports-downloads-and-dropdowns.md).
+The frontend and three reporting functions are deployed; the timetable RPC was already applied. The deployment helper's held-function exclusion was restored and all 55 held endpoints were verified as 404. Full QA remains unfinished; see the release's verification limits.
 DEV still uses hosted Supabase. PROD does not exist yet. Historical release details follow below.
 
 **UAT hostname is `pilvidya.uat.pluginlive.com` since 2026-08-06** — see
