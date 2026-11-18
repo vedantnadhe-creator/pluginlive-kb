@@ -122,3 +122,25 @@ Robo Teacher and Robo Classes are Enterprise; see `Infrastructure/pilvidya-schoo
 
 
 **2026-11-15 (d28ddf6e):** subject list now includes the school's state language (e.g. Tamil for a Tamil Nadu school) with "Teach me in" defaulting to it; topic dropdown dedupes sub-lesson rows. See `pilvidya-state-language-and-journey-fixes.md`.
+
+## Robo Faculty visuals (2026-11-18, live on UAT `fa8238d3`)
+
+- **A. Diagrams.**
+  - The tutor's reply schema (`roboTurnSchema`) has a `diagram` field: `kind` none|flow|cycle|parts, a `title`, and 2-7 `items`. The tutor fills it only in the Teach, Example and Case study stages.
+  - `cleanDiagram` stores it in `robo_events.visual`.
+  - The page draws it with `components/robo/RoboDiagram.tsx` (HTML for flow and parts, a small SVG for cycles; no new dependency), so labels are exactly the tutor's words.
+- **B. Topic image.**
+  - The page calls robo-teacher action `visual` after a class starts, so starting never waits for an image. `_shared/robo/visuals.ts` holds the logic.
+  - Images are pooled in `ai_content_pool` (feature `robo-topic-image`, key = `curriculum_topic_id`) and stored at `pilvidya/robo-images/<topic>/<sha256>.png`.
+  - A student gets an image they have not seen (`ai_pool_take`, least-served first). When they have seen every pooled image, a new one is generated and added to the pool for others.
+  - The image is saved on `robo_sessions.topic_image` and shown with a 6-hour signed link.
+  - Signed links are rewritten from the internal `SUPABASE_URL` (`http://gateway:80`) to `SUPABASE_PUBLIC_URL` (UAT: `https://pilvidya.uat.pluginlive.com/sb`). Other features that sign storage links (for example `topic-media-catalogue`) likely need the same fix.
+  - The prompt asks for the real concept with no text (titles taken literally gave a brick wall for "Cell: The Building Block of Life").
+- **Provider order** comes from the Admin LLM config row `robo-faculty-images`: Higgsfield `higgsfield-ai/soul/v2/standard` (direct API, submit then poll `status_url`; key ID and secret in `app_secrets` as `HIGGSFIELD_API_KEY_ID` / `HIGGSFIELD_API_KEY_SECRET`, entered under Admin → Provider API keys), then Gemini through the LiteLLM task `pl/robo-topic-image` (`gemini-2.5-flash-image`, 90 s).
+  - The direct Higgsfield call is the one exception to gateway-only routing, because LiteLLM has no Higgsfield provider. It is marked `ponytail` in the code.
+  - **No Higgsfield key is configured yet**, so every image currently comes from the Gemini fallback.
+- **Budget**: the gateway key `aividya-robo-images` (UAT `~/litellm/aividya_robo_images_vkey.txt`, functions env `ROBO_IMAGE_GATEWAY_KEY`) is limited to `pl/robo-topic-image`, $11.90 every 30 days. In the app, `ROBO_IMAGE_MONTHLY_BUDGET_INR` (default 1000) caps new images by the summed `cost_usd` of this month's pooled images (Higgsfield estimate endpoint, else $0.039 for Gemini).
+- **Schema**: `robo_sessions.topic_image jsonb` and `robo_events.visual jsonb`, plus the llm_config seed row. Migration `20261204010000_robo_faculty_visuals.sql`; DB-Scripts `33d6044`.
+- **UAT checks**:
+  - `~/pilvidya-checks/robo-visuals/e2e.cjs`, two Class 9 students in School A on "Cell: The Building Block of Life": image shown; reuse without generating (pool unchanged); the same student never repeats (pool +1); a diagram was drawn in 3 of 4 runs.
+  - `admin-config.cjs` for the Admin LLM config row and key fields; `cleanup.cjs <topic>` removes a topic's test images.
