@@ -7,8 +7,8 @@ DNS or TLS of its own.
 
 | Env | URL | Branch (repo `PluginLive-Technologies/lmsv2`) | Box |
 |---|---|---|---|
-| DEV | https://banking.dev.pluginlive.com/v2/ | `Development` | DEV box |
-| UAT | https://banking.uat.pluginlive.com/v2/ | `UAT` | UAT box |
+| DEV | admins https://admin.dev.pluginlive.com/lms/, candidates https://student.dev.pluginlive.com/lms/candidate/ | `Development` | DEV box |
+| UAT | admins https://admin.uat.pluginlive.com/lms/, candidates https://student.uat.pluginlive.com/lms/candidate/ (since 2026-11-18; `banking.uat/v2/*` redirects) | `UAT` | UAT box |
 | PROD | https://lms.pluginlive.com/v2/ | `release/prod-v1.1` (tag/cherry-pick model, same as banking) | `Pl-Prod-Banking` VM |
 
 The PROD branch is the banking PROD release (v1.1.14) plus the `/v2` base-path commit. The banking holds apply
@@ -52,8 +52,8 @@ objects are never auto-deleted (checked 2026-11-16 on `pl_dev_poc`, `pl-uat-asse
 
 | Env | Command | Notes |
 |---|---|---|
-| DEV | `bash ~/lmsv2-sb/deploy.sh` (on DEV) | Fetches `github/Development` into `~/lmsv2-dev-app` (→ `/data/lmsv2/dev-app`), snapshot to `/data/lmsv2/snapshots/`, migrations (fixup-aware), grants, functions, build `/v2/`, publish to `/var/www/lmsv2-dev/v2/`. |
-| UAT | `bash ~/lmsv2-sb/deploy.sh` (on UAT) | Fetches `origin/UAT` into `~/lmsv2`, publishes to `~/lmsv2-www/v2/`. |
+| DEV | `bash ~/lmsv2-sb/deploy.sh` (on DEV) | Fetches `github/Development` into `~/lmsv2-dev-app` (→ `/data/lmsv2/dev-app`), snapshot to `/data/lmsv2/snapshots/`, migrations (fixup-aware), grants, functions, two builds (`/lms/` admins, `/lms/candidate/` candidates), publish to `/var/www/lmsv2-dev/{admin,candidate}/` (see "Hosts, deploy and gotchas" below). |
+| UAT | `bash ~/lmsv2-sb/deploy.sh` (on UAT) | Fetches `origin/UAT` into `~/lmsv2`, same two builds, publishes to `/var/www/lmsv2-uat/{admin,candidate}/` (since 2026-11-18; was `~/lmsv2-www/v2/`). |
 | PROD | `bash ~/lmsv2-setup/prod-deploy.sh [ref]` (on DEV) | Archives `github/release/prod-v1.1`, snapshot to `/data/backups/lmsv2/`, builds on the VM into `/opt/lmsv2/app-<sha>` (symlink `/opt/lmsv2/app`, last 3 kept), publishes `/opt/lmsv2/www/v2/`, writes `/opt/lmsv2/DEPLOYED`. **Stops if the release adds migrations** — apply them first with the banking PROD procedure. PROD only on an explicit go. |
 
 The app env is the deploy's local `.env` (DEV `~/lmsv2-dev-app/.env`, UAT `~/lmsv2/.env`, PROD
@@ -87,8 +87,8 @@ LMS people sign in on the PluginLive sign-in page, with a password or a one-time
 
 | Env | LMS address | Callback |
 |---|---|---|
-| DEV | admins https://admin.dev.pluginlive.com/lms, candidates https://corporate.dev.pluginlive.com/lms/candidate (moved off `/v2` on 2026-11-17) | `<address>/oauth/callback#code=…` |
-| UAT | https://banking.uat.pluginlive.com/v2 (one address for admins and candidates) | `https://banking.uat.pluginlive.com/v2/oauth/callback#code=…` |
+| DEV | admins https://admin.dev.pluginlive.com/lms, candidates https://student.dev.pluginlive.com/lms/candidate (off `/v2` 2026-11-17; candidates moved from corporate.dev 2026-11-18, old links redirect) | `<address>/oauth/callback#code=…` |
+| UAT | admins https://admin.uat.pluginlive.com/lms, candidates https://student.uat.pluginlive.com/lms/candidate (2026-11-18; `banking.uat/v2/admin*` → admin host, other `/v2/*` → candidate host) | `<address>/oauth/callback#code=…` |
 
 How it fits together:
 - user-management-node `app/services/lmsProvider.js` calls the LMS edge function **`pluginlive-oauth`**
@@ -108,7 +108,7 @@ Configuration (box-local, not in git):
 
 | Where | DEV | UAT |
 |---|---|---|
-| user-management-node `.env.<env>` | `LMS_PROVIDER_URL=http://172.17.0.1:8240/functions/v1/pluginlive-oauth`, `LMS_PROVIDER_CLIENT_SECRET`, `LMS_PROVIDER_ANON_KEY`, `LMS_ADMIN_FE_URL`, `LMS_CANDIDATE_FE_URL` | same keys; both FE URLs = `https://banking.uat.pluginlive.com/v2` |
+| user-management-node `.env.<env>` | `LMS_PROVIDER_URL=http://172.17.0.1:8240/functions/v1/pluginlive-oauth`, `LMS_PROVIDER_CLIENT_SECRET`, `LMS_PROVIDER_ANON_KEY`, `LMS_ADMIN_FE_URL`, `LMS_CANDIDATE_FE_URL` | same keys; `LMS_ADMIN_FE_URL=https://admin.uat.pluginlive.com/lms`, `LMS_CANDIDATE_FE_URL=https://student.uat.pluginlive.com/lms/candidate` |
 | `~/lmsv2-sb/docker-compose.yml` gateway | extra port `172.17.0.1:8240:80` so the `auth` container reaches the LMS | same (added 2026-11-17) |
 | `~/lmsv2-sb/functions-secrets.env` | `PLUGINLIVE_OAUTH_CLIENT_SECRET`, `PLUGINLIVE_AUTH_URL=https://auth.dev.pluginlive.com` | same, `https://auth.uat.pluginlive.com` |
 | LMS app `.env` | `VITE_PLUGINLIVE_AUTH_URL=https://auth.dev.pluginlive.com` | `https://auth.uat.pluginlive.com` |
@@ -125,3 +125,40 @@ removing it is open. Migration `20261117090000_pluginlive_oauth_codes` (DB-Scrip
 ## ATS training assignment (`ats-training`, DEV + UAT 2026-11-17, PROD pending)
 
 Edge function used by corporate-node to list trainings and enrol hires; see `ATS/Corporate/roles-v2.md` "Assign Training". Secret `ATS_SHARED_KEY` in `~/lmsv2-sb/functions-secrets.env` (DEV also `CANDIDATE_SITE_URL` for the welcome-email link; UAT falls back to `SITE_URL`). Reached by corporate-node on `172.17.0.1:8240`. Learners it creates carry `students.metadata.source = 'ats'`; corporates it creates have `notes` "Created from the PluginLive ATS".
+
+## Hosts, deploy and gotchas after the 2026-11-18 move (DEV + UAT)
+
+- **Two builds per deploy** (`~/lmsv2-sb/deploy.sh` on each box): `/lms/` for admins against `https://admin.<env>.pluginlive.com/lms/sb`
+  (with `VITE_PLUGINLIVE_HANDOFF=true`) and `/lms/candidate/` against `https://student.<env>.pluginlive.com/lms/sb`. Static copies:
+  DEV `/var/www/lmsv2-dev/{admin,candidate}`, UAT `/var/www/lmsv2-uat/{admin,candidate}`. The UAT script refuses a bundle with a
+  DEV or localhost URL.
+- **nginx**: `snippets/lmsv2-lms-admin.conf` is included in the admin host server block, `snippets/lmsv2-lms-candidate.conf` in the
+  student host block (`stud-react.conf`). Each proxies `/lms/sb` to the gateway (127.0.0.1:8220) and `/lms/metabase` to Metabase
+  (8230). DEV `corporate.dev/lms/*` and UAT `banking.uat/v2/*` are 301 redirects only.
+- **Stack settings**: `SITE_URL` = admin address, `CANDIDATE_SITE_URL` = candidate address (both in `.env` and
+  `functions-secrets.env`); GoTrue allow-list covers both; `API_EXTERNAL_URL`, `SUPABASE_PUBLIC_URL`, `METABASE_URL`,
+  `PUBLIC_BASE_URL` and Metabase `MB_SITE_URL` use the admin host.
+- **Gotcha (UAT):** after `docker compose up -d` recreates `auth`, `functions` or `metabase`, **restart `lmsv2-sb-gateway`** — its
+  nginx keeps the old container addresses and answers 502 (LMS sign-in and functions down) until restarted.
+- **Gotcha:** `docker restart lmsv2-sb-functions` does not reload `functions-secrets.env`; recreate with `docker compose up -d --no-deps functions`.
+
+## LMS access per corporate / institute (Feature Access, DEV + UAT 2026-11-18, PROD pending)
+
+Admin portal → Assign Subscription (Feature Access) has an **"LMS access"** switch for corporates and institutes, off by default.
+It is the opt-in feature `LMS_ACCESS` in `admin.feature_config` (one row per journey, `journey_ids` = entities with access).
+
+| Repo | What it does | DEV / UAT |
+|---|---|---|
+| admin-node | `FeatureAccessService.hasLmsAccess` / `setLmsAccess`; `GET /assessment/featureAccess` returns `LMS_ACCESS`; `POST /assessment/assignSubscription { lmsAccessEnabled }` saves it (omit = keep). Reader fails closed and propagates DB errors. | `53aac00` / `d0cb6a1` |
+| admin-react | The switch, loaded from `LMS_ACCESS`, saved as `lmsAccessEnabled`. | `f4ba4df5` / `5caad8f1` |
+| corporate-node | Trainings catalogue, assign and retry answer **403 "LMS access is not enabled for your company"** without it (read-only service, 60 s cache). | `8b0521f2` / `ce05fb13` |
+| corporate-react-v2 | `/api/me/feature-access` returns `canUseLms`; Assign Training and Retry show only when it is true — also for PluginLive staff, because corporate-node enforces the corporate's own setting. | `a28ba8f` / `788a787` |
+
+Initial data: CORPORATE row lists the corporates that had already used Assign Training (DEV: Prabha corporate Crew chennai;
+UAT: the two corporates in `corporate.training_assignments`); INSTITUTE row empty. Institutes: the switch is stored but nothing
+consumes it yet (no institute LMS flow).
+
+Assign Training also needs corporate-node `LMS_ATS_URL`, `LMS_ATS_ANON_KEY`, `LMS_ATS_KEY` in `.env.<env>`. On 2026-11-18 these
+lines were found **missing on both DEV and UAT** (Assign Training broken) and re-added — check `grep -c ^LMS_ATS .env.<env>` = 3
+before a corporate-node deploy.
+
