@@ -1,7 +1,7 @@
 # PilVidya (aividya) — Robo Teacher
 
 A spoken, one-to-one class with "Robo Vidya" on a curriculum topic (Board → Class → Subject → Topic) or a
-foreign-language theme. Live on UAT from 2026-11-12 (`feat/chat-simulations` `cfd12102`); no PROD yet.
+foreign-language theme. Current voice release on UAT: `feat/chat-simulations` `ce17e640` (2026-11-18); no PROD yet.
 
 ## Student flow (`/student/robo-teacher`, menu Learn → Robo Teacher)
 1. **Setup:** the student picks a subject and a topic from their own curriculum (`curriculum_topics`: global plus their school's), or a foreign language, a CEFR level (A1/A2/B1) and a theme. They pick the teaching language (14 Indian languages) and can set their subject target (`goal_target`). Global CBSE 3-10 topics follow the official 2026-27 books, and languages are grouped apart in the picker: see [pilvidya-board-curriculum-sources.md](pilvidya-board-curriculum-sources.md).
@@ -9,10 +9,10 @@ foreign-language theme. Live on UAT from 2026-11-12 (`feat/chat-simulations` `cf
    - The video is the topic's approved curriculum video (`curriculum-videos`, cached; loaded in the background, and the stage is skipped if there is none).
    - Teaching is grounded in curriculum material (`loadCurriculumMaterial`), uses Indian everyday contexts, asks one question per turn, and steers off-topic requests back to the lesson.
 3. **Voice:**
-   - The teacher speaks through `ai-coach-tts` (ElevenLabs/Gemini, Indian voices).
-   - In foreign-language classes, phrases inside «» are spoken with the browser's voice for that language.
-   - The student speaks through the browser recogniser (Chrome/Edge, with locale per language) or types.
-   - There is no server speech-to-text yet: aividya has no Deepgram key (Banking's `stt-stream` relay is the upgrade path).
+   - The teacher speaks through `ai-coach-tts`, using a female Indian teacher voice: Sarvam Priya first for supported Indian languages, then ElevenLabs Kavya and Gemini Kore.
+   - In foreign-language classes, phrases inside «» use the server's native-language voice plan. The device voice is a fallback when server speech fails.
+   - The student records an answer for `robo-speech` or types; the browser recogniser is used where recording is unsupported. See the current speech-to-text routing below.
+   - **Preparing voice…** means synthesis is pending; **Speaking…** appears only when playback starts. **Replay voice** repeats the last teacher reply without sending a teaching turn or advancing the class. Voice off cancels pending audio as well as playback; playback failures show a retry message.
 4. **Assessment:** 5 multiple-choice questions written by `pl/robo-quiz` from what was taught (`prepare_quiz`, about 20 s, in its own call). Answers stay on the server until submission.
 5. **Debrief:**
    - Mastery = 70% assessment + 30% in-class answers.
@@ -104,21 +104,32 @@ Robo Teacher and Robo Classes are Enterprise; see `Infrastructure/pilvidya-schoo
 - The Foreign Languages module page uses its own DB catalogue (`foreign_language_catalog`); Korean/Indonesian were not added there.
 
 ## Voice and speech-to-text (UAT `baf76f5d` + `330dc346`, 2026-11-13) — native Indian teacher voice
-- **One teacher voice** for Robo Teacher (`voiceProfile: "robo"`), AI Coach, Virtual Tutor and lesson read-aloud (`voiceProfile: "coach"`, same plan). Plan: `supabase/functions/_shared/teacher-voice.ts` (`teacherVoicePlan`):
-  - en (Indian English), hi, bn, gu, kn, ml, mr, or (`od-IN`), pa, ta, te → **Sarvam `bulbul:v3` priya** (male rahul) → ElevenLabs Kavya (`eleven_flash_v2_5` for en/hi/ta/mr, `eleven_v3` otherwise) → Gemini Kore (male Algenib).
+- **One female teacher voice by default** for Robo Teacher (`voiceProfile: "robo"`), AI Coach, Virtual Tutor and lesson read-aloud (`voiceProfile: "coach"`, same plan). Explicit Gemini/OpenAI choices in voice settings are honoured by the coach, tutor and admin preview. Plan: `supabase/functions/_shared/teacher-voice.ts` (`teacherVoicePlan`):
+  - en (Indian English), hi, bn, gu, kn, ml, mr, or (`od-IN`), pa, ta, te → **Sarvam `bulbul:v3` priya** → ElevenLabs Kavya (`eleven_flash_v2_5` for en/hi/ta/mr, `eleven_v3` otherwise) → Gemini Kore. The shared frontend request helper always requests female speech.
   - ur, ne, sa → ElevenLabs Kavya flash; as → ElevenLabs `eleven_v3`; then Gemini.
   - Foreign-language phrases (fr, de, es, ja, zh, ru, pt, ar, ko, id) → **Gemini** first with a native-pronunciation prompt, ElevenLabs `eleven_multilingual_v2` backup.
   - Normal pace (speed 1.0); no slow cue. ElevenLabs gets `previous_text`/`next_text` (not on eleven_v3).
   - Long text (AI Coach lessons): split into ≤1500-char sentence-aligned pieces, Sarvam in parallel, MP3 joined (≈5 min of audio in ~6 s).
-- **Client (`frontend/src/lib/roboTeacher.ts`):** `speechParts()` — language classes voice the teaching-language text on the server and «phrases» in the target language (before 2026-11-13 the whole reply went to the browser's speechSynthesis — robotic). Pronunciation guides in `[ ]`, or `( )` right after a «phrase», are shown but never spoken. `speechChunks()`: first sentence alone (joined with the next if <25 chars), then the rest in one take. Browser voice only if every server voice fails.
+- **Client (`frontend/src/lib/roboTeacher.ts`):** `speechParts()` — language classes voice the teaching-language text on the server and «phrases» in the target language. Pronunciation guides in `[ ]`, or `( )` right after a «phrase», are shown but never spoken. `speechChunks()` keeps the first sentence short (joins the next if <25 chars), then groups remaining sentences up to 600 characters; a single longer sentence remains intact and is split by the provider helper. Browser voice is used when server synthesis or decoding fails; blocked autoplay produces a Replay message.
 - **Keys:** `SARVAM_API_KEY` global row in `app_secrets` (Admin → Provider API Keys); ElevenLabs/Gemini keys as before.
 - **Gateway output:** `gemini-2.5-flash` (pl/robo-teacher) returns ~6–8% non-JSON/non-object answers; `_shared/sim/gateway.ts` `parseModelJson` unwraps fences / JSON-in-a-string / one-item arrays and `callSimTask` retries a schema-invalid answer once (logged `"retry":1`). Applies to every sim task.
 - **Tests:** `~/pilvidya-checks/chatsim-e2e/voice-ui-teacher.cjs` (browser: en/hi/ta classes, Korean-in-Tamil, AI Coach — every clip from the server voice, no browser voice, no spoken pronunciation guide), `voice-e2e.mjs` (21/21, voiceProfile path, first audio ~0.4 s), `turnprobe.mjs` (empty-reply repro). Listening page: `pl-uat-public-docs/aividya-voice-staging-610c3c73/index.html`.
 - History: 11-12 `8b4e91ed` Gemini slow voice → `615ede84` Banking voices (Kavya/Rachel) → 11-13 native Sarvam voice.
-- **Playback:** `speechChunks()` splits a reply into a short first sentence + groups ≤160 chars; all are synthesised in parallel and played in order (first audio ~3 s after the reply text arrives). Browser fallback voice rate 0.85.
+- **Playback:** chunks are synthesised in parallel and played in order. Default playback pace is 1.0; the caller can request a slower practice rate. Device fallback prefers a female voice matching the requested locale, including Indian English, but the installed device voices determine availability.
 - **Speech-to-text:** `robo-speech` → gateway task `pl/robo-stt` (gemini-2.5-flash, thinking off → gemini-3.8-flash low, 20 s, modality audio; input_audio wav/webm/ogg/mp4), Scribe as fallback; responses include `engine`. Pronunciation transcribes verbatim and is not told the target phrase.
 - **Teacher wording:** ≤4 sentences under 15 words, plain Indian English, everyday spoken Indian languages in their own script (never romanised), units spoken out.
 - **Timing (UAT):** after the student stops speaking ≈ STT 3 s + reply 2 s + first voiced sentence 3 s. Tests: `~/pilvidya-checks/chatsim-e2e/voice-e2e.mjs` (20/21 after 615ede84 — reply length), live voice routing `~/pilvidya-checks/chatsim-e2e/voicelive.mjs` (8/8).
+
+## Audible voice and recovery (UAT `ce17e640`, 2026-11-18)
+
+- **Root causes:** `ai-coach-tts` validated the ElevenLabs account before trying primary Sarvam. That account request could hang until the edge worker's 300-second limit. The browser also attached media to a newly created, suspended AudioContext, which could mute otherwise valid audio while the UI claimed to be speaking.
+- **Server fix:** ElevenLabs account validation runs only when that provider is needed and has a 2-second deadline. Provider fetches, including response-body reads, have a 10-second deadline within a 22-second request budget. Database/cache/secret requests are bounded to 2 seconds, and secret lookups run concurrently. Sarvam uses `language_code` and the requested `pace`; long sentences are split without losing text.
+- **Client fix:** `invokeTutorSpeech` is shared by all frontend TTS callers, requests female speech, and applies 26-second speech / 5-second probe timeouts. Robo unlocks its AudioContext on Start/Send/Replay; the animation analyser attaches only to a running context. Playback errors are visible, and cancellation prevents late audio after muting or leaving. Lesson Listen, speaking practice and foreign-language samples also use the shared speech engine.
+- **Natural delivery and language:** normal conversational pace, brief pauses, no repeated greetings or promised perfect scores. Language names and locales such as `Tamil` and `hi-IN` resolve to their actual voice. Admin preview uses a native-language sample. MP3/WAV headers are detected, corrupt cached clips are discarded, and blocked browser caching does not prevent playback.
+- **Pre-deployment checks:** 53 focused tests, 9 browser checks, and real English/Hindi/Tamil Sarvam clips passed. Changed frontend files passed scoped TypeScript and lint checks. Whole-repository lint/typecheck still have pre-existing failures in untouched files; this is not a complete application regression sign-off.
+- **UAT verification:** frontend manifest and running image `eduspeakreact:ce17e640`; all four changed server files match the checkout. Nine browser checks passed on the deployed frontend. The first Robo speech request reached the real UAT endpoint: HTTP 200, Sarvam, 56,842 bytes in 1.038 seconds; MP3 decoding succeeded (mean -16.1 dB, peak -0.6 dB). Browser media time advanced unmuted with a running AudioContext. Replay recovered after a simulated autoplay block without a teaching turn; mute prevented late playback. Tutor/admin preview and forced failure checks reused recorded clips; teaching turns were fixtures, so this verification did not create or complete a class.
+- **Evidence:** `~/pilvidya-checks/voice-20261118/uat/{browser-results.json,live-speech.json,teacher-en.mp3,robo-playing.png,robo-blocked.png}`. Re-run with `BASE=https://pilvidya.uat.pluginlive.com LIVE_UAT=1 node ~/pilvidya-checks/voice-20261118/browser.cjs` (one short real speech request; other audio checks use fixtures).
+- **Deployment:** pushed to GitHub and deployed through `~/auto_deploy.sh pilvidya feat/chat-simulations`, with the frontend rebuilt on UAT. No schema change. All 55 held functions remain excluded. Previous image `eduspeakreact:51c60207`; server backup `~/eduspeak-sb/functions.bak-20261118T161657Z`.
 
 
 **2026-11-15 (d28ddf6e):** subject list now includes the school's state language (e.g. Tamil for a Tamil Nadu school) with "Teach me in" defaulting to it; topic dropdown dedupes sub-lesson rows. See `pilvidya-state-language-and-journey-fixes.md`.
