@@ -5338,3 +5338,14 @@ The final UAT deployment (snapshot `20261118T080829Z`, bundle `index-Zv7I5GMY.js
 - Leaderboard export uses the filtered result set (including search) for every worksheet, and always emits the Overall Ranking headers when there are no matching rows.
 
 The long browser sweep was stopped by the test host before all roles finished. Completed-role reports and downloads were retained, and the unfinished roles are rerun with per-screen checkpoints, plus focused verification of the above fixes on the final build. Repeated shared search widgets are tested once per mounted DOM element rather than redundantly on every tab. No PROD deployment is included.
+
+
+### Final verification build — UAT `b36a887ea`
+
+Snapshot `20261118T083547Z`, bundle `index-Cl2W2v9V.js`; GitHub `UAT` and `main` point to `b36a887ea`. No further schema migration.
+- Today’s Mission now shares the parent home page’s assigned modules, completion records and assessment count. It supports trainer-created module topics and no longer recommends the global legacy catalogue. My Progress likewise lists assigned modules from both catalogues; a recorded zero remains in its score average, while missing grades are excluded.
+- Institute Analytics reads valid profile/cohort fields, paged institute learner/progress/score records, and actual trainer ownership; it no longer requests the nonexistent `profiles.progress_percent`/`avg_score` columns. Unattempted learners are not counted as zero-scoring attempts, and unrelated same-name people are never joined by name.
+- The shared Select control disambiguates equal labels with the shortest distinguishing record reference (minimum 8 characters), preserving every value and selection handler. The native taxonomy selects use the same rule. Existing distinct labels are unchanged.
+- Mapping/RBAC review tables add account references so same-name records can be reviewed independently. Taxonomy cards already show their distinct slugs alongside repeated headings; legacy content/identity records are retained rather than merged on name alone.
+
+77 focused regression tests passed. Full-project type diagnostics are compared to the unchanged baseline, which already has 19 distinct diagnostics. Live focused checks and the QA cleanup are recorded in the release QA report after verification; earlier generic crawl warnings include historic error-log text, same-name taxonomy headings with distinct slugs, and buttons that open previews/import dialogs rather than downloads.
