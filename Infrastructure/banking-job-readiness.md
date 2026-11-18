@@ -5294,3 +5294,36 @@ email/mobile — the registered-email guard refuses a second row with his email)
   Note: throwaway learners are in the QA institute — `check_section_student` refuses enrolment until students/profiles institute_id
   is SRM.
 - 2026-11-17 18:25Z: **Monthly illustration budget ₹1,000** (UAT 52dd8a25e, PROD v1.1.26 b57fddadd, backup prod-20261117T182141Z): metadata.monthly_budget_inr on image_generation rows + cost_per_image_inr (higgsfield 0.6, litellm 3.3); topic-visual skips a provider whose next image would cross the month's spend (illustrations created this UTC month × cost); admin card shows/saves it (manage-llm-providers image-budget / save-image-budget). Check ~/banking-checks/robo-visuals/budget.cjs 8/8 on UAT. PROD this month: 1 illustration ≈ ₹3.3.
+
+
+## 2026-11-18 — Journey QA corrections released to UAT (PROD unchanged)
+
+GitHub `UAT` and `main` are at `627126932` (QA commits `d8aa7b28d`, `51b05dd06`, `5de970b47`, followed by the budget-response fix).
+UAT was deployed through `~/auto_deploy.sh banking UAT`; snapshot `20261118T074405Z`, bundle `index-CId6Isie.js`, 129 functions and 3 self-hosted fixups.
+The frontend was built on UAT, and the deployed bundle audit found no DEV/local Supabase/hosted Supabase addresses. The site returns HTTP 200.
+PROD remains `v1.1.27`; these corrections have not been deployed to PROD.
+
+**Current behaviour:**
+- Plan Menu Access falls back to the menu key when a row has no label; searching no longer crashes.
+- RBAC permission-simulator menu values include the audience; user/access-audit choices include an email/mobile to distinguish repeated names.
+- Candidate module lists include completed content recorded in the learning-evidence log and older progress tables.
+- Institute dashboards, analytics and candidate lists resolve progress through institute students, rather than filtering a nonexistent `student_module_progress.institute_id` column; rows keyed by student ID and auth ID are joined and deduplicated for the candidate list. Pending counts use `approval_status`.
+- Candidate Progress drops blank institute options and shows an email/mobile alongside repeated names.
+- AI path regeneration is explicitly manual; the old schedule form wrote nonexistent columns. Run now uses the signed-in admin session. It requires confirmation because it makes a call for every candidate; the QA crawl does not run this bulk action.
+- Report CSV cells escape embedded quotes, leave missing values empty, neutralise spreadsheet formulas, and include a UTF-8 BOM for Excel. Import templates are unchanged.
+- XLSX report sheets receive readable column widths. Leaderboard and student-analytics sheet names are sanitised, truncated and made unique to avoid export exceptions.
+- Practice analytics exports retain full module titles; their PDF uses a wrapping table. Assessment PDF histogram bars are drawn as shapes rather than unsupported block glyphs.
+- New RBAC audit entries are stamped with the authenticated actor by a database trigger; clients cannot spoof the actor. Historical blank-actor rows remain intact.
+- The provider list and curriculum-video provider checks do not call `Deno.env.get` with an empty name for LiteLLM/Higgsfield/Sarvam.
+- Profile and reminder fields have associated labels. The duplicated AI Diagnostic Scan heading is removed.
+- The Admin image-budget panel validates its response and shows a retryable error instead of crashing the settings page. Failed saves do not show success; clearing the budget input does not remove the cap (an explicit zero is required).
+
+**Database:** `20261118130000_rbac_audit_actor.sql`, also tracked in DB-Scripts as
+`Banking Supabase to Postgres/20261118T073654Z__rbac_audit_stamp_actor.sql` (DEV/UAT applied; PROD pending).
+The UAT migration was rehearsed inside BEGIN/ROLLBACK before deployment. The release preserves the existing function ACLs around the self-hosted grants scripts.
+
+**Verification and limits:** live retest evidence is being collected in
+`/home/ubuntu/banking-checks/journeys/release-20261118/` on DEV. The college transaction test uses an isolated QA programme/section/offering and two QA learner rows;
+QA principal/HOD/faculty permissions temporarily cover SRM Easwari for the role crawl. No real course's results are reset.
+The old duplicate audit collapsed NULL institute/topic IDs into a single group; the corrected audit keeps the data values in each grouping key. Same-name records alone are not proof of duplicate content.
+Full-project TypeScript/lint diagnostics already exist on the unchanged UAT baseline; release checks compare diagnostics against that baseline rather than reporting the project as type-clean.
