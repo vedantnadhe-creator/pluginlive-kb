@@ -9,7 +9,7 @@ DNS or TLS of its own.
 |---|---|---|---|
 | DEV | admins https://admin.dev.pluginlive.com/lms/, candidates https://student.dev.pluginlive.com/lms/candidate/ | `Development` | DEV box |
 | UAT | admins https://admin.uat.pluginlive.com/lms/, candidates https://student.uat.pluginlive.com/lms/candidate/ (since 2026-11-18; `banking.uat/v2/*` redirects) | `UAT` | UAT box |
-| PROD | https://lms.pluginlive.com/v2/ | `release/prod-v1.1` (tag/cherry-pick model, same as banking) | `Pl-Prod-Banking` VM |
+| PROD | admins https://admin.pluginlive.com/lms/, candidates https://student.pluginlive.com/lms/candidate/ (since 2026-11-18, release-v1.43; the old `lms.pluginlive.com/v2` build is stale, not served by design) | `release/prod-v1.1` (tag/cherry-pick model; v1.1.15 = `a650680df`) | `Pl-Prod-Banking` VM |
 
 The PROD branch is the banking PROD release (v1.1.14) plus the `/v2` base-path commit. The banking holds apply
 to lmsv2 too: the LMS v2 student UI and designer work, and the lesson-video watch gate / AI video checker, are
@@ -54,7 +54,7 @@ objects are never auto-deleted (checked 2026-11-16 on `pl_dev_poc`, `pl-uat-asse
 |---|---|---|
 | DEV | `bash ~/lmsv2-sb/deploy.sh` (on DEV) | Fetches `github/Development` into `~/lmsv2-dev-app` (→ `/data/lmsv2/dev-app`), snapshot to `/data/lmsv2/snapshots/`, migrations (fixup-aware), grants, functions, two builds (`/lms/` admins, `/lms/candidate/` candidates), publish to `/var/www/lmsv2-dev/{admin,candidate}/` (see "Hosts, deploy and gotchas" below). |
 | UAT | `bash ~/lmsv2-sb/deploy.sh` (on UAT) | Fetches `origin/UAT` into `~/lmsv2`, same two builds, publishes to `/var/www/lmsv2-uat/{admin,candidate}/` (since 2026-11-18; was `~/lmsv2-www/v2/`). |
-| PROD | `bash ~/lmsv2-setup/prod-deploy.sh [ref]` (on DEV) | Archives `github/release/prod-v1.1`, snapshot to `/data/backups/lmsv2/`, builds on the VM into `/opt/lmsv2/app-<sha>` (symlink `/opt/lmsv2/app`, last 3 kept), publishes `/opt/lmsv2/www/v2/`, writes `/opt/lmsv2/DEPLOYED`. **Stops if the release adds migrations** — apply them first with the banking PROD procedure. PROD only on an explicit go. |
+| PROD | `APPLIED_MIGS="<already-applied migration files>" bash ~/lmsv2-setup/prod-deploy-lms.sh [ref]` (on DEV; since 2026-11-18). The old `prod-deploy.sh` (single `/v2/` build) is superseded | Archives `github/release/prod-v1.1`, snapshot to `/data/backups/lmsv2/`, builds on the VM into `/opt/lmsv2/app-<sha>` (symlink `/opt/lmsv2/app`, last 3 kept), publishes `/opt/lmsv2/www/v2/`, writes `/opt/lmsv2/DEPLOYED`. **Stops if the release adds migrations** — apply them first with the banking PROD procedure. PROD only on an explicit go. |
 
 The app env is the deploy's local `.env` (DEV `~/lmsv2-dev-app/.env`, UAT `~/lmsv2/.env`, PROD
 `/opt/lmsv2/app.env`). `VITE_STUDENT_LMS_V2_ENABLED` mirrors banking today: DEV `true`, UAT `false`, PROD unset.
@@ -162,3 +162,24 @@ Assign Training also needs corporate-node `LMS_ATS_URL`, `LMS_ATS_ANON_KEY`, `LM
 lines were found **missing on both DEV and UAT** (Assign Training broken) and re-added — check `grep -c ^LMS_ATS .env.<env>` = 3
 before a corporate-node deploy.
 
+
+## PROD on the PluginLive hosts (2026-11-18, release-v1.43)
+
+Same layout as DEV/UAT, but the PluginLive hosts are served by the PROD K8s ingress and LMS v2 runs on the
+`Pl-Prod-Banking` VM, so the path is: ingress `/lms` (Ingress `frontend/lmsv2-admin-ingress` on `admin.pluginlive.com`,
+`frontend/lmsv2-student-ingress` on `student.pluginlive.com`, existing `admin-tls`/`student-tls`) -> selectorless Service +
+Endpoints `frontend/lmsv2-vm` -> VM nginx `10.0.1.129:8088` (`sites-enabled/lmsv2-pluginlive-hosts.conf`, snippets
+`lmsv2-lms-{admin,candidate}-prod.conf`; unknown Host -> 444) -> gateway 8220 / metabase 8230 / static
+`/opt/lmsv2/www/{admin/lms,candidate/lms/candidate}`. Host firewall: 8088 only from the cluster subnet `10.0.6.0/24`
+(`/etc/iptables/rules.v4`). `lms.pluginlive.com` (banking) is untouched; its old `/v2` include still points at a stale build.
+
+- Stack: `SITE_URL=https://admin.pluginlive.com/lms`, `API_EXTERNAL_URL=.../lms/sb`, `CANDIDATE_SITE_URL=https://student.pluginlive.com/lms/candidate`,
+  GoTrue allow-list both hosts; functions secrets `PLUGINLIVE_OAUTH_CLIENT_SECRET`, `PLUGINLIVE_AUTH_URL=https://auth.pluginlive.com`,
+  `ATS_SHARED_KEY`; app env `VITE_PLUGINLIVE_AUTH_URL`. Stored `/v2` URLs in `lmsv2_prod` were rewritten (4,574 rows).
+- auth-node (PROD `auth-api-config` + `envs/api/auth-node.env`): `LMS_PROVIDER_URL=https://admin.pluginlive.com/lms/sb/functions/v1/pluginlive-oauth`,
+  `LMS_PROVIDER_CLIENT_SECRET` (= `PLUGINLIVE_OAUTH_CLIENT_SECRET`), `LMS_PROVIDER_ANON_KEY` (lmsv2 PROD anon), `LMS_ADMIN_FE_URL`, `LMS_CANDIDATE_FE_URL`.
+- corporate-node (PROD `corp-api-config` + env file): `LMS_ATS_URL=https://admin.pluginlive.com/lms/sb/functions/v1/ats-training`,
+  `LMS_ATS_ANON_KEY`, `LMS_ATS_KEY` (= `ATS_SHARED_KEY`). Assign Training stays hidden per corporate until Feature Access "LMS access" is switched on.
+- PROD port of the integration only (6 commits + `src/lib/studentHome.ts` = classic `/candidate/home`); the student LMS v2 UI and other UAT-only LMS work stay held.
+- Open: Google OAuth redirect URI `https://admin.pluginlive.com/lms/sb/auth/v1/callback` not added (Google button on LMS pages fails; auth.pluginlive.com sign-in works).
+- Rollback: `kubectl delete -f ~/prod-release-143-k8s/lmsv2-ingress.yaml` (builder); VM backups `/opt/lmsv2-sb/backup-20261118-pre-lms-hosts/`, DB dumps `/data/backups/lmsv2/prod-20261118-*`.
