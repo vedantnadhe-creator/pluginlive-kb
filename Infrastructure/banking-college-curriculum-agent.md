@@ -5,13 +5,20 @@ Code: `bankingjobreadiness` — `supabase/functions/college-curriculum-agent`, `
 `src/components/college/CurriculumAgentPanel.tsx`, `src/lib/curriculumAgentApi.ts`. Migrations `20261116150000_college_curriculum_agent.sql`,
 `20261116160000_curriculum_agent_offering_link_no_fk.sql` (DB-Scripts folder *Banking LMS College Mode*).
 
+**Quality controls** (source provenance, duplicate check, evidence-checked lessons, HOD maker-checker; see the section below) are
+live on **UAT only** (`e89cd43bb` + `69cf6c3ae`, 2026-11-18; migration `20261118100000_curriculum_quality_controls.sql`, DB-Scripts
+`…__curriculum_quality_controls.sql`, PROD **pending**). PROD still runs the version without them.
+
 ## What it does
 
-**Academics → Curriculum agent** (college-mode institutes; academic admins and platform admins only).
+**Academics → Curriculum agent** (college-mode institutes; academic admins and platform admins build syllabus versions). Faculty,
+HODs and principals work on lessons from the course workspace (tab **Lessons from textbook**) and the HOD inbox (see below).
 
 1. **Documents.** Per programme the admin uploads the approved syllabus PDF (university / deemed / autonomous) and the prescribed
    textbooks (PDF, max 50 MB, bucket `curriculum-sources`, path `<institute>/<programme>/<uuid>.pdf`). A textbook needs the
    "college holds a licence or library copy" tick; its text is used only to draft lessons and is never shown to students.
+   Every upload records its **source** (`issuing_body`: university, deemed university, autonomous, AICTE/UGC model curriculum,
+   college website, publisher, author's e-book repository, library copy, other) plus optional link, publisher, edition, ISBN.
    `read_source` extracts text page by page (unpdf); under ~100 characters per page it is marked **scanned**.
 2. **Build a version** (`start_build` → `extract_next` until it returns `draft`). The syllabus is read in page ranges of at most
    10 pages / 18,000 characters (8 pages for scanned PDFs, which go to the model as PDF pages). Each range returns courses
@@ -38,10 +45,58 @@ Code: `bankingjobreadiness` — `supabase/functions/college-curriculum-agent`, `
    syllabus with `replaces_build_id`; edited courses and already built lessons carry over.
 7. **Lessons from the textbook** (`build_content`, per unit): the agent maps units to textbook pages once per textbook
    (`unit_pages`), then writes 3–6 lessons in its own words with page citations and 3 MCQs per lesson into a `trainer_curricula`
-   (one subject per unit; rebuilding a unit replaces it), mapped to the institute and linked to the published section courses
-   (`course_offerings.curriculum_id`). Scanned textbooks are refused with a message (upload the text PDF / ebook).
+   (one subject per unit; rebuilding a unit replaces it), mapped to the institute. Every lesson and question must carry a word-for-word
+   quote from the pages; see *Quality controls*. The unit waits for the HOD; the section courses (`course_offerings.curriculum_id`)
+   are linked on approval. Scanned textbooks are refused with a message (upload the text PDF / ebook). A unit the book does not
+   cover is refused ("… does not seem to cover unit N").
 
 The agent does **not** search for or download textbooks; colleges upload licensed copies.
+
+## Quality controls (UAT, 2026-11-18)
+
+Roles (`private.can_contribute_curriculum(program)`, `private.can_check_curriculum(program)`):
+- **Contributor** — academic admin, principal, HOD of the programme's department, faculty teaching any course in the programme
+  (`course_faculty` → offering → section → programme). Contributors read the programme's sources/versions/courses, upload sources
+  (storage + row; delete only their own) and build lessons.
+- **Checker** — the HOD of the programme's department; when that department has no HOD, the principal or an academic admin.
+
+Checks:
+- **Duplicates** (`read_source`): sha256 of the file and sha256 of the normalised text (≥ 2,000 chars). A second copy in the same
+  programme + kind, whether the same file or a re-saved copy with the same text, fails with "Duplicate of "<title>" uploaded on
+  <date>. Delete this copy." (`duplicate_of` set). Hashes are written only by the agent (trigger `curriculum_quality_guard`).
+- **Mapping**: the textbook must belong to the course's programme and institute.
+- **Hallucination** (`_shared/curriculum-quality.ts`, `checkUnitContent`): each lesson needs ≥ 1 and each question 1 quote from the unit's
+  pages, at least 5 words. A quote counts when it matches the pages exactly (ignoring case, punctuation and spacing), or when 80% of
+  its 4-word runs are on the pages. Unsupported lessons and questions are dropped. If nothing survives, nothing is saved (422).
+- **Duplicates in content**: lessons with ≥ 0.8 key-word overlap are dropped. Question stems already used in the unit or in other units
+  of the course are dropped. Malformed questions (fewer than 2 or more than 6 options, repeated options, bad answer index) are dropped.
+- **Report** saved in `curriculum_subjects.metadata.quality` and shown to the HOD: prescribed book yes/no (title match against
+  the syllabus textbooks); kept/removed counts; lessons copying ≥ 12 words verbatim (flagged, not removed); syllabus topic
+  coverage with the missing topics.
+
+Maker-checker:
+- Unit state lives in `curriculum_subjects.metadata` (`review_status` pending/approved/returned, `built_by`, `built_at`,
+  `reviewed_by`, `reviewed_at`, `review_note`). The course aggregate is `curriculum_build_courses.content_review_status`
+  (+ note, checked by/at). Clients cannot change these (guard triggers); only the agent and the definer RPCs can.
+- `review_curriculum_content(course, 'approve'|'return', note)`: checker only. Return needs a reason. **The person who built
+  a pending unit cannot approve it.** Approve links the section courses.
+- `curriculum_content_for_review(course)` returns units, lessons, quotes, questions, report and `can_check` to contributors.
+  `curriculum_review_queue(institute)` is the checker's inbox: draft versions to publish plus courses with pending lessons.
+- **Robo Faculty** grounds a class only on units that are not pending or returned. Content without `review_status` (built before
+  2026-11-18) counts as approved.
+- **Publish** (`publish_curriculum_build` → `private.assert_can_publish_build`): only the programme's checker, and never the
+  person who created the version. The academic admin still accepts or rejects courses. The HOD sees a read-only version review
+  with **Publish** in the inbox. A college with one admin and no HOD or principal cannot publish its own versions; another admin,
+  a principal or a PluginLive admin must.
+
+UI: Trainer portal → **College overview** opens with *Curriculum waiting for your review*, shown only when there are items.
+Course workspace → **Lessons from textbook**: pick or add a textbook, Build / Rebuild per unit or Build all, status, built by,
+checks, an expandable lesson view with quotes and answers, and HOD Approve / Return. The admin Curriculum agent's "Lessons"
+dialog is the same panel.
+
+Measured on UAT 2026-11-18 (CS25C01, 6-page test book): 5 lessons and 15 questions, all verified, prescribed yes, coverage 16–17
+of 18 topics. A build takes 16 s to about 3.5 min depending on the gateway (the page waits up to 4 min). If the page is closed
+during a build, the result is still saved.
 
 ## AI route
 
@@ -99,6 +154,12 @@ affiliated-college curriculum was used on the user's instruction.
 - `Development` has no college-mode code, so DEV deploys remove this function from the DEV stack.
 
 ## Checks
+
+Quality controls: `~/banking-checks/curriculum-quality/` on DEV. `db-rules.sql` runs 20 role/maker-checker checks in a rolled-back
+transaction (DEV + UAT 2026-11-18, all PASS). `e2e.cjs` is the live API flow (12 PASS): upload, both duplicate kinds, a student is
+refused, build, faculty cannot approve, inbox, HOD approves. `neg.cjs` checks that an uncovered unit is refused. `ui.cjs` drives the
+faculty tab and HOD inbox in a browser. Test book from `make_book.py`. Fixtures: `../journeys/fixture.sql` + `approve.sql`; cleanup
+with `cleanup.sql`, then `../journeys/cleanup.sql`. Unit tests: `src/test/curriculumQuality.test.ts`.
 
 `supabase/tests/college-curriculum-agent.sql` (rolls back; run on DEV, UAT and PROD 2026-11-16), `src/test/curriculumAgentChecks.test.ts`,
 API/browser scripts in `~/banking-checks/curriculum-agent/` on DEV (`flow.cjs`, `content.cjs`, `publish.cjs`, `regen.cjs`, `rep.sh`,
