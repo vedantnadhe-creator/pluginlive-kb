@@ -84,3 +84,13 @@ Related: [School curriculum agent](pilvidya-school-curriculum-agent.md), [Robo T
 - `uniqueTopics(rows, keepId?)` in `frontend/src/lib/curriculum.ts` keeps one row per subject + topic. It is used by Ask AI (`AICoach.tsx`), student Robo Teacher and teacher Robo Classes. Teacher pages that use `loadClassTopics` already group by topic.
 - AI Topic Lessons (`/topic-lessons`, `TopicLessons.tsx`) now lists `curriculum_topics` for the student's board, class and school. It used a built-in pre-2024 NCERT list ("Knowing Our Numbers"); that list is now only a fallback for subjects with no rows.
 - UAT check: `~/pilvidya-checks/curriculum-source/dropdown-dups.cjs <mobile>` checks every Ask AI subject for repeats and AI Topic Lessons Maths. 9/9 on `50621000`.
+
+## Full UAT journey run and fixes (2026-11-18, `03426a37`)
+
+- **Runner:** `~/pilvidya-checks/run-all-journeys.sh` runs 24 kits in sequence (student, parent, teacher, principal, admin, curriculum agent and journey, Robo, dropdowns, Robo visuals, DPDP guards, nav), one log per kit in `runlogs/all-<date>/`, and cleans up parent and teacher test writes. Nav needs `BASE=https://pilvidya.uat.pluginlive.com` and is run per role (`ROLES=…`), since one run takes about 5 minutes per role.
+- **Fixed:**
+  - Robo coach shows revisions and assignments only for live topics. Before, retired topics showed a disabled Revise or Start button.
+  - Placeholder topic names use the subject's display name. Before, students saw names like "art_education Assessment Readiness".
+  - Art Education (NCERT Bansuri for Classes 3-5, Kriti for 6-8) and Physical Education (Khel Yatra units for 6-8, Khel Praveen for 9, Health & PE for 10) now come from the official books: 1405 official topics in total. Migration `20261204020000`.
+  - Parent/teacher chat reloads after sending. Before, the sender saw nothing when the realtime update did not arrive.
+  - Robo topic images: the session is marked pending while an image is made, and the page asks again every 15 s for up to 2 minutes. Before, a ~3-minute Gemini response meant the student never saw the image.
