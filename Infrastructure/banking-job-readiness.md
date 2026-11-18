@@ -5327,3 +5327,14 @@ The UAT migration was rehearsed inside BEGIN/ROLLBACK before deployment. The rel
 QA principal/HOD/faculty permissions temporarily cover SRM Easwari for the role crawl. No real course's results are reset.
 The old duplicate audit collapsed NULL institute/topic IDs into a single group; the corrected audit keeps the data values in each grouping key. Same-name records alone are not proof of duplicate content.
 Full-project TypeScript/lint diagnostics already exist on the unchanged UAT baseline; release checks compare diagnostics against that baseline rather than reporting the project as type-clean.
+
+
+### Same-day live-retest corrections — UAT `55d988bdf`
+
+The final UAT deployment (snapshot `20261118T080829Z`, bundle `index-Zv7I5GMY.js`) includes `cb7d0711b` and `55d988bdf`, pushed to both GitHub `UAT` and `main`:
+- Institute progress loads every student/progress page in 500-row pages, batches ID filters through the existing `inChunks` helper, and merges each learner/module across auth/student IDs. This prevents first-page truncation and double-counting in institute analytics.
+- Candidate home passes its assigned catalogue to Continue your learning; the widget no longer queries the global module list. Completed-module counts exclude unassigned historical courses, and module resume links must remain assigned.
+- Assessment/group/module and question-bank dropdowns disambiguate different records with identical titles. Coordinator Review shows a learner reference; same-named coordinator accounts without contact details have an account reference. Review text exports include that reference and distinct filenames.
+- Leaderboard export uses the filtered result set (including search) for every worksheet, and always emits the Overall Ranking headers when there are no matching rows.
+
+The long browser sweep was stopped by the test host before all roles finished. Completed-role reports and downloads were retained, and the unfinished roles are rerun with per-screen checkpoints, plus focused verification of the above fixes on the final build. Repeated shared search widgets are tested once per mounted DOM element rather than redundantly on every tab. No PROD deployment is included.
