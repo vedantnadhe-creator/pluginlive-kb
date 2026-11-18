@@ -279,7 +279,7 @@ What a company can use is the live `assessment.subscribed_corporates` rows (Role
 
 ## Select lists above stacked drawers (2026-11-16)
 
-Select option lists (`.sf-panel`, and the assessment module's `ul.pl-assessment-overlay.sf-panel`) use `--z-popover` (90). Manage evaluation process → Review assessment opens a drawer at z 71 (above the modal scrim at `--z-tooltip` 70), so lists at 70 opened behind it and e.g. the AI Interview primary/second language could not be changed. corporate-react-v2 DEV 78d5f6d, UAT 306244b (`src/styles/ds/app.css`).
+Select option lists (`.sf-panel`, and the assessment module's `ul.pl-assessment-overlay.sf-panel`) use `--z-popover` (90). Manage evaluation process → Review assessment opens a drawer at z 71 (above the modal scrim at `--z-tooltip` 70), so lists at 70 opened behind it and e.g. the AI Interview primary/second language could not be changed. corporate-react-v2 DEV 78d5f6d, UAT 306244b (`src/styles/ds/app.css`). The assessment module's own dialogs (`div.pl-assessment-overlay.modal-scrim`, e.g. Complete AI Interview → Set Instructions) use `--z-dialog` (80); at the module's `--z-overlay` (50) they opened behind that drawer (since 2026-11-18, corporate-react-v2 DEV d4a89fc, UAT 7cfff48).
 
 ## Candidate profile facts are frozen at apply; Gender falls back to the form (since 2026-11-17)
 
