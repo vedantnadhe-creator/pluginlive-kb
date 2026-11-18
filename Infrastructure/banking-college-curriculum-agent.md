@@ -6,8 +6,8 @@ Code: `bankingjobreadiness` — `supabase/functions/college-curriculum-agent`, `
 `20261116160000_curriculum_agent_offering_link_no_fk.sql` (DB-Scripts folder *Banking LMS College Mode*).
 
 **Quality controls** (source provenance, duplicate check, evidence-checked lessons, HOD maker-checker; see the section below) are
-live on **UAT only** (`e89cd43bb` + `69cf6c3ae`, 2026-11-18; migration `20261118100000_curriculum_quality_controls.sql`, DB-Scripts
-`…__curriculum_quality_controls.sql`, PROD **pending**). PROD still runs the version without them.
+live on **UAT** (`e89cd43bb` + `69cf6c3ae`, 2026-11-18) and **PROD** (`release/prod-v1.1` `b831175c2`, tag `v1.1.27`, 2026-11-18, backup
+`/data/backups/prod-20261118T045457Z`). Migration `20261118100000_curriculum_quality_controls.sql` is applied on DEV, UAT and PROD.
 
 ## What it does
 
@@ -52,7 +52,7 @@ HODs and principals work on lessons from the course workspace (tab **Lessons fro
 
 The agent does **not** search for or download textbooks; colleges upload licensed copies.
 
-## Quality controls (UAT, 2026-11-18)
+## Quality controls (UAT + PROD, 2026-11-18)
 
 Roles (`private.can_contribute_curriculum(program)`, `private.can_check_curriculum(program)`):
 - **Contributor** — academic admin, principal, HOD of the programme's department, faculty teaching any course in the programme
@@ -148,6 +148,10 @@ affiliated-college curriculum was used on the user's instruction.
 
 ## Known gaps
 
+- A college needs a checker before anything can be approved or published: a HOD per department (Academics → Heads of department),
+  or else a principal or academic admin. Rajeev Gandhi College of Management Studies (PROD) had no HOD, no principal and no
+  institute-role user on 2026-11-18, so only PluginLive platform admins could approve or publish there.
+
 - Students do not yet see the linked lessons in My Courses (`course_offerings.curriculum_id` is set but not rendered).
 - Deleting a whole college that has sections fails in one cascade (older college-mode issue: `class_sections` →
   `academic_terms`). Delete in order (see `~/banking-checks/curriculum-agent/cleanup.sql`).
@@ -155,7 +159,11 @@ affiliated-college curriculum was used on the user's instruction.
 
 ## Checks
 
-Quality controls: `~/banking-checks/curriculum-quality/` on DEV. `db-rules.sql` runs 20 role/maker-checker checks in a rolled-back
+Quality controls: `~/banking-checks/curriculum-quality/` on DEV. On PROD (2026-11-18), `prod-rgcms/` ran the whole chain inside
+Rajeev Gandhi College of Management Studies, on an isolated QA programme and section created by `fixture.sql`: 21 PASS covering
+syllabus maker-checker (the creator cannot publish, faculty cannot, the HOD publishes) and lessons (duplicate refused, build, the maker
+cannot approve, HOD approve, and a return with its reason). `db-rules.sql` also gave 20 PASS on PROD. Cleanup: `cleanup-files.cjs`
+(storage API, so files leave the bucket), then `cleanup.sql`. `db-rules.sql` runs 20 role/maker-checker checks in a rolled-back
 transaction (DEV + UAT 2026-11-18, all PASS). `e2e.cjs` is the live API flow (12 PASS): upload, both duplicate kinds, a student is
 refused, build, faculty cannot approve, inbox, HOD approves. `neg.cjs` checks that an uncovered unit is refused. `ui.cjs` drives the
 faculty tab and HOD inbox in a browser. Test book from `make_book.py`. Fixtures: `../journeys/fixture.sql` + `approve.sql`; cleanup
