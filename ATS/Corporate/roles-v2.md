@@ -297,6 +297,30 @@ profile**: an applicant without a snapshot would show blank profile fields and d
   `job_role_response`). The drawer already showed the form answer, so a candidate whose profile had no gender showed "Male" in
   the drawer but never matched the Male filter. Fixed: corporate-node DEV `6ccf54fe`, UAT `ccf44bbb`.
 
+## Location filter and "Applied time" (since 2026-11-19, DEV + UAT)
+
+Candidates filter → **Add More Filters → Location** (first category; removable like any custom filter). One search box and an
+accordion per kind: **Current location**, **Permanent location**, **Preferred location**. AND across kinds, OR within one
+("Current = Pune AND Permanent = Nagpur"); chips read "Current location: Pune". A kind with no data for the role's applicants
+is left out and named in one muted note ("Preferred location isn't recorded for these candidates yet."). Filtering is
+client-side; picks live in the filter state under `custom["pl:location"]` as `deptKey(kind, city)` and are never sent to the
+API. The role's location form questions (Current city, Current Address - City, Preferred location…) are no longer offered
+as their own custom filters. The **Applied on** filter is renamed **Applied time** (same date range).
+
+- **Data** — `GET .../roles/v2/:id/applicants` sends, on each applicant's `profile` (`RoleApplicantsV2.baseCte`, from the
+  frozen personal profile `spp`):
+  - `currentLocation` = `spp.corr_city`
+  - `permanentLocation` = `spp.perm_city`
+  - `preferredLocations[]` = city names from `spp.preferred_job_location` (jsonb array). Entries with `selected: false`
+    are dropped (the picker saves unchosen rows); a state-only entry (`{state_name: "Tamil Nadu"}`) is sent as the state.
+- The frontend (`candidateLocations()` in `RoleCandidateFilters.tsx`) prefers those fields and only falls back to the role's
+  location form answers (matched by label) when the profile has none; values are sentence-cased so "pune" = "Pune".
+- Coverage depends on the profile: on UAT role "Normalisation logic with cv parser" 38/38 applicants carry the fields, 28 with
+  a current city, none with a preferred one.
+- Code: corporate-node DEV `d648ec4a`, UAT `9d0811fa`; corporate-react-v2 DEV `6793919` `bd33dd5` `d4e0dd6` `b90d82d`,
+  UAT `8aa4c73` `1fd2b37` `064ae16` `045b9d1`. `d4e0dd6` also restyles the shared `DegreeTree` (every Degree & Department
+  picker) to the DS Accordion: chevron on the right, 1px rule between items, animated open. PROD: not deployed.
+
 ## Behaviour results on the candidates table (since 2026-11-17)
 
 A Behaviour assessment has no score: its result is a level. Round results (`services/evaluation/scores.js` `loadRoundResults`) carry `level` on a single Behaviour round and on each Mix & Match part, as the median of the attempt's `assessment.behavior_proficiency_scores` levels (`helpers/behaviorLevel`, the assessment roster's rule; an even count takes the lower middle). The applicants list passes it through (`results[].level`, `results[].parts[].level`), and the Performance column shows the level ("Practitioner") instead of "Preparing Report"; "Preparing Report" now means completed with neither a score nor a level. Behaviour still counts as unscored in the Performance average. corporate-node DEV 0d3284cd / UAT 09095a35; corporate-react-v2 DEV 8d2a04b / UAT cfca8fb. Fixed 2026-11-18: a Mix & Match round with a Behaviour part used to stay unscored ("Sat it — awaiting scoring", counted 1/3 instead of 2/3); its score is now the average of the scored parts (UAT "AR caller (experience)" Sanjay R: Ops Technical Round 61%). corporate-node DEV ccb2e7ae / UAT b8dfc1f3; corporate-react-v2 DEV e32d663 / UAT 1310925.
