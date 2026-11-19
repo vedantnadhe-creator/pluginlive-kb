@@ -245,7 +245,7 @@ URLs are unchanged: everything still goes through the storage API (`/sb/storage/
 |---|---|---|---|
 | DEV | `pl_dev_poc` | `banking/` | 179 / 396 MB |
 | UAT | `pl-uat-assessment` | `banking/` | 180 / 396 MB |
-| PROD | `pl-prod-assessment` | `banking/` | 166 / 727 MB — `/data/storage` on Pl-Prod-Banking kept as rollback copy (not deleted) |
+| PROD | `pl-prod-assessment` | `banking/` | 166 / 727 MB (207 on 2026-11-19). `/data/storage` rollback copy **removed 2026-11-19** after a 207/207 check; archive kept 90 days in `pl-prod-lms-backups/one-off/data-storage-20261119.tar` |
 
 Settings in `~/banking-sb/docker-compose.yml` (storage service): `STORAGE_BACKEND: s3`, `GLOBAL_S3_BUCKET: <bucket>`,
 `GLOBAL_S3_ENDPOINT: https://bmv2bqg5gpcd.compat.objectstorage.ap-mumbai-1.oraclecloud.com`,
@@ -273,8 +273,8 @@ below does not apply once a stack is on S3.
 - PROD switched 2026-11-11 12:04:58Z (storage restart, up in 8 s). Pre-checks: VM → OCI endpoint 200 in 0.13 s and a
   put/get/delete with the PROD key from inside the storage-api image; `pl-prod-assessment` lifecycle got the `banking/*`
   exclusion before any LMS file landed. Verified 165/165 + 8 byte-identical + signed range + 7 MB upload; 0 writes to
-  `/data/storage` after the switch. Rollback on PROD = set `STORAGE_BACKEND: file` and restart storage (copy is current
-  only up to the switch).
+  `/data/storage` after the switch. Since 2026-11-19 `/data/storage` is empty (folder still mounted, unused); there is no local
+  rollback copy. Every file is only in OCI.
 - The local volume `banking-sb_banking-storage` is still mounted but empty on DEV/UAT (contents removed after
   verification). Rollback = copy objects back to the disk layout above and set `STORAGE_BACKEND: file`.
 - `rebuild.sh` drops the DB and volume but not the bucket: after a rebuild, old objects remain under `banking/`.
@@ -291,10 +291,40 @@ below does not apply once a stack is on S3.
 
 Separate OCI VM **`Pl-Prod-Banking`** (compartment `PluginLivePROD`, VCN `Pl-Production`, subnet `pl-prod-static-website-subnet`,
 A1.Flex 2 OCPU / 12 GB, boot 100 GB + data volume 50 GB at `/data`, reserved IP `130.210.28.66`, gold volume-backup policy).
-Same self-hosted stack as UAT in `/opt/banking-sb` (DB `banking_prod` on `/data/pg`, files on `/data/storage`), frontend
+Same self-hosted stack as UAT in `/opt/banking-sb` (DB `banking_prod` on `/data/pg`; files in OCI `pl-prod-assessment/banking/`, see File storage), frontend
 `/opt/banking/app/dist` built on the VM, host nginx `banking-prod.conf`, Let's Encrypt cert. New JWT secret and DB passwords
 (only on the VM). Seeded 2026-10-31 from a full UAT dump (exact row counts identical on all 273 tables); 3,403 UAT links rewritten.
-Nightly `pg_dump` 02:00 IST → `/data/backups/daily` (14 days), restore tested. Build notes: `/opt/banking-sb/PROD-NOTES.md`.
+Nightly `pg_dump` 02:00 IST, copied off the VM to OCI (see **Database backups** below). Build notes: `/opt/banking-sb/PROD-NOTES.md`.
+
+### Database backups (PROD, since 2026-11-19)
+
+The live database stays on the VM (`/data/pg`); backups go off the VM to the private OCI bucket **`pl-prod-lms-backups`**
+(compartment `PluginLivePROD`, `NoPublicAccess`).
+
+| Prefix | What | Auto-delete |
+|---|---|---|
+| `daily/<UTC stamp>/` | `banking_prod.dump`, `metabase_app.dump` (`pg_dump -Fc`), `SHA256SUMS` | 30 days |
+| `deploy/prod-<stamp>.tgz` | each pre-deploy backup dir `/data/backups/prod-*` (dump, dist, functions, .env) | 30 days |
+| `one-off/` | 2026-11-19 cleanup: old app builds, UAT seed, `uat-storage-xattr`, `data-storage-20261119.tar` (+ .sha256) | 90 days |
+
+- **Job:** cron `/etc/cron.d/banking-backup` 20:30 UTC → `/usr/local/bin/banking-backup` (old version `.bak-20261119`). Dumps,
+  uploads, then uploads any `/data/backups/prod-*` without a `.uploaded` marker (so every deploy script is covered without
+  changing it). Locally keeps daily dumps 3 days and the newest 2 `prod-*` dirs by date; anything not uploaded is never pruned.
+  Log `/data/backups/backup.log`, errors `/data/backups/backup.err`.
+- **Upload credential:** a write-only pre-authenticated request (`AnyObjectWrite`, name `banking-prod-vm-backup-write`) in
+  `/opt/banking-sb/.backup-upload-url` (600). The VM can add backups but cannot list, read or delete them.
+  **Expires 2027-11-19** — create a new PAR and replace the file before then, or nightly uploads fail (visible in `backup.err`).
+  Uploads must be real files (`curl -T file`); piped stdin is chunked and OCI answers 501.
+- **Lifecycle** needed an IAM policy: `lms-backups-lifecycle` (tenancy root) lets `objectstorage-ap-mumbai-1` manage
+  object-family only where `target.bucket.name='pl-prod-lms-backups'` (same pattern as `assessment-media-lifecycle`).
+- **Restore:** download a `daily/` dump with an OCI API key (DEV `~/.oci/config` can read), check `SHA256SUMS`, then
+  `pg_restore --no-owner` into Postgres **`pgvector/pgvector:pg16`** with the Supabase roles created first (on plain
+  `postgres:16` you get ~680 harmless `role does not exist` errors and `rag_document_chunks` is skipped).
+  Tested 2026-11-19: 343/343 tables, all row counts identical to live (74,386 rows), 0 errors.
+- `/opt/banking-sb/restore.sh` is the 10-31 UAT-seed loader; its input `uat-seed-20261031` now exists only in
+  `one-off/` — do not run it on PROD.
+- Not covered here: `lmsv2` on the same VM has its own local-only backup (`/etc/cron.d/lmsv2-backup`, `/data/backups/lmsv2`).
+- DEV and UAT LMS: DB on the box (docker volume `banking-sb_banking-pgdata`), no backups; files in OCI.
 
 **Storage copy gotcha (hit 2026-10-31):** storage-api's file backend keeps each object's content-type/cache-control in
 extended attributes (`user.supabase.*`) on the file. A plain `tar` drops them → every copied file answers **500**
