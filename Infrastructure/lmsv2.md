@@ -9,11 +9,11 @@ DNS or TLS of its own.
 |---|---|---|---|
 | DEV | admins https://admin.dev.pluginlive.com/lms/, candidates https://student.dev.pluginlive.com/lms/candidate/ | `Development` | DEV box |
 | UAT | admins https://admin.uat.pluginlive.com/lms/, candidates https://student.uat.pluginlive.com/lms/candidate/ (since 2026-11-18; `banking.uat/v2/*` redirects) | `UAT` | UAT box |
-| PROD | admins https://admin.pluginlive.com/lms/, candidates https://student.pluginlive.com/lms/candidate/ (since 2026-11-18, release-v1.43; the old `lms.pluginlive.com/v2` build is stale, not served by design) | `release/prod-v1.1` (tag/cherry-pick model; v1.1.15 = `a650680df`) | `Pl-Prod-Banking` VM |
+| PROD | admins https://admin.pluginlive.com/lms/, candidates https://student.pluginlive.com/lms/candidate/ (since 2026-11-18, release-v1.43; the old `lms.pluginlive.com/v2` build is stale, not served by design) | `release/prod-v1.1` (student UI release `39aec4b78`, 2026-11-19) | `Pl-Prod-Banking` VM |
 
-The PROD branch is the banking PROD release (v1.1.14) plus the `/v2` base-path commit. The banking holds apply
-to lmsv2 too: the LMS v2 student UI and designer work, and the lesson-video watch gate / AI video checker, are
-not on `release/prod-v1.1`.
+The lmsv2 student UI was explicitly approved for PROD on 2026-11-19 and deployed as `39aec4b78`, based on
+`a650680df`. Its existing video-watch progress rule is included. Uncommitted designer work and the separate
+AI video checker remain excluded. The separate banking application and its release holds are unchanged.
 
 ## What is separate and what is shared
 
@@ -54,10 +54,11 @@ objects are never auto-deleted (checked 2026-11-16 on `pl_dev_poc`, `pl-uat-asse
 |---|---|---|
 | DEV | `bash ~/lmsv2-sb/deploy.sh` (on DEV) | Fetches `github/Development` into `~/lmsv2-dev-app` (→ `/data/lmsv2/dev-app`), snapshot to `/data/lmsv2/snapshots/`, migrations (fixup-aware), grants, functions, two builds (`/lms/` admins, `/lms/candidate/` candidates), publish to `/var/www/lmsv2-dev/{admin,candidate}/` (see "Hosts, deploy and gotchas" below). |
 | UAT | `bash ~/lmsv2-sb/deploy.sh` (on UAT) | Fetches `origin/UAT` into `~/lmsv2`, same two builds, publishes to `/var/www/lmsv2-uat/{admin,candidate}/` (since 2026-11-18; was `~/lmsv2-www/v2/`). |
-| PROD | `APPLIED_MIGS="<already-applied migration files>" bash ~/lmsv2-setup/prod-deploy-lms.sh [ref]` (on DEV; since 2026-11-18). The old `prod-deploy.sh` (single `/v2/` build) is superseded | Archives `github/release/prod-v1.1`, snapshot to `/data/backups/lmsv2/`, builds on the VM into `/opt/lmsv2/app-<sha>` (symlink `/opt/lmsv2/app`, last 3 kept), publishes `/opt/lmsv2/www/v2/`, writes `/opt/lmsv2/DEPLOYED`. **Stops if the release adds migrations** — apply them first with the banking PROD procedure. PROD only on an explicit go. |
+| PROD | On the VM: `~/auto_deploy.sh lmsv2 release/student-ui-prod-20261119` for the approved 2026-11-19 release; prepare a pinned script for each subsequent release. | Backs up to `/data/backups/lmsv2/`, builds on PROD into `/opt/lmsv2/app-<sha>`, publishes `/opt/lmsv2/www/{admin/lms,candidate/lms/candidate}`, writes `/opt/lmsv2/DEPLOYED`. Uses the persisted PROD environment and explicit migration approval. See the 2026-11-19 release section below. The old single `/v2/` deploy is superseded. |
 
 The app env is the deploy's local `.env` (DEV `~/lmsv2-dev-app/.env`, UAT `~/lmsv2/.env`, PROD
-`/opt/lmsv2/app.env`). `VITE_STUDENT_LMS_V2_ENABLED` mirrors banking today: DEV `true`, UAT `false`, PROD unset.
+`/opt/lmsv2/app.env`). `VITE_STUDENT_LMS_V2_ENABLED`: DEV `true`, UAT `false`, PROD **`true`** since 2026-11-19. PROD students land at
+`https://student.pluginlive.com/lms/candidate/lms/dashboard`; the old `/lms/candidate/candidate/home` route redirects there.
 
 Checks (on DEV): `~/lmsv2-setup/checks/v2load.cjs <base> /v2/ /v2/login …` (headless: no page errors, every API
 call under `/v2/sb`, none to v1 `/sb`), `~/lmsv2-setup/checks/authcheck.sh <backend> <service> <anon>`
@@ -182,6 +183,17 @@ Endpoints `frontend/lmsv2-vm` -> VM nginx `10.0.1.129:8088` (`sites-enabled/lmsv
   `LMS_PROVIDER_CLIENT_SECRET` (= `PLUGINLIVE_OAUTH_CLIENT_SECRET`), `LMS_PROVIDER_ANON_KEY` (lmsv2 PROD anon), `LMS_ADMIN_FE_URL`, `LMS_CANDIDATE_FE_URL`.
 - corporate-node (PROD `corp-api-config` + env file): `LMS_ATS_URL=https://admin.pluginlive.com/lms/sb/functions/v1/ats-training`,
   `LMS_ATS_ANON_KEY`, `LMS_ATS_KEY` (= `ATS_SHARED_KEY`). Assign Training stays hidden per corporate until Feature Access "LMS access" is switched on.
-- PROD port of the integration only (6 commits + `src/lib/studentHome.ts` = classic `/candidate/home`); the student LMS v2 UI and other UAT-only LMS work stay held.
+- The 2026-11-18 integration initially retained the classic candidate home. The 2026-11-19 approved student release below enables the new LMS UI; unrelated UAT work remains excluded.
 - Open: Google OAuth redirect URI `https://admin.pluginlive.com/lms/sb/auth/v1/callback` not added (Google button on LMS pages fails; auth.pluginlive.com sign-in works).
 - Rollback: `kubectl delete -f ~/prod-release-143-k8s/lmsv2-ingress.yaml` (builder); VM backups `/opt/lmsv2-sb/backup-20261118-pre-lms-hosts/`, DB dumps `/data/backups/lmsv2/prod-20261118-*`.
+
+
+## New student UI on PROD (2026-11-19)
+
+- **Live release:** `39aec4b78` (`release/student-ui-prod-20261119`, promoted to `release/prod-v1.1`). Ports the committed student UI from Development `13ebaed50` onto `a650680df` with its required shared components and edge functions. Login and the classic candidate bookmark route to the new dashboard; staff keep their staff destinations.
+- **Scope:** dashboard, courses and course steps, reading/video progress, chapter quizzes, role-play and voice practice, workbooks, attachment uploads, reports and certificates. Existing learner identities and assignments are reused.
+- **Database:** all six migrations in `docs/releases/2026-11-19-student-ui-prod.md` applied in one transaction to `lmsv2_prod` after explicit user approval: live-session attendance counts, chapter quiz size, topic attachments across catalogs, lesson video marks, task uploads and simulation attachments. Learner table RLS and RPC grants were verified. Both new storage buckets are private with a 10 MB limit. DB-Scripts records **LMSV2 PROD** separately; banking PROD remains pending.
+- **Deployment:** on the banking VM, `~/auto_deploy.sh lmsv2 release/student-ui-prod-20261119` dispatches under a lock to `/opt/lmsv2-sb/deploy-student-ui-20261119.sh`. This release-specific script pins the previous/new commits and archive checksum, backs up first, builds both variants on PROD with `VITE_STUDENT_LMS_V2_ENABLED=true`, checks environment URLs, applies the approved migrations, syncs functions with existing self-hosting fixups and publishes the static files. Old hashed assets remain available for open browser tabs. It refuses to rerun over an unexpected deployed version.
+- **Current source/settings:** `/opt/lmsv2/app` -> `/opt/lmsv2/app-39aec4b78`, `/opt/lmsv2/DEPLOYED` = `39aec4b78`; the feature flag is persisted in `/opt/lmsv2/app.env` for subsequent builds. Both admin and candidate builds use their corresponding PROD `/lms/sb` URL.
+- **Backup/rollback:** `/data/backups/lmsv2/prod-student-ui-20261119T111233Z` contains a checked `pg_dump` archive, previous static files, functions, environment and source pointer. Restore the app, functions and environment together if rolling back. Keep the additive migrations and any learner uploads created after the release; do not blindly restore the old database.
+- **Release checks:** 164 tests passed before deployment; both PROD builds and environment URL audits passed. Existing TypeScript diagnostics matched the old release (24, no additions). Live browser checks passed for real PROD sign-in, dashboard, assigned course, reload, old bookmark, sign-out and staff handoff. The only 401 was a discarded student query during sign-out. The video gate, attendance RPC, private task upload and submission also passed with isolated QA identities. Evidence is in `/home/ubuntu/lmsv2-checks/prod-student-ui-20261119/` on DEV.
