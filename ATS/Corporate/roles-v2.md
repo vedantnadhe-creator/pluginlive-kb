@@ -9,7 +9,7 @@ The Roles screens in `corporate-react-v2` (`/v2/roles`, `/v2/roles/new`, `/v2/ap
 1. Recruiter creates a role (paste or attach a JD), picks the application form, and floats it. Each invited campus gets one invite mail (POCs + wizard contacts + campus email, with the recruiter's CC).
 2. Candidate applies on the PluginLive form. The CV goes to the private bucket under `role-applications/`; the answers go to `job_role_response` and the role's Google Sheet in the FormData folder.
 3. form-data-normalization picks the sheet up, normalizes it and calls student-node `create-full`, which creates the applicant (`job_role_student_map`) and copies the CV to the public docs bucket as `cv_url`.
-4. corporate-node AI match scores the applicant. The evaluation engine (BullMQ, 5-minute scan plus events) screens and advances. A candidate with no CV is held for the recruiter.
+4. The evaluation engine (BullMQ, 5-minute scan plus events) starts applicants in the live workflow. With an enabled Screening stage, corporate-node AI match scores the applicant and a candidate with no CV is held for the recruiter. Without Screening, applicants go straight to the first enabled stage; an assessment stage sends its invite.
 5. student-node posts each score to `/v2/hooks/assessment-scored`, which queues the advance pass. A recruiter fit override holds a candidate only in the round it was made in.
 
 ## Evaluation setup gate
@@ -62,6 +62,14 @@ Data reset at rollout: the frontend used to write `autoPilot: true` on every sta
 `update corporate.workflow_stages set config = config || '{"autoPilot": false}'::jsonb, updated_at = now() where stage_type='screening' and config->>'autoPilot'='true';`
 
 Before 2026-11-17 (from 2026-11-05) screening never moved anyone regardless of config.
+
+## Workflows without Screening start at stage 1 (since 2026-11-19, DEV + UAT)
+
+`screenRole` checks the enabled stages with `hasScreeningStage`. Without Screening, it batches eligible applicants through `dispatchToStage` for the first stage, sending an assessment invite or entering a human round as appropriate. This path does not run resume screening, save a screening verdict, or request an AI match. It does not require a CV or resume-match score. Later scans leave already-dispatched or decided applicants alone and retry failed dispatches.
+
+Recruiter **Advance** on an applicant with no workflow dispatch also enters stage 1. Previously the Screening fallback treated that applicant as already in stage 1, so Advance skipped to stage 2; the automatic pass assigned the stage without sending its assessment. Workflows with Screening keep their existing rules. Closing an application still uses the first-stage fallback when Screening is absent.
+
+corporate-node DEV `ec313b50`, UAT `f9d5e589`. Both running containers verified on 2026-11-19. Tests in `test/roleEngineV2.spec.js` cover the first-stage invite, no duplicate on the next scan, no screening verdict or AI-match request, unchanged Screening holds, and manual Advance to stage 1. No schema migration or historical-data rewrite is included.
 
 ## Stage deadline and candidate validity (since 2026-11-17, DEV + UAT)
 
