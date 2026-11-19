@@ -98,6 +98,8 @@ How it fits together:
 - A match comes back with a one-time **LMS code** (`oauth_login_codes`, SHA-256 stored, 5 min, single use).
   Picking the LMS account redirects to `<LMS>/oauth/callback#code=`; the LMS trades it at `pluginlive-oauth/token`
   for its own session. No PluginLive token or cookie is issued for an LMS pick.
+- An LMS **admin** account is not offered at sign-in to someone who is also a PluginLive admin (2026-11-19): they
+  land in the PluginLive admin portal and use its LMS tab. LMS-only admins and LMS candidates are unchanged.
 - `/signin` for a trainer or candidate runs the same account set-up as the LMS's own code login
   (`_shared/login-otp-session.ts`, shared with `candidate-otp-login`): trainer-row backfill, find/create the Auth
   user (mobile identity `<mobile>@bankready.app`), link records, institute plan sync, email confirm.

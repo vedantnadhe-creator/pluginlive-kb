@@ -216,6 +216,12 @@ code → Sign In**. The answer is the same as a password sign-in: straight to th
 account"** when the email/mobile has several accounts — including the **LMS** (lmsv2) account, labelled "LMS".
 "Sign in with a password instead" keeps the old email + password form.
 
+**PluginLive admins never get the LMS admin entry (2026-11-19, DEV `55f8e73`, UAT `bfd8914`):** in `finishSignIn`,
+an LMS account with `surface = "admin"` is dropped when the person also has a PluginLive admin account — they open
+the LMS from the admin menu's **LMS** tab instead (`POST /user/lms/handoff`). Admins given LMS access from Users are
+no longer added to the list either (the old `lmsProvider.issue(email)` fallback is gone). LMS **candidate** accounts
+still join "Choose an account" (candidates have no LMS tab), and LMS-only people still go straight to the LMS.
+
 | Piece | Where |
 |---|---|
 | Screen | auth-react `src/components/CodeSignIn.js` (+ `pages/login.js` toggle). DEV `0e2c159`; UAT `95a3cbd` (UAT now carries the same tree as Development, see below). |
@@ -229,7 +235,7 @@ account"** when the email/mobile has several accounts — including the **LMS** 
 email/mobile (account existence is visible). Kept for usability; the hourly/daily caps limit probing.
 
 **Test accounts (DEV and UAT, same set-up):** `ravi.kotadiya+pl.only@pluginlive.com` (PluginLive admin only →
-admin portal), `ravi.kotadiya+lms.both@pluginlive.com` (PluginLive admin + LMS admin → Choose an account),
+admin portal), `ravi.kotadiya+lms.both@pluginlive.com` (PluginLive admin + LMS admin → admin portal; LMS via the LMS tab),
 `ravi.kotadiya+lms.only@pluginlive.com` (LMS admin only → LMS). Codes arrive in Ravi's inbox (plus-addressing).
 
 ## Redesigned sign-in pages on UAT (2026-11-17)
