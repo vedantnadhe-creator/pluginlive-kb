@@ -374,3 +374,23 @@ PROD form-data-normalization ran `release-v1.38-hotfix-1` (4 Sep), which has no 
 - form-data-normalization **`release-v1.38-hotfix-2`** = hotfix-1 + only the 4 corporate-bulk commits (d652813, f39068d, c99d9b8, f2a86bb as 57d8e66/071ec96/c4fca66/45ff30d). Image `form-data-normalization:2026-11-19-07-11-54-release-v1.38-hotfix-2` on all three deployments (api, worker, cron — always move them together). Built with `~/fdn_deploy_v138hf2.sh build|deploy <image>` on the PROD builder. Rollback image `…2026-09-04-05-31-54-release-v1.38-hotfix-1`. The DB script (`Corporate Bulk Candidate Upload/20260831T083545Z…`) was already applied on PROD 2026-09-01.
 - Tests: the image has no pytest (the hotfix-1 script's test step never ran anything). Run per file in a throwaway container with pytest installed: 101 pass incl. 18 corporate-bulk; `test_arrears_slug_families`, `test_current_course_from_erp_sheet`, `test_export_email_delivery`, `test_languages_from_sheet` hang without network on the builder on the OLD image too.
 - corp-node `corp-api-config`: `NORMALIZATION_API_URL=http://form-data-normalization`, `NORMALIZATION_API_KEY` = normalization's own `API_SECRET_KEY`. Verified from the corp-node pod: no key → 401, key → 422 (field validation), i.e. reachable and authorised. A real upload was not run on PROD.
+
+## 2026-11-20 fixes: who moved a candidate, and undelivered invites (DEV + UAT)
+
+- **Recruiter actions are credited to the recruiter.** `corporateRoleApplicantsV2Handler` passed its activity-log actor
+  (`{actorType, actorId, actorName}`) to the evaluation engine, which reads `{type, id, name}` (`roundsActivity.actorFields`,
+  `dispatch.js` `movedBy`). So every recruiter **Move** and **Resend** left `stage_dispatches.moved_by` null and was logged as
+  system / "Evaluation engine", and manual moves looked like Auto-Pilot (PROD role 0af9962c, 2026-11-19). `engineActorOf()`
+  now passes the engine's shape on both engine calls. corporate-node DEV `eb50a0ce`, UAT `8c4742d9`; PROD pending. Rows
+  written before the fix keep "Evaluation engine". Tell a manual move from an automatic one by `move_reason`
+  ("moved by recruiter to …") and the matching `POST …/applicants/move` in the API log.
+- **"Invite not delivered yet".** A round whose dispatch is `sent` but which has no `assessment_assigned_students` row
+  (`attempt` null in the round result) used to read "Invited — not attempted yet" while the score column said "Not sent".
+  That happens when admin-node's queued assignment job (AI Interview v2 plans its paper first) is still preparing or has
+  failed; corporate-node is not told about a later job failure. `roundOutcome()` (`CandidateDrawer.tsx`) now says
+  "Invite not delivered yet" for it. corporate-react-v2 DEV `26ee0cf`, UAT `97a10d8`; PROD pending. Check the job in
+  `assessment.assessment_assignment_jobs` / `_items.last_error`.
+- **PROD gateway (2026-11-20):** `pl/interview-skeleton`, `pl/interview-slot`, `pl/interview-v2-score` were missing from
+  PROD's `litellm-task-policy`, so every AI Interview v2 assignment job failed from the 11-19 release ("Unknown centralized
+  LLM task"). Added 07:19 UTC (55 tasks; backup `policy-backups/tasks-20261120T071910Z.json` on the PROD builder);
+  normal + forced-fallback calls verified. Candidates whose job failed need a Resend.
