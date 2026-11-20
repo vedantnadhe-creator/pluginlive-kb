@@ -264,26 +264,43 @@ Question-bank TTS audio (`audio/google_audio_*`: Listening clips, Dictation sent
 
 **Recovered on PROD 2026-11-05.** The audio for every question on an active set was regenerated to its original object key: 1,903 files (320 Listening, 1,600 Dictation rows), 456,270 characters, about $13.69, voice `en-IN-Chirp-HD-O`, in the same bucket. After the run every active key exists (883 Listening, 4,283 Dictation, 0 missing). Questions only on retired sets were not regenerated. Three Listening file names had been shared by two different passages (an old same-second naming collision), so one question of each pair moved to a `_b` key (`questions.object_key`, 3 rows). **Method:** build the list from a bucket listing, not key dates. Run `generate_google_audio(text, custom_filename=<key without .mp3>)` in the DEV `fastapi` container with `GOOGLE_APPLICATION_CREDENTIALS=/app/credentials.json`, using `questions.question_text` for Listening and `sub_questions.question_text` for Dictation. Upload with `oci os object bulk-upload --object-prefix audio/ --content-type audio/mpeg --no-overwrite`. Google allows about 30 Chirp HD requests a minute and live set generation shares that quota, so pace at about 25 a minute.
 
-## DB-driven retention (Route 2) — in progress
+## DB-driven retention (Route 2) — expiry job
 
-Goal: stop deciding deletion by folder name. A student-node job will check each object
-against the database (any question/content reference → keep; only candidate references past
-retention → expire) and **rename** expired objects to `_expired/<YYYYMMDD>/<original key>`.
-Rename needs OBJECT_CREATE + OBJECT_OVERWRITE, not OBJECT_DELETE, and resets last-modified,
-so the bucket rule below gives a 14-day undo window (rename back to restore).
+The database, not the object name, decides what may leave the bucket.
+`student-node/script/expireAssetObjectsCron.js` (cron 03:10, after the 02:40 sweep) takes the rows
+the sweep has marked (`purged_at`) and moves their objects to `_expired/<YYYYMMDD>/<original name>`;
+the bucket rule `expired-delete-30d` deletes `_expired/` 30 days later. **Restore = copy the object
+back to its original name** within those 30 days (versioning is off, so after that it is gone).
 
-| Bucket | `expired-delete-14d` (`_expired/`, DELETE 14d, excl. `banking/*`) | Prefix DELETE rules |
-|---|---|---|
-| `pl_dev_poc` | LIVE 2026-11-13 (8 rules) | still active |
-| `pl-uat-assessment` | LIVE 2026-11-13 (8 rules) | still active |
-| `pl-prod-assessment` | not applied (7 rules) | active |
+Rules, all ending with the object **kept**:
+- anything a `questions` / `sub_questions` / `question_options` key or `coding_metadata` / `metadata`
+  JSON points at is never moved — even when a marked candidate row points at the same file;
+- the content index empty, or < 50% of the previous run's (`asset_purge_audit` row
+  `asset_type='object_expiry'`, `notes.contentRefs`) → the whole run aborts;
+- key resolves to no object or to several (`audio/`, `videos/`, ± `.webm`) → skipped;
+- object younger than the retention age (name reused) → skipped;
+- never `banking/` or `_expired/`.
 
-The job is **not built yet**, so nothing is renamed into `_expired/` today and the prefix
-rules still do all deletion. They are removed in the same PUT that the job goes live with —
-removing them earlier would stop the 14-day verification deletion and leave bytes behind
-after the sweep's sunset nulls the DB pointers. Rule file: `script/ociLifecycleRules.json`
-(8 rules, local commit 6b4d45cb on Development, not pushed). Design + DEV dry run:
-`~/designs/assessment-media-retention-engine.md` on the DEV box.
+Move = S3 copy with `CopySourceIfMatch` → verify size → re-HEAD original → delete. **OCI's S3 API
+ignores If-Match on DeleteObject** (verified 2026-11-16), hence the re-check; a copy resets
+last-modified, so the 30 days run from the move. Uses the app's existing OCI S3 key; audit goes
+to the existing `asset_purge_audit` (`<asset>_objects` rows, phase `dry_run` in report mode,
+`mark` in live). Scope: `proctoring_snapshots`, `student_answers`, `ai_interview_interactions`.
+
+`RETENTION_EXPIRE_MODE` = `off` (default) | `report` | `live` (in `.env.<env>` → `/app/.env`).
+Manual run: `docker exec student sh -c "cd /app && node script/expireAssetObjectsCron.js"`.
+
+| Env | Code | Mode | Bucket `_expired/` rule | Prefix DELETE rules |
+|---|---|---|---|---|
+| DEV `pl_dev_poc` | Development 7631116e | off (not set) | `expired-delete-30d` | still active |
+| UAT `pl-uat-assessment` | UAT fcca3847, deployed 2026-11-20 | **report** | `expired-delete-30d` | still active |
+| PROD `pl-prod-assessment` | not deployed | – | none (7 rules) | active |
+
+UAT has nothing due yet: its oldest key-bearing rows are from 2026-01-21, so 365 days is reached
+around 2027-01-21. Going live = set `RETENTION_EXPIRE_MODE=live` **and** remove the 4 prefix DELETE
+rules in the same change (one lifecycle PUT from `script/ociLifecycleRules.json`).
+Live end-to-end test on DEV 2026-11-20: 12/12 (move, question audio kept, idempotent rerun, restore,
+changed-original refused, collapsed index aborts) — script on the DEV box `~/scratch/retention-e2e/e2e.js`.
 
 ## PROD deployment checklist — next release
 
