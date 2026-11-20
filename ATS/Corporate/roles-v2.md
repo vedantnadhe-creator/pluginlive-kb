@@ -334,6 +334,14 @@ client-side; picks live in the filter state under `custom["pl:location"]` as `de
 API. The role's location form questions (Current city, Current Address - City, Preferred location…) are no longer offered
 as their own custom filters. The **Applied on** filter is renamed **Applied time** (same date range).
 
+The Location pane (and Degree & Department) scrolls inside the filter panel: `.fp-custom:has(> .dept-tree)` is a flex
+column in `styles/ds/app.css`, so the `.dept-tree` gets a bounded height. Before 2026-11-20 a long list was clipped at the
+panel's bottom with no scrollbar (corporate-react-v2 DEV `688bf01`, UAT `d0f724c`).
+
+**Role header location tag** (`RoleMetaTags.tsx`): first location + "+N more" (all in a popover). With no location a
+Complete role shows a muted "Location not set"; a Quick Evaluation role (`mode: "quick"` from the role detail GET) shows no
+location tag, since that path never asks for one (DEV `688bf01`, UAT `d0f724c`, 2026-11-20).
+
 - **Data** — `GET .../roles/v2/:id/applicants` sends, on each applicant's `profile` (`RoleApplicantsV2.baseCte`, from the
   frozen personal profile `spp`):
   - `currentLocation` = `spp.corr_city`
