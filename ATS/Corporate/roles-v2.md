@@ -394,3 +394,10 @@ PROD form-data-normalization ran `release-v1.38-hotfix-1` (4 Sep), which has no 
   PROD's `litellm-task-policy`, so every AI Interview v2 assignment job failed from the 11-19 release ("Unknown centralized
   LLM task"). Added 07:19 UTC (55 tasks; backup `policy-backups/tasks-20261120T071910Z.json` on the PROD builder);
   normal + forced-fallback calls verified. Candidates whose job failed need a Resend.
+- **Office location / Skills / Qualifications dropdowns (create-role wizard) clipped again (2026-11-20).** `27f002c`
+  (UAT) / `6a4a14b` (DEV) re-landed the four-row cap (`max-height` + `overflow-y: auto`) on every active
+  `.wz-root .rd-degree`. Those three fields render their menu INSIDE that chip field, so the menu was clipped to the
+  field's height (same break as 11-18, `eca4f1d`). Only the Degree picker portals its menu out, so the cap now lives on
+  `.rd-degree--capped` (DegreePicker only). `tests/degree-picker-open.test.cjs` (prebuild) fails if the shared
+  `.rd-degree.is-active` rule gets a `max-height`/`overflow-y` again. corporate-react-v2 DEV `0dc1a1d`, UAT `5f95006`;
+  browser-verified on both (Office location menu 320 px, 28 options). PROD: not affected unless 27f002c ships.
