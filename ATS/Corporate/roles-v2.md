@@ -419,3 +419,9 @@ PROD form-data-normalization ran `release-v1.38-hotfix-1` (4 Sep), which has no 
   corporate-node DEV `7b829f30`, UAT `cad2d2fc`; PROD pending (same lookup on release-v1.43). UAT ac9a37ea cleaned up:
   round 2 detached from a0d47ce2, Delzeen reopened, both candidates' Aptitude access closed, both re-invited to a new
   Communication map 2a9659a4 (backup `~/deploy-backups/ac9a37ea-wrong-assessment-20261120.json` on the UAT box).
+- **Candidate drawer "Download report" on a Mix & Match round gave only the first part (2026-11-20).** The drawer asks
+  for each finished part (`…/rounds/:stageId/report?part=<n>`) and zips them, but the BFF route
+  (`src/app/api/roles/[id]/applicants/[submissionId]/rounds/[stageId]/report/route.ts`) dropped `?part`, so corporate-node
+  served the first part (e.g. Aptitude) every time and the zip held that report repeated. The BFF now forwards a validated
+  `part` (1–999; anything else 400). corporate-node already honoured `part` on every env. corporate-react-v2 DEV
+  `39e00cd`, UAT `add6ccd`; PROD pending (release-v1.43 has the same route).
