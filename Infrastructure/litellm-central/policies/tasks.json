@@ -702,6 +702,19 @@
       },
       "modality": "text"
     },
+    "pl/college-assignment-writing": {
+      "primary": "gemini-3.8-flash",
+      "fallbacks": [
+        "gpt-6-luna"
+      ],
+      "timeout": 45,
+      "retries": 0,
+      "reasoning": {
+        "gemini-3.8-flash": "low",
+        "gpt-6-luna": "none"
+      },
+      "modality": "text"
+    },
     "pl/proctor-phone": {
       "primary": "gemini-decision-1",
       "fallbacks": [
@@ -709,6 +722,24 @@
       ],
       "timeout": 15,
       "retries": 0,
+      "reasoning": {},
+      "modality": "decision"
+    },
+    "pl/proctor-faces": {
+      "primary": "gemini-decision-1",
+      "fallbacks": [
+        "openai-decision-gpt-6-luna"
+      ],
+      "timeout": 15,
+      "retries": 0,
+      "reasoning": {},
+      "modality": "decision"
+    },
+    "pl/proctor-reading": {
+      "primary": "gemini-decision-1",
+      "fallbacks": [],
+      "timeout": 30,
+      "retries": 1,
       "reasoning": {},
       "modality": "decision"
     }

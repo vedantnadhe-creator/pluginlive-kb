@@ -151,8 +151,9 @@ def route_task(data, policies):
                     for message in data.get("messages", [])
                     if isinstance(message.get("content"), list)
                     for part in message["content"] if isinstance(part, dict))
-    if has_audio and policy["modality"] != "audio":
-        raise HTTPException(status_code=400, detail="Audio input requires an audio task")
+    # Decision tasks may judge audio too (pl_decisions.py sends it to Gemini Decisions only).
+    if has_audio and policy["modality"] not in ("audio", "decision"):
+        raise HTTPException(status_code=400, detail="Audio input requires an audio or decision task")
     data["model"] = policy["primary"]
     # An explicit flat chain overrides the global per-model chains, including
     # the global OpenAI fallback of the listener's Gemini 3.8 audio hop.

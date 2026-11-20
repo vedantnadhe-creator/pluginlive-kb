@@ -2,7 +2,7 @@
 
 Services call a `pl/<task>` whose modality is "decision" with an ordinary chat
 request: the system message is the yes/no question, the user message is the
-evidence (text and images). This provider sends it to the deployment's
+evidence (text, images, and for Gemini audio). This provider sends it to the deployment's
 Decisions API and answers with chat content `{"probability": <0..1>, "model": <deployment>}`, so the
 task policy, virtual keys, fallbacks and spend logging stay in the gateway.
 
@@ -26,6 +26,8 @@ GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/decisions"
 OPENAI_URL = "https://api.openai.com/v1/decisions"
 OPENAI_PREFIX = "openai-decision-"
 RESOLUTIONS = ("low", "medium", "high", "ultra_high")
+# Chat `input_audio` formats Gemini Decisions accepts as audio/<format>; OpenAI Decisions takes no audio.
+AUDIO_FORMATS = ("webm", "ogg", "wav", "mp3", "mpeg", "mp4", "m4a", "aac", "flac")
 DEFAULT_TIMEOUT = 30.0
 
 
@@ -48,8 +50,13 @@ def split_messages(messages):
             elif part.get("type") == "image_url":
                 url = part["image_url"]["url"] if isinstance(part.get("image_url"), dict) else part.get("image_url")
                 parts.append({"type": "image", "url": url})
+            elif part.get("type") == "input_audio":
+                audio = part.get("input_audio") if isinstance(part.get("input_audio"), dict) else {}
+                if not audio.get("data") or audio.get("format") not in AUDIO_FORMATS:
+                    raise CustomLLMError(status_code=400, message="input_audio needs base64 data and a supported format")
+                parts.append({"type": "audio", "data": audio["data"], "mime_type": "audio/" + audio["format"]})
             else:
-                raise CustomLLMError(status_code=400, message="Decision tasks accept only text and image input")
+                raise CustomLLMError(status_code=400, message="Decision tasks accept only text, image and audio input")
     if not question:
         raise CustomLLMError(status_code=400, message="Decision task needs the question as a system message")
     if not parts:
@@ -71,6 +78,9 @@ def gemini_body(model, question, parts, resolution):
         if part["type"] == "text":
             blocks.append({"type": "text", "text": part["text"]})
             continue
+        if part["type"] == "audio":
+            blocks.append({"type": "audio", "data": part["data"], "mime_type": part["mime_type"]})
+            continue
         inline = _data_url(part["url"])
         block = ({"type": "image", "data": inline[1], "mime_type": inline[0]} if inline
                  else {"type": "image", "uri": part["url"]})
@@ -82,6 +92,8 @@ def gemini_body(model, question, parts, resolution):
 
 
 def openai_body(model, question, parts):
+    if any(p["type"] == "audio" for p in parts):
+        raise CustomLLMError(status_code=400, message="OpenAI Decisions accepts no audio input")
     content = [{"type": "input_text", "text": p["text"]} if p["type"] == "text"
                else {"type": "input_image", "image_url": p["url"]} for p in parts]
     return {"model": model, "input": [{"role": "user", "content": content}],

@@ -856,6 +856,120 @@
         "gpt-5.4-mini": "none"
       },
       "modality": "text"
+    },
+    "pl/college-assignment-writing": {
+      "primary": "gemini-3.8-flash",
+      "fallbacks": [
+        "gpt-6-luna"
+      ],
+      "timeout": 45,
+      "retries": 0,
+      "reasoning": {
+        "gemini-3.8-flash": "low",
+        "gpt-6-luna": "none"
+      },
+      "modality": "text"
+    },
+    "pl/college-curriculum": {
+      "primary": "gemini-2.5-flash",
+      "fallbacks": [
+        "gpt-6-luna"
+      ],
+      "timeout": 120,
+      "retries": 0,
+      "reasoning": {
+        "gemini-2.5-flash": "disable",
+        "gpt-6-luna": "none"
+      },
+      "modality": "text"
+    },
+    "pl/school-curriculum-extract": {
+      "primary": "gemini-2.5-flash",
+      "fallbacks": [
+        "gpt-6-luna"
+      ],
+      "timeout": 45,
+      "retries": 0,
+      "reasoning": {
+        "gemini-2.5-flash": "disable",
+        "gpt-6-luna": "none"
+      },
+      "modality": "text"
+    },
+    "pl/school-curriculum-verify": {
+      "primary": "gpt-5.4-mini",
+      "fallbacks": [
+        "gemini-2.5-flash"
+      ],
+      "timeout": 40,
+      "retries": 0,
+      "reasoning": {
+        "gpt-5.4-mini": "none",
+        "gemini-2.5-flash": "disable"
+      },
+      "modality": "text"
+    },
+    "pl/robo-faculty": {
+      "primary": "gemini-2.5-flash",
+      "fallbacks": [
+        "gemini-3-flash-preview",
+        "gpt-5.4-mini"
+      ],
+      "timeout": 20,
+      "retries": 0,
+      "reasoning": {
+        "gemini-2.5-flash": "disable",
+        "gemini-3-flash-preview": "disable",
+        "gpt-5.4-mini": "none"
+      },
+      "modality": "text"
+    },
+    "pl/robo-faculty-plan": {
+      "primary": "gemini-2.5-flash",
+      "fallbacks": [
+        "gpt-6-luna"
+      ],
+      "timeout": 70,
+      "retries": 0,
+      "reasoning": {
+        "gemini-2.5-flash": "disable",
+        "gpt-6-luna": "none"
+      },
+      "modality": "text"
+    },
+    "pl/robo-faculty-image": {
+      "primary": "gemini-2.5-flash-image",
+      "fallbacks": [],
+      "timeout": 90,
+      "retries": 0,
+      "reasoning": {},
+      "modality": "image"
+    },
+    "pl/robo-topic-image": {
+      "primary": "gemini-2.5-flash-image",
+      "fallbacks": [],
+      "timeout": 90,
+      "retries": 0,
+      "reasoning": {},
+      "modality": "image"
+    },
+    "pl/proctor-faces": {
+      "primary": "gemini-decision-1",
+      "fallbacks": [
+        "openai-decision-gpt-6-luna"
+      ],
+      "timeout": 15,
+      "retries": 0,
+      "reasoning": {},
+      "modality": "decision"
+    },
+    "pl/proctor-reading": {
+      "primary": "gemini-decision-1",
+      "fallbacks": [],
+      "timeout": 30,
+      "retries": 1,
+      "reasoning": {},
+      "modality": "decision"
     }
   }
 }

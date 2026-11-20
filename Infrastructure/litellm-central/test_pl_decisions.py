@@ -59,6 +59,19 @@ class DecisionProviderTests(unittest.TestCase):
         with self.assertRaises(decisions.CustomLLMError):
             decisions.to_response(response, 'gemini-decision-1', None, 0)
 
+    def test_audio_goes_to_gemini_and_is_refused_by_openai(self):
+        messages = [MESSAGES[0], {'role': 'user', 'content': [
+            {'type': 'text', 'text': 'Answer audio.'},
+            {'type': 'input_audio', 'input_audio': {'data': 'QUJD', 'format': 'webm'}}]}]
+        question, parts = decisions.split_messages(messages)
+        _, _, body, _ = decisions.provider_request('gemini-decision-1', 'k', question, parts, 'low')
+        self.assertEqual(body['input'][1], {'type': 'audio', 'data': 'QUJD', 'mime_type': 'audio/webm'})
+        with self.assertRaises(decisions.CustomLLMError):
+            decisions.provider_request('openai-decision-gpt-6-luna', 'k', question, parts, None)
+        with self.assertRaises(decisions.CustomLLMError):
+            decisions.split_messages([MESSAGES[0], {'role': 'user', 'content': [
+                {'type': 'input_audio', 'input_audio': {'data': 'QUJD', 'format': 'exe'}}]}])
+
     def test_bad_input_fails_explicitly(self):
         with self.assertRaises(decisions.CustomLLMError):
             decisions.split_messages([MESSAGES[1]])

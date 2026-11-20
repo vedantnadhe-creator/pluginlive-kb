@@ -73,6 +73,11 @@ class PolicyTests(unittest.TestCase):
         with self.assertRaises(policy.HTTPException):
             policy.route_task({'model':'pl/interview-probe','messages':[{'content':[{'type':'input_audio'}]}]},self.tasks)
 
+    def test_decision_task_may_judge_audio(self):
+        data=policy.route_task({'model':'pl/proctor-reading','messages':[{'content':[{'type':'input_audio'}]}]},self.tasks)
+        self.assertEqual(data['model'],'gemini-decision-1')
+        self.assertEqual(data['fallbacks'],[])
+
     def test_all_policies_valid_and_live_turns_have_short_deadlines(self):
         for task, candidate in self.tasks.items(): policy.validate_policy(task,candidate)
         self.assertEqual(self.tasks['pl/interview-probe']['timeout'],6)
