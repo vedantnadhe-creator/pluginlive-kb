@@ -213,6 +213,16 @@ Gotchas found on UAT, for the PROD release:
 
 Not done yet: link previews need a host nginx rule for crawlers. Not built: WhatsApp or SMS, the trainer daily digest, an editable email template, PDF attachments, and an institute staff screen. The module page has two layouts in `ModuleDetailView.tsx`: the Certificate card must be on both.
 
+## Account-specific text simulation clipboard — UAT only (2026-11-20)
+
+Copy, cut, paste and the browser context menu are enabled in text-chat simulations for **`jershini.y+00502@pluginlive.com` on UAT only**. The profile email resolves to Auth user `a577d1d0-96f8-49d7-9c0f-a1d6891ece25` (a mobile-login identity); no email-alias wildcard is used. The only account with this grant is that user. Sign out and back in, then refresh, to load the new Auth metadata and frontend.
+
+The switch is the boolean `simulation_chat_clipboard_enabled: true` in service-managed Auth `app_metadata`, preserving the user's other metadata. Editable `user_metadata` cannot grant it. Missing, false or malformed values retain the existing guard. The exception covers the scenario brief and conversation in `SimPlayer` and the UAT LMS text layout `LmsRolePlay`; voice mode, workbooks and drag/drop retain their restrictions. Revoke by setting the flag to `false` and refreshing the session. There is no schema migration or new admin-screen control.
+
+GitHub **`UAT` is `f3c5d762d`**; this change was not pushed to `main`, `Development` or the PROD release branch. Deployed via `~/auto_deploy.sh banking UAT`, built on UAT with its existing environment. Bundle `index-B0o6tu0q.js`; snapshot `~/banking-sb/snapshots/20261120T074901Z` includes the DB, previous dist/functions and `chat-clipboard-auth-before.json` for the account setting. The UAT checkout now uses branch `UAT`. The already-live certificate-owner-institute fix (`f2a180d05`) was preserved byte-for-byte; its local source patch matched the incoming commit. PROD is unchanged by this release.
+
+Validation: 48 relevant tests passed during implementation; the 20 clipboard-specific tests passed again on the updated UAT base. Real browser checks used the enabled account and a separate temporary unprivileged account: native Ctrl+C/Ctrl+V/Ctrl+X worked only for the enabled account in both text layouts; context menu, conversation copy, workbook blocking, drag/drop blocking and voice-mode blocking passed. No browser page errors or API errors. The deployed frontend and Auth sessions were real UAT; simulation responses were intercepted with a sample conversation to avoid creating, expiring or changing real attempts. The target user's 17 attempts (state checksum unchanged) and existing privacy agreement were preserved. The QA account and its consent were removed; only the two browser-test sessions were revoked, and temporary session-token files were deleted. Evidence: `/home/ubuntu/banking-checks/chat-clipboard-20261120/` on DEV.
+
 ## Workbook simulation tasks (2026-11-03)
 
 Any Excel-style scenario (lookups, balance sheets, loan schedules, financial models) can be a simulation task, in
