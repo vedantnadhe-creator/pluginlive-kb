@@ -5411,3 +5411,68 @@ PROD data exposed a further dropdown case: separate values differing only in cap
 Post-deploy PROD verification: eight roles, 21 distinct screens, eight validated downloads (six XLSX, one CSV, one PDF); no outstanding live-smoke issues. The practice PDF's two pages are aligned, dashboard/usage exports retain distinct learner IDs and empty-sheet headers, case-only dropdowns are distinct, and the provider/budget page loads. TypeScript has its unchanged 19 baseline diagnostics. All eight synthetic identities and their consents, two students, four trainers and the owned college structure are removed; no real user's consent or data was used/reset. See the QA report and `/home/ubuntu/banking-checks/journeys/prod-release-20261118/summary.json`.
 
 Test-only follow-up after the PROD tag: `UAT`/`main` at `34c89b0f4`, PROD source branch at `c0bb65173`. The export test now uses an anchored name matcher instead of Testing Library's unsupported `exact` option; both export tests pass again. The deployed application remains UAT `ebb982619`, PROD/tag `c4da74ce2`, with no runtime files different from the source follow-up.
+
+
+## 2026-11-20 — OTP delivery reliability live on UAT and PROD v1.1.29
+
+UAT is `a5529a8c1` (bundle `index-fx0K6rD_.js`, final snapshot `20261120T125609Z`);
+GitHub main is `41e406bda`. PROD/tag `v1.1.29` is `7e561218b` on `release/prod-v1.1`, bundle `index-D1ogzLJm.js`,
+backup `/data/backups/prod-20261120T130008Z`. The held student LMS and video gate work remain excluded.
+
+- The request handler prepares a **pending** challenge, submits the message, records
+  the provider receipt, and activates the code atomically. A failed replacement
+  leaves the previous code valid until expiry. A late completion cannot supersede
+  a newer code or reactivate a pending code after a successful login.
+- Existing five-minute expiry, 30-second resend wait, five guesses per code and
+  the account wrong-guess limit remain. New challenge issuance retains expired
+  delivery metadata for 14 days; no OTP or full contact is logged.
+- `auth_login_otp_challenges` adds `delivery_status`, `delivery_channel`,
+  `delivery_accepted_at`, and `delivery_attempts` (provider ID, recipient domain,
+  submission timestamp, duration and safe failure category). Existing OCI logs
+  can be joined by message ID. Accepted means provider submission, not inbox delivery.
+- After 30 seconds, **Send SMS instead** is available only when the auth identity
+  has a confirmed phone matching the account's registered mobile. The server checks
+  the prior challenge, role, identifier, expiry and cooldown. It never accepts a
+  destination supplied by the browser. Existing email-failure/no-email SMS fallback
+  is retained. Resending an SMS recovery code stays on SMS.
+- The browser no longer silently retries a code request through another route
+  after an error or timeout. Failed resends preserve the entered code and challenge.
+- `MAIL_OTP_SERVICE_URL=http://172.17.0.1:15010/send-email` directs banking login
+  mail to a separate `banking-otp-mail` container (Mail-Server `5930408`). Two workers
+  with two threads each, OTP-only validation and a 10-second SMTP submission deadline
+  isolate it from the shared relay's bulk traffic. Ordinary mail stays on port 5010.
+  This does not change the shared platform's bulk senders or recipient mailbox limits.
+
+Migration: `20261120130000_login_otp_delivery.sql`; DB-Scripts mirror:
+`Banking Supabase to Postgres/20261120T124731Z__banking_login_otp_delivery.sql`.
+The original issuer remains compatible for rollback; the new prepare/finalize RPCs
+are service-role-only. Deploy through each VM's `auto_deploy.sh banking-otp-mail`,
+then the regular banking deployment. Secrets remain in each environment's existing
+files; the OTP relay copies the established credentials in memory and writes no secrets
+into source or images. Previous function environment files have `.before-otp-20261120`
+backups.
+
+Validation: 42 focused application tests, 7 offline relay tests, 11 actual edge-handler
+checks using local provider/database HTTP doubles, and 22 real-database checks per
+environment inside rolled-back transactions. UAT student/trainer browser checks cover
+cooldown, SMS switch/resend, failure preservation, mobile overflow and live unknown-account
+handling. Email/SMS responses in the browser tests are mocked; no external messages
+were sent and no existing user's account, consent or OTP was altered. Full TypeScript
+checks add no diagnostics over the existing baseline. Evidence:
+`/home/ubuntu/banking-checks/otp-release-20261120/`.
+
+Final PROD verification passed: deployed function hashes match GitHub, the OTP-only
+relay authenticates to SMTP, unauthenticated sends return 401, bulk requests return
+400, and the original shared relay remains healthy. Student/trainer browser recovery
+checks pass on both environments (provider responses mocked), with zero page errors
+and no mobile horizontal overflow. Live unknown-account calls return the generic
+response without issuing codes. All 22 SQL checks passed again on each live database
+and were rolled back. No external email/SMS was sent by these checks.
+
+**SMS enrollment limitation:** the read-only audit found zero auth identities with a
+confirmed phone on UAT (136 auth users) and PROD (169 auth users) at release time.
+Consequently the new user-selected SMS recovery control is hidden for existing
+accounts until mobile verification is established. No phone was marked verified by
+this release. The existing automatic SMS behavior for accounts without email or a
+failed email submission is unchanged. A phone-verification/enrollment flow remains
+needed to make user-selected SMS recovery available to these accounts.

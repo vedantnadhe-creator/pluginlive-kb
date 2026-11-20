@@ -16,7 +16,7 @@ instance, on the DEV box, and DEV, UAT and PROD all sent through it.
 | Env | Public URL | What callers on the box use | Runs as | Allowlist |
 |---|---|---|---|---|
 | DEV | `https://mail.dev.pluginlive.com` | `http://172.17.0.1:5010/send-email` | `mail.service` (systemd, gunicorn) | none |
-| UAT | `https://mail.uat.pluginlive.com` | `http://172.17.0.1:5010/send-email` | container `mail-server-uat` | `pluginlive.com,icanio.com` |
+| UAT | `https://mail.uat.pluginlive.com` | `http://172.17.0.1:5010/send-email` | container `mail-server-uat` | all (verified 2026-11-20) |
 | PROD | *(none — in-cluster only)* | `http://mail-server.api.svc.cluster.local/send-email` | Deployment `mail-server`, ns `api`, 2 replicas | none (must reach real candidates) |
 
 All send as `mandate@pluginlive.com`; UAT tags subjects `[UAT]`.
@@ -263,3 +263,33 @@ Verify: `oci email dkim get --dkim-id <plmail2026 id>` → `lifecycle-state: ACT
 (not the `MS=…` wildcard). Search delivery outcomes per recipient with
 `oci logging-search search-logs --search-query "search \"<PROD compartment>/<Default_Group>\" | where logContent = '*<domain>*'"`
 — the relay itself only logs failures, never successful recipients.
+
+## 2026-11-20 — Separate banking login OTP capacity
+
+Mail-Server `5930408` adds an optional OTP-only instance; the existing shared relays
+are not replaced by this banking deployment. Banking UAT and Pl-Prod-Banking each
+have `banking-otp-mail` bound only to `172.17.0.1:15010`, configured with their local
+relay's established sender/auth/SMTP credentials. The banking edge functions select
+it through `MAIL_OTP_SERVICE_URL`; ordinary notifications stay on port 5010.
+
+`MAIL_OTP_ONLY=true` accepts only authenticated `category=login_otp` requests with
+one recipient and UUID `requestId`; it rejects bulk/CC requests and `/test-email`.
+The UUID becomes the Message-ID. `MAIL_SMTP_DEADLINE_SECONDS=10` bounds the entire
+SMTP submission below the banking client's 15-second timeout. No SMTP transport
+retry is performed. A connection-close failure after acceptance cannot report the
+send as failed. Structured success logs contain message ID, recipient domains and
+duration, excluding subjects, codes and full recipients. The OTP containers use
+two Gunicorn workers with two threads each and a 256 MB memory limit.
+
+Deployment: `auto_deploy.sh banking-otp-mail` invokes the committed
+`deploy-otp-relay.py` on the target VM, builds there, verifies SMTP authentication
+without sending mail, and retains a prior OTP container for rollback when present.
+The local wrapper updates the edge environment and recreates only banking functions.
+This is separate from the generic K8s PROD mail service.
+
+The Nov 18–20 diagnostic found heavy traffic concentrated on one mailbox's plus
+aliases; receiving-server delays reached over five minutes while other mailboxes
+were mostly quick. Dedicated OTP capacity removes app-side queue competition but
+cannot bypass recipient throttling or quarantine. Bulk sender pacing/deduplication
+and UAT bulk-mail capture remain separate work at their source; this release does
+not silently discard or redirect existing notification mail.
