@@ -401,3 +401,12 @@ PROD form-data-normalization ran `release-v1.38-hotfix-1` (4 Sep), which has no 
   `.rd-degree--capped` (DegreePicker only). `tests/degree-picker-open.test.cjs` (prebuild) fails if the shared
   `.rd-degree.is-active` rule gets a `max-height`/`overflow-y` again. corporate-react-v2 DEV `0dc1a1d`, UAT `5f95006`;
   browser-verified on both (Office location menu 320 px, 28 options). PROD: not affected unless 27f002c ships.
+- **A round adopted another role's same-named assessment (2026-11-20).** `adminNode.findMapId` recovers a stage's
+  assessment by name (`<role title> — <stage name>`) + corporate, skipping maps another stage owns. A corporate with
+  many same-titled roles (UAT: 11 "QA Engineer" roles, 6 maps named "QA Engineer — QA Technical Assessment") left
+  unowned maps behind, so a Communication round (UAT role ac9a37ea) adopted a 5-Nov **Aptitude** map; candidates sat
+  Aptitude and Auto-Pilot rejected on it. Now `findMapId` / `waitForMapId` also require the stage's assessment type
+  (`assessment_type.type_name`) and `acm.created_at >= workflow_stages.created_at` (only the stage's own map).
+  corporate-node DEV `7b829f30`, UAT `cad2d2fc`; PROD pending (same lookup on release-v1.43). UAT ac9a37ea cleaned up:
+  round 2 detached from a0d47ce2, Delzeen reopened, both candidates' Aptitude access closed, both re-invited to a new
+  Communication map 2a9659a4 (backup `~/deploy-backups/ac9a37ea-wrong-assessment-20261120.json` on the UAT box).
