@@ -134,6 +134,17 @@ The candidates list ignores `moved_back` dispatch rows, so it shows the round th
 
 An assessment stage's pass bar is its "Passing score: N%" evaluation parameter. With Auto-Pilot on, that row can't be removed and only its number is editable (0-100; left blank, it goes back to the previous value). Turning Auto-Pilot on, or loading a stage with parameters but no bar, adds the line at the stage's bar or 60, the backend default. A stage with no parameters gets it from the AI build. UI rule only: a save without a bar still runs on 60.
 
+## Public link for Tally roles (since 2026-11-20, DEV + UAT)
+
+Manage institutes → **Public link** shows the role's stored general link, `job_roles.general_tally_form_url`. `RoleWriteService.getRoleWriteExtras` returns it as `generalApplyUrl` for every role. Before this fix it returned the link only for `application_form_provider = PLUGINLIVE`. That made older Tally roles fall back to `/v2/apply/<roleId>`, which says "invalid URL" because that page serves PluginLive forms only.
+
+- A PluginLive role shows its short `/v2/a/<code>` link, as before.
+- A Tally role with a stored general link shows its `tally.so/r/...` form. "Open application form" opens the same link.
+- A Tally role without one shows a note asking you to share each invited institute's own link. Most old Tally roles have none (DEV: 24 of 7,240). Their per-campus links come from `job_role_institute_map.tally_form_url`.
+- Links copied earlier as `/v2/apply/<id>` for Tally roles still fail; there is no redirect to Tally.
+
+Commits: corporate-node DEV `62c0affd` / UAT `3f12a15d`; corporate-react-v2 DEV `444610c` / UAT `b6a49ec`. PROD pending.
+
 ## Apply form details
 
 "Same as permanent address" sits above the first Current Address question (after Permanent Address - Pincode), when the form has matching Permanent and Current Address questions (`addressCopies`). While ticked, Permanent Address answers copy into Current Address as they are typed; editing a Current Address field unticks it. Not in the form builder, and nothing extra is stored.
