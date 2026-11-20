@@ -334,6 +334,15 @@ client-side; picks live in the filter state under `custom["pl:location"]` as `de
 API. The role's location form questions (Current city, Current Address - City, Preferred location…) are no longer offered
 as their own custom filters. The **Applied on** filter is renamed **Applied time** (same date range).
 
+**State filter (since 2026-11-20, DEV + UAT).** A second "Add More Filters" category, **State**, next to Location, with
+**Current state**, **Permanent state** and **Preferred state** lists (AND across lists, OR within one; chip
+"Current state: Tamil Nadu"). Location stays city-only, so typing "Tamil" there finds nothing; use State. Data:
+`RoleApplicantsV2.baseCte` sends `profile.currentState` (`spp.corr_state`), `permanentState` (`spp.perm_state`) and
+`preferredStates` (`state_name` of the chosen `preferred_job_location` entries). No application-form fallback (the form
+asks for cities). Names are title-cased in the UI so "TAMIL NADU" and "Tamil Nadu" merge. Picks live in
+`custom["pl:state"]` as `deptKey(kind, state)`, client-side like Location. corporate-node DEV `922cea21` / UAT `78d3faf8`;
+corporate-react-v2 DEV `19e95af` + `a11d16c` / UAT `cdd7f52` + `78ce204`. PROD pending.
+
 The Location pane (and Degree & Department) scrolls inside the filter panel: `.fp-custom:has(> .dept-tree)` is a flex
 column in `styles/ds/app.css`, so the `.dept-tree` gets a bounded height. Before 2026-11-20 a long list was clipped at the
 panel's bottom with no scrollbar (corporate-react-v2 DEV `688bf01`, UAT `d0f724c`).
