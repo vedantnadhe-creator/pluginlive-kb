@@ -134,6 +134,46 @@ remaining). Read-only SRM verification found 21 offerings for a sampled enrolled
 exposed six units / 29 syllabus topics and no approved textbook lessons. Latest UAT deployment backup:
 `/home/ubuntu/banking-sb/snapshots/20261121T152153Z`; final app/remote revision `7a64c09b4`.
 
+## SRM Semester 1 journey verification and repairs (UAT, 2026-11-21)
+
+UAT revisions `fe7dc5cf6` and `7e6cab441` repair extraction and recover completed textbook builds after a lost
+browser response. PROD is unchanged. Latest UAT backup: `/home/ubuntu/banking-sb/snapshots/20261121T155509Z`.
+
+- The real-data audit covered **201 Semester 1 offerings across 22 SRM Easwari programmes**. All offering/build
+  links were valid, with no duplicate course codes within a section. Student curriculum RPC reads were checked
+  for all 201 offerings using disposable enrollment inside a rolled-back transaction.
+- **25 empty outlines were restored from already-approved syllabus sources.** Twenty-two were matched to
+  another approved extraction with identical course-section text; three were transcribed from exact source
+  headings/topics (Biomedical EE25C04 and Structural Engineering ST25101/ST25102). This includes CSE English
+  Essentials and Makerspace. No lessons or quiz content were invented or published into real student courses.
+- MBA MB25C01 had each of its six unit numbers twice. The repair retains each distinct topic under one unit
+  number. The exact guarded UAT data repair is tracked as `scripts/release/repair-srm-semester-one-outlines.sql`.
+  Six Technical Seminar offerings retain no units because their uploaded sources contain only scheme entries.
+- The extractor now explicitly includes unnumbered skill sections and lettered activity groups. `mergeUnits`
+  combines repeated unit numbers and preserves distinct topics across extraction chunks. Previously `mergeCourse`
+  retained whichever chunk had more units and could discard the other chunk's syllabus content.
+- A live QA generation produced four evidence-checked lessons and twelve questions, but its browser connection
+  closed before the response arrived. `buildUnitContent` now recovers a saved result after `FunctionsFetchError`:
+  it performs up to 20 checks two seconds apart, restricted to the same faculty, book, unit and a save made
+  after this request started. It never repeats the generation call. Server validation errors still surface directly;
+  unsuccessful recovery asks the faculty to refresh and check before rebuilding.
+- Faculty/HOD/student browser testing used four disposable accounts and a separate SRM QA programme/section
+  containing copies of CSE's ten Semester 1 courses. Coverage included faculty subject access and PDF upload,
+  duplicate rejection, HOD syllabus publication, return with reason, rebuild, independent approval, hidden drafts,
+  hidden quiz answers, all ten student subject readers, filters, persisted reading/quiz progress, optional tutor
+  context, mobile width, department isolation and self-approval denial. Real student consent/progress was untouched.
+- **Real-use setup is still incomplete:** SRM has no faculty assigned to its Semester 1 offerings and no HOD
+  mappings. The user was asked for the existing login emails and departments. Real programmes also have no
+  textbook uploads or approved textbook lessons; the recovered syllabus outlines do not change that readiness.
+
+Validation: 43 targeted unit/component tests passed. TypeScript has the same 24 pre-existing diagnostics as the
+previous release, with no new diagnostics. Test scripts and evidence are in
+`/home/ubuntu/banking-checks/srm-sem1-20261121/`; `audit-before.json` preserves the pre-repair outlines.
+The final UAT browser smoke passed for all three roles. A controlled lost-response test recovered the saved
+unit in the faculty page with exactly one generation request attempt (intercepted; no extra paid call).
+Cleanup verified zero remaining owned QA accounts, programme/section, textbook objects or generated content.
+All 201 original subject mappings remain; only the documented 26 outline corrections changed real curriculum data.
+
 ## Quality controls (UAT + PROD, 2026-11-18)
 
 Roles (`private.can_contribute_curriculum(program)`, `private.can_check_curriculum(program)`):
