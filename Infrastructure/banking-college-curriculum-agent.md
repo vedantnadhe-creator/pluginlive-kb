@@ -52,6 +52,38 @@ HODs and principals work on lessons from the course workspace (tab **Lessons fro
 
 The agent does **not** search for or download textbooks; colleges upload licensed copies.
 
+## Official syllabus-source finder and student curriculum route (UAT, 2026-11-21)
+
+UAT commit `bc3b45a4c` adds a deliberately narrow way for an authorised curriculum contributor to find an
+**official syllabus**, before the existing maker-checker flow begins. It is not a web-wide search or an automatic
+publication feature.
+
+- In **Curriculum agent → Documents**, the user can select the programme and choose **Find an official syllabus**.
+  The finder starts with the institute's registered website and can accept up to four additional public source pages
+  (for example, an official university, department, AICTE or UGC page). It follows only relevant links on the same
+  site for one hop (at most 12 HTML pages and 30 PDF candidates).
+- The Edge function accepts only public HTTP(S) URLs: no credentials, custom ports, localhost/private/reserved
+  addresses or hostnames that resolve to them. It checks DNS at every redirect (maximum three), caps HTML at 1.5 MB
+  and PDFs at 50 MB, and verifies the downloaded bytes are actually a PDF. A candidate is re-read from its source
+  page when **Import & check** is clicked, so a caller cannot submit an arbitrary URL.
+- Only an existing contributor (academic admin, principal, department HOD, or faculty teaching in that programme)
+  can discover or import a source. `curriculum_source_contributor_access(program)` exposes that existing check to
+  the caller-scoped Edge request before it fetches any external page.
+- Import records the source URL and issuing body, stores the PDF in `curriculum-sources`, and then invokes the same
+  `read_source` fingerprint/text duplicate checks as a manual upload. It does **not** run a generative model during
+  discovery, create a curriculum version, or publish content. The HOD's separate review/publish step remains
+  mandatory.
+
+The related student wiring fixes the distinction between legacy `trainer_curricula` assignments and approved college
+`course_offerings`. When a student has section offerings, the existing sidebar menu key is presented as
+**Academic Curriculum** and opens `/my-courses?area=courses&view=curriculum`; it lists the HOD-approved subjects
+for the current section and opens them in Robo Faculty. This route is available despite a missing legacy
+`trainer_curricula` entitlement, but only for an enrolled student with college offerings. No curriculum data is
+copied or republished by the route change.
+
+Navigation: academic admin → **Institute Journey → Academic set-up → Curriculum agent**; eligible faculty/trainer
+→ **Trainer Portal → College → Academic curriculum**; student → **Learn → Curriculum & Modules → Academic Curriculum**.
+
 ## Quality controls (UAT + PROD, 2026-11-18)
 
 Roles (`private.can_contribute_curriculum(program)`, `private.can_check_curriculum(program)`):
@@ -152,7 +184,9 @@ affiliated-college curriculum was used on the user's instruction.
   or else a principal or academic admin. Rajeev Gandhi College of Management Studies (PROD) had no HOD, no principal and no
   institute-role user on 2026-11-18, so only PluginLive platform admins could approve or publish there.
 
-- Students do not yet see the linked lessons in My Courses (`course_offerings.curriculum_id` is set but not rendered).
+- Students see HOD-approved `course_offerings` through **Academic Curriculum** and can enter Robo Faculty from each
+  subject. My Courses does not separately render a browseable textbook-lesson document library; Robo Faculty uses
+  approved lessons as its grounded teaching content.
 - Deleting a whole college that has sections fails in one cascade (older college-mode issue: `class_sections` →
   `academic_terms`). Delete in order (see `~/banking-checks/curriculum-agent/cleanup.sql`).
 - `Development` has no college-mode code, so DEV deploys remove this function from the DEV stack.
