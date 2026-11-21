@@ -9,6 +9,54 @@ Code: `bankingjobreadiness` — `supabase/functions/college-curriculum-agent`, `
 live on **UAT** (`e89cd43bb` + `69cf6c3ae`, 2026-11-18) and **PROD** (`release/prod-v1.1` `b831175c2`, tag `v1.1.27`, 2026-11-18, backup
 `/data/backups/prod-20261118T045457Z`). Migration `20261118100000_curriculum_quality_controls.sql` is applied on DEV, UAT and PROD.
 
+## Complete topic preparation and student downloads (UAT, 2026-11-21)
+
+Live on UAT at `6cb0ca2ca` (feature `8b6b31e24`, source-rights fix `e71af26f3`, shared video formatter fix `6cb0ca2ca`).
+PROD is unchanged. UAT snapshots: `20261121T170108Z`, `20261121T171019Z`. Migrations
+`20261121190000_academic_learning_packages.sql` and `20261121193000_academic_source_permission_snapshots.sql`
+are applied on DEV and UAT; canonical copies are in DB-Scripts / Banking LMS College Mode, PROD pending.
+
+- Faculty/trainer: **My Courses → Open course → Lessons from textbook** now has source/batch verification, PDF URL
+  import, topic preparation and review. Existing manual upload remains available. Trainer registration must also be approved.
+- Verification downloads the public syllabus, compares SHA-256 with the uploaded copy and checks college/regulation
+  evidence for the admission batch. A separate scoped HOD/principal/admin checks the submission. Autonomous mode
+  rejects a non-autonomous syllabus; university mode remains available. SRM's user-confirmed Anna University mappings
+  have **not** been replaced by Easwari's autonomous syllabus.
+- `import_learning_source` accepts a permitted public PDF URL with permission confirmation and distribution evidence.
+  Existing SSRF/redirect/size/PDF checks apply; file and extracted-text duplicates are rejected. Original book distribution
+  is `reference_only`, `open_licence` or `college_permission`, independently of permission to prepare lessons.
+- **Prepare topic / Prepare missing topics** generates one cited lesson, three evidence-checked MCQs and one academic
+  application simulation per selected topic. At most 25 missing topics run sequentially; keep the browser open. Stop finishes
+  the current topic. Saved packages are reused on retry. Generation uses the Admin `pl/college-curriculum` gateway/fallback.
+- YouTube discovery follows preparation and uses the shared quota/cache/verification pipeline. All four region choices
+  are available: English India, English US/UK/Europe, English Asia/Middle East, and Indian languages (including Tamil).
+  Platform order uses permitted groups. Up to four distinct matching videos are saved. Metadata, embedding and relevance
+  are checked; HOD must verify teaching quality/spoken language. Genuine no-match can be reviewed with a reason;
+  quota/configuration errors block publication and must be retried.
+- HOD sees the lesson, quotes/pages, permission evidence, questions/answers, video links and simulation goal/model answer/rubric.
+  Self-approval is blocked. Return allows draft rebuild. Approval freezes the simulation and publishes only to validated,
+  enrolled batches. Legacy unit review/rebuild cannot bypass this workflow or overwrite published topic packages.
+- Student **Academic Curriculum** includes **Download source PDF**, **Download lesson PDF**, Read, Videos, Check understanding
+  and Simulation. Signed downloads expire after 120 seconds. Original books require reviewed distribution permission;
+  changing its evidence removes book-download access until reviewed again. Lesson PDFs are cached by content hash,
+  cite sources/pages and exclude quiz answers and simulation solutions.
+- Statuses: source missing, validation pending, preparation pending, review pending, revision requested and published.
+  Existing `sim-attempt`/SimPlayer handles academic application practice with academic reasoning criteria. Corporate
+  subscriptions/assignments do not grant academic access. Practice scores do not change college marks. Robo Faculty
+  excludes pending topic drafts and textbook grounding for unvalidated batches.
+- New tables: `academic_syllabus_validations`, `academic_topic_packages`; existing curriculum and immutable simulation
+  tables are reused. Service-only atomic saves prevent partial package publication.
+
+Checks: 96 automated tests; rolled-back DEV/UAT SQL access/approval tests; 37 distinct live API/browser checks.
+One paid test produced a source-checked lesson/quiz/simulation; YouTube returned four videos. Faculty → HOD → student,
+PDF downloads/A4 layout, quiz 3/3, simulation launch, mobile width and zero app errors passed. URL import, duplicate
+rejection, private-address rejection and unenrolled download denial passed. A full paid simulation conversation was not run.
+Test kit: `~/banking-checks/academic-packages-20261121/`. TypeScript retains 24 unchanged baseline diagnostics.
+
+Real SRM topics have **not** been bulk-generated or approved under a fabricated HOD identity. Faculty/HOD login emails and
+department assignments are still required. Official Easwari R2023 was fetched and validated only in an isolated QA programme;
+this does not override the earlier user-approved Anna University choice. Do not report all Semester 1 lessons as published.
+
 ## What it does
 
 **Academics → Curriculum agent** (college-mode institutes; academic admins and platform admins build syllabus versions). Faculty,
@@ -16,7 +64,8 @@ HODs and principals work on lessons from the course workspace (tab **Lessons fro
 
 1. **Documents.** Per programme the admin uploads the approved syllabus PDF (university / deemed / autonomous) and the prescribed
    textbooks (PDF, max 50 MB, bucket `curriculum-sources`, path `<institute>/<programme>/<uuid>.pdf`). A textbook needs the
-   "college holds a licence or library copy" tick; its text is used only to draft lessons and is never shown to students.
+   "college holds a licence or library copy" tick; its text is used to draft lessons. On UAT, original PDF downloads additionally
+   require reviewed distribution permission through topic preparation; PROD retains lesson-only access.
    Every upload records its **source** (`issuing_body`: university, deemed university, autonomous, AICTE/UGC model curriculum,
    college website, publisher, author's e-book repository, library copy, other) plus optional link, publisher, edition, ISBN.
    `read_source` extracts text page by page (unpdf); under ~100 characters per page it is marked **scanned**.
@@ -82,9 +131,9 @@ Navigation: academic admin → **Institute Journey → Academic set-up → Curri
 
 ## Separate academic learning and trainer delivery (UAT, 2026-11-21)
 
-UAT commits `43d912d56` + `ab98e4653` + `7a64c09b4` add `/academic-curriculum`. **PROD is unchanged.** This is the first
-learning-page/audience-separation release; automatic YouTube discovery and one generated simulation per
-syllabus topic are still pending, not implied by the new reader.
+UAT commits `43d912d56` + `ab98e4653` + `7a64c09b4` add `/academic-curriculum`. **PROD is unchanged.** This was the first
+learning-page/audience-separation release. YouTube discovery and a generated simulation per prepared topic are now
+available through the UAT preparation workflow above.
 
 - **Academic Curriculum** has its own sidebar key (`academic_curriculum`), available through actual section
   enrollment. It shows subject cards, semester/search filters, syllabus units/topics and approved lessons.
