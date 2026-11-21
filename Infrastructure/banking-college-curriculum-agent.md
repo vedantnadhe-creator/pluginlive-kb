@@ -74,15 +74,65 @@ publication feature.
   discovery, create a curriculum version, or publish content. The HOD's separate review/publish step remains
   mandatory.
 
-The related student wiring fixes the distinction between legacy `trainer_curricula` assignments and approved college
-`course_offerings`. When a student has section offerings, the existing sidebar menu key is presented as
-**Academic Curriculum** and opens `/my-courses?area=courses&view=curriculum`; it lists the HOD-approved subjects
-for the current section and opens them in Robo Faculty. This route is available despite a missing legacy
-`trainer_curricula` entitlement, but only for an enrolled student with college offerings. No curriculum data is
-copied or republished by the route change.
+The student route was subsequently replaced by a dedicated learning page (below). The earlier
+`/my-courses?area=courses&view=curriculum` link now redirects to `/academic-curriculum`.
 
 Navigation: academic admin → **Institute Journey → Academic set-up → Curriculum agent**; eligible faculty/trainer
 → **Trainer Portal → College → Academic curriculum**; student → **Learn → Curriculum & Modules → Academic Curriculum**.
+
+## Separate academic learning and trainer delivery (UAT, 2026-11-21)
+
+UAT commits `43d912d56` + `ab98e4653` + `7a64c09b4` add `/academic-curriculum`. **PROD is unchanged.** This is the first
+learning-page/audience-separation release; automatic YouTube discovery and one generated simulation per
+syllabus topic are still pending, not implied by the new reader.
+
+- **Academic Curriculum** has its own sidebar key (`academic_curriculum`), available through actual section
+  enrollment. It shows subject cards, semester/search filters, syllabus units/topics and approved lessons.
+  Each lesson offers reading, approved YouTube videos and a practice quiz. Practice scores do not change
+  academic grades or attendance. Saving reading/quiz progress refreshes the subject cache so the status survives
+  topic navigation. Topic labels in new generated lessons are matched to canonical syllabus labels;
+  older lessons without an exact topic mapping remain accessible as unit reading.
+- **Ask Robo Faculty** is optional within a unit/topic and prefills that context. Merely opening the curriculum
+  does not start a class or generate anything. **My Courses** retains attendance, assignments, timetable and grades.
+- **Trainer Curriculum** remains a separate destination and retains existing published corporate/general
+  training assignments and module materials. A learner with both kinds of assignment can see both journeys;
+  college enrollment no longer replaces the trainer-content menu or grants its subscription entitlement.
+- `trainer_curricula.audience_type` is `college_academic`, `corporate_training` or `general_trainer`.
+  The migration classifies proven academic links and exclusive corporate institute mappings. Ambiguous
+  legacy rows remain general; no assignments or content are deleted. New academic-agent rows are classified
+  by a trigger, and an academic row cannot be changed back through the legacy editor.
+- `student_has_curriculum` requires academic section enrollment in the matching institute/programme and an
+  accepted course in a published/archived syllabus version. A direct or institute-wide training assignment
+  cannot grant academic access. Legacy direct/cohort/institute assignments retain their behavior; a trainer-only
+  recipient is never interpreted as a student grant. The student training page uses `my_assigned_curricula`
+  as the authority, rather than broadening it with client-side cohort matching.
+- The training page resolves assigned curriculum IDs first, then restricts curriculum/assignment reads to
+  those IDs and the student's recipient/cohort rows. The previous full assignment-table scan took ~43 seconds
+  in a live UAT check with 2,706 assignments; it is no longer part of the learner page.
+- Restrictive RLS guards on curriculum parents/children cover historical broad authenticated read policies.
+  Draft/returned academic units and answer keys are hidden from learners. Academic writes go through the
+  college agent and HOD review, not generic trainer editors/generation endpoints. Trainer editors omit academic rows.
+- New authenticated RPCs: `my_academic_subjects`, `academic_subject_content(p_offering)` and
+  `record_academic_learning(p_offering,p_topic,p_answers)`. The reader returns approved lessons and safe question
+  fields only; the server validates enrollment/topic ownership, records reading and scores the submitted choices.
+  Answer explanations are returned after submission. Direct academic progress writes are blocked.
+- **Content readiness:** at the start of this release UAT had 7,795 parsed course records and **zero linked
+  textbook curricula**. Published syllabus topics therefore appear immediately, but missing lesson content
+  is shown as awaiting publication. Faculty still upload a licensed textbook, build units, and obtain independent
+  HOD approval. No source books were downloaded or bulk-generated as part of this release.
+
+Migration: `20261121120000_academic_curriculum_learning.sql`; archived under DB-Scripts → Banking LMS College Mode
+as `20261121T151008Z__academic_curriculum_learning.sql` (DEV/UAT applied; PROD pending).
+Checks: isolated SQL tests cover academic/corporate/dual-context access, cross-institute denial, HOD publication,
+hidden drafts/answers, retained legacy subtopic videos and server quiz scoring. UI tests cover subject/topic navigation,
+optional tutor context, quiz submission, missing material and unsafe video/source URL rejection.
+
+Release verification: 52 targeted unit/component tests passed; 14 live browser checks passed on UAT, including
+dual-context and corporate trainer delivery, server-scored quizzes, saved progress after changing topics, tutor
+prefill and mobile overflow. Temporary QA users/institutes/curricula and their consents were removed (verified zero
+remaining). Read-only SRM verification found 21 offerings for a sampled enrolled account; one sampled subject
+exposed six units / 29 syllabus topics and no approved textbook lessons. Latest UAT deployment backup:
+`/home/ubuntu/banking-sb/snapshots/20261121T152153Z`; final app/remote revision `7a64c09b4`.
 
 ## Quality controls (UAT + PROD, 2026-11-18)
 
