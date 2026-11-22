@@ -5567,3 +5567,24 @@ policy), `tasks-20261122T115453Z.json`, `tasks-20261122T115710Z.json`; final pol
 baseline: `/data/backups/simulation-route-before-journeys-20261122.txt`. Evidence:
 `/home/ubuntu/banking-checks/prod-journeys-20261122/`. No schema change, UAT merge, `/v2` change or billing change.
 Student LMS redesign, video-watch completion gate and AI video checker remain held.
+
+## UAT — backport PROD journey fixes (2026-11-22)
+
+GitHub `UAT` and the live UAT checkout are at `7be6da98d6d5b85537af149fb55a09629bf5c08d`, a scoped cherry-pick of
+PROD `9ffb360b5`. Certificate persisted-field validation and editable error fields, plus subject-anchored faculty topic
+video discovery, are now present in both environments. No new schema or unrelated branch changes were shipped.
+The existing PROD student LMS/video-watch/AI-checker hold remains unchanged.
+
+UAT's `pl/sim-persona-turn` task now uses gpt-5.4-mini → gpt-6-luna; registered and granted `pl/banking-simulation`
+(gpt-6-luna → gpt-5.4-mini) and pointed the non-turn simulation row at it. Both tasks passed normal and forced fallback
+checks with UAT's own service key. No provider credential or billing changes. See
+[centralized LLM routing](centralized-llm-routing.md) for policies and rollback files.
+
+127 targeted tests passed. Live browser checks covered candidate navigation, retained Fetch More results, full simulation
+reply/submission/debrief, certificate error recovery/save/preview, institute-peer permissions, audit actor and access/lock
+restrictions. Faculty discovery retained Python subject context; the independent HOD could review and return the draft.
+All six temporary identities, two institutes/modules, the test course/package/scenario, attempts and progress were
+removed after verification. Build ran on UAT with its own environment via
+`~/auto_deploy.sh banking UAT`, preserving function overlays and function ACLs. Bundle `index-DlK7wPHB.js` contains the
+UAT API origin and no DEV/hosted API origins. Snapshot `~/banking-sb/snapshots/20261122T121252Z`; evidence
+`/home/ubuntu/banking-checks/uat-journeys-20261122/`. PROD remains `9ffb360b5` / `v1.1.32`.

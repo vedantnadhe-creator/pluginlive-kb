@@ -1,6 +1,6 @@
 # Banking LMS — College curriculum agent
 
-Current code: **UAT `16204d925`** and **PROD `9ffb360b5`**, `release/prod-v1.1`, tag **`v1.1.32`** (2026-11-22). PROD: `https://lms.pluginlive.com/academic-curriculum`. SRM Python's 49 approved topic packages and their files are published in both environments; see the production scope below.
+Current code: **UAT `7be6da98d`** and **PROD `9ffb360b5`**, `release/prod-v1.1`, tag **`v1.1.32`** (2026-11-22). PROD: `https://lms.pluginlive.com/academic-curriculum`. SRM Python's 49 approved topic packages and their files are published in both environments; see the production scope below.
 Code: `bankingjobreadiness` — `supabase/functions/college-curriculum-agent`, `supabase/functions/_shared/curriculum-agent-checks.ts`,
 `src/components/college/CurriculumAgentPanel.tsx`, `src/lib/curriculumAgentApi.ts`. Migrations `20261116150000_college_curriculum_agent.sql`,
 `20261116160000_curriculum_agent_offering_link_no_fk.sql` (DB-Scripts folder *Banking LMS College Mode*).
@@ -101,6 +101,33 @@ learning content and real-user progress were not changed. No schema migration or
 the PROD VM via `auto_deploy.sh banking release/prod-v1.1`; bundle `index-D6lmR_sT.js`; backup
 `/data/backups/prod-20261122T115733Z`. Evidence: `/home/ubuntu/banking-checks/prod-journeys-20261122/`.
 Student LMS redesign, video-watch completion gate and AI video checker remain excluded.
+
+## UAT backport of journey fixes (2026-11-22)
+
+The user requested the same fixes in UAT and GitHub. Commit `7be6da98d6d5b85537af149fb55a09629bf5c08d` on
+GitHub `UAT` cherry-picks PROD `9ffb360b5`: certificate field validation while disabled, editable invalid fields, and
+subject-anchored faculty video discovery. Only the six reviewed source/test files were backported; no schema migration
+or production deployment was performed. Existing UAT features and environment settings were retained.
+
+UAT simulation configuration now matches the corrected PROD routing: `pl/sim-persona-turn` uses gpt-5.4-mini then
+gpt-6-luna; `pl/banking-simulation` uses gpt-6-luna then gpt-5.4-mini. Both use UAT's own gateway/service key and passed
+normal and forced-fallback probes. The `simulation` LLM settings row now names the registered task instead of physical
+Gemini. Unrelated tasks, provider credentials and billing settings were preserved.
+
+All 127 targeted tests passed. Live UAT checks passed for candidate navigation, Fetch More with saved videos after
+reload, a simulation reply and scored debrief, certificate validation/save/preview by an institute peer, correct audit
+actor, cross-institute/student denial, catalogue restrictions and institute lock enforcement. Faculty discovery returned
+Python-context videos for Error messages and retained the independent publication gate. The HOD saw the discovered
+videos and returned the draft with a reason. All six temporary auth identities, two institutes, two modules, the test
+course/package/scenario, simulation attempt, recommendations, progress and consent were removed; SRM's published
+content was retained.
+
+Built on UAT using its own environment via `auto_deploy.sh banking UAT`; live commit matches GitHub, bundle
+`index-DlK7wPHB.js`, changed function hashes match the PROD fix, and no DEV/hosted API origins appear in the bundle.
+Snapshot: `~/banking-sb/snapshots/20261122T121252Z`; gateway policy backup:
+`~/litellm/policy-backups/tasks-20261122T121151Z.json`; simulation settings baseline:
+`~/banking-sb/snapshots/uat-journeys-config-20261122/simulation-before.txt`. Evidence:
+`/home/ubuntu/banking-checks/uat-journeys-20261122/`. The existing production hold remains unchanged.
 
 ## Fetch more academic YouTube videos (UAT + PROD, 2026-11-22)
 

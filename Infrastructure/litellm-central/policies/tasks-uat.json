@@ -599,15 +599,15 @@
       "modality": "text"
     },
     "pl/sim-persona-turn": {
-      "primary": "gemini-3-flash-preview",
+      "primary": "gpt-5.4-mini",
       "fallbacks": [
-        "gemini-2.5-flash"
+        "gpt-6-luna"
       ],
       "timeout": 12,
       "retries": 0,
       "reasoning": {
-        "gemini-3-flash-preview": "disable",
-        "gemini-2.5-flash": "disable"
+        "gpt-5.4-mini": "none",
+        "gpt-6-luna": "none"
       },
       "modality": "text"
     },
@@ -970,6 +970,19 @@
       "retries": 1,
       "reasoning": {},
       "modality": "decision"
+    },
+    "pl/banking-simulation": {
+      "primary": "gpt-6-luna",
+      "fallbacks": [
+        "gpt-5.4-mini"
+      ],
+      "timeout": 20,
+      "retries": 0,
+      "reasoning": {
+        "gpt-6-luna": "none",
+        "gpt-5.4-mini": "none"
+      },
+      "modality": "text"
     }
   }
 }
