@@ -5588,3 +5588,25 @@ removed after verification. Build ran on UAT with its own environment via
 `~/auto_deploy.sh banking UAT`, preserving function overlays and function ACLs. Bundle `index-DlK7wPHB.js` contains the
 UAT API origin and no DEV/hosted API origins. Snapshot `~/banking-sb/snapshots/20261122T121252Z`; evidence
 `/home/ubuntu/banking-checks/uat-journeys-20261122/`. PROD remains `9ffb360b5` / `v1.1.32`.
+
+
+## UAT + PROD v1.1.35 — institute roles and verified admin journeys (2026-11-22)
+
+The [managed institute role rollout](banking-managed-roles.md) is live on both environments. GitHub/live UAT is
+`dea9e01fd7d3ae299c11c69b6849c2ef48666542`; PROD `release/prod-v1.1` and tag `v1.1.35` are
+`a392b569db2612e79be0301200262e5f3a4798cd`. The linked record lists every updated dropdown and its authorization mapping.
+
+Registered colleges gain Faculty / Teacher, Institute Admin, HOD, Principal, Vice Principal, Dean and Director across
+account creation, role reassignment and relevant filters. Corporate restrictions and college/department scope are enforced
+server-side by a service-only atomic RPC. Live QA also fixed a large-roster UI stall, null-contact search crash, incorrect
+admin OTP guidance, ambiguous admin-role RPC lookup, and the Agent activity reader/writer's nonexistent thread column.
+
+137 targeted tests and 26 live checks per environment passed. Twenty temporary QA identities and six isolated
+organizations across both environments were removed with their scoped records. Real SRM Python content remains checksum
+identical. All 32 changed source files and five runtime files match the committed release; role-function ACLs and bundle
+origins passed verification. Existing unrelated TypeScript/broader-test baseline failures are documented in the role record.
+
+UAT bundle `index-COe2Ai_t.js`, snapshot `~/banking-sb/snapshots/20261122T150131Z`; PROD bundle `index-Bmd99pUW.js`,
+backup `/data/backups/prod-20261122T150405Z`. Built on each VM with its own environment via `auto_deploy.sh`.
+Student LMS redesign, video-watch completion gate and AI video checker remain held; `/v2`, DEV and the gateway policies
+were not changed. Evidence: `/home/ubuntu/banking-checks/managed-roles-release-20261122/`.
