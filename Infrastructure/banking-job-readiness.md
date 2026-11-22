@@ -5497,13 +5497,43 @@ The 37 existing SRM syllabus PDFs were verified byte-for-byte against official A
 repair and historical validation backfill (74 SRM mappings plus one verified TCET mapping). This preserves existing
 published-syllabus access under the new admission-batch gate. It imports no textbooks or topic material.
 
-**Content scope:** the approved UAT SRM Python material was not copied. PROD still has zero real academic topic packages
-and zero SRM textbook sources. The explicit content-transfer question had no answer during the release. Thus the feature
-is deployed and verified, but real SRM Python lessons/videos still require promotion of the approved UAT data/storage or
-preparation/review in PROD. See [banking-college-curriculum-agent.md](banking-college-curriculum-agent.md) for exact counts.
+**Content scope:** v1.1.30 deployed the feature; the subsequent explicitly authorised v1.1.31 promotion below published
+the approved SRM Python material and files. See [banking-college-curriculum-agent.md](banking-college-curriculum-agent.md)
+for the current content counts, source rights and review provenance.
 
 Validation: 127 feature/navigation tests and 54 additional simulation tests passed; one unchanged unrelated source-string
 assertion expects pre-refactor ContentManager code. Live isolated Python QA verified fetch/save/reload, private retention,
 real YouTube player, region/language controls, mobile width, access denial and simulation entry point. Final browser checks
 had no JS errors or failed app calls. Four temporary accounts and all isolated fixture data were removed, and the rehearsal
 database was dropped. Evidence: `/home/ubuntu/banking-checks/academic-prod-20261122/`.
+
+## PROD v1.1.31 — SRM Python content, Semester 1 repairs and certificate editing (2026-11-22)
+
+GitHub `release/prod-v1.1` and live PROD are at `703fa3de7bd94fdf453697d4d5bbb09bdd0ff0d5`, tag `v1.1.31`.
+The user explicitly authorised these three promotions. Student LMS redesign, the video-watch completion gate and
+AI video checker remain excluded. No UAT merge, new schema, DEV deployment or `/v2` change was made.
+
+- **SRM CS25C02 Python:** 49 approved topic packages and lesson PDFs, 147 questions, 49 frozen approved simulations,
+  37 approved videos across 25 topics, and eight permitted supplementary learning sources. Original review actors,
+  timestamps, rights evidence and citations were preserved; both actors already existed in PROD. All 57 copied PDFs
+  match UAT bytes. The existing syllabus brings learner downloads to 58 PDFs. Rejected video candidates (74) remain
+  unpublished audit records. The other 24 topics have approved no-video reasons and expose Fetch More YouTube.
+- **Semester 1 outlines:** restored the 25 selected empty outlines and consolidated MBA MB25C01's 12 duplicated unit
+  rows into six units. Exact course baseline guards, same syllabus/programme hashes and insert-only content IDs prevent
+  an import from overwriting concurrent changes. All data changes committed together after a production-copy rehearsal.
+- **Certificate editing:** `module-certificate-settings` now lets another trainer from the module owner's institute edit
+  settings. Ownership by trainer ID or user ID is resolved server-side. Institute locks, cross-institute denial and
+  ownerless admin-catalogue restrictions remain enforced. This is the only application code delta from v1.1.30.
+
+Validation: 59 certificate tests passed. Live checks confirmed peer saves with the correct audit actor, other-institute
+and student denial, admin-catalogue restrictions and lock enforcement. Enrolled student checks passed for all 49 topic
+pages, 147 questions, 37 video embeds, 49 simulation links, every one of the 58 signed PDF downloads, quiz grading and
+saved progress. The simulation player loads; no paid conversation was started. Final desktop/mobile browser checks
+had no application JS errors, failed backend calls or horizontal overflow. All five temporary accounts, two QA
+institutes, two QA modules, temporary memberships, consent and progress were removed; the rehearsal database was dropped.
+
+Deployed via `~/auto_deploy.sh banking release/prod-v1.1` on `130.210.28.66`; built there using PROD `.env`. Runtime
+function hashes match GitHub; public bundle remains `index-DumayiN-.js` and contains no DEV/UAT API hosts. Existing Edge
+overlays and OTP relay were preserved. Runtime backup `/data/backups/prod-20261122T052441Z`; pre-import DB snapshot and
+promotion/check logs `/data/backups/srm-content-20261122T051448Z`; previous deploy script
+`/opt/banking-sb/deploy-release-before-srm-20261122.sh`. Evidence: `/home/ubuntu/banking-checks/srm-production-promotion-20261122/`.

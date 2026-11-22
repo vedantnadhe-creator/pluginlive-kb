@@ -1,6 +1,6 @@
 # Banking LMS — College curriculum agent
 
-Current code: **UAT `16204d925`** and **PROD `5bc68b2c0`**, `release/prod-v1.1`, tag **`v1.1.30`** (2026-11-22). PROD: `https://lms.pluginlive.com/academic-curriculum`. Real prepared content is environment-specific; see the production scope below.
+Current code: **UAT `16204d925`** and **PROD `703fa3de7`**, `release/prod-v1.1`, tag **`v1.1.31`** (2026-11-22). PROD: `https://lms.pluginlive.com/academic-curriculum`. SRM Python's 49 approved topic packages and their files are published in both environments; see the production scope below.
 Code: `bankingjobreadiness` — `supabase/functions/college-curriculum-agent`, `supabase/functions/_shared/curriculum-agent-checks.ts`,
 `src/components/college/CurriculumAgentPanel.tsx`, `src/lib/curriculumAgentApi.ts`. Migrations `20261116150000_college_curriculum_agent.sql`,
 `20261116160000_curriculum_agent_offering_link_no_fk.sql` (DB-Scripts folder *Banking LMS College Mode*).
@@ -12,8 +12,9 @@ live on **UAT** (`e89cd43bb` + `69cf6c3ae`, 2026-11-18) and **PROD** (`release/p
 ## Production release and content scope (2026-11-22)
 
 The user explicitly requested GitHub push and PROD deployment. Release `5bc68b2c0dada9a810392d59229b39e95a84304e`
-(tag `v1.1.30`) promotes the complete academic reader/preparation/source verification dependencies and the Fetch More
-YouTube action from UAT onto the existing production release. Corporate trainer delivery stays separate. The held
+(tag `v1.1.30`) promoted the academic reader/preparation/source verification dependencies and Fetch More YouTube.
+The subsequent authorised promotion, `703fa3de7bd94fdf453697d4d5bbb09bdd0ff0d5` / `v1.1.31`, publishes the SRM
+Python learning content and Semester 1 outline repairs and enables same-institute peer certificate editing. Corporate trainer delivery stays separate. The held
 student LMS v2/designer changes and lesson-video watch-gate/AI-checker changes remain excluded. The `/v2` app is separate.
 
 All six academic migrations are applied on PROD: `20261121120000`, `20261121130000`, `20261121190000`,
@@ -26,14 +27,34 @@ compared with the current official Anna University CAC PDF and the prior verifie
 The migration then restored 74 existing SRM build/batch approvals; one verified TCET legacy mapping was backfilled by the
 initial migration. No new curriculum authority, batch applicability or HOD identity was invented.
 
-**Real SRM Python lesson content was not promoted.** At completion PROD has 37 SRM syllabus sources, zero SRM textbook
-sources and zero real academic topic packages. The six-unit Python outline and its source/batch validation are present.
-The 49 approved Python packages, 147 questions, 49 simulations, 37 published videos and eight permitted learning sources
-remain in UAT. A scope question asking whether to transfer those approved records/storage objects was sent, but no answer
-was received during this deployment. Therefore a production learner needs a prepared, approved lesson before its Videos
-panel and Fetch More action can appear. Do not describe the real SRM Python content as published in PROD.
+**SRM Python content is published in PROD.** The user's explicit content-promotion request was completed on 2026-11-22:
+49 approved topic packages and lesson PDFs, 147 questions, 49 frozen approved simulation versions, 37 approved videos
+across 25 topics, and eight permitted supplementary learning sources. All 57 transferred PDF objects are byte-identical
+to UAT; the existing syllabus makes nine source downloads and 58 downloadable PDFs in total. Original maker/checker
+identities, approval timestamps, source rights and citations are preserved. Both review actors already existed in PROD;
+no users, student progress or personal recommendations were copied. The 74 rejected video candidates remain unpublished
+audit rows and cannot be rediscovered as new candidates. The other 24 topics retain their approved no-video reasons;
+students can use Fetch More on every topic.
 
-Validation: 127 feature/navigation checks passed, plus 54 simulation checks. One additional unchanged baseline assertion
+The same guarded transaction restored the 25 empty Semester 1 subject outlines and consolidated MBA MB25C01 from
+12 duplicated unit rows to six distinct units. It changed only the selected course content/link fields and outline fields,
+after checking the exact live baseline. It did not overwrite other college data, enrolments or syllabus builds. The
+transaction was rehearsed on a disposable production database copy before application; no new schema was required.
+
+Production verification: all 49 topic pages render, all 37 approved video embeds appear, all 58 signed PDF downloads
+work, quiz grading/progress survive reload, and the simulation player opens. Enrolment denial and hidden quiz/simulation
+answers were checked. All 59 existing certificate tests and live owner/peer/other-institute/admin-catalogue/lock checks
+passed. Final browser checks had no application JS errors, failed backend calls or mobile horizontal overflow. All five
+temporary accounts, two QA institutes, two QA modules and their progress/consent were removed; the rehearsal database
+was dropped. No paid content or simulation generation ran during promotion.
+
+Current release was built on the PROD VM with the unchanged PROD environment through `auto_deploy.sh banking release/prod-v1.1`.
+Bundle remains `index-DumayiN-.js`; only `module-certificate-settings` code changed from v1.1.30. Backup:
+`/data/backups/prod-20261122T052441Z`; pre-import snapshot and SQL logs: `/data/backups/srm-content-20261122T051448Z`.
+Operational evidence: `/home/ubuntu/banking-checks/srm-production-promotion-20261122/`. Student LMS redesign, video-watch
+completion gate and AI video checker remain excluded under the existing hold.
+
+Earlier v1.1.30 validation: 127 feature/navigation checks passed, plus 54 simulation checks. One additional unchanged baseline assertion
 in `simulationAuthAndLogoutRegression.test.ts` still expects old inline ContentManager code in the wrapper file; both files
 are unchanged by this release. Two obsolete academic navigation assertions were corrected to test the dedicated reader
 and legacy redirect. New frontend files lint clean. Live isolated QA used the approved Python Error messages text: search
@@ -162,7 +183,9 @@ checks passed on DEV and UAT. Canonical DB-Scripts commit `0e5c11e`:
 `Banking LMS College Mode/20261122T023507Z__academic_content_scope_once.sql` (DEV/UAT/PROD applied).
 This performance follow-up adds no tables or columns; it is included in PROD `v1.1.30`.
 
-## Real SRM Python topic publication (UAT, 2026-11-22)
+## Real SRM Python topic publication (UAT + PROD, 2026-11-22)
+
+The approved UAT records and private PDF objects were promoted to PROD with v1.1.31, preserving the review evidence below.
 
 The user authorised preparation and approval using existing admin accounts. The maker and checker are different existing
 platform admins; each review note explicitly records **user-authorised agent-assisted admin review**, rather than claiming
@@ -343,10 +366,11 @@ remaining). Read-only SRM verification found 21 offerings for a sampled enrolled
 exposed six units / 29 syllabus topics and no approved textbook lessons. Latest UAT deployment backup:
 `/home/ubuntu/banking-sb/snapshots/20261121T152153Z`; final app/remote revision `7a64c09b4`.
 
-## SRM Semester 1 journey verification and repairs (UAT, 2026-11-21)
+## SRM Semester 1 journey verification and repairs (UAT 2026-11-21; PROD 2026-11-22)
 
 UAT revisions `fe7dc5cf6` and `7e6cab441` repair extraction and recover completed textbook builds after a lost
-browser response. PROD is unchanged. Latest UAT backup: `/home/ubuntu/banking-sb/snapshots/20261121T155509Z`.
+browser response. The code is included in PROD v1.1.30; the 25 outline repairs and MBA consolidation were promoted in
+v1.1.31 using exact baseline guards. Original UAT backup: `/home/ubuntu/banking-sb/snapshots/20261121T155509Z`.
 
 - The real-data audit covered **201 Semester 1 offerings across 22 SRM Easwari programmes**. All offering/build
   links were valid, with no duplicate course codes within a section. Student curriculum RPC reads were checked
