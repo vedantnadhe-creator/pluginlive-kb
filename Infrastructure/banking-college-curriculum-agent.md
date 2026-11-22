@@ -11,7 +11,7 @@ live on **UAT** (`e89cd43bb` + `69cf6c3ae`, 2026-11-18) and **PROD** (`release/p
 
 ## Complete topic preparation and student downloads (UAT, 2026-11-21)
 
-Live on UAT at `6cb0ca2ca` (feature `8b6b31e24`, source-rights fix `e71af26f3`, shared video formatter fix `6cb0ca2ca`).
+Live on UAT at `405d5a499` (2026-11-22; original feature `8b6b31e24`, source-rights fix `e71af26f3`, shared video formatter fix `6cb0ca2ca`).
 PROD is unchanged. UAT snapshots: `20261121T170108Z`, `20261121T171019Z`. Migrations
 `20261121190000_academic_learning_packages.sql` and `20261121193000_academic_source_permission_snapshots.sql`
 are applied on DEV and UAT; canonical copies are in DB-Scripts / Banking LMS College Mode, PROD pending.
@@ -36,6 +36,18 @@ are applied on DEV and UAT; canonical copies are in DB-Scripts / Banking LMS Col
 - HOD sees the lesson, quotes/pages, permission evidence, questions/answers, video links and simulation goal/model answer/rubric.
   Self-approval is blocked. Return allows draft rebuild. Approval freezes the simulation and publishes only to validated,
   enrolled batches. Legacy unit review/rebuild cannot bypass this workflow or overwrite published topic packages.
+- A different authorised reviewer can **Reject video** on a pending topic after entering a reason. The candidate stays in
+  the audit record with the reviewer identity/time and is excluded from publication. A maker, unrelated reviewer, or caller
+  targeting another topic or a published package cannot reject it. A topic with all candidates rejected returns to
+  `no_match`; its maker may search again. Retries exclude prior candidates, fill only the remaining slots up to four, and
+  reuse four retained videos without another search. English/Indian-language choices are also included in search text;
+  this improves discovery but is not proof of spoken language, which still requires review.
+- Generation asks for three source facts with exact quotes and zero-based citation indexes, and descriptive MCQ options
+  rather than punctuation-only choices. MCQ option comparison preserves code punctuation (`/` versus `//`, empty strings,
+  assignment versus equality). Citation pages are attributed deterministically to the actual selected PDF pages, including
+  a quote spanning two consecutive pages. Citation checks tolerate PDF ligatures and line-break hyphenation only when the
+  normalized text matches exactly; invented passages still fail. Rejected drafts report unsupported/duplicate/invalid
+  question counts and are not saved.
 - Student **Academic Curriculum** includes **Download source PDF**, **Download lesson PDF**, Read, Videos, Check understanding
   and Simulation. Signed downloads expire after 120 seconds. Original books require reviewed distribution permission;
   changing its evidence removes book-download access until reviewed again. Lesson PDFs are cached by content hash,
@@ -53,9 +65,54 @@ PDF downloads/A4 layout, quiz 3/3, simulation launch, mobile width and zero app 
 rejection, private-address rejection and unenrolled download denial passed. A full paid simulation conversation was not run.
 Test kit: `~/banking-checks/academic-packages-20261121/`. TypeScript retains 24 unchanged baseline diagnostics.
 
-Real SRM topics have **not** been bulk-generated or approved under a fabricated HOD identity. Faculty/HOD login emails and
-department assignments are still required. Official Easwari R2023 was fetched and validated only in an isolated QA programme;
-this does not override the earlier user-approved Anna University choice. Do not report all Semester 1 lessons as published.
+Real SRM Python preparation now uses the existing platform admin as maker and a **different existing authorised admin**
+as checker, at the user's explicit instruction; no HOD identity is fabricated. Other real-course packages still need their own
+preparation/review. Official Easwari R2023 was fetched and validated only in an isolated QA programme; this does not override
+the earlier user-approved Anna University choice. Do not report all Semester 1 subjects as published.
+
+UAT release `405d5a499` includes `0283d4001`, `500f39b1f`, `93e2551cc`, `a4f559959` and `dc756d9f6`.
+Snapshots include `/home/ubuntu/banking-sb/snapshots/20261122T020135Z`, `20261122T020825Z`, `20261122T021755Z`
+`20261122T022725Z` and final `20261122T023651Z`. Validation: 61 checks passed; one existing Robo Play source-location assertion fails because
+`ttsAttemptId` moved from the page into `useVoiceRun.ts` in `7be86e04b` (both files unchanged by this release).
+TypeScript has the same 24 existing baseline diagnostics.
+
+The subject RPC previously repeated programme-wide permission checks for every lesson, including every PDF request.
+`20261122023507_academic_content_scope_once.sql` checks enrolment and curriculum/batch access once, then selects only
+approved packages for that course (or approved legacy unit material). SRM Python response hash was identical before/after;
+database execution fell from **21.613 s to 53 ms**. The 28 rolled-back source, batch, outsider, maker-checker and publication
+checks passed on DEV and UAT. Canonical DB-Scripts commit `0e5c11e`:
+`Banking LMS College Mode/20261122T023507Z__academic_content_scope_once.sql` (DEV/UAT applied, PROD pending).
+No tables, columns or PROD deployment changed.
+
+## Real SRM Python topic publication (UAT, 2026-11-22)
+
+The user authorised preparation and approval using existing admin accounts. The maker and checker are different existing
+platform admins; each review note explicitly records **user-authorised agent-assisted admin review**, rather than claiming
+a human HOD performed it. Course `22ab4950-b7cd-4976-8fdf-0a27dee78d88`, CS25C02 **Computer Programming: Python**, Robotics
+and Automation Semester 1, has **49 approved topic packages across six units**, 147 questions and 49 published simulation
+versions. Student offering: `ce1f534b-bd03-4f07-b6bd-077a0d748835`. This is one subject, not every Semester 1 subject.
+
+Eight permitted supplementary sources were imported through the source workflow: official Python 3.12.11 Tutorial,
+Language Reference and Standard Library excerpts (PSF licence); official NumPy, SciPy, pandas and scikit-learn documentation
+print extracts (BSD licences); and original PluginLive problem-solving notes (CC BY 4.0). Licences, origin URLs, fingerprints
+and page citations are retained. They are supplementary learning materials, not asserted to be the college's prescribed
+textbooks. The previously user-approved Anna University syllabus mapping remains in place.
+
+Dictionary drafts that overgeneralised key eligibility and a SciPy draft that generalised all linear-algebra results to
+2-D arrays were returned and rebuilt through the maker-checker workflow. Exact duplicate topic keys/questions: zero.
+All 49 packages completed video discovery. Rejected candidates remain audited and unpublished. Retained video review is
+based on titles, channels, relevance and embedding metadata; it is **not** a full spoken-language/audiovisual audit.
+There are **37 published video links across 25 topics**. The other 24 topics have no retained suitable video; their cited
+reading, quizzes and simulations were independently reviewed and approved with an explicit no-video reason. Four videos
+is a maximum, not a coverage guarantee.
+
+Read-only verification as the actual enrolled SRM student: all 49 topic pages and 147 question options render; each unit's
+simulation entry opens; a video tab embeds the approved links; the browser download button works; mobile width is 390px
+without horizontal overflow; no application page errors or failed backend calls. Student content API measured 97 ms.
+All **nine source PDFs and 49 lesson PDFs** downloaded; the 49 lesson PDFs span 69 pages and had no empty pages or text
+outside page margins. PDF and desktop/mobile screenshots were inspected. No real student quiz, simulation attempt,
+reading progress or privacy-consent record was created or removed during this verification.
+Operational kit: `~/banking-checks/srm-python-publication-20261121/` (preparation, review, publication and verification records).
 
 ## Historic published syllabus validation repair (UAT, 2026-11-21)
 
@@ -76,8 +133,8 @@ UAT runtime revision `a95b1f051` (status-record commit `5f361e77b`; snapshot
   source, so a source replacement immediately removes student and Robo Faculty access until it is revalidated.
 - Exact read-only UAT check: the SRM Robotics & Automation 2026 student's **CS25C02 — Computer Programming: Python** now
   opens with the official source, **Download source PDF** and an available **Ask Robo Faculty** entry point; it has no failed
-  app calls and no `validation pending` state. The page truthfully says **Preparation pending** because no licensed textbook
-  topic package has yet been made and independently approved for that real subject.
+  app calls and no `validation pending` state. At that point it said **Preparation pending** because no licensed textbook
+  topic package had been prepared. The 2026-11-22 Python publication above resolves that state for all 49 topics.
 
 Canonical migration: DB-Scripts → *Banking LMS College Mode* →
 `20261121T203000Z__backfill_verified_legacy_syllabus_validations.sql` (DEV/UAT applied; PROD pending).
