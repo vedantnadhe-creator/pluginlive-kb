@@ -1,6 +1,6 @@
 # Banking LMS — College curriculum agent
 
-Live on **UAT** (`e6096148a` with reconcile + Re-check, 2026-11-16; first release `20686f31c`) and **PROD** `lms.pluginlive.com` (`release/prod-v1.1` `e6f88e08`, tag `v1.1.15`, 2026-11-16; reconcile + Re-check `de9bbd5c7`, tag `v1.1.16`).
+Current code: **UAT `16204d925`** and **PROD `5bc68b2c0`**, `release/prod-v1.1`, tag **`v1.1.30`** (2026-11-22). PROD: `https://lms.pluginlive.com/academic-curriculum`. Real prepared content is environment-specific; see the production scope below.
 Code: `bankingjobreadiness` — `supabase/functions/college-curriculum-agent`, `supabase/functions/_shared/curriculum-agent-checks.ts`,
 `src/components/college/CurriculumAgentPanel.tsx`, `src/lib/curriculumAgentApi.ts`. Migrations `20261116150000_college_curriculum_agent.sql`,
 `20261116160000_curriculum_agent_offering_link_no_fk.sql` (DB-Scripts folder *Banking LMS College Mode*).
@@ -9,7 +9,47 @@ Code: `bankingjobreadiness` — `supabase/functions/college-curriculum-agent`, `
 live on **UAT** (`e89cd43bb` + `69cf6c3ae`, 2026-11-18) and **PROD** (`release/prod-v1.1` `b831175c2`, tag `v1.1.27`, 2026-11-18, backup
 `/data/backups/prod-20261118T045457Z`). Migration `20261118100000_curriculum_quality_controls.sql` is applied on DEV, UAT and PROD.
 
-## Fetch more academic YouTube videos (UAT, 2026-11-22)
+## Production release and content scope (2026-11-22)
+
+The user explicitly requested GitHub push and PROD deployment. Release `5bc68b2c0dada9a810392d59229b39e95a84304e`
+(tag `v1.1.30`) promotes the complete academic reader/preparation/source verification dependencies and the Fetch More
+YouTube action from UAT onto the existing production release. Corporate trainer delivery stays separate. The held
+student LMS v2/designer changes and lesson-video watch-gate/AI-checker changes remain excluded. The `/v2` app is separate.
+
+All six academic migrations are applied on PROD: `20261121120000`, `20261121130000`, `20261121190000`,
+`20261121193000`, `20261121203000`, and `20261122023507`. Canonical application status is recorded in DB-Scripts /
+*Banking LMS College Mode*. They were first applied and tested on an isolated production database copy, including both
+academic SQL access/approval suites, then replayed successfully to check idempotency. No UAT database was restored over PROD.
+
+PROD's 37 SRM syllabus PDFs had no fingerprint/official URL metadata. Every stored PDF was downloaded and byte-for-byte
+compared with the current official Anna University CAC PDF and the prior verified UAT hash before updating provenance.
+The migration then restored 74 existing SRM build/batch approvals; one verified TCET legacy mapping was backfilled by the
+initial migration. No new curriculum authority, batch applicability or HOD identity was invented.
+
+**Real SRM Python lesson content was not promoted.** At completion PROD has 37 SRM syllabus sources, zero SRM textbook
+sources and zero real academic topic packages. The six-unit Python outline and its source/batch validation are present.
+The 49 approved Python packages, 147 questions, 49 simulations, 37 published videos and eight permitted learning sources
+remain in UAT. A scope question asking whether to transfer those approved records/storage objects was sent, but no answer
+was received during this deployment. Therefore a production learner needs a prepared, approved lesson before its Videos
+panel and Fetch More action can appear. Do not describe the real SRM Python content as published in PROD.
+
+Validation: 127 feature/navigation checks passed, plus 54 simulation checks. One additional unchanged baseline assertion
+in `simulationAuthAndLogoutRegression.test.ts` still expects old inline ContentManager code in the wrapper file; both files
+are unchanged by this release. Two obsolete academic navigation assertions were corrected to test the dedicated reader
+and legacy redirect. New frontend files lint clean. Live isolated QA used the approved Python Error messages text: search
+returned a retained Python video; owner-only storage, reload without another search, mobile width, region/Tamil controls,
+unenrolled/foreign-topic denial, real YouTube player rendering and the simulation entry point passed. No application JS
+errors or failed app calls in the final browser checks. The initial shorter synthetic topic produced a legitimate no-match;
+this is not a promise of four results for every topic. No paid lesson/simulation generation was invoked.
+
+All four temporary identities, their isolated institute/course/package/scenario, enrolments, consent and personal videos
+were removed. The rehearsal database was dropped. No real student's progress or personal recommendations changed.
+Evidence: `/home/ubuntu/banking-checks/academic-prod-20261122/` (deployment, SQL rehearsal, provenance hashes and browser logs).
+Built on the PROD VM using its unchanged `.env`; bundle `index-DumayiN-.js` contains only the production API origin.
+Deployment used `~/auto_deploy.sh banking release/prod-v1.1`; backup `/data/backups/prod-20261122T035809Z`, previous code
+`7e561218b` / `v1.1.29`. Existing `main`, `mcp` and `live-session-rsvp` Edge overlays and the OTP relay were preserved.
+
+## Fetch more academic YouTube videos (UAT + PROD, 2026-11-22)
 
 UAT release `16204d925` (initial action `fe905c491`) adds **Academic Curriculum → subject → topic → Videos → Fetch More YouTube videos**.
 The button is available even when the approved lesson has zero videos. It searches for up to four additional matching
@@ -38,7 +78,7 @@ selecting a language. The platform's discovery tier permissions, caching and You
 Code: `AcademicVideosPanel.tsx`, `useAcademicVideos.ts`, `academicVideosApi.ts`, and
 `college-curriculum-agent/learner-videos.ts`. Validation: 67 focused tests passed; new frontend files lint clean.
 TypeScript reports the same 24 existing diagnostics outside these changes. Built on UAT with UAT environment values;
-final snapshot `~/banking-sb/snapshots/20261122T031015Z`, bundle `index-CUbH-0IM.js`. PROD is unchanged.
+final UAT snapshot `~/banking-sb/snapshots/20261122T031015Z`, bundle `index-CUbH-0IM.js`. PROD promotion is recorded above.
 Operational checks: `~/banking-checks/academic-fetch-videos-20261122/`.
 Live validation passed ten journey/access checks: the previously empty **Error messages** lesson fetched two Python
 recommendations, rendered both links, and retained them across a full reload without another search. A separate player
@@ -47,12 +87,12 @@ width, per-topic isolation, duplicate-free retention and owner-only access passe
 Both temporary learner accounts, their enrolment, personal video rows and QA consent were removed; no real learner's
 recommendations, progress or consent was changed. This checks discovery and embedding, not full audiovisual/language review.
 
-## Complete topic preparation and student downloads (UAT, 2026-11-21)
+## Complete topic preparation and student downloads (UAT + PROD)
 
 Live on UAT at `405d5a499` (2026-11-22; original feature `8b6b31e24`, source-rights fix `e71af26f3`, shared video formatter fix `6cb0ca2ca`).
-PROD is unchanged. UAT snapshots: `20261121T170108Z`, `20261121T171019Z`. Migrations
+Included in PROD `v1.1.30`. Original UAT snapshots: `20261121T170108Z`, `20261121T171019Z`. Migrations
 `20261121190000_academic_learning_packages.sql` and `20261121193000_academic_source_permission_snapshots.sql`
-are applied on DEV and UAT; canonical copies are in DB-Scripts / Banking LMS College Mode, PROD pending.
+are applied on DEV, UAT and PROD; canonical copies are in DB-Scripts / Banking LMS College Mode.
 
 - Faculty/trainer: **My Courses → Open course → Lessons from textbook** now has source/batch verification, PDF URL
   import, topic preparation and review. Existing manual upload remains available. Trainer registration must also be approved.
@@ -119,8 +159,8 @@ The subject RPC previously repeated programme-wide permission checks for every l
 approved packages for that course (or approved legacy unit material). SRM Python response hash was identical before/after;
 database execution fell from **21.613 s to 53 ms**. The 28 rolled-back source, batch, outsider, maker-checker and publication
 checks passed on DEV and UAT. Canonical DB-Scripts commit `0e5c11e`:
-`Banking LMS College Mode/20261122T023507Z__academic_content_scope_once.sql` (DEV/UAT applied, PROD pending).
-No tables, columns or PROD deployment changed.
+`Banking LMS College Mode/20261122T023507Z__academic_content_scope_once.sql` (DEV/UAT/PROD applied).
+This performance follow-up adds no tables or columns; it is included in PROD `v1.1.30`.
 
 ## Real SRM Python topic publication (UAT, 2026-11-22)
 
@@ -156,7 +196,7 @@ Operational kit: `~/banking-checks/srm-python-publication-20261121/` (preparatio
 
 UAT runtime revision `a95b1f051` (status-record commit `5f361e77b`; snapshot
 `/home/ubuntu/banking-sb/snapshots/20261121T180704Z`) restores the source/batch wiring for already-published curricula.
-**PROD is unchanged.** The problem was not a student-menu or Robo Faculty route defect: published legacy builds pre-dated
+The same verified legacy repair was applied on PROD on 2026-11-22. The problem was not a student-menu or Robo Faculty route defect: published legacy builds pre-dated
 `academic_syllabus_validations`, so `private.academic_validation_ok` correctly but misleadingly denied them as unvalidated.
 
 - All 37 SRM Anna University syllabus PDFs were re-read from storage and byte-for-byte matched to their official Anna
@@ -175,7 +215,7 @@ UAT runtime revision `a95b1f051` (status-record commit `5f361e77b`; snapshot
   topic package had been prepared. The 2026-11-22 Python publication above resolves that state for all 49 topics.
 
 Canonical migration: DB-Scripts → *Banking LMS College Mode* →
-`20261121T203000Z__backfill_verified_legacy_syllabus_validations.sql` (DEV/UAT applied; PROD pending).
+`20261121T203000Z__backfill_verified_legacy_syllabus_validations.sql` (DEV/UAT/PROD applied).
 
 ## What it does
 
@@ -184,8 +224,8 @@ HODs and principals work on lessons from the course workspace (tab **Lessons fro
 
 1. **Documents.** Per programme the admin uploads the approved syllabus PDF (university / deemed / autonomous) and the prescribed
    textbooks (PDF, max 50 MB, bucket `curriculum-sources`, path `<institute>/<programme>/<uuid>.pdf`). A textbook needs the
-   "college holds a licence or library copy" tick; its text is used to draft lessons. On UAT, original PDF downloads additionally
-   require reviewed distribution permission through topic preparation; PROD retains lesson-only access.
+   "college holds a licence or library copy" tick; its text is used to draft lessons. On UAT and PROD, original PDF downloads additionally
+   require reviewed distribution permission through topic preparation.
    Every upload records its **source** (`issuing_body`: university, deemed university, autonomous, AICTE/UGC model curriculum,
    college website, publisher, author's e-book repository, library copy, other) plus optional link, publisher, edition, ISBN.
    `read_source` extracts text page by page (unpdf); under ~100 characters per page it is marked **scanned**.
@@ -251,9 +291,9 @@ Navigation: academic admin → **Institute Journey → Academic set-up → Curri
 
 ## Separate academic learning and trainer delivery (UAT, 2026-11-21)
 
-UAT commits `43d912d56` + `ab98e4653` + `7a64c09b4` add `/academic-curriculum`. **PROD is unchanged.** This was the first
-learning-page/audience-separation release. YouTube discovery and a generated simulation per prepared topic are now
-available through the UAT preparation workflow above.
+UAT commits `43d912d56` + `ab98e4653` + `7a64c09b4` added `/academic-curriculum`; this is included in PROD `v1.1.30`.
+This was the first learning-page/audience-separation release. YouTube discovery and a generated simulation per prepared
+topic are available through the preparation workflow on both environments.
 
 - **Academic Curriculum** has its own sidebar key (`academic_curriculum`), available through actual section
   enrollment. It shows subject cards, semester/search filters, syllabus units/topics and approved lessons.
@@ -291,7 +331,7 @@ available through the UAT preparation workflow above.
   HOD approval. No source books were downloaded or bulk-generated as part of this release.
 
 Migration: `20261121120000_academic_curriculum_learning.sql`; archived under DB-Scripts → Banking LMS College Mode
-as `20261121T151008Z__academic_curriculum_learning.sql` (DEV/UAT applied; PROD pending).
+as `20261121T151008Z__academic_curriculum_learning.sql` (DEV/UAT/PROD applied).
 Checks: isolated SQL tests cover academic/corporate/dual-context access, cross-institute denial, HOD publication,
 hidden drafts/answers, retained legacy subtopic videos and server quiz scoring. UI tests cover subject/topic navigation,
 optional tutor context, quiz submission, missing material and unsafe video/source URL rejection.

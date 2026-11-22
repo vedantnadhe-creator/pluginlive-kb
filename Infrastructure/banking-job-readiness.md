@@ -13,12 +13,10 @@ tags: [service, frontend, uat, supabase, lovable]
 > **What the app is (roles, features, content model, AI layer, risks):** see
 > `Infrastructure/banking-application-overview.md`. This page is the deploy/incident log.
 
-> **UAT moved off hosted Supabase on 2026-08-07.** UAT now talks to a self-hosted
-> Supabase-compatible stack on the same box (`~/banking-sb/`, proxied at
-> `https://banking.uat.pluginlive.com/sb`) backed by our own PostgreSQL. The browser still speaks
-> `supabase-js`; only the origin changed. **PROD is still on hosted project
-> `kbwjokmmzkgjwiqelrdc`.** See `Infrastructure/banking-postgres-migration.md` — read it before
-> touching UAT `.env`, migrations or edge functions.
+> **UAT and PROD use separate self-hosted Supabase-compatible stacks.** UAT is on `uat.pluginlive.com`; PROD banking
+> is on `Pl-Prod-Banking` (`130.210.28.66`), app `/opt/banking/app`, stack `/opt/banking-sb`, database `banking_prod`.
+> Public PROD API origin: `https://lms.pluginlive.com/sb`. Do not deploy this app to the general K8s production server
+> or the old hosted project `kbwjokmmzkgjwiqelrdc`. Preserve each environment's own secrets and rebuild on its VM.
 
 ## Separate v2 app at `/v2` — lmsv2 (2026-11-16)
 
@@ -5476,3 +5474,36 @@ accounts until mobile verification is established. No phone was marked verified 
 this release. The existing automatic SMS behavior for accounts without email or a
 failed email submission is unchanged. A phone-verification/enrollment flow remains
 needed to make user-selected SMS recovery available to these accounts.
+
+
+## PROD v1.1.30 — Academic Curriculum and Fetch More YouTube (2026-11-22)
+
+User-authorised GitHub push and PROD deploy completed from `release/prod-v1.1`, commit
+`5bc68b2c0dada9a810392d59229b39e95a84304e`, tagged `v1.1.30`. This is a scoped promotion of the academic curriculum
+source finder, dedicated reader, independent preparation/approval workflow, downloads, simulations and personal YouTube
+fetching from UAT. It preserves the existing PROD holds on student LMS v2/designer and video watch-gate/AI-checker work.
+
+Built on `130.210.28.66` with the existing PROD `.env` through `~/auto_deploy.sh banking release/prod-v1.1`.
+Public bundle: `index-DumayiN-.js`; no DEV/UAT/hosted API URL in the bundle. Previous release `7e561218b` / `v1.1.29`.
+Rollback snapshot: `/data/backups/prod-20261122T035809Z` (database dump, old app/source, dist, environment and functions).
+Previous deploy script: `/opt/banking-sb/deploy-release-before-academic-20261122.sh`. No OTP relay or `/v2` service changes.
+
+Six academic migrations (`20261121120000`, `20261121130000`, `20261121190000`, `20261121193000`, `20261121203000`,
+`20261122023507`) passed both academic SQL suites and idempotent replay on a disposable production database copy before
+application. DB-Scripts records PROD application. The official source-access RPC mirror records DEV pending because that
+RPC was absent when checked; this release did not mutate DEV.
+
+The 37 existing SRM syllabus PDFs were verified byte-for-byte against official Anna University sources before provenance
+repair and historical validation backfill (74 SRM mappings plus one verified TCET mapping). This preserves existing
+published-syllabus access under the new admission-batch gate. It imports no textbooks or topic material.
+
+**Content scope:** the approved UAT SRM Python material was not copied. PROD still has zero real academic topic packages
+and zero SRM textbook sources. The explicit content-transfer question had no answer during the release. Thus the feature
+is deployed and verified, but real SRM Python lessons/videos still require promotion of the approved UAT data/storage or
+preparation/review in PROD. See [banking-college-curriculum-agent.md](banking-college-curriculum-agent.md) for exact counts.
+
+Validation: 127 feature/navigation tests and 54 additional simulation tests passed; one unchanged unrelated source-string
+assertion expects pre-refactor ContentManager code. Live isolated Python QA verified fetch/save/reload, private retention,
+real YouTube player, region/language controls, mobile width, access denial and simulation entry point. Final browser checks
+had no JS errors or failed app calls. Four temporary accounts and all isolated fixture data were removed, and the rehearsal
+database was dropped. Evidence: `/home/ubuntu/banking-checks/academic-prod-20261122/`.
