@@ -9,6 +9,44 @@ Code: `bankingjobreadiness` — `supabase/functions/college-curriculum-agent`, `
 live on **UAT** (`e89cd43bb` + `69cf6c3ae`, 2026-11-18) and **PROD** (`release/prod-v1.1` `b831175c2`, tag `v1.1.27`, 2026-11-18, backup
 `/data/backups/prod-20261118T045457Z`). Migration `20261118100000_curriculum_quality_controls.sql` is applied on DEV, UAT and PROD.
 
+## Fetch more academic YouTube videos (UAT, 2026-11-22)
+
+UAT release `16204d925` (initial action `fe905c491`) adds **Academic Curriculum → subject → topic → Videos → Fetch More YouTube videos**.
+The button is available even when the approved lesson has zero videos. It searches for up to four additional matching
+videos and retains them in the learner's account. The choices are all permitted groups, English India, English
+US/UK/Europe, English Asia/Middle East, and Indian languages (including Tamil). An Indian-language search requires
+selecting a language. The platform's discovery tier permissions, caching and YouTube quota still apply.
+
+- This fixes the missing student-side search action; the previous Videos tab only displayed links published with the
+  lesson. It does not mean all syllabus topics already have faculty-approved video coverage.
+- `college-curriculum-agent` action `fetch_academic_videos` checks the caller's enrollment and source/batch validation
+  through `academic_subject_content` and `my_academic_subjects`. Search context comes from the approved subject/lesson,
+  never a client-supplied title. Invalid, unpublished, cross-offering and inaccessible topics are refused before search.
+- The shared metadata/relevance/embeddability checks run without generating new lessons or calling a generative model.
+  Existing curriculum candidates (including rejected links) and the learner's saved links are excluded.
+  Every query retains the subject context, and a subject anchor must appear in actual video metadata. This closes a
+  gap caught during live QA: a bare fallback for Python "Error messages" accepted an unrelated boiler-repair video.
+  That result existed only in the temporary QA account and was removed. Query text alone cannot pass the subject check.
+- New links are **personal recommendations**, visibly separate from **faculty-approved lesson videos**. They do not
+  change the published package or bypass its independent approval. Spoken language is not claimed as verified.
+- Retention reuses `student_saved_videos`, with `module_id=academic:<offering UUID>` and `topic_key=<lesson UUID>`.
+  The caller-scoped `save_student_module_videos` RPC atomically merges links; reloads do not repeat searches. It cannot
+  overwrite the corporate curriculum's saved links or show another learner's discoveries. No new schema is required.
+- Loading, empty-result and quota/configuration errors remain visible. Search is disabled while a request is running;
+  a delayed result cannot appear under a different topic. Existing links remain visible after an unsuccessful search.
+
+Code: `AcademicVideosPanel.tsx`, `useAcademicVideos.ts`, `academicVideosApi.ts`, and
+`college-curriculum-agent/learner-videos.ts`. Validation: 67 focused tests passed; new frontend files lint clean.
+TypeScript reports the same 24 existing diagnostics outside these changes. Built on UAT with UAT environment values;
+final snapshot `~/banking-sb/snapshots/20261122T031015Z`, bundle `index-CUbH-0IM.js`. PROD is unchanged.
+Operational checks: `~/banking-checks/academic-fetch-videos-20261122/`.
+Live validation passed ten journey/access checks: the previously empty **Error messages** lesson fetched two Python
+recommendations, rendered both links, and retained them across a full reload without another search. A separate player
+check loaded the real YouTube embed with no console errors. Region/language controls (including Tamil selection), mobile
+width, per-topic isolation, duplicate-free retention and owner-only access passed. The 49 approved packages were unchanged.
+Both temporary learner accounts, their enrolment, personal video rows and QA consent were removed; no real learner's
+recommendations, progress or consent was changed. This checks discovery and embedding, not full audiovisual/language review.
+
 ## Complete topic preparation and student downloads (UAT, 2026-11-21)
 
 Live on UAT at `405d5a499` (2026-11-22; original feature `8b6b31e24`, source-rights fix `e71af26f3`, shared video formatter fix `6cb0ca2ca`).
