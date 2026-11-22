@@ -1,6 +1,6 @@
 # Banking LMS — College curriculum agent
 
-Current code: **UAT `16204d925`** and **PROD `703fa3de7`**, `release/prod-v1.1`, tag **`v1.1.31`** (2026-11-22). PROD: `https://lms.pluginlive.com/academic-curriculum`. SRM Python's 49 approved topic packages and their files are published in both environments; see the production scope below.
+Current code: **UAT `16204d925`** and **PROD `9ffb360b5`**, `release/prod-v1.1`, tag **`v1.1.32`** (2026-11-22). PROD: `https://lms.pluginlive.com/academic-curriculum`. SRM Python's 49 approved topic packages and their files are published in both environments; see the production scope below.
 Code: `bankingjobreadiness` — `supabase/functions/college-curriculum-agent`, `supabase/functions/_shared/curriculum-agent-checks.ts`,
 `src/components/college/CurriculumAgentPanel.tsx`, `src/lib/curriculumAgentApi.ts`. Migrations `20261116150000_college_curriculum_agent.sql`,
 `20261116160000_curriculum_agent_offering_link_no_fk.sql` (DB-Scripts folder *Banking LMS College Mode*).
@@ -48,8 +48,8 @@ passed. Final browser checks had no application JS errors, failed backend calls 
 temporary accounts, two QA institutes, two QA modules and their progress/consent were removed; the rehearsal database
 was dropped. No paid content or simulation generation ran during promotion.
 
-Current release was built on the PROD VM with the unchanged PROD environment through `auto_deploy.sh banking release/prod-v1.1`.
-Bundle remains `index-DumayiN-.js`; only `module-certificate-settings` code changed from v1.1.30. Backup:
+The v1.1.31 release was built on the PROD VM with the unchanged PROD environment through `auto_deploy.sh banking release/prod-v1.1`.
+Its bundle was `index-DumayiN-.js`; only `module-certificate-settings` code changed from v1.1.30. Backup:
 `/data/backups/prod-20261122T052441Z`; pre-import snapshot and SQL logs: `/data/backups/srm-content-20261122T051448Z`.
 Operational evidence: `/home/ubuntu/banking-checks/srm-production-promotion-20261122/`. Student LMS redesign, video-watch
 completion gate and AI video checker remain excluded under the existing hold.
@@ -69,6 +69,38 @@ Evidence: `/home/ubuntu/banking-checks/academic-prod-20261122/` (deployment, SQL
 Built on the PROD VM using its unchanged `.env`; bundle `index-DumayiN-.js` contains only the production API origin.
 Deployment used `~/auto_deploy.sh banking release/prod-v1.1`; backup `/data/backups/prod-20261122T035809Z`, previous code
 `7e561218b` / `v1.1.29`. Existing `main`, `mcp` and `live-session-rsvp` Edge overlays and the OTP relay were preserved.
+
+## PROD journey verification and fixes — v1.1.32 (2026-11-22)
+
+Following the user's request to exercise and fix candidate/faculty journeys in PROD, release `9ffb360b5` adds two
+scoped fixes. Certificate settings validate persisted fields even when certification is disabled; invalid module codes
+and zero/fractional planned duration return field-specific HTTP 400 responses instead of database HTTP 500s. Invalid
+fields remain editable after switching certification off. Faculty video discovery now uses the same subject anchor as
+learner Fetch More: every query retains the subject, and actual video metadata must contain subject evidence. An
+isolated Python Error messages test had previously accepted tax/boiler videos; the corrected test returned four Python
+error-handling videos. The AI video checker remains held; these are metadata checks followed by independent review.
+
+The full simulation conversation exposed a separate PROD gateway configuration defect: `pl/sim-persona-turn` was
+missing from the live policy, and both Gemini routes returned depleted-credit errors. Restored the task with an existing
+available provider chain and registered `pl/banking-simulation` for generation/debrief calls. Both tasks use the PROD
+banking service key and passed normal and forced-fallback probes. The candidate's actual reply and scored debrief then
+passed through `sim-attempt`; no provider credentials or billing settings changed. Current policies are documented in
+[centralized LLM routing](centralized-llm-routing.md).
+
+Live checks used disposable faculty, HOD, same-institute peer, unrelated trainer, enrolled and unenrolled candidates:
+PDF upload/parser; maker self-approval denial; HOD return with reason; returned-draft rebuild; Prepare missing topics;
+cited lesson/three-question/simulation creation; four matching videos; independent HOD publication; enrolled candidate
+visibility; all 49 real SRM topic pages; 37 approved embeds; quiz/read persistence; mobile layout; Fetch More retention;
+full simulation turn and scored feedback; certificate save/preview, audit actor, institute lock and access denials.
+All 58 signed PDF downloads passed, including byte checks on all 57 promoted objects. The 25 repaired subject outlines
+and MBA's six distinct units still match the promotion. All 127 targeted automated tests passed.
+
+Seven temporary auth identities (six test roles plus a harness helper), two institutes, two modules, the isolated course,
+generated packages/scenarios, attempts, progress, enrolments, consent and uploaded QA PDF were removed. Real SRM
+learning content and real-user progress were not changed. No schema migration or UAT deployment occurred. Built on
+the PROD VM via `auto_deploy.sh banking release/prod-v1.1`; bundle `index-D6lmR_sT.js`; backup
+`/data/backups/prod-20261122T115733Z`. Evidence: `/home/ubuntu/banking-checks/prod-journeys-20261122/`.
+Student LMS redesign, video-watch completion gate and AI video checker remain excluded.
 
 ## Fetch more academic YouTube videos (UAT + PROD, 2026-11-22)
 

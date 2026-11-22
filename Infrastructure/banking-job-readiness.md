@@ -5509,7 +5509,7 @@ database was dropped. Evidence: `/home/ubuntu/banking-checks/academic-prod-20261
 
 ## PROD v1.1.31 — SRM Python content, Semester 1 repairs and certificate editing (2026-11-22)
 
-GitHub `release/prod-v1.1` and live PROD are at `703fa3de7bd94fdf453697d4d5bbb09bdd0ff0d5`, tag `v1.1.31`.
+Release `703fa3de7bd94fdf453697d4d5bbb09bdd0ff0d5`, tag `v1.1.31`, was deployed before the journey fixes below.
 The user explicitly authorised these three promotions. Student LMS redesign, the video-watch completion gate and
 AI video checker remain excluded. No UAT merge, new schema, DEV deployment or `/v2` change was made.
 
@@ -5537,3 +5537,33 @@ function hashes match GitHub; public bundle remains `index-DumayiN-.js` and cont
 overlays and OTP relay were preserved. Runtime backup `/data/backups/prod-20261122T052441Z`; pre-import DB snapshot and
 promotion/check logs `/data/backups/srm-content-20261122T051448Z`; previous deploy script
 `/opt/banking-sb/deploy-release-before-srm-20261122.sh`. Evidence: `/home/ubuntu/banking-checks/srm-production-promotion-20261122/`.
+
+## PROD v1.1.32 — candidate/faculty journey fixes (2026-11-22)
+
+GitHub `release/prod-v1.1`, tag `v1.1.32`, and live PROD are at `9ffb360b59353c56ea8e4087253a1db007c8a48e`.
+The user explicitly requested end-to-end PROD journey testing and fixes after authorising production deployment.
+
+- Certificate form/API validation now covers persisted fields while disabled, rejects invalid planned minutes and keeps
+  invalid fields editable. Reproduced invalid code/zero-duration HTTP 500s now return clear HTTP 400s. Same-institute
+  peer editing and preview passed in the browser, with audit actor, ownerless catalogue and institute lock checks intact.
+- Faculty topic-video discovery retains the subject in every query and requires subject evidence in returned metadata,
+  matching the existing learner search. The Python Error messages test returned four Python videos after the fix.
+- Restored the absent `pl/sim-persona-turn` gateway task and registered `pl/banking-simulation` for non-turn simulation
+  calls. Gemini credit exhaustion was confirmed; these two tasks now use existing OpenAI routes through the PROD
+  gateway. Normal and forced-fallback calls passed. Updated only the simulation row's `default_model` from physical
+  Gemini to the registered task. The actual candidate reply, submission and scored debrief passed.
+
+Validation: 127 targeted automated tests. Live candidate checks covered 49 topic pages, 147 questions, 37 approved
+embeds, saved quiz/read progress, mobile layout, Fetch More, a complete simulation and all 58 signed PDFs (57 copied
+objects hash-verified). Faculty checks covered upload, return/rebuild, preparation, independent HOD approval and
+candidate delivery. All 25 repaired subject outlines and MBA's six distinct units still match the promotion. Seven test
+identities, two institutes, two modules, the isolated course/packages/scenarios, attempts/progress and QA PDF were removed.
+
+Built on `130.210.28.66` with the existing PROD environment using `~/auto_deploy.sh banking release/prod-v1.1`.
+Bundle `index-D6lmR_sT.js`; live changed-function hashes match GitHub. Backup `/data/backups/prod-20261122T115733Z`;
+previous deploy script `/data/backups/deploy-release-before-journeys-20261122.sh`. Gateway policy backups on
+`140.245.25.134`: `~/pl-oks-cluster/api-ns/litellm/policy-backups/tasks-20261122T115305Z.json` (original 57-task
+policy), `tasks-20261122T115453Z.json`, `tasks-20261122T115710Z.json`; final policy has 59 tasks. Simulation config
+baseline: `/data/backups/simulation-route-before-journeys-20261122.txt`. Evidence:
+`/home/ubuntu/banking-checks/prod-journeys-20261122/`. No schema change, UAT merge, `/v2` change or billing change.
+Student LMS redesign, video-watch completion gate and AI video checker remain held.
