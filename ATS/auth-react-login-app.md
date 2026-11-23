@@ -245,7 +245,23 @@ the 2026-10-28 redesign (`5ebcfa5`) of sign-in, Choose an account, forgot passwo
 `AuthLayout` with the brand panel (testimonial carousel, client logos, hover-only WebGL background
 `BrandShader`, static card without WebGL / with reduced motion), design-system tokens (`src/styles/ds-tokens.css`,
 `auth.css`), Satoshi + JetBrains Mono fonts loaded from fontshare.com / Google Fonts in `public/index.html`,
-Contact and Terms dialogs. Same React app, same `package.json`, same build and Docker image — no new stack;
+Terms and Privacy dialogs plus the walkthrough form (see next section). Same React app, same `package.json`, same build and Docker image — no new stack;
 Ant Design stays installed but these pages no longer use it. The earlier UAT-only ports (`37ea0d0` session resume,
 `4872419` code sign-in) are replaced by the Development versions. Session resume still depends on
 `SESSION_RESUME_ENABLED` in user-management-node (off on UAT), so UAT keeps showing the form.
+
+## Brand panel, walkthrough form and legal pop-ups (2026-11-23, DEV + UAT, PROD pending)
+
+DEV `f9beeb1` + `4279d42` + `932acb5`; UAT cherry-picks `3babdc8` + `635109a` + `287ce4f` (UAT `287ce4f`).
+
+| Area | Current behaviour |
+|------|-------------------|
+| Testimonial carousel | Quote only, with no logo, name or designation. `TESTIMONIALS` in `src/components/AuthLayout.js` is a plain string array. It advances every 5 s (the active dot's `quote-fill` animation), pauses on hover/focus and does not auto-advance under reduced motion. **The four quotes are unattributed placeholders: replace them with approved quotes before PROD.** |
+| Logo wall | 12 customer logos in a 3 / 4 / 5 pyramid: Google, TCS, KPMG · JM Financial, NSE, Lloyds Technology Centre, Delhivery · DLF, JBIMS, SRM, Graphic Era University, Swadha Foundation. (An 8-logo "top-tier" swap was reverted, so nothing changed here.) |
+| "Schedule a Walkthrough — Talk to our team" | Replaces "New to PluginLive? Contact us" (the old `mailto` `ContactDialog.js` is deleted). It opens `src/components/WalkthroughDialog.js`, a native `<dialog>` ported from the website's `BookMeetingForm.tsx` with the same copy, validation and success/error states. Fields: Looking for (hiring / placements), Organisation, Name, Email, Mobile (+91, 10 digits), optional message (≤ 1000 chars). Closes with ✕ or Esc only. |
+| Walkthrough backend | Same as the website: `POST {REACT_APP_AUTH_API}public/lead` (user-management-node `app/routes/lead.js`) through the `core/request` axios instance. Body `{ intent, organisation, name, email, dialCode: "+91", mobile, message? }`. It emails the visitor a confirmation and routes the lead to mandate@pluginlive.com. The endpoint and CORS for the auth hosts (with credentials) already exist on DEV, UAT and PROD, so the sign-in page needed no backend change. **Each real submit sends email: test with a dummy address.** |
+| Privacy Policy / Terms | The footer links and the "By signing in…" Terms link open `src/components/LegalDialog.js` (exports `LegalDialog`, `LegalLink({ doc: "terms" \| "privacy" })`) instead of a new tab. The dialog is 640 px wide and its body scrolls (max 60vh). Content is in `src/content/legal/terms.json` / `privacy.json`, copied from the website's /terms and /privacy pages. `TermsDialog.js` is deleted. |
+
+**Copies to keep in sync (`ponytail:` markers):** `WalkthroughDialog.js` is a port, not shared code (the website is
+Next + Tailwind + react-hook-form/zod, auth-react is CRA), and the legal JSON is a copy. When the website's form copy/rules or its
+Terms/Privacy text change, mirror them here.
