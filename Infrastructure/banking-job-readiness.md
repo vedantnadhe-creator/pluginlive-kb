@@ -42,30 +42,54 @@ DEV copy of the stack (2026-11-09): `~/banking-sb` on the DEV box, DB `banking_d
 `~/banking-dev-app`, static files served from `/var/www/banking-dev`; data copied from UAT that day, own JWT secret,
 third-party keys (MSG91, Gemini, ElevenLabs, mail) shared with UAT.
 
-## Admin Login: Password or OTP — DEV + UAT 2026-11-23, PROD not deployed
+## Sign-in: Password or OTP for admin, trainer and student — DEV + UAT 2026-11-23, PROD not deployed
 
-`/login/admin` works like PluginLive auth: the admin types an **email, mobile number or admin ID**, then picks
-**Password** or **Send OTP**. The two buttons sit **side by side**, and Enter sends the OTP.
+Every sign-in page works like PluginLive auth: enter the **email or mobile** (admins may also use an admin ID),
+then pick **Password** or **Send OTP**. The two buttons sit **side by side**.
+- Pages: `/login/admin`, `/login/trainer`, `/login/candidate`, and on DEV `/lms/login` (LMS v2 flag; UAT students use `/login/candidate`).
+
+**Admin**
 - **Password:** unchanged. A `@bankready.app` ID or short ID signs in directly; any other email goes through `admin-email-login`.
-- **OTP:** needs an email or a 10-digit mobile (a short admin ID can only use the password).
-  - `request-login-otp` with `role: "admin"` resolves the profile that matches the email/mobile **and** has an `admin`/`super_admin` row in
-    `user_roles`. A student who shares the email is skipped. More than one matching admin is refused, and so is an inactive profile.
-  - The code goes by email, or by SMS when no email is on file, with the same rate limits and lockout as candidates.
-  - The new edge function **`admin-otp-login`** consumes the challenge (role `admin`) and returns a magic-link `token_hash`. The browser runs
-    `verifyOtp`, then the same admin-role check as the password path, then `/admin/dashboard`.
-  - It creates no rows and **never rotates the admin's password**, unlike `candidate-otp-login`.
-- **DB:** `auth_login_otp_challenges_role_check` allows `admin`. `issue_/consume_login_otp_challenge` accept it (migration
-  `20261123110000_admin_login_otp`). On UAT, `prepare_login_otp_challenge` (the delivery-tracking RPC, UAT branch only) also accepts it
-  (`20261123113000_admin_login_otp_prepare`). Apply that second file wherever `20261120130000_login_otp_delivery` lands.
-  - DB-Scripts folder: `Banking LMS Admin Login OTP/`.
-- **LMS student login** `/lms/login` (DEV only, LMS v2 flag): the same side-by-side Password | Send OTP choice.
-  - Password works only for accounts that have one; OTP-only candidates get a random rotated password, so they should use OTP.
-  - Not on UAT: the flag is off there and students use `/login/candidate`.
-- **Verified:** DEV and UAT, headless browser with the QA admin.
-  - Buttons side by side; wrong password and wrong code rejected.
-  - A valid code (challenge pointed at a known code in the DB) → `/admin/dashboard`.
-  - Candidate/trainer/admin OTP requests for unknown emails still give the generic answer.
-- **Commits:** Development `39cd6d07b`; UAT `8879e87a9` + `37dc1bdfa`.
+- **OTP:** needs an email or mobile.
+  - `request-login-otp` with `role: "admin"` resolves the profile that matches **and** has an `admin`/`super_admin` row in `user_roles`.
+  - The new **`admin-otp-login`** consumes the challenge (role `admin`) and returns a magic-link `token_hash`. It never rotates the password.
+  - The browser then runs the same admin-role check (`enterAdminConsole`) as the password path.
+
+**Student / trainer password**
+- **Setting one:** students and trainers set a password with **Forgot Password?**.
+  - `request-password-reset` no longer refuses OTP accounts. The link goes only to a real registered email (never `<mobile>@bankready.app`).
+  - Mobile-only accounts are told to use OTP.
+  - The reset page saves through the new **`set-own-password`** (JWT of the recovery session; same strength rule as admins). It writes the
+    password **and** the service-managed marker `app_metadata.password_set = true` in one call. `auth.updateUser` cannot set that marker.
+- **Signing in:** the new **`password-login`** (`{identifier, password, role: candidate|trainer}`).
+  - It resolves the account exactly like the OTP login (`resolveLoginOtpAccount`), so the Auth email never reaches the browser.
+  - It accepts only a chosen password: `hasChosenPassword` = `password_set`, or `admin_password_set` plus a current admin role.
+  - Every other case returns `401 invalid_credentials`; an inactive account returns 403. The browser `setSession`s and runs the shared
+    `finishCandidateSignIn` (approval/active gates, trainer profile lookup, landing page).
+  - OTP-only accounts keep a random password (and possibly a legacy derived one), which this refuses.
+- **OTP keeps a chosen password:** `candidate-otp-login` rotates the password only when `hasChosenPassword` is false.
+- **Limit:** GoTrue rate-limits `/token` per caller IP. `password-login` and `admin-email-login` call it from the edge runtime, so all password
+  sign-ins share one bucket. Upgrade path: a per-identifier throttle in `auth_login_otp_rate_limits`.
+
+**DB**
+- `auth_login_otp_challenges_role_check` allows `admin`, and `issue_/consume_login_otp_challenge` accept it (`20261123110000_admin_login_otp`).
+- On UAT, `prepare_login_otp_challenge` also accepts it (`20261123113000_admin_login_otp_prepare`). Apply that second file wherever
+  `20261120130000_login_otp_delivery` lands.
+- DB-Scripts folder: `Banking LMS Admin Login OTP/`. The student/trainer password work needed no schema change.
+
+**Verified on DEV and UAT** (headless browser, QA accounts, 0 page errors)
+- Buttons side by side on all pages.
+- Wrong password and wrong code are rejected.
+- Admin OTP → `/admin/dashboard`; trainer password and OTP → `/journey/trainer`.
+- Student password → `/candidate/home` (UAT) or `/lms/dashboard` (DEV).
+- A trainer password still works after an OTP sign-in.
+- API: email and mobile accepted; wrong password, unset password and wrong role → 401; `set-own-password` rejects weak passwords and anon callers.
+- Reset links are sent for mobile-backed trainers.
+- QA accounts left with test passwords: trainer `9302610155`, student `qa.banking.9302610156@pluginlive.com`, DEV `abhimanyu.sharma+lmscheck@pluginlive.com`.
+
+**Commits**
+- Development: `39cd6d07b`, `8e9177a67`, `51fd3b81c`.
+- UAT: `8879e87a9`, `37dc1bdfa`, `09c13d194`.
 
 ## Google sign-in for students — DEV + UAT 2026-11-12 (`8bbfa647`), PROD not set up
 
