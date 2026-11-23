@@ -22,7 +22,7 @@ AI interview stages use the assessment module's own forms: stage type `ai_interv
 
 The picker offers the degree/stream master, the same list v1 role creation uses: corporate-node `GET /corporates/:corporateId/degrees/v2` calls institute-node's `institutes/search/degreeStreams?pageLimit=700&status=1` and returns `{ degree, level, departments }` (BFF `/api/roles/degrees`, hook `useDegreeCatalogue`). That list also carries inactive rows whatever `status=1` asks for, so corporate-node keeps active degrees with active streams only and merges duplicate names; degrees with no stream aren't offered. PHD counts as PG, PG diplomas as Diploma, and ITI (stored as a DIPLOMA) as ITI.
 
-Specialisations (since 2026-11-12): `degrees/v2` also returns, per degree, `specializations` ({ department: names }) and the master's `shortForm` ("B.COM", matched by the picker's search). They come from the platform search service `POST /search/degrees/streams/specialisations`, called by corporate-node (`services/evaluation/degreeSpecialisations.js`, env `SEARCH_API_URL` + `SEARCH_API_KEY`, cached 1 h per pod; an outage only drops specialisations). Its ids are `institute.specialisation_master` ids, names are read from that table. Specialisations are matched to a department by master ids (degree id + stream id), never by name, since several stream rows share a name; a `specialisation_master_stream_map` link scoped to another degree (`degreeStreamMapId`) is dropped, case duplicates merge, and ALL-CAPS names read as words. The picker's search matches from the start of a word only. The picker (since 2026-11-17, corporate-react-v2 `d2fe441`) shows each degree as an accordion with "Select all" and one option per department plus one per specialisation, labelled "Department with Specialisation"; every option is its own pick and a tick applies at once (no Clear / Apply). Chips read "Degree · Department with Specialisation". A department pick saves as `Degree · Department` and still means the whole department, any specialisation; a specialisation pick saves as `Degree · Department · Specialisation`, which `resolveEligibility` writes exactly as v1 does: the item's `specialisationId: [id]` plus `job_roles.specialisations` / `specialisations_ids`. A specialisation not offered under that department is refused (422), never widened. Up to 500 eligibility labels. Picker layout (since 2026-11-17, corporate-react-v2 DEV 53f2bed / UAT 20e9400, frontend only): the menu is placed only between the wizard's top bar (`.wz-topbar`) and its Back/Continue bar (`.wz-actions`), flipping up only when there's more room above; long chips truncate with "…" (full text on hover) and keep their ×. The four-row cap on the active chip field (eca4f1d) was ROLLED BACK on 2026-11-18 (DEV 72f92e0, UAT 0e4ad88): `.rd-degree` is shared by Office location, Skills and Qualifications, whose menus render inside the box, so `overflow-y: auto` + `max-height` clipped them and their dropdowns stopped opening. Never put overflow on `.wz-root .rd-degree.is-active`; scope any cap to the Degree picker's own class. Master data quirk: specialisations hang off the stream, so some odd ones appear (e.g. under B.Com · Accountancy), and names keep the master's mixed casing.
+Specialisations (since 2026-11-12): `degrees/v2` also returns, per degree, `specializations` ({ department: names }) and the master's `shortForm` ("B.COM", matched by the picker's search only when typed in full since 2026-11-23). They come from the platform search service `POST /search/degrees/streams/specialisations`, called by corporate-node (`services/evaluation/degreeSpecialisations.js`, env `SEARCH_API_URL` + `SEARCH_API_KEY`, cached 1 h per pod; an outage only drops specialisations). Its ids are `institute.specialisation_master` ids, names are read from that table. Specialisations are matched to a department by master ids (degree id + stream id), never by name, since several stream rows share a name; a `specialisation_master_stream_map` link scoped to another degree (`degreeStreamMapId`) is dropped, case duplicates merge, and ALL-CAPS names read as words. The picker's search matches from the start of a word only. The picker (since 2026-11-17, corporate-react-v2 `d2fe441`) shows each degree as an accordion with "Select all" and one option per department plus one per specialisation, labelled "Department with Specialisation"; every option is its own pick and a tick applies at once (no Clear / Apply). Chips read "Degree · Department with Specialisation". A department pick saves as `Degree · Department` and still means the whole department, any specialisation; a specialisation pick saves as `Degree · Department · Specialisation`, which `resolveEligibility` writes exactly as v1 does: the item's `specialisationId: [id]` plus `job_roles.specialisations` / `specialisations_ids`. A specialisation not offered under that department is refused (422), never widened. Up to 500 eligibility labels. Picker layout (since 2026-11-17, corporate-react-v2 DEV 53f2bed / UAT 20e9400, frontend only): the menu is placed only between the wizard's top bar (`.wz-topbar`) and its Back/Continue bar (`.wz-actions`), flipping up only when there's more room above; long chips truncate with "…" (full text on hover) and keep their ×. The four-row cap on the active chip field (eca4f1d) was ROLLED BACK on 2026-11-18 (DEV 72f92e0, UAT 0e4ad88): `.rd-degree` is shared by Office location, Skills and Qualifications, whose menus render inside the box, so `overflow-y: auto` + `max-height` clipped them and their dropdowns stopped opening. Never put overflow on `.wz-root .rd-degree.is-active`; scope any cap to the Degree picker's own class. Master data quirk: specialisations hang off the stream, so some odd ones appear (e.g. under B.Com · Accountancy), and names keep the master's mixed casing.
 
 Degree-picker interaction follow-up (2026-11-19, DEV `6a4a14b`, UAT `27f002c`): clicking anywhere in the field, including chips and the "+N more" area, opens the menu. The chevron toggles it and each chip's × removes only that pick. The four-row scrolling cap is scoped to the degree picker's own field; other wizard dropdowns retain their existing overflow behavior.
 
@@ -153,7 +153,7 @@ Commits: corporate-node DEV `62c0affd` / UAT `3f12a15d`; corporate-react-v2 DEV 
 
 ## Locked application form fields
 
-On a locked field with options, a recruiter can add options (DEV + UAT, 2026-11-04). PluginLive's own options stay read-only because normalization relies on them; added ones can be edited or removed. `withLockedOptions` folds them into the question.
+On a locked field with options, a recruiter can add options (DEV + UAT, 2026-11-04). PluginLive's own options stay read-only because normalization relies on them; added ones can be edited or removed. `withLockedOptions` folds them into the question. Since 2026-11-23 the locked **CV upload** also has "Mark as required" (the recruiter's Mandatory / Optional choice, folded back by `withLockedOptions` via `canToggleRequired`); every other locked field keeps its required flag, and its note reads "Required · always collected" or "Optional · always asked" to match.
 
 Known gap: normalization validates Gender against `gender_normalizer._GENDER_MAP`, so a candidate who picks an unrecognised added value can fail normalization and never reach the role. Safe additions: Transgender, Intersex, Non-binary, Prefer not to say, Other. State and year fields are checked too. Nothing warns the recruiter yet.
 
@@ -436,3 +436,48 @@ PROD form-data-normalization ran `release-v1.38-hotfix-1` (4 Sep), which has no 
   served the first part (e.g. Aptitude) every time and the zip held that report repeated. The BFF now forwards a validated
   `part` (1–999; anything else 400). corporate-node already honoured `part` on every env. corporate-react-v2 DEV
   `39e00cd`, UAT `add6ccd`; PROD pending (release-v1.43 has the same route).
+
+## 2026-11-23 fixes (DEV + UAT)
+
+Commits: student-node DEV `ea8d1205` / UAT `6286ab33`; corporate-node DEV `5d95f3f6 33b9cddc 3810c66d 9db6a714` / UAT
+`36b48885 9b48612a f7f0f662 1b8655c0`; corporate-react-v2 DEV `d9cb4f6…9a83923` (9 commits) / UAT `…8981ebd`;
+design-system `66081ac` (assessment-creation **0.1.2-bugfix.35**, branch `fix/ai-interview-context-0.1.2-bugfix.35`).
+PROD pending for all.
+
+- **Institute-link applications count for the invited campus.** create-full (student-node `upsertJobRoleStudentMap`)
+  now sets `job_role_student_map.institute_campus_id` from the stored application (`job_role_response.tally_form_id` =
+  `pl:<jrimId>` or the campus's Tally form id → `job_role_institute_map.institute_campus_id`), falling back to the
+  student's own campus; on an existing row it overwrites the campus only when an invite campus is found. Manage
+  institutes' applicant count reads that column. Rows written before (UAT: 25 of 26 per-campus applications) were NOT
+  backfilled. A general-link "Select Your College" pick is still not attributed.
+- **Add Custom Filter offers a recruiter's own "skills" question.** `skills?` left the `COVERED` list
+  (`RoleCandidateFilters.tsx`): the built-in Skills filter matches the role's skills against the profile, never answers.
+- **One-shot dialogs.** `?setup=1` (open evaluation setup after create / duplicate) is removed from the URL once used.
+  "<name> created" (assessments, wizard adds `&t=<ms>`) and "Role created" / "Evaluation set up" (roles, keyed by role
+  id) show once per browser tab via `lib/oneShotNotice.ts` (sessionStorage). Cause: `history.replaceState` strips the
+  query but Next's router keeps the original URL, so returning from the sidebar remounted the list with it.
+- **Duplicate of a Quick Evaluation role** opens the wizard on the path choice with Quick Evaluation picked
+  (`/roles/new?resume=<copy>&path=quick`). The original's assessment is not copied.
+- **Candidate drawer offer answer.** `GET …/applicants/:id` now returns `status` (the list's value, e.g.
+  `offer_accepted` from `_offerStatus`). The drawer chip reads Offer accepted / Offer rejected; the final round on the
+  Stage timeline reads "Cleared — offer made / accepted / rejected / ready for an offer" with a done tick
+  (`evaluation/offerTimeline.ts`). Mark Offered leaves the final round's dispatch at `offer_sent`; the answer lives on the
+  candidate.
+- **Custom Assessment round report = this candidate only.** `getRoundReport` passed the selection to
+  `exportCandidates` by setting `method = "POST"` on a derived request; Fastify's `request.method` is a getter, so it
+  stayed GET and the sheet held every candidate. It now goes on `query` (`customSheetQuery`).
+- **v1 roles' JD reads as text.** v1 stored the JD as rich-text HTML in `job_roles.description` (UAT: 7,039 of 7,155
+  roles). `helpers/htmlText.js` `jdTextOf` converts it on read (role detail `description`, setup `jdText`: Manage role,
+  Duplicate / edit wizard, apply page); plain-text JDs are untouched. Saving from v2 stores plain text.
+- **Degree picker:** a short form counts only when typed in full ("mba" ≠ "MBA-CA", which the master has on
+  "CHARTERED ACCOUNTANT" with ~25 junk departments: data not cleaned). While searching, a degree's arrow collapses it
+  (`isDegreeOpen` / `toggleDegree` in `degreeTreeSelection.ts`).
+- **Experienced template requires the CV** (`ex_b1` required in `roleFormV2.js`); the recruiter can switch it (see
+  Locked application form fields). Existing roles keep their saved form. The apply form refuses a required upload
+  ("Upload a file").
+- **Unnamed application field.** Continue on step 3 commits a label still being typed, then says which card ("Field 7
+  (Dropdown) has no name…"), flags every unnamed card (red, "Name this field, or remove it.", `aria-invalid`) and
+  focuses the first. UAT roles 9ee7151d and 5d3a0731 carry blank custom questions from older saves.
+- **Role-stage AI Interview / Complete AI Interview** keep Seniority, Industry / domain and Region editable ("Interview
+  context") while the role supplies job role and JD (`hideRoleContext`).
+
