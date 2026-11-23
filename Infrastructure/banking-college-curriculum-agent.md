@@ -593,6 +593,12 @@ The catalogue and repeatable verification queries are in the [Banking LMS releas
   promotional channel videos are **not** curriculum videos. The platform discovers candidates only after a source-backed topic
   package exists, then requires a separate reviewer to assess relevance, teaching quality and language before publication.
 
+### Demo access on UAT and production
+
+For the demo account ending in 5335, **Institute Journey → Academic set-up → College** lists SRM Easwari Engineering College and Swaminarayan University first and labels them **(demo)**. Select **Curriculum agent** after choosing a college. SRM has 22 programmes and the account's existing learner enrolment gives it 11 SRM courses. Swaminarayan has 159 programmes and 132 official syllabus PDFs. Its student course list is empty until the university publishes courses and assigns a section.
+
+The picker reads the account's `profiles.metadata.demo_college_ids` and displays matches from its authorized list of active colleges. Changing a demo preference preserves the user's home organisation, academic roles and class enrolments.
+
 ## Known gaps
 
 - A college needs a checker before anything can be approved or published: a HOD per department (Academics → Heads of department),

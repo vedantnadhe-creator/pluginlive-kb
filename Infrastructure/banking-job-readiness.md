@@ -42,13 +42,11 @@ DEV copy of the stack (2026-11-09): `~/banking-sb` on the DEV box, DB `banking_d
 `~/banking-dev-app`, static files served from `/var/www/banking-dev`; data copied from UAT that day, own JWT secret,
 third-party keys (MSG91, Gemini, ElevenLabs, mail) shared with UAT.
 
-## Sign-in: Password or OTP for admin, trainer and student — DEV + UAT 2026-11-23, PROD not deployed
+## Student and trainer password sign-in on DEV, UAT and production
 
-Every sign-in page works like PluginLive auth: enter the **email or mobile** (admins may also use an admin ID),
-then pick **Password** or **Send OTP**. The two buttons sit **side by side**.
-- Pages: `/login/admin`, `/login/trainer`, `/login/candidate`, and on DEV `/lms/login` (LMS v2 flag; UAT students use `/login/candidate`).
+Students and trainers enter their registered email or mobile at `/login/candidate` or `/login/trainer` and choose **Password** or **Send OTP**. They can use **Forgot Password?** to set a password through their registered mailbox. DEV also offers `/lms/login`. Production admin sign-in uses a password. The additional admin OTP option is live on DEV and UAT and awaits its separate production database scripts.
 
-**Admin**
+**Admin sign-in on DEV and UAT**
 - **Password:** unchanged. A `@bankready.app` ID or short ID signs in directly; any other email goes through `admin-email-login`.
 - **OTP:** needs an email or mobile.
   - `request-login-otp` with `role: "admin"` resolves the profile that matches **and** has an `admin`/`super_admin` row in `user_roles`.
@@ -72,7 +70,7 @@ then pick **Password** or **Send OTP**. The two buttons sit **side by side**.
   sign-ins share one bucket. Upgrade path: a per-identifier throttle in `auth_login_otp_rate_limits`.
 
 **DB**
-- `auth_login_otp_challenges_role_check` allows `admin`, and `issue_/consume_login_otp_challenge` accept it (`20261123110000_admin_login_otp`).
+- On DEV and UAT, `auth_login_otp_challenges_role_check` allows `admin` and `issue_/consume_login_otp_challenge` accept it (`20261123110000_admin_login_otp`).
 - On UAT, `prepare_login_otp_challenge` also accepts it (`20261123113000_admin_login_otp_prepare`). Apply that second file wherever
   `20261120130000_login_otp_delivery` lands.
 - DB-Scripts folder: `Banking LMS Admin Login OTP/`. The student/trainer password work needed no schema change.
@@ -90,6 +88,8 @@ then pick **Password** or **Send OTP**. The two buttons sit **side by side**.
 **Commits**
 - Development: `39cd6d07b`, `8e9177a67`, `51fd3b81c`.
 - UAT: `8879e87a9`, `37dc1bdfa`, `09c13d194`.
+
+Production v1.1.38 runs `d32267c61` with student and trainer password sign-in. UAT runs `2406b6f88`. Both builds ran on their respective hosts. Live browser checks on both environments verified that separate student and trainer accounts could save a chosen password, that the old password was rejected, and that sign-in landed at `/candidate/home` and `/journey/trainer` respectively. All temporary accounts were removed. Production rollback data is in `/data/backups/prod-learner-signin-20261123T153646Z`. The GitHub production release branch also contains the pending admin OTP changes at `715500dd6`.
 
 ## Google sign-in for students — DEV + UAT 2026-11-12 (`8bbfa647`), PROD not set up
 
