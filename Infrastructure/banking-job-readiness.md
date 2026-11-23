@@ -5610,3 +5610,11 @@ UAT bundle `index-COe2Ai_t.js`, snapshot `~/banking-sb/snapshots/20261122T150131
 backup `/data/backups/prod-20261122T150405Z`. Built on each VM with its own environment via `auto_deploy.sh`.
 Student LMS redesign, video-watch completion gate and AI video checker remain held; `/v2`, DEV and the gateway policies
 were not changed. Evidence: `/home/ubuntu/banking-checks/managed-roles-release-20261122/`.
+
+## 2026-11-23 — Admin registered-email recovery fixed on UAT and PROD v1.1.36
+
+UAT `801a212d5` and PROD/tag `v1.1.36` `77000f2ff` repair the reported admin recovery flow. A mobile-backed admin's registered email now remains a valid recovery destination, and a legacy trainer sharing that email no longer hides the admin. Wrong-password sign-in still returns generic 401; rate limits and service failures have separate handling.
+
+Live testing found two further wiring defects: GoTrue generated `/verify` links that opened certificate verification, and platform privacy consent could cover the password form. Reset emails now use the environment's `/sb/auth/v1/verify` endpoint; recovery is accessible before consent, which remains required for dashboard access. Saving through the existing protected reset API preserves the admin password across later OTP login, ends the recovery session and returns to Admin Login. The dedicated fallback now accepts Super Admin callers.
+
+Both deployments used `auto_deploy.sh` and built on the target VM. UAT snapshot `20261123T044514Z`; PROD backup `/data/backups/prod-20261123T044733Z`. No migrations or real-account password changes were required; existing production holds remain excluded. See [current recovery behavior, test evidence and limits](banking-admin-password-recovery.md).
