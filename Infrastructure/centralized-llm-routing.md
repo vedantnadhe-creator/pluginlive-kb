@@ -272,3 +272,20 @@ Applied using `~/litellm/apply_policy.py`; backup `policy-backups/tasks-20261122
 `tasks-banking-journeys-20261122.json`. The versioned `litellm-central/policies/tasks-uat.json` now matches the complete
 live 77-task policy. Only the banking `simulation` row's model changed from `gemini-2.5-flash` to
 `pl/banking-simulation`; baseline `~/banking-sb/snapshots/uat-journeys-config-20261122/simulation-before.txt`.
+
+### AIVidya lesson RoboBoard — UAT only, 2026-11-23
+
+The AIVidya UAT `aividya-app` virtual key now has 13 task aliases. The two additions power the P0–P3 student lesson
+Board mode and are called only through `_shared/sim/gateway.ts`; the application has no direct-provider or local-model
+fallback:
+
+| Task | Primary → fallback | Timeout / retries | Caller |
+|---|---|---:|---|
+| `pl/lesson-board` | `gemini-3-flash-preview` (reasoning disabled) → `gpt-5.4-mini` (none) | 25 s / 0 | `topic-lesson`, Board agent |
+| `pl/lesson-visual-plan` | `gemini-3-flash-preview` (reasoning disabled) → `gpt-5.4-mini` (none) | 25 s / 0 | `topic-lesson`, Visual agent |
+
+The admin **LLM Config** page exposes matching **Robo Board Agent** and **Robo Board Visual Agent** rows, including a
+complete primary/fallback provider-model pair. Those rows document the application configuration; LiteLLM task policy
+is the routing source of truth. On UAT both task policies and the virtual-key grants were validated with a normal call
+(Gemini 3 Flash Preview) and a forced `mock_timeout` fallback (GPT-5.4 Mini), all HTTP 200. The UAT policy backup is
+`~/litellm/policy-backups/tasks-20261123T115841Z.json`. No PROD policy, key or caller was changed.

@@ -155,3 +155,35 @@ Robo Teacher and Robo Classes are Enterprise; see `Infrastructure/pilvidya-schoo
 - **UAT checks**:
   - `~/pilvidya-checks/robo-visuals/e2e.cjs`, two Class 9 students in School A on "Cell: The Building Block of Life": image shown; reuse without generating (pool unchanged); the same student never repeats (pool +1); a diagram was drawn in 3 of 4 runs.
   - `admin-config.cjs` for the Admin LLM config row and key fields; `cleanup.cjs <topic>` removes a topic's test images.
+
+## Synchronized lesson RoboBoard (P0–P3, UAT `84b5b596`, 2026-11-23)
+
+This is the Board mode on the ordinary student lesson page, not the separate conversational
+`/student/robo-teacher` class. It is live on UAT only; PROD has not received this release.
+
+- **Access and fallback:** `topic-lesson` accepts `include_board: true`, but sends a package only after checking the
+  student's `student.robo-teacher` plan entitlement and the server-side `robo_teacher_enabled` feature flag. UAT has
+  the flag enabled at 100%. A false flag, missing entitlement, missing package or malformed package returns the normal
+  Read lesson without exposing board data. The rollout bucket for device-token student sessions is deterministic from
+  their profile ID, so a student does not flicker between modes.
+- **Lesson contract:** each part may carry `board[]` items (`id`, `type` = heading/bullet/equation/table/tally/highlight,
+  `zone`, `content`, `animation`) and `visuals[]` items (`id`, `kind` = svg_spec/library/image, `spec`, `alt`,
+  `actions`). Transcript narration contains `[[board:<id>]]` and `[[visual:<id>]]` cues. A teacher-provided Board
+  artifact wins over the generated package; existing prose remains the transcript and is still available in Read mode.
+- **Generation and safety:** after the canonical starter lesson, `pl/lesson-board` writes the Board package and
+  `pl/lesson-visual-plan` writes the visual plan. Maths/science tally marks, pictographs, bar graphs, number lines and
+  geometry are validated JSON specs rendered into SVG on the server. P0–P3 deliberately does not auto-generate arbitrary
+  raster images; approved/library image references can still be displayed. Raw legacy tally tags such as
+  `<s>||||</s>` are sanitised rather than rendered as markup.
+- **Player:** the student page shows a Read | Board choice next to Listen and defaults to Board only when the server
+  supplied a valid package. RoboBoard shows animated board cues, rendered visuals, a small Robo Teacher avatar and
+  captions. Learn and Example use the Board/visual sequence; Key points is a recap board. The quiz shows checkpoints
+  and offers the relevant re-explanation after two wrong answers. The sidebar's Robo Teacher link opens the current
+  lesson in Board mode. Mobile stacks the board above the visual panel.
+- **One clock:** `ai-coach-tts` can return word timestamps and persists a signed per-part timeline manifest. Play/pause,
+  seek, 0.75x–1.5x speed and tapping a board cue drive the same audio/board/visual clock. If timestamp-capable speech is
+  unavailable, the existing speech path provides an estimated timeline instead of breaking the lesson.
+- **Verification:** 15 targeted component/unit tests, production build and Storybook build passed. The deployed Class 6
+  *Data Handling and Presentation* learner flow passed in Board mode: the package was returned, raw tally markup was
+  absent, timestamped TTS returned HTTP 200 and audio/board progress advanced without browser errors. The release image
+  is `eduspeakreact:84b5b596` and public `/healthz` returned `ok`.
