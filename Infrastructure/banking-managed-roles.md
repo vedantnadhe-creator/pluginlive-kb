@@ -15,6 +15,8 @@ The admin account selectors share one role catalogue. Selecting a registered `in
 | Agent Activity Log and Agent Tool Analytics | Includes roles recorded on historical events, without relabeling old events after a promotion |
 | Assessments → Creator role | Includes additional recorded staff roles |
 
+Create User and Edit User accept complete saved location addresses, including the city suffix; the obsolete 100-character limit no longer rejects valid Location Master values. The shared profile validator also permits these addresses in My Profile. No address text is truncated. Create User shows the reason it is disabled (missing/invalid identity fields, organization loading, role/department eligibility or incomplete new-location details), and entered field errors appear immediately. Editing shows live field errors as well.
+
 The combined admin Users page renders 50 candidate rows per page. Search, CSV export and bulk selection continue to cover all matching candidates; the count shows selections across pages. This prevents a large roster from blocking the role controls above it. Missing legacy name/email/contact values are normalized on roster load; unmatched searches no longer crash on null email addresses.
 
 ## Account and authorization wiring
@@ -67,3 +69,20 @@ Testing uses temporary, isolated institutes and QA identities with reserved `.in
 - Local evidence: `/home/ubuntu/banking-checks/managed-roles-release-20261122/` (per-environment JSON results, cleanup records, runtime health, source verification and deployment logs). No tokens/passwords are saved in these reports.
 
 The PROD progression during this authorized test/fix cycle was v1.1.33 (role catalogue and responsive roster), v1.1.34 (role-hook/audit fixes), then v1.1.35 (legacy nullable contact fields). Original pre-rollout PROD was `9ffb360b5` / v1.1.32. The final reviewed source remains on the separate PROD release branch; DEV and `main` were not deployment targets.
+
+## 2026-11-23 — Create User blocked by a full location address
+
+Swaminarayan University's saved `location + city` label is 110 characters. The admin form's shared profile validator rejected locations over 100 characters, even though the database stores them as unrestricted `text`. Only the year/course error was rendered live, so the valid Dean/MBA/Final Year form stayed disabled without an explanation. The console audio warning was unrelated to this validation decision.
+
+The obsolete location-length check is removed. Complete saved addresses work in Create User, Edit User and My Profile without truncation. Create User now explains every disabled state, including invalid identity values, organization loading, missing HOD department and incomplete new-location city/state/pin. Live field errors appear in create/edit forms before submission. Role eligibility, mobile/email checks and existing name/course/year validation remain enforced.
+
+| Environment | Release | Bundle | Snapshot / backup |
+| --- | --- | --- | --- |
+| UAT | `dbd87d775cf297a3089e413a3c2f1b66ebc2fcff` | `index-woEh_R12.js` | `~/banking-sb/snapshots/20261123T051555Z` |
+| PROD | `922eb199f229d17511dcf37e2b3fb5cf318693bf`, tag `v1.1.37` | `index-BMCaqeGH.js` | `/data/backups/prod-20261123T051846Z` |
+
+Both deployments used `auto_deploy.sh` and built on the target environment. This is a three-file frontend/test patch with no schema changes. The PROD release preserves the existing Edge runtime; all four admin login/recovery runtime files were verified unchanged against the release source. Production holds remain excluded.
+
+Validation: **76 targeted tests passed on both release trees**. Live UAT reproduced the original disabled-button/no-message failure, then passed eight checks after deployment; PROD passed seven corresponding checks. These cover the exact Swaminarayan selection on UAT, complete-address Dean creation through the real form, persisted faculty/trainer authority and `Dean` appointment, no student record for staff, profile editing, visible invalid-name/mobile/email feedback, browser/API errors and cleanup. Native form/mobile screenshots and JSON evidence are in `/home/ubuntu/banking-checks/create-user-validation-20261123/`. UAT TypeScript retains the prior 24 errors with no new diagnostics.
+
+All temporary QA actors, Dean users, staff/role/appointment/consent records, test institutes and test locations were deleted. Welcome emails used reserved `.invalid` test addresses. The person shown in the user's screenshot was not created during testing; the admin can refresh the page and submit their form normally.
