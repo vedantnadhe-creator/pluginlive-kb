@@ -42,6 +42,31 @@ DEV copy of the stack (2026-11-09): `~/banking-sb` on the DEV box, DB `banking_d
 `~/banking-dev-app`, static files served from `/var/www/banking-dev`; data copied from UAT that day, own JWT secret,
 third-party keys (MSG91, Gemini, ElevenLabs, mail) shared with UAT.
 
+## Admin Login: Password or OTP — DEV + UAT 2026-11-23, PROD not deployed
+
+`/login/admin` works like PluginLive auth: the admin types an **email, mobile number or admin ID**, then picks
+**Password** or **Send OTP**. The two buttons sit **side by side**, and Enter sends the OTP.
+- **Password:** unchanged. A `@bankready.app` ID or short ID signs in directly; any other email goes through `admin-email-login`.
+- **OTP:** needs an email or a 10-digit mobile (a short admin ID can only use the password).
+  - `request-login-otp` with `role: "admin"` resolves the profile that matches the email/mobile **and** has an `admin`/`super_admin` row in
+    `user_roles`. A student who shares the email is skipped. More than one matching admin is refused, and so is an inactive profile.
+  - The code goes by email, or by SMS when no email is on file, with the same rate limits and lockout as candidates.
+  - The new edge function **`admin-otp-login`** consumes the challenge (role `admin`) and returns a magic-link `token_hash`. The browser runs
+    `verifyOtp`, then the same admin-role check as the password path, then `/admin/dashboard`.
+  - It creates no rows and **never rotates the admin's password**, unlike `candidate-otp-login`.
+- **DB:** `auth_login_otp_challenges_role_check` allows `admin`. `issue_/consume_login_otp_challenge` accept it (migration
+  `20261123110000_admin_login_otp`). On UAT, `prepare_login_otp_challenge` (the delivery-tracking RPC, UAT branch only) also accepts it
+  (`20261123113000_admin_login_otp_prepare`). Apply that second file wherever `20261120130000_login_otp_delivery` lands.
+  - DB-Scripts folder: `Banking LMS Admin Login OTP/`.
+- **LMS student login** `/lms/login` (DEV only, LMS v2 flag): the same side-by-side Password | Send OTP choice.
+  - Password works only for accounts that have one; OTP-only candidates get a random rotated password, so they should use OTP.
+  - Not on UAT: the flag is off there and students use `/login/candidate`.
+- **Verified:** DEV and UAT, headless browser with the QA admin.
+  - Buttons side by side; wrong password and wrong code rejected.
+  - A valid code (challenge pointed at a known code in the DB) → `/admin/dashboard`.
+  - Candidate/trainer/admin OTP requests for unknown emails still give the generic answer.
+- **Commits:** Development `39cd6d07b`; UAT `8879e87a9` + `37dc1bdfa`.
+
 ## Google sign-in for students — DEV + UAT 2026-11-12 (`8bbfa647`), PROD not set up
 
 "Continue with Google" on `/lms/login` (and on the classic `/login`, same flag) signs in through our own GoTrue:
