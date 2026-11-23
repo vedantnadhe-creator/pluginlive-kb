@@ -560,12 +560,18 @@ The last 40 script courses were removed (CSV `srm_script_courses_removed_held_20
 Caveat (resolved — user confirmed Anna University's curriculum is correct): SRM Easwari is an **autonomous** institution with its own R2023 curriculum (codes like `231CSC301T`); Anna University's
 affiliated-college curriculum was used on the user's instruction.
 
-## Swaminarayan University catalogue and official-source map (UAT, 2026-11-23)
+## Swaminarayan University catalogue and official-source map (UAT and production, 2026-11-23)
 
 At the user's request, **Swaminarayan University** was mapped from its official current programme brochure, faculty pages and
 official syllabus pages. Its registered website is `https://www.swaminarayanuniversity.ac.in/`. The catalogue has **159 active
 degree/specialisation pathways across 18 faculties**. Specialisations are separate programme rows so a future syllabus or
 admission batch cannot accidentally be attached to a neighbouring specialisation.
+
+Production has its own active university record. Its campus is in Saij, Kalol, Gandhinagar district, Gujarat 382725,
+as listed on the [university contact page](https://www.swaminarayanuniversity.ac.in/contact).
+The release check matched all 159 programme records and their official PDF mappings on UAT and production.
+Each of the 132 private production files was downloaded and verified against UAT by SHA-256, totalling 195,377,672 bytes.
+The catalogue and repeatable verification queries are in the [Banking LMS release](https://github.com/PluginLive-Technologies/bankingjobreadiness/tree/d41baa36173537ef7ee1fe2b629ddc47c0e2cbb8/QA/swaminarayan-university).
 
 - **132 public, official University PDF sources** were imported through `import_official_source`, each with its public URL,
   SHA-256, page count and parsed text. They cover **42 programme paths / 6,185 pages** in the faculties where the University
@@ -573,14 +579,16 @@ admission batch cannot accidentally be attached to a neighbouring specialisation
   Physiotherapy, Homoeopathy, Science and Engineering. The exact current/revised or honours document was selected where the
   source page also retained old-scheme material. One byte/text duplicate identified by the importer was removed; final source
   check: 132 ready, zero failed, zero duplicate URLs, zero missing URL/hash/page fields.
-- The source map is deliberately **not published**: it has no `curriculum_build`, section/offering or learner-visible curriculum.
-  There were no department-head assignments at the time of mapping, so neither an agent nor a platform admin should claim HOD
-  approval. Create a curriculum version from the applicable source documents, extract it, validate the admission batch, then have
-  a different HOD/principal reviewer approve it before students can see it.
+- At release, production had zero curriculum builds and no appointed Dean or HOD. Creating the production Dean appointment
+  requires a verified production login. For student access, academic staff prepare a version from the applicable sources,
+  obtain an independent review, validate the admission batch and assign the published courses to sections.
+- On UAT the Dean received the institute role needed to start a build. The official 34-page B.Sc. (Hons.) Physics
+  syllabus produced a 15-course draft. A separate one-course QA run verified HOD review, admission-batch validation
+  and the enrolled student's PDF download. The fixtures were removed. The release rerun passed the UAT Dean access
+  check and the academic learning-package regression.
 - The University library points to its controlled e-resource / RemoteXs access at
-  `https://library.swaminarayanuniversity.ac.in/Resources.aspx`. It may contain licensed e-books, but no e-book was copied to
-  UAT or marked distributable: a faculty must provide a permitted public PDF or confirm the relevant library/publisher rights
-  before it can be used for lesson preparation.
+  `https://library.swaminarayanuniversity.ac.in/Resources.aspx`. Both environments record the library link. Title-specific
+  permission is pending for e-books used in lesson preparation.
 - The official channel is `https://www.youtube.com/@swaminarayanuniversity7767`. It is recorded in the institute notes, but
   promotional channel videos are **not** curriculum videos. The platform discovers candidates only after a source-backed topic
   package exists, then requires a separate reviewer to assess relevance, teaching quality and language before publication.
