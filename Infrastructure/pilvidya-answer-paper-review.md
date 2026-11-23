@@ -1,24 +1,43 @@
-# PilVidya (aividya) — Handwritten answer papers: upload, AI draft, teacher approval, release
+# AIVidya handwritten answer papers
 
-LIVE on UAT 2026-11-16 (`eduspeak-india` branch `feat/chat-simulations`, app `9956e00e`, SQL fix `3ebcb0aa`). PROD: not deployed.
+AIVidya UAT release on 23 November 2026. The application runs commit `1bc2fece` on the `feat/chat-simulations` branch. The UAT hostname is `pilvidya.uat.pluginlive.com`.
 
-## Flow
-1. **Student** (descriptive assessment → `/assessment-submit/<assignment>`): "Handwritten answer paper" card. Take/choose photos (≤ 10 pages, ≤ 8 MB each after in-browser JPEG compression). Each page is read immediately (vision model, llm-resolver task `alt-submission-ingest`); unreadable pages show "Unclear: remove and retake". **Submit paper** → pages joined in upload order (`--- Page n ---`), assignment `completed`, AI draft created, teacher notified (`answer_paper_submitted`, link `/teacher/ops#review`). Typed answer is still available; uploaded pages replace it.
-2. **Teacher QR scanning** (Operations → Alt intake → QR answer sheets) feeds the same pipeline. Extra pages for the same student are **added**, never overwrite (old bug: last page replaced the answer). Each scanned page re-drafts the whole answer.
-3. **AI draft** (`descriptive-auto-grade`): if the assessment has `question_ids`, marks each question against `questions.marks` (+ `correct_answer` as model answer) → `ai_breakdown.question_scores`, total = sum. Otherwise rubric/criteria. Writes ONLY to `assessment_grade_reviews` (status `ai_draft`). Refuses if already released.
-4. **Teacher review** (Teacher → Operations → Review, `AssessmentReviewPanel` + `AnswerReviewDialog`): original page photos (signed URLs), text the AI read, per-question marks, grading + handwriting confidence. Filters: All / Check first / Not marked / AI draft / Approved / Released. "Check first" = AI confidence < 0.6 or handwriting confidence < 0.6 (listed first). Actions: Approve, Approve & release, bulk **Approve confident** (both confidences ≥ 0.8, RPC `approve_assessment_reviews`), **Release approved** (RPC `release_assessment_results`). A released mark can be corrected and re-released.
-5. **Release** copies teacher mark/feedback to `assessment_assignments.final_score/final_max_score/teacher_feedback/released_at/result_breakdown` and notifies the student (`/assessment-submit/<id>`) and verified parents (`assessment_result`). Per-question marks are copied only if they add up to the teacher's final mark.
-6. **Student** sees "Awaiting teacher review" until release, then "Marks X/Y", feedback, per-question table, strengths/improvements.
+## Student and teacher journeys
 
-## Data & security
-- `assessment_grade_reviews` (PK `assignment_id`): status `pending|ai_draft|approved|released`, page_count, ocr_confidence, ai_*, teacher_*, reviewed_by/at, released_at. RLS: `can_manage_assessment(assessment_id)` only (assessment author or platform admin) — students/parents cannot read AI drafts. TRUNCATE/REFERENCES/TRIGGER revoked from `authenticated` (UAT default ACL grants them; TRUNCATE skips RLS) — also in `lockdown.uat.sql`.
-- `assessment_assignments.ai_*` columns are kept but cleared and no longer written. `legacyBackend.gradeSubmissionWithAI` (wrote them, unused) deleted.
-- Trigger `trg_guard_assessment_assignment_marks`: non-staff callers who don't manage the assessment cannot change marks/feedback/release/plagiarism/ai columns; parents cannot update assignments; the student cannot change submission text/url after the teacher approved or released. Service role and staff unaffected.
-- Edge function `student-answer-upload` (actions list/upload/remove/submit): student device session (`requireStudentSession`), assignment must belong to the student and be descriptive, locked after approval/release or past due date, ≤ 10 pages, 40 uploads/hour/student.
-- Still student-readable: `plagiarism_score/plagiarism_matches` on the assignment (not changed).
-- Migration: `supabase/migrations/20261118120000_answer_sheet_review_release.sql`; DB-Scripts `EduSpeak Postgres Migration/20261116T…__pilvidya_answer_paper_review_release.sql` (UAT applied, PROD pending).
+1. **Student → Practise → Written papers** (`/student/written-papers`) lists assigned tests that accept written answers, including mixed tests and completed work. Open a paper to see its board, class, subject and topic. The student can photograph pages or choose images or a scanner PDF. The browser renders PDF pages in order. PDFs have a 20 MB input limit. A student assignment accepts up to ten pages and each compressed scan may be up to 8 MB.
+2. The handwriting reader transcribes each uploaded page after checking AI processing consent. A printed sheet must match the selected test and student. Each saved page appears as it is processed. A student must retake or explicitly remove every unclear page before submitting. **Submit paper** joins the remaining pages in order, completes the assignment, drafts marks and sends the author a notification linking to the review screen. The typed-answer option remains available while the assignment is editable.
+3. **Teacher → Assess & improve → Scan answer sheets** (`/teacher/written-papers/scan`) lists the teacher’s descriptive tests. For automatic identification, print the personalised QR sheets and scan using a desktop file picker or a phone handoff. For a plain paper, select the test and an assigned student before uploading. Additional pages append to that assignment. Each successful teacher scan requests a fresh draft of the combined answers.
+4. **Teacher → Assess & improve → Review written papers** (`/teacher/written-papers/review`) shows the page images, transcription, per-question marks and confidence. For question-based assessments, the grader checks every question against the configured marks and model answer. A teacher can correct the score and feedback, approve, and release. **Approve confident** uses both handwriting and AI confidence thresholds of 0.8. **Release approved** publishes the selected approved results. The older School Operations intake and review links still work.
+5. A student sees **Awaiting teacher review** until release. Release makes the teacher’s score and feedback visible on that student’s assignment and notifies verified parents. The result includes the question breakdown when its scores add up to the final mark.
+
+## Access settings
+
+| Action | Menu key | Scope |
+| --- | --- | --- |
+| Open written papers and upload | `student.written-papers` | Signed-in student with an assigned descriptive test |
+| Print, pair a phone and scan papers | `teacher.paper-intake` | Eligible teaching staff for their own assessments |
+| View AI drafts, approve and release | `teacher.paper-review` | Eligible teaching staff for their own assessments |
+
+Platform administrators manage the plan matrix and individual schools in **Admin → Billing → Plan Menus**. School leaders use **School Admin → Menu access → Students / Teachers & staff**. The three switches are independent. On first installation they inherit the existing assessment plan setting and school opt-outs. Existing principal exemptions for school-level menu switches still apply.
+
+## Data and enforcement
+
+- `my_written_paper_access()` supplies the staff sidebar and deep-link checks. Institute staff need an active academic membership and the author’s teacher profile. Older teaching accounts can predate institute memberships. Platform administrators retain their assessment privileges.
+- `student-answer-upload` checks the student session, menu, ownership, assignment type, deadline and review status. Approved work is locked. The intake and phone endpoints check scan rights on the assessment. Teacher-initiated AI grading, mark updates, approval and release check review rights.
+- `assessment_grade_reviews` stores drafts and reviewed marks by assignment. Row-level policies protect the review and original scans. Released results are copied into `assessment_assignments`; student-facing reads show the final score, feedback and release time. Original page scans are served by signed URLs.
+- The review queue tracks pending, AI draft, approved and released work. **Check first** prioritises AI or handwriting confidence below 0.6. A teacher can approve and release in one action, or correct and release an amended mark.
+- The private review table holds the AI fields. The earlier `assessment_assignments.ai_*` columns are unused. The existing UAT lockdown revokes `TRUNCATE`, `REFERENCES` and `TRIGGER` on the review table from the authenticated role.
+- The application migration is `supabase/migrations/20261123145729_written_paper_access.sql`. The corresponding DB Scripts file is `EduSpeak Postgres Migration/20261123T145729Z__pilvidya_written_paper_access.sql`.
+- The PDF reader loads a bundled `paper-pdf-worker-*.js` module. The UAT static server serves this file as JavaScript, and the build check verifies that the worker is present.
+- If the student loses the response while a scan is saved, the client looks up that page by its upload ID. On a lost submit response, it verifies that the assignment has a new completion time and the same readable pages. These read-only checks preserve the original upload and grading attempt.
 
 ## Checks
+
+- On 23 November 2026, 67 targeted tests passed. A mobile-browser student submitted a CBSE Class 9 Mathematics paper on Statistics. The teacher uploaded a second scan, inspected the two originals and per-question marks (3 and 2 available), approved 5/5, and released it. The student saw the score and feedback after release. A second assigned student kept their own pending result.
+- A separate two-page scanner PDF reached one draft when the test browser deliberately dropped a saved-upload response and a submitted-paper response. The same upload ID and pages confirmed receipt. A previously unreadable page required a retake or explicit removal.
+- The UAT access checks covered school and plan switches, authorised authors, other teachers, students, inactive staff and operations-only memberships. The admin plan matrix showed the three controls in Trial, Basic, Advanced and Enterprise.
+- The teacher’s phone handoff matched the printed QR to the correct student and test. A principal verified the three school controls. Another teacher’s review selector excluded both test papers. Each student submission produced one teacher notification. The two temporary assessments, related records and five scan objects were removed after verification.
+
 - `node ~/pilvidya-checks/answer-paper/student.cjs <assignmentId> page1.jpg page2.jpg` then `node ~/pilvidya-checks/answer-paper/teacher.cjs <assignmentId>` (principal@pilvidya.in authors the QA assessment). 2026-11-16 run: 2 pages read (OCR 0.99/1.0), AI draft 8/10 with Q1 4/5, Q2 4/5, teacher saw both scans, edited to 9/10 and released, student saw 9/10 + feedback, no page/API errors. QA data deleted afterwards.
 - Regression tests: `frontend/src/test/answerPaperReview.regression.test.ts`.
 
