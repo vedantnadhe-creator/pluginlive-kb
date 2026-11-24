@@ -49,7 +49,10 @@ Students and trainers enter their registered email or mobile at `/login/candidat
 **Admin sign-in on DEV and UAT**
 - **Password:** unchanged. A `@bankready.app` ID or short ID signs in directly; any other email goes through `admin-email-login`.
 - **OTP:** needs an email or mobile.
-  - `request-login-otp` with `role: "admin"` resolves the profile that matches **and** has an `admin`/`super_admin` row in `user_roles`.
+  - `request-login-otp` with `role: "admin"` compares every `admin`/`super_admin` user's Auth email (incl. the `<mobile>@bankready.app`
+    alias) and profile email/mobile; exactly one must match.
+    - Fix 2026-11-24: the first version only checked `profiles.mobile`. Admin 9080814197 has an empty profile mobile, so Send OTP sent nothing.
+    - Commits: UAT `027bfd1b5`, Development `921e69003`.
   - The new **`admin-otp-login`** consumes the challenge (role `admin`) and returns a magic-link `token_hash`. It never rotates the password.
   - The browser then runs the same admin-role check (`enterAdminConsole`) as the password path.
 
