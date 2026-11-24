@@ -61,6 +61,10 @@ Students and trainers enter their registered email or mobile at `/login/candidat
 - There is no fallback between them. The old email-first priority (SMS only when no email was on file) is gone.
 - If SMS is unavailable, a mobile entry gets "SMS sign-in codes are not available right now. Sign in with your registered email address instead."
 - On UAT, the "send by SMS instead" recovery after an email code stays (only for verified phones).
+  - Resend fix (2026-11-24): `channel: "sms"` counts as that recovery **only when an email was entered**. Before the fix, Resend after an SMS
+    code sent `channel: "sms"` and was refused ("SMS recovery is unavailable").
+  - Admin Resend now has the same 30 s countdown (`OtpRecoveryActions` on UAT; a simple countdown on Development).
+  - Commits: UAT `ebb65bd20`, Development `2bc9b5b76`.
 - Commits: UAT `7de3cadf1`, Development `c54c34e4d`.
 - Verified on UAT and DEV: email → `pluginlive_relay` accepted; `9080814197` → `msg91` accepted, destination `+91 ******4197`.
 
