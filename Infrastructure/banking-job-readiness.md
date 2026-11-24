@@ -79,6 +79,12 @@ Students and trainers enter their registered email or mobile at `/login/candidat
   - Every other case returns `401 invalid_credentials`; an inactive account returns 403. The browser `setSession`s and runs the shared
     `finishCandidateSignIn` (approval/active gates, trainer profile lookup, landing page).
   - OTP-only accounts keep a random password (and possibly a legacy derived one), which this refuses.
+- **Reset email link survives mail scanners (2026-11-24):** the email links to `/reset-password?role=…&token_hash=…&type=recovery`, and the page
+  calls `verifyOtp` only when the person presses **Continue**.
+  - Before, it linked to GoTrue `/verify`, which is single-use. Microsoft 365 Safe Links (QualityKiosk mailbox) opened it first (scanner
+    logins from 57.155.x / 44.246.x / 54.188.x; HEAD from 104.47.x), so the real click got "One-time token not found" and saw "This reset link
+    is missing, expired, or already used".
+  - Commits: UAT `b574a6159`, Development `e6c890d75`.
 - **Admin Reset Password (User Management):** works for mobile-backed students and trainers too, since 2026-11-24.
   - Before, `admin-reset-password` and `admin-user-actions` refused every non-admin `<mobile>@bankready.app` account with "uses mobile + OTP …
     Password resets are available for admin accounts".
