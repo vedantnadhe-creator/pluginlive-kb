@@ -105,6 +105,16 @@ Students and trainers enter their registered email or mobile at `/login/candidat
 
 Production v1.1.38 runs `d32267c61` with student and trainer password sign-in. UAT runs `2406b6f88`. Both builds ran on their respective hosts. Live browser checks on both environments verified that separate student and trainer accounts could save a chosen password, that the old password was rejected, and that sign-in landed at `/candidate/home` and `/journey/trainer` respectively. All temporary accounts were removed. Production rollback data is in `/data/backups/prod-learner-signin-20261123T153646Z`. The GitHub production release branch also contains the pending admin OTP changes at `715500dd6`.
 
+## 2026-11-24 UAT: natural coaching voice, accurate progress and honest attendance (`270debc7c`)
+
+UAT now uses the server TTS route by default for AI Coach, module coach, LMS narration and Robo Faculty, with an Indian-accented female voice as the default. The chosen language and an explicit persona gender still take precedence; the browser's speech synthesizer remains only a fail-soft fallback. Cancelling speech now settles the pending playback request, so a stopped or replaced reply cannot leave the speaking control stuck. Robo Faculty accepts all 15 supported Indian-language codes and can request up to three complementary topic visuals; existing stored visuals are reused before a new image is requested.
+
+Progress views now resolve duplicate or stale module-progress rows safely: an explicit completion always counts as 100%, and the highest valid evidence wins rather than letting an older partial row lower the overall or module percentage. This same calculation is used by learner dashboards, module navigation, learning paths and institute reporting. Opening an external live-session link no longer records attendance or an attendance timestamp; attendance appears only after the session starts and must be verified/marked by the trainer where the external provider cannot report presence.
+
+The UAT deployment applied `20261124110000_trainer_curriculum_insert_returning_policy.sql`. It extends the existing trainer-curriculum read policy only for the direct, authenticated trainer/teacher owner shape already allowed to insert a non-academic draft, fixing the `INSERT ... RETURNING` failure without opening college academic curricula. The UAT host snapshot is `20261124T072839Z`; its frontend was rebuilt on the UAT VM, the `robo-faculty` edge-function source hash matches the checkout, and `https://banking.uat.pluginlive.com/` returned 200. TypeScript and 69 focused checks covering voice, multilingual coach flow, progress, completion, attendance and Robo Faculty passed before release.
+
+Production remains on its separate release procedure. The corresponding trainer-curriculum policy and pending admin-OTP migrations must be applied through the production database release process before a production package containing those paths is activated.
+
 ## Google sign-in for students — DEV + UAT 2026-11-12 (`8bbfa647`), PROD not set up
 
 "Continue with Google" on `/lms/login` (and on the classic `/login`, same flag) signs in through our own GoTrue:
