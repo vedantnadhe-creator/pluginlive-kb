@@ -79,6 +79,11 @@ Students and trainers enter their registered email or mobile at `/login/candidat
   - Every other case returns `401 invalid_credentials`; an inactive account returns 403. The browser `setSession`s and runs the shared
     `finishCandidateSignIn` (approval/active gates, trainer profile lookup, landing page).
   - OTP-only accounts keep a random password (and possibly a legacy derived one), which this refuses.
+- **Admin Reset Password (User Management):** works for mobile-backed students and trainers too, since 2026-11-24.
+  - Before, `admin-reset-password` and `admin-user-actions` refused every non-admin `<mobile>@bankready.app` account with "uses mobile + OTP …
+    Password resets are available for admin accounts".
+  - Non-admin resets write `password_set` (admins keep `admin_password_set`), so the user can sign in with Password right away.
+  - Commits: UAT `2fa43a1ef`, Development `fc661b390`.
 - **OTP keeps a chosen password:** `candidate-otp-login` rotates the password only when `hasChosenPassword` is false.
 - **Limit:** GoTrue rate-limits `/token` per caller IP. `password-login` and `admin-email-login` call it from the edge runtime, so all password
   sign-ins share one bucket. Upgrade path: a per-identifier throttle in `auth_login_otp_rate_limits`.
