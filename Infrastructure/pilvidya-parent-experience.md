@@ -1,4 +1,4 @@
-# aividya — Parent experience (UAT, feat/chat-simulations ce01ad9f)
+# aividya — Parent experience (UAT, feat/chat-simulations bdd18f0a)
 
 The parent portal is a calm, child-first shell for a linked parent or guardian. This release is frontend-only: no
 database migration was added. Existing parent session, child-link, plan-access, RLS and edge-function boundaries remain
@@ -43,6 +43,12 @@ attention state is a positive “You’re all caught up” state.
 - Plan access controls parent tabs. A disabled feature opens the existing upgrade prompt instead of rendering an empty
   or misleading page.
 - Admin View as Parent uses the same shell in read-only preview mode; it does not create a parent login session.
+
+## Transport
+
+- The **Transport** tab selects a linked child once the parent roster loads, then requests only that child's active route through `parent-dashboard` action `get_transport`.
+- The server validates the parent session and linked-child relation before reading the assignment, route and stops. The browser does not query transport tables directly, which keeps the journey working under both parent login and Admin View-as Parent.
+- The route card shows pickup and drop-off times, driver contact, map/ETA when live location is available, a distinct retryable loading error, and an unassigned-child state when the office has not allocated transport.
 
 ## Parent-facing retention intent
 

@@ -1,4 +1,4 @@
-# aividya — Schools, staff accounts and School Operations (UAT, feat/chat-simulations 2c50808e)
+# aividya — Schools, staff accounts and School Operations (UAT, feat/chat-simulations bdd18f0a)
 
 Live on UAT since 2026-11-15 (`feat/chat-simulations` f869e794; DB migration `20261118100000_school_operations_scope`, DB-Scripts `EduSpeak Postgres Migration/…__school_operations_working_school_scope.sql`). PROD: none (no aividya PROD).
 
@@ -49,6 +49,17 @@ Live on UAT since 2026-11-15 (`feat/chat-simulations` f869e794; DB migration `20
 - **Staff identity fallback:** login and `StaffRoute` now recognise an active, allow-listed `institute_users.role` even when a legacy `user_roles` row is missing. `TeacherOps` and School Admin show a scoped repair message when the membership exists but its `teacher_profiles` school scope is missing; they do not fall back to arbitrary school data. Vice Principals and School Admins (`institute_admin`) can open the school-admin workspace when they have a provisioned school-scoped teacher profile.
 - The 10 server functions (admission-offer-generate, admission-screen, fee-reconcile, fee-reminders-send, razorpay-payment-link, transport-optimize, library-overdue-summary, payroll-run-generate, timetable-generate, principal-morning-brief) call `_shared/ops-auth.ts` `opsCaller`: signed-in staff/admin with a working school; data calls run as the caller (school rules apply). Before 2026-11-13 they had no caller check at all.
 - Public admissions (`/admissions/apply`, `/admissions/enquire`) require a school: `public_admission_schools()` lists active public schools; a school can share `/admissions/apply?school=<id>`. Enquiries/applications from before this have no school and are not visible.
+
+## Admissions, receipts and transport release (2026-11-24)
+
+- A public application is now created as one database operation: `admission_create_online_application` writes the enquiry and application, stores optional family contact details, and links both records before returning. The public Edge Function invokes it with its service role; browser clients do not receive write access to either table.
+- Staff conversion, enrolment and fee posting use the retry-safe `admission_convert_enquiry`, `admission_enrol_applicant` and `admission_record_payment` RPCs. Payment requests carry a client-generated UUID, so a retry cannot duplicate a receipt or overpay an enrolment.
+- A family offer link uses `admission_family_offer`: only a sent letter is readable, only the matching issued-offer ID can be accepted/declined, and a repeat click is safe. Staff issue draft letters through `admission_issue_offer`; the generated letter always uses the server-authoritative school name.
+- Students may read `payment_receipts` only where the receipt's invoice belongs to their own profile. Receipt downloads use the shared blob saver, preventing the browser URL from being revoked before the download begins.
+- Staff transport loads assignments and student profiles in two school-scoped batched reads. `transport_assignments.student_profile_id` is not a database foreign key, so PostgREST cannot embed `student_profiles`; using explicit profile IDs avoids a live 400 response. The passenger manifest shows name, class and assigned stop.
+- Parent transport calls the guarded `parent-dashboard` `get_transport` action, which verifies the parent session and child link before returning the active assignment, route and stops. It therefore also works in read-only Admin View-as Parent. The student timetable surfaces the student's own school-bus route and stop.
+- `supabase/seeds/demo_teacher_jy1_school_operations.sql` is an idempotent, UAT-guarded fictional Pilvidya demo fixture (school operations, admissions, fees, library and transport); its sample admission PDF is in `supabase/seeds/files/demo-school-operations/`. It must not be applied to PROD.
+- Applied UAT migrations: `20261205030000_student_fee_receipts.sql` through `20261205030300_admission_staff_transactions.sql`; canonical records are DB-Scripts commits `a973656`, `4c0ad2d`, `009d994`, and `b33bc3b`. DEV and PROD remain pending.
 
 ## Principal = admin of their own school (2026-11-13)
 - `is_admin_user()` / `security_is_platform_admin()` = the platform **admin** role only. Principals no longer pass the ~120 platform-admin policies (user_roles, plan pricing, gateway configs, every school's subscriptions).

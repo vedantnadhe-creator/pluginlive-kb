@@ -55,3 +55,5 @@ Academic intervention cases, staff-owned actions and independently reviewed fami
 
 
 **2026-11-15 (d28ddf6e):** student/parent fee totals count part payments (paid part under Paid, balance under Pending/Overdue; `partial` shows under the Pending filter with a "Part paid" badge); teacher Fees tab checks `can_collect_fees` before requesting dues; parent-fees no longer fails on a phantom `school_id` column. See `pilvidya-state-language-and-journey-fixes.md`.
+
+**2026-11-24 (bdd18f0a):** a student can read and download only receipts whose invoice belongs to their own profile. Admissions now use atomic inquiry/application, offer-response, conversion, enrolment and payment RPCs so retries cannot leave a half-created application, expose a draft offer, duplicate a payment or exceed the balance. The migration record is in `pilvidya-schools-staff-and-operations.md`; it is applied to UAT only (DEV/PROD pending).

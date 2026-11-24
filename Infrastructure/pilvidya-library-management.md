@@ -1,6 +1,6 @@
 # aividya — School library management (UAT)
 
-**Status:** live on UAT at `pilvidya.uat.pluginlive.com`, frontend commit `2c50808e` on
+**Status:** live on UAT at `pilvidya.uat.pluginlive.com`, frontend commit `bdd18f0a` on
 `feat/chat-simulations`. The database hardening migration is applied to `eduspeak_uat`.
 PROD does not exist for aividya.
 
@@ -11,7 +11,7 @@ PROD does not exist for aividya.
   copy lost/damaged, renew, cancel a hold, view overdue/fine totals, and record stocktake counts.
 - **Student → Library** (`/student/library`): students browse available copies, search by title,
   author, ISBN or barcode, reserve/cancel a reservation, see current loans and projected fines,
-  and renew eligible loans.
+  renew eligible loans, and can see returned-loan history separately from active circulation.
 - **Platform Admin → Library administration** (`/admin/library-admin`): admins can inspect
   editions, copies, loans, reservations, vendors and fine policies for the selected school, and
   issue/return/cancel through the same guarded operations.
