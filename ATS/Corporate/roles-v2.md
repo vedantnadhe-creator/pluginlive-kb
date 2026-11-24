@@ -509,7 +509,7 @@ The lookup now replaces every JS-`\s` character (`NAME_SPACES` in `CorporateSave
 corporate-node DEV `0248212a`, UAT `5a9ff521`, PROD `release-v1.43-hotfix-5` `6db5fa02` (live 2026-11-24 10:42 UTC; draft fd06ddfe then saved with COMPUTER TECHNOLOGY). Find such rows:
 `SELECT id, name FROM institute.streams WHERE status = 1 AND name ~ '[  -​  　﻿]';`
 
-**Moving candidates while the evaluation is a draft (since 2026-11-24, DEV + UAT; PROD pending).** A role whose
+**Moving candidates while the evaluation is a draft (since 2026-11-24, DEV + UAT + PROD).** A role whose
 evaluation workflow is still a Draft (Setup evaluation opened and edited, Setup Now not clicked) moves no one:
 Move to a Stage and Mark offered answer 409 "Finish Setup evaluation before moving candidates." (Resend: "…before
 resending assessments."). Offer accepted / rejected still record answers for candidates already offered. Before, the
@@ -517,5 +517,5 @@ move went to the engine (any non-placeholder workflow counted as `hasWorkflow`),
 and the handler showed a generic "Couldn't move those candidates" (PROD "Industrial Trainee" 2d9fc1ba, draft since
 11-20). `getRoleContext.workflowLive` (latest workflow `status = 'live'`) now decides: live → engine; draft → refused
 with that message; no workflow → legacy moves. Engine 4xx refusals reach the recruiter with their own message.
-corporate-node DEV `4b6240db` + `74e6d69d`, UAT `7e317220` + `297734d4` (a short-lived version of 4b6240db let a draft
+corporate-node DEV `4b6240db` + `74e6d69d`, UAT `7e317220` + `297734d4`, PROD `release-v1.43-hotfix-6` (`b0fa3cd2` + `8b98d9ef`, live 2026-11-24 12:41 UTC) (a short-lived version of 4b6240db let a draft
 role move the legacy way; replaced the same day by product decision).
