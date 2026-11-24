@@ -510,12 +510,12 @@ corporate-node DEV `0248212a`, UAT `5a9ff521`, PROD `release-v1.43-hotfix-5` `6d
 `SELECT id, name FROM institute.streams WHERE status = 1 AND name ~ '[  -​  　﻿]';`
 
 **Moving candidates while the evaluation is a draft (since 2026-11-24, DEV + UAT; PROD pending).** A role whose
-evaluation workflow is still a Draft (Setup evaluation opened and edited, Setup Now not clicked) failed every Move
-to a Stage with "Couldn't move those candidates" (PROD "Industrial Trainee" 2d9fc1ba, draft since 11-20; 49 were
-offered before it). `getRoleContext` counted any non-placeholder workflow as `hasWorkflow`, so moves went to the
-engine, which refuses non-live workflows (409 "not live yet — finish Setup first"), and the handler turned that into
-a generic 500. Now `workflowLive` (latest workflow `status = 'live'`) decides: only a live workflow moves/resends
-through the engine; a draft moves the legacy way (Offered / Not selected / v1 rounds; a draft stage id is skipped as
-"unknown stage"). Engine 4xx refusals reach the recruiter with their own message. Candidates moved this way are
-SELECTED/REJECTED, which screening skips when the workflow later goes live. corporate-node DEV `4b6240db`, UAT
-`7e317220`.
+evaluation workflow is still a Draft (Setup evaluation opened and edited, Setup Now not clicked) moves no one:
+Move to a Stage and Mark offered answer 409 "Finish Setup evaluation before moving candidates." (Resend: "…before
+resending assessments."). Offer accepted / rejected still record answers for candidates already offered. Before, the
+move went to the engine (any non-placeholder workflow counted as `hasWorkflow`), which refuses non-live workflows,
+and the handler showed a generic "Couldn't move those candidates" (PROD "Industrial Trainee" 2d9fc1ba, draft since
+11-20). `getRoleContext.workflowLive` (latest workflow `status = 'live'`) now decides: live → engine; draft → refused
+with that message; no workflow → legacy moves. Engine 4xx refusals reach the recruiter with their own message.
+corporate-node DEV `4b6240db` + `74e6d69d`, UAT `7e317220` + `297734d4` (a short-lived version of 4b6240db let a draft
+role move the legacy way; replaced the same day by product decision).
