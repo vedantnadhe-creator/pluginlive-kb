@@ -56,17 +56,16 @@ Students and trainers enter their registered email or mobile at `/login/candidat
   - The new **`admin-otp-login`** consumes the challenge (role `admin`) and returns a magic-link `token_hash`. It never rotates the password.
   - The browser then runs the same admin-role check (`enterAdminConsole`) as the password path.
 
-**OTP channel follows what the user typed (2026-11-24)**
-- A mobile number gets the code **by SMS** (MSG91); an email address gets it **by email**. Applies to admin, trainer and student.
-- There is no fallback between them. The old email-first priority (SMS only when no email was on file) is gone.
-- If SMS is unavailable, a mobile entry gets "SMS sign-in codes are not available right now. Sign in with your registered email address instead."
-- On UAT, the "send by SMS instead" recovery after an email code stays (only for verified phones).
-  - Resend fix (2026-11-24): `channel: "sms"` counts as that recovery **only when an email was entered**. Before the fix, Resend after an SMS
-    code sent `channel: "sms"` and was refused ("SMS recovery is unavailable").
-  - Admin Resend now has the same 30 s countdown (`OtpRecoveryActions` on UAT; a simple countdown on Development).
-  - Commits: UAT `ebb65bd20`, Development `2bc9b5b76`.
-- Commits: UAT `7de3cadf1`, Development `c54c34e4d`.
-- Verified on UAT and DEV: email → `pluginlive_relay` accepted; `9080814197` → `msg91` accepted, destination `+91 ******4197`.
+**OTP delivery: email first (unchanged rule, confirmed 2026-11-24)**
+- Whether the user types an email or a mobile number, the code goes to the account's registered email.
+- SMS (MSG91) is used only when no email is on file or email delivery fails.
+- On UAT, after an email code, "Send SMS instead" is the explicit SMS recovery (verified phones only).
+- History: a mobile → SMS / email → email rule was live for about an hour on 2026-11-24 (UAT `7de3cadf1`/`ebb65bd20`) and was reverted at the
+  user's request (UAT `7629965d6`, Development `119cd9f1b`).
+- Kept from that work:
+  - Admin Resend has the 30 s countdown.
+  - Candidate/trainer **Resend** asks again with no channel, under the same email-first rule. An SMS-only account's Resend is a plain new code
+    (before, it was refused as "SMS recovery").
 
 **Student / trainer password**
 - **Setting one:** students and trainers set a password with **Forgot Password?**.
