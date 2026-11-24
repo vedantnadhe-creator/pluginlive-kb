@@ -113,7 +113,9 @@ Progress views now resolve duplicate or stale module-progress rows safely: an ex
 
 The UAT deployment applied `20261124110000_trainer_curriculum_insert_returning_policy.sql`. It extends the existing trainer-curriculum read policy only for the direct, authenticated trainer/teacher owner shape already allowed to insert a non-academic draft, fixing the `INSERT ... RETURNING` failure without opening college academic curricula. The UAT host snapshot is `20261124T072839Z`; its frontend was rebuilt on the UAT VM, the `robo-faculty` edge-function source hash matches the checkout, and `https://banking.uat.pluginlive.com/` returned 200. TypeScript and 69 focused checks covering voice, multilingual coach flow, progress, completion, attendance and Robo Faculty passed before release.
 
-Production remains on its separate release procedure. The corresponding trainer-curriculum policy and pending admin-OTP migrations must be applied through the production database release process before a production package containing those paths is activated.
+Production `v1.1.39` (`11b8a97aa`, branch `release/prod-voice-progress-20261124`) now has the migration-free portion of this release: Indian female natural-voice defaults on the available coach/Robo Faculty surfaces, duplicate-safe progress, no automatic external-session attendance, and multi-visual Robo Faculty support. It was built on Pl-Prod-Banking from the production environment, with the public bundle, `robo-faculty` CORS preflight and runtime function hashes verified after activation. The older production tree has no LMS-v2 reading components, so those absent files were not introduced by this scoped port.
+
+The trainer-curriculum `INSERT ... RETURNING` policy and the separate pending admin-OTP database migrations remain deliberately out of production. They must be applied through the production database release process before the corresponding code paths are promoted.
 
 ## Google sign-in for students — DEV + UAT 2026-11-12 (`8bbfa647`), PROD not set up
 
