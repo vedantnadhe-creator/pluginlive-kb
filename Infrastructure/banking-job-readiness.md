@@ -56,6 +56,14 @@ Students and trainers enter their registered email or mobile at `/login/candidat
   - The new **`admin-otp-login`** consumes the challenge (role `admin`) and returns a magic-link `token_hash`. It never rotates the password.
   - The browser then runs the same admin-role check (`enterAdminConsole`) as the password path.
 
+**OTP channel follows what the user typed (2026-11-24)**
+- A mobile number gets the code **by SMS** (MSG91); an email address gets it **by email**. Applies to admin, trainer and student.
+- There is no fallback between them. The old email-first priority (SMS only when no email was on file) is gone.
+- If SMS is unavailable, a mobile entry gets "SMS sign-in codes are not available right now. Sign in with your registered email address instead."
+- On UAT, the "send by SMS instead" recovery after an email code stays (only for verified phones).
+- Commits: UAT `7de3cadf1`, Development `c54c34e4d`.
+- Verified on UAT and DEV: email → `pluginlive_relay` accepted; `9080814197` → `msg91` accepted, destination `+91 ******4197`.
+
 **Student / trainer password**
 - **Setting one:** students and trainers set a password with **Forgot Password?**.
   - `request-password-reset` no longer refuses OTP accounts. The link goes only to a real registered email (never `<mobile>@bankready.app`).
