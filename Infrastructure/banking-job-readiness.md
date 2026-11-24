@@ -67,6 +67,14 @@ Students and trainers enter their registered email or mobile at `/login/candidat
   - Candidate/trainer **Resend** asks again with no channel, under the same email-first rule. An SMS-only account's Resend is a plain new code
     (before, it was refused as "SMS recovery").
 
+**Candidate and trainer OTP recovery on UAT**
+
+Each candidate or trainer sign-in email has a four-character reference in its subject. The login page shows the matching reference from `request-login-otp` (`email_reference`). After a successful resend, the page shows the new reference and clears the code field. If verification rejects a code, the form prevents another submission of those digits for that request. A connection error allows the learner to retry.
+
+The server allows five wrong guesses per code and ten across codes for the same sign-in identifier and role in its one-hour window. The 30-second resend cooldown returns HTTP 429 with `otp_cooldown`. An account lock returns HTTP 429 with `otp_locked` on both request and verification. The page uses `retry_after_seconds` to display the local retry time and re-enable code requests when the wait expires. Candidates and trainers who have set a password can use it during the wait.
+
+This change reached UAT on 2026-11-24 in `9f5549cc9`. The published bundle is `index-mmdBdGRm.js` and the UAT rollback snapshot is `~/banking-sb/snapshots/20261124T111604Z`.
+
 **Student / trainer password**
 - **Setting one:** students and trainers set a password with **Forgot Password?**.
   - `request-password-reset` no longer refuses OTP accounts. The link goes only to a real registered email (never `<mobile>@bankready.app`).
