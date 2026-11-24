@@ -44,9 +44,9 @@ third-party keys (MSG91, Gemini, ElevenLabs, mail) shared with UAT.
 
 ## Student and trainer password sign-in on DEV, UAT and production
 
-Students and trainers enter their registered email or mobile at `/login/candidate` or `/login/trainer` and choose **Password** or **Send OTP**. They can use **Forgot Password?** to set a password through their registered mailbox. DEV also offers `/lms/login`. Production admin sign-in uses a password. The additional admin OTP option is live on DEV and UAT and awaits its separate production database scripts.
+Students and trainers enter their registered email or mobile at `/login/candidate` or `/login/trainer` and choose **Password** or **Send OTP**. They can use **Forgot Password?** to set a password through their registered mailbox. DEV also offers `/lms/login`. Production administrators can now choose **Password** or **Send OTP** too; password sign-in remains unchanged.
 
-**Admin sign-in on DEV and UAT**
+**Admin sign-in on DEV, UAT and production**
 - **Password:** unchanged. A `@bankready.app` ID or short ID signs in directly; any other email goes through `admin-email-login`.
 - **OTP:** needs an email or mobile.
   - `request-login-otp` with `role: "admin"` compares every `admin`/`super_admin` user's Auth email (incl. the `<mobile>@bankready.app`
@@ -103,7 +103,7 @@ Students and trainers enter their registered email or mobile at `/login/candidat
 - Development: `39cd6d07b`, `8e9177a67`, `51fd3b81c`.
 - UAT: `8879e87a9`, `37dc1bdfa`, `09c13d194`.
 
-Production v1.1.38 runs `d32267c61` with student and trainer password sign-in. UAT runs `2406b6f88`. Both builds ran on their respective hosts. Live browser checks on both environments verified that separate student and trainer accounts could save a chosen password, that the old password was rejected, and that sign-in landed at `/candidate/home` and `/journey/trainer` respectively. All temporary accounts were removed. Production rollback data is in `/data/backups/prod-learner-signin-20261123T153646Z`. The GitHub production release branch also contains the pending admin OTP changes at `715500dd6`.
+Production v1.1.38 introduced student and trainer password sign-in (`d32267c61`); v1.1.40 carries that behavior forward together with the admin Password-or-OTP flow. UAT runs `270debc7c`. The student/trainer rollout verified that separate accounts could save a chosen password, that the old password was rejected, and that sign-in landed at `/candidate/home` and `/journey/trainer` respectively. All temporary accounts were removed. The original production rollback data is in `/data/backups/prod-learner-signin-20261123T153646Z`.
 
 ## 2026-11-24 UAT: natural coaching voice, accurate progress and honest attendance (`270debc7c`)
 
@@ -113,9 +113,9 @@ Progress views now resolve duplicate or stale module-progress rows safely: an ex
 
 The UAT deployment applied `20261124110000_trainer_curriculum_insert_returning_policy.sql`. It extends the existing trainer-curriculum read policy only for the direct, authenticated trainer/teacher owner shape already allowed to insert a non-academic draft, fixing the `INSERT ... RETURNING` failure without opening college academic curricula. The UAT host snapshot is `20261124T072839Z`; its frontend was rebuilt on the UAT VM, the `robo-faculty` edge-function source hash matches the checkout, and `https://banking.uat.pluginlive.com/` returned 200. TypeScript and 69 focused checks covering voice, multilingual coach flow, progress, completion, attendance and Robo Faculty passed before release.
 
-Production `v1.1.39` (`11b8a97aa`, branch `release/prod-voice-progress-20261124`) now has the migration-free portion of this release: Indian female natural-voice defaults on the available coach/Robo Faculty surfaces, duplicate-safe progress, no automatic external-session attendance, and multi-visual Robo Faculty support. It was built on Pl-Prod-Banking from the production environment, with the public bundle, `robo-faculty` CORS preflight and runtime function hashes verified after activation. The older production tree has no LMS-v2 reading components, so those absent files were not introduced by this scoped port.
+Production `v1.1.39` (`11b8a97aa`, branch `release/prod-voice-progress-20261124`) introduced the migration-free portion of this release: Indian female natural-voice defaults on the available coach/Robo Faculty surfaces, duplicate-safe progress, no automatic external-session attendance, and multi-visual Robo Faculty support. The older production tree has no LMS-v2 reading components, so those absent files were not introduced by that scoped port.
 
-The trainer-curriculum `INSERT ... RETURNING` policy and the separate pending admin-OTP database migrations remain deliberately out of production. They must be applied through the production database release process before the corresponding code paths are promoted.
+Production `v1.1.40` (`4d28d3580`) applied the previously pending database release and dependent application code. The transaction updated `auth_login_otp_challenges` and all three login-OTP challenge RPCs to accept the `admin` role, and extended `curriculum_audience_read` only for an authenticated trainer/teacher's own non-academic trainer draft so `INSERT ... RETURNING` works without exposing college academic curricula. It also activated the admin OTP bridge and the password/curriculum handling fixes. Backup: `/data/backups/prod-auth-curriculum-20261124T082813Z`. Post-release checks confirmed the production bundle and source hashes, HTTP 200, CORS on `admin-otp-login` and `request-login-otp`, the new policy/constraint/function definitions, and an admin challenge prepared inside a rolled-back database transaction. No live OTP was sent during verification.
 
 ## Google sign-in for students — DEV + UAT 2026-11-12 (`8bbfa647`), PROD not set up
 
