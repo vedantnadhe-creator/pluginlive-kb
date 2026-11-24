@@ -508,3 +508,14 @@ doesn't match U+00A0, so saving "Bachelor Of Engineering · COMPUTER TECHNOLOGY"
 The lookup now replaces every JS-`\s` character (`NAME_SPACES` in `CorporateSavedAssetsV2.js`) before comparing.
 corporate-node DEV `0248212a`, UAT `5a9ff521`, PROD `release-v1.43-hotfix-5` `6db5fa02` (live 2026-11-24 10:42 UTC; draft fd06ddfe then saved with COMPUTER TECHNOLOGY). Find such rows:
 `SELECT id, name FROM institute.streams WHERE status = 1 AND name ~ '[  -​  　﻿]';`
+
+**Moving candidates while the evaluation is a draft (since 2026-11-24, DEV + UAT; PROD pending).** A role whose
+evaluation workflow is still a Draft (Setup evaluation opened and edited, Setup Now not clicked) failed every Move
+to a Stage with "Couldn't move those candidates" (PROD "Industrial Trainee" 2d9fc1ba, draft since 11-20; 49 were
+offered before it). `getRoleContext` counted any non-placeholder workflow as `hasWorkflow`, so moves went to the
+engine, which refuses non-live workflows (409 "not live yet — finish Setup first"), and the handler turned that into
+a generic 500. Now `workflowLive` (latest workflow `status = 'live'`) decides: only a live workflow moves/resends
+through the engine; a draft moves the legacy way (Offered / Not selected / v1 rounds; a draft stage id is skipped as
+"unknown stage"). Engine 4xx refusals reach the recruiter with their own message. Candidates moved this way are
+SELECTED/REJECTED, which screening skips when the workflow later goes live. corporate-node DEV `4b6240db`, UAT
+`7e317220`.
