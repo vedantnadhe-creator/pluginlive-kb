@@ -93,11 +93,15 @@ This change reached UAT on 2026-11-24 in `9f5549cc9`. The published bundle is `i
     logins from 57.155.x / 44.246.x / 54.188.x; HEAD from 104.47.x), so the real click got "One-time token not found" and saw "This reset link
     is missing, expired, or already used".
   - Commits: UAT `b574a6159`, Development `e6c890d75`.
+  - **PROD: not deployed yet.** It needs a frontend build. Prakash's release `e8558ff71` (OTP recovery, staged on the VM 11:26) was in
+    progress, and two dist builds would overwrite each other.
 - **Admin Reset Password (User Management):** works for mobile-backed students and trainers too, since 2026-11-24.
   - Before, `admin-reset-password` and `admin-user-actions` refused every non-admin `<mobile>@bankready.app` account with "uses mobile + OTP …
     Password resets are available for admin accounts".
   - Non-admin resets write `password_set` (admins keep `admin_password_set`), so the user can sign in with Password right away.
   - Commits: UAT `2fa43a1ef`, Development `fc661b390`.
+  - **PROD 2026-11-24 11:28Z**, functions only: branch `release/prod-admin-reset-20261124` (`32233e98a`). Backup
+    `/data/backups/prod-admin-reset-20261124T112829Z`.
 - **OTP keeps a chosen password:** `candidate-otp-login` rotates the password only when `hasChosenPassword` is false.
 - **Limit:** GoTrue rate-limits `/token` per caller IP. `password-login` and `admin-email-login` call it from the edge runtime, so all password
   sign-ins share one bucket. Upgrade path: a per-identifier throttle in `auth_login_otp_rate_limits`.
