@@ -52,7 +52,7 @@ Students and trainers enter their registered email or mobile at `/login/candidat
   - `request-login-otp` with `role: "admin"` compares every `admin`/`super_admin` user's Auth email (incl. the `<mobile>@bankready.app`
     alias) and profile email/mobile; exactly one must match.
     - Fix 2026-11-24: the first version only checked `profiles.mobile`. Admin 9080814197 has an empty profile mobile, so Send OTP sent nothing.
-    - Commits: UAT `027bfd1b5`, Development `921e69003`.
+    - Commits: UAT `027bfd1b5`, Development `921e69003`, PROD `58d528df8` (v1.1.41).
   - The new **`admin-otp-login`** consumes the challenge (role `admin`) and returns a magic-link `token_hash`. It never rotates the password.
   - The browser then runs the same admin-role check (`enterAdminConsole`) as the password path.
 
@@ -121,6 +121,16 @@ The UAT deployment applied `20261124110000_trainer_curriculum_insert_returning_p
 Production `v1.1.39` (`11b8a97aa`, branch `release/prod-voice-progress-20261124`) introduced the migration-free portion of this release: Indian female natural-voice defaults on the available coach/Robo Faculty surfaces, duplicate-safe progress, no automatic external-session attendance, and multi-visual Robo Faculty support. The older production tree has no LMS-v2 reading components, so those absent files were not introduced by that scoped port.
 
 Production `v1.1.40` (`4d28d3580`) applied the previously pending database release and dependent application code. The transaction updated `auth_login_otp_challenges` and all three login-OTP challenge RPCs to accept the `admin` role, and extended `curriculum_audience_read` only for an authenticated trainer/teacher's own non-academic trainer draft so `INSERT ... RETURNING` works without exposing college academic curricula. It also activated the admin OTP bridge and the password/curriculum handling fixes. Backup: `/data/backups/prod-auth-curriculum-20261124T082813Z`. Post-release checks confirmed the production bundle and source hashes, HTTP 200, CORS on `admin-otp-login` and `request-login-otp`, the new policy/constraint/function definitions, and an admin challenge prepared inside a rolled-back database transaction. No live OTP was sent during verification.
+
+## 2026-11-24 PROD: admin OTP refinement and scoped LMS database support (`v1.1.41`)
+
+Production `release/prod-v1.1` is now `58d528df8` (tag `v1.1.41`). This is a deliberately scoped promotion, not an LMS-v2 UI rollout:
+
+- **Admin OTP:** `request-login-otp` now resolves an administrator whose Auth email is the mobile alias `<10-digits>@bankready.app`, even when `profiles.mobile` is empty. It still first restricts the lookup to `admin`/`super_admin` roles and rejects ambiguous matches. The Admin OTP screen now uses the existing accessible 30-second resend control; it disables repeat sends while waiting or while a request is in progress, and does not offer SMS recovery from that screen.
+- **LMS data support:** one atomic transaction added `live_session_going_counts(uuid[])` (authenticated callers can count confirmed RSVPs only for sessions they can already see), the `topic_attachments_check_owner` cross-catalog trigger (legacy and admin module/lesson catalogs), and `lesson_video_marks` with `mark_video_watched_v1`. The server-side video mark RPC checks credited playback and grants execution only to `authenticated`; `anon` cannot execute either new RPC.
+- **Scope deliberately excluded:** no `src/student-lms` pages, LMS-v2 flag, Google-sign-in flow, or additional UAT package was moved. The college-curriculum, DPDP/privacy, and journey-test packages requested for review were already represented by production-equivalent commits, database objects, and policies, so their migrations/functions were not replayed.
+
+The exact migration scripts are recorded in DB-Scripts under `LMS v2 Student Portal/` and marked PROD-applied. The release took `/data/backups/prod-uat-support-20261124T110210Z` (database dump, prior frontend, source-file copies and function archive) before activation. Verification confirmed source/runtime hash parity for the OTP resolver, all four database objects, RLS and grants, `banking_owner` ownership of the new definer functions, PostgREST schema refresh, production HTTP 200, and `request-login-otp` CORS 200. No live OTP was sent during verification.
 
 ## Google sign-in for students — DEV + UAT 2026-11-12 (`8bbfa647`), PROD not set up
 
