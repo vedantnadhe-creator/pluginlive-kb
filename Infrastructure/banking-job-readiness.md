@@ -97,14 +97,16 @@ All 92 authentication regression tests passed. Browser checks on the production 
     logins from 57.155.x / 44.246.x / 54.188.x; HEAD from 104.47.x), so the real click got "One-time token not found" and saw "This reset link
     is missing, expired, or already used".
   - Commits: UAT `b574a6159`, Development `e6c890d75`.
-  - **PROD: not deployed yet.** It needs a frontend build. Prakash's release `e8558ff71` (OTP recovery, staged on the VM 11:26) was in
-    progress, and two dist builds would overwrite each other.
+  - **PROD 2026-11-24 11:35Z:** `release/prod-v1.1` `96346984` (tag `v1.1.43`), on top of Prakash's `e8558ff71` (`v1.1.42`).
+    - Staged in `/opt/banking/staged-reset-link-963469842` (`publish.sh`). Backup `/data/backups/prod-reset-link-20261124T113513Z`.
+    - Verified on lms.pluginlive.com: a scanner-style open leaves the link usable, and Continue → new password saved.
 - **Admin Reset Password (User Management):** works for mobile-backed students and trainers too, since 2026-11-24.
   - Before, `admin-reset-password` and `admin-user-actions` refused every non-admin `<mobile>@bankready.app` account with "uses mobile + OTP …
     Password resets are available for admin accounts".
   - Non-admin resets write `password_set` (admins keep `admin_password_set`), so the user can sign in with Password right away.
   - Commits: UAT `2fa43a1ef`, Development `fc661b390`.
-  - **PROD 2026-11-24 11:28Z**, functions only: branch `release/prod-admin-reset-20261124` (`32233e98a`). Backup
+  - **PROD 2026-11-24 11:28Z**, functions only: branch `release/prod-admin-reset-20261124` (`32233e98a`), then merged into
+    `release/prod-v1.1` as `692446b97` with the 11:35Z release (`v1.1.43`). Backup
     `/data/backups/prod-admin-reset-20261124T112829Z`.
 - **OTP keeps a chosen password:** `candidate-otp-login` rotates the password only when `hasChosenPassword` is false.
 - **Limit:** GoTrue rate-limits `/token` per caller IP. `password-login` and `admin-email-login` call it from the edge runtime, so all password
