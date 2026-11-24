@@ -8,6 +8,9 @@ Teacher workspace navigation and retention surfaces are documented in `pilvidya-
 navigation, Today actions, session recovery and parent-facing retention surfaces are documented in
 `pilvidya-parent-experience.md`.
 
+Academic intervention cases, staff-owned actions and independently reviewed family updates are documented in
+`pilvidya-student-success-agent.md`.
+
 ## Who sees what
 | Screen | Who | What |
 |---|---|---|
