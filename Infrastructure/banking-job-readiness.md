@@ -67,13 +67,17 @@ Students and trainers enter their registered email or mobile at `/login/candidat
   - Candidate/trainer **Resend** asks again with no channel, under the same email-first rule. An SMS-only account's Resend is a plain new code
     (before, it was refused as "SMS recovery").
 
-**Candidate and trainer OTP recovery on UAT**
+**Candidate and trainer OTP recovery on UAT and PROD**
 
 Each candidate or trainer sign-in email has a four-character reference in its subject. The login page shows the matching reference from `request-login-otp` (`email_reference`). After a successful resend, the page shows the new reference and clears the code field. If verification rejects a code, the form prevents another submission of those digits for that request. A connection error allows the learner to retry.
 
 The server allows five wrong guesses per code and ten across codes for the same sign-in identifier and role in its one-hour window. The 30-second resend cooldown returns HTTP 429 with `otp_cooldown`. An account lock returns HTTP 429 with `otp_locked` on both request and verification. The page uses `retry_after_seconds` to display the local retry time and re-enable code requests when the wait expires. Candidates and trainers who have set a password can use it during the wait.
 
 This change reached UAT on 2026-11-24 in `9f5549cc9`. The published bundle is `index-mmdBdGRm.js` and the UAT rollback snapshot is `~/banking-sb/snapshots/20261124T111604Z`.
+
+Production deployed `e8558ff71` on `release/prod-v1.1` at 11:29 UTC on 2026-11-24. Both `/login/candidate` and `/login/trainer` served `index-k7dRaAgf.js`. The rollback snapshot on the banking production VM is `/data/backups/prod-candidate-otp-20261124T112909Z`. [GitHub tag v1.1.42](https://github.com/PluginLive-Technologies/bankingjobreadiness/tree/v1.1.42)
+
+All 92 authentication regression tests passed. Browser checks on the production pages used simulated OTP responses to verify the email reference, resend, rejected-code handling, local retry time, and access to password sign-in. Separate requests to the live request and verification endpoints used unregistered test addresses for both roles. Both deployed handlers matched their GitHub checksums.
 
 **Student / trainer password**
 - **Setting one:** students and trainers set a password with **Forgot Password?**.
