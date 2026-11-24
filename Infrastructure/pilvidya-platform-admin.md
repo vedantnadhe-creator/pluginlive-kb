@@ -39,6 +39,16 @@ curriculum management) and 11 dead route declarations.
   Admin Team, only from an aal2 session) makes `admin_areas()` return `['mfa_required']` until aal2.
 - View as user needs a reason (≥ 8 chars, UI + `admin-view-as`).
 
+## Admin password resets on UAT (2026-11-24)
+
+The Students and Teachers lists, their bulk selections, All Accounts, and the teacher Reset Password form were verified on release `5941c2c1`. [Application commit](https://github.com/PluginLive-Technologies/eduspeak-india/commit/5941c2c19ce9eef417d045aa6404b53c279e2502)
+
+- A student reset rotates the mobile credential and any student-owned linked Auth credential in one transaction. It revokes Auth sessions and clears the active device. Imported students can reset before their first sign-in. A school-issued temporary password still requires the student to choose a new one when that flag is set. The service-only SQL also guards against an older sign-in overwriting a newer password. [UAT migration](https://github.com/PluginLive-Technologies/DB-Scripts/commit/899e960)
+- A teacher can be selected by profile or registered email. The picker fills the actual sign-in address. The server resolves the teacher before a reset and clears previous sign-in sessions after a direct change. All Accounts now includes users beyond the first Auth directory page.
+- Teacher recovery email uses the existing UAT mail relay. The Edge service reads `TEACHER_RECOVERY_MAIL_URL`, `TEACHER_RECOVERY_MAIL_KEY` and `TEACHER_RECOVERY_APP_ORIGIN` from its private environment. Only the teacher receives the single-use link. The browser verifies it on password submission, so opening a preview does not consume it. Deployments without a separate relay use their configured Auth mail sender.
+- Twenty-two UAT checks passed, including old and new passwords in fresh browsers, session revocation, bulk resets, imported students, first-login password replacement and cleanup. The email test used an isolated copy of the deployed handler with live UAT Auth and a private test inbox. It exercised the recovery link and rejected a second use. The live relay passed its SMTP readiness check. Delivery to a school mailbox remains unverified.
+- Twenty focused automated checks and the rollback-only SQL test passed. Eleven other test files had the same 80 failures on the previous release. The broader run was stopped after the menu suite stalled.
+
 ## Password reset response handling (UAT `a05bee6e`, 2026-11-24)
 
 - **Users & Access → Reset Password** uses the dedicated student/teacher reset functions first.
