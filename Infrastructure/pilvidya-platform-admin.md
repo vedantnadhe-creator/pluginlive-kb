@@ -39,6 +39,21 @@ curriculum management) and 11 dead route declarations.
   Admin Team, only from an aal2 session) makes `admin_areas()` return `['mfa_required']` until aal2.
 - View as user needs a reason (≥ 8 chars, UI + `admin-view-as`).
 
+## Password reset response handling (UAT `a05bee6e`, 2026-11-24)
+
+- **Users & Access → Reset Password** uses the dedicated student/teacher reset functions first.
+  The UI accepts their successful `{ ok: true, message: ... }` response as success; it no longer
+  mistakes the informational message for an error, calls the legacy fallback unnecessarily and
+  shows a false red failure toast after a reset actually completed.
+- The client waits for the authenticated admin session before considering a fallback. A real
+  unauthenticated or unauthorized request returns the normal structured `Admin access required`
+  response; the UI does not expose database or function internals.
+- UAT gateway verification is non-mutating: an unsigned request to
+  `/sb/functions/v1/admin-set-student-password` reaches the deployed function and returns its
+  structured authorization failure. Use an authorised UAT admin and a designated test account for
+  an actual password-change test; do not exercise resets against a customer account during smoke
+  checks.
+
 ## Schools: onboarding, billing, renewals, seats, health
 - **School onboarding** (`/admin/onboard-school`): wizard school → plan → billing details → principal account
   (`admin-manage-users` createInstituteUser) → branding; **go-live board** `admin_onboarding_board()` with 12 checks
