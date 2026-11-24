@@ -501,10 +501,10 @@ specialisation ticked. corporate-node DEV `bdc5d0a1 1ee2b4cb` / UAT `c2066a9d 10
 the BFF log: `journalctl -u corporate-react-v2`).
 
 
-**Non-breaking spaces in master names (since 2026-11-24, DEV + UAT; PROD pending).** PROD streams
+**Non-breaking spaces in master names (since 2026-11-24, DEV + UAT + PROD).** PROD streams
 "COMPUTER<U+00A0>TECHNOLOGY" (2d00e522) and "FINANCE AND SPORTS<U+00A0>MANAGEMENT" (a5cceb07) contain a non-breaking
 space. The picker normalises names with JS `\s` (a plain space), but `findMasterDegreeStreams` used Postgres `\s`, which
 doesn't match U+00A0, so saving "Bachelor Of Engineering · COMPUTER TECHNOLOGY" failed "Some degrees are not known".
 The lookup now replaces every JS-`\s` character (`NAME_SPACES` in `CorporateSavedAssetsV2.js`) before comparing.
-corporate-node DEV `0248212a`, UAT `5a9ff521`. Find such rows:
+corporate-node DEV `0248212a`, UAT `5a9ff521`, PROD `release-v1.43-hotfix-5` `6db5fa02` (live 2026-11-24 10:42 UTC; draft fd06ddfe then saved with COMPUTER TECHNOLOGY). Find such rows:
 `SELECT id, name FROM institute.streams WHERE status = 1 AND name ~ '[  -​  　﻿]';`
