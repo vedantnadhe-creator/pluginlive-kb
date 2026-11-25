@@ -1,4 +1,6 @@
-# aividya — School core: setup, promotion, My Day, My Class, exams → report cards, parent messages, fees (UAT, feat/chat-simulations 701c4b8f)
+# Aividya school core on UAT
+
+The UAT release branch is `feat/chat-simulations`. The year-end promotion revision is `8eb4bdbc`.
 
 The day-to-day running of a school. Every write is a SECURITY DEFINER function that checks the caller; the browser
 never writes these tables directly. Migrations: `20261118210000_school_setup_day_and_exams.sql`,
@@ -15,7 +17,7 @@ Academic intervention cases, staff-owned actions and independently reviewed fami
 | Screen | Who | What |
 |---|---|---|
 | School Admin → **School setup** (`/teacher/school-admin`, first tab) | Principal | Academic years (one current), terms (inside the year, no overlap), classes & sections (Nursery, LKG, UKG, 1–12; section upper-cased), class teacher, subject teacher per class, move students in/out of a section; banner with students in no section |
-| School Admin → **Year-end promotion** | Principal | "Create next year's classes" (grade + 1, same section; lowest grade kept) also copies **subject teachers** from the same grade + section of the old year into new classes that have none (class teachers are not copied); per class it warns about old-year exams not published and a missing published annual exam, and Promote stays disabled until "Promote anyway" is ticked; choose the target class, tick who is held back; Class 12 → graduated; new year becomes current; re-running skips students already moved (`student_promotions`) |
+| School Admin → **Year-end promotion** | Principal | Create next year's classes, review exam warnings, select a section in the next grade and mark any students who will repeat. Class 12 can graduate. Copying classes carries over subject teachers from the same grade and section. Assign each new class teacher in School setup. |
 | **My Years** (`/student/history`, `student.history`); parent Report Cards → "Year by year"; My Class → click a student | Student, linked parent, staff of the school | `student_year_history()`: one card per academic year — class (current class, or `student_promotions.from_class` for past years), promotion outcome, attendance %, report cards, published exam marks by subject, homework set/handed in/average mark. Nothing is copied at promotion; past rows are read by year |
 | **My Day** (`/teacher/today`, `teacher.my-day`) | Teachers | Today's periods from `timetable_slots` (+ cover periods from `teacher_substitutions`), Now badge, "Take attendance" per period (starts from the day's register, so absentees stay absent); class teacher's register; to-do: homework to mark, exam marks to enter, escalated doubts, homework due in 2 days |
 | **My Class** (`/teacher/my-class?class=`, `teacher.my-class`) | Class / subject teachers, principal, HOD | Per student: attendance % and absences (30 d), homework done/set (30 d), last **locked or published** exam %, parents linked; flags <75% attendance, 2+ homework missing, <40% exam. Message parents: presets Absent today / Homework missing / Needs attention / Whole class, or ticked students |
@@ -39,10 +41,14 @@ Academic intervention cases, staff-owned actions and independently reviewed fami
 - Measured on UAT 2026-11-13: remarks ~2 s for a class of 2, photo marking ~4 s.
 
 ## How promotion and the curriculum work
-- The student's class (`student_profiles.class_id` + `class_level`) changes; every student page reads the class from the profile, so the next class's curriculum, timetable and homework show automatically.
-- Past-year data (homework, exam marks, attendance, report cards, Robo/practice history) stays in place; homework and exams screens show only the current class, so the past is shown in **My Years**.
+- A promotion updates the student's current class and grade. The curriculum, timetable and homework for the new grade then appear in the student journey.
+- **My Years** keeps the former class and section, promotion outcome, attendance summary, homework and marks, published exam results and report cards together for each academic year. The student profile ID stays the same. Detailed lesson, quiz and practice progress stays in its original records. A frozen copy of the previous grade's curriculum is a separate proposed feature.
+- Both the screen and `school_promote` restrict the destination to a section in the next grade. Class 9 A can move to Class 10 B. Students repeating a grade keep their grade and section in the new year. A class with only repeaters, an empty class or a graduating Class 12 needs no promotion target.
+- Include every occupied class in the plan. A rejected plan leaves all placements and the current year intact. A successful move records its outcomes and makes the destination year current. Repeating the request preserves the original outcomes.
 - Publish every exam before promoting: an unpublished exam lists students by their *current* class, so after promotion it no longer finds them.
 - Subject-teacher rows are per class (`teacher_class_mappings_class_unique` includes class_id), so the same teacher can hold 10 A Maths in two years.
+
+The November 25, 2026 UAT release includes a rollback-only PostgreSQL test in `supabase/tests/year_end_promotion.sql`. The migration is archived in [DB-Scripts](https://github.com/PluginLive-Technologies/DB-Scripts/commit/6811d050afd4a47a43a669a4db40c31f8f7c1297).
 
 ## Gotchas
 - Removed 2026-11-13: `frontend/src/components/ai/` (56 files nothing imported), `AdminClassRegistry` page and `admin-manage-classes` function (replaced by School setup). Still declared in `App.tsx` but never routed: TargetVsAchievement, AdminParentRegistry, AdminFeeManagement, AdminAttendanceDashboard, AdminCommunicationGateway, AdminLibraryManagement, AdminCertificateGenerate, AdminReportCardGenerate, AdminHRManagement, AdminTransportManagement, AdminCurriculumManagement.
