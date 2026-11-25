@@ -72,6 +72,10 @@ Production deployed `e8558ff71` on `release/prod-v1.1` at 11:29 UTC on 2026-11-2
 
 All 92 authentication regression tests passed. Browser checks on the production pages used simulated OTP responses to verify the email reference, resend, rejected-code handling, local retry time, and access to password sign-in. Separate requests to the live request and verification endpoints used unregistered test addresses for both roles. Both deployed handlers matched their GitHub checksums.
 
+**Google sign-in is students only (2026-11-25):** `/login/trainer` and `/login/admin` no longer show "Sign in with Google";
+`/login/candidate` (and `/lms/login` on DEV) keep it. `Login.tsx`: `googleOAuthEnabled = GOOGLE_SIGN_IN_ENABLED && activeTab === "candidate"`.
+Commits: UAT `4ab0ed2c0`, Development `cf74da6ab`. PROD not deployed.
+
 **Student / trainer password**
 - **Setting one:** students and trainers set a password with **Forgot Password?**.
   - `request-password-reset` no longer refuses OTP accounts. The link goes only to a real registered email (never `<mobile>@bankready.app`).
