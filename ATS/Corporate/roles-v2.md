@@ -563,3 +563,12 @@ corporate-node DEV `e4f6ff11`, UAT `cd21f34c`. corporate-react-v2 DEV `4ee573e` 
 Review preview visible; Chennai Select all 135/135 (DEV) and lite 136/136 (UAT); second publish shows its own role
 and link, no replay from the sidebar; pay structure saves blank and reads back blank.
 
+
+**Duplicate copies the evaluation rounds (since 2026-11-25, DEV + UAT; PROD pending).** `duplicateRole` now saves the
+source role's rounds on the copy as a **draft** evaluation (`RoleWriteService.copyEvaluationProcess`): the same stage
+copy "Setup evaluation › From your other roles" makes — name, type, settings, order — never the source's assessment
+links (the copy creates its own on Setup Now), and stage types the company isn't subscribed to are left out. Before,
+the copy had no process, so Setup evaluation (Only Evaluation path, or later on the role page) designed a fresh AI
+process: UAT "AR caller" with 2 rounds came back with 5. The copy's workflow mode is "full" (the Only Evaluation path
+sets "quick" when it starts). A failed copy never fails the duplicate. Candidates, invites and assessment results are
+still not copied. corporate-node DEV `774c51e7`, UAT `ec737ed2`.
