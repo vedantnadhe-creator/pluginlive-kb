@@ -50,6 +50,8 @@ Academic intervention cases, staff-owned actions and independently reviewed fami
 
 The November 25, 2026 UAT release includes a rollback-only PostgreSQL test in `supabase/tests/year_end_promotion.sql`. The migration is archived in [DB-Scripts](https://github.com/PluginLive-Technologies/DB-Scripts/commit/6811d050afd4a47a43a669a4db40c31f8f7c1297).
 
+UAT verification covered 10 principal, teacher and student browser checks and 18 promotion and history checks. In a separate test school, a principal submitted one plan through the live screen. One student moved from 9 A to 10 B, one repeated 7 B and one graduated from Class 12. The database recorded all three outcomes and returned 9 A in the promoted student's history. The test school, students and principal account were removed after verification.
+
 ## Gotchas
 - Removed 2026-11-13: `frontend/src/components/ai/` (56 files nothing imported), `AdminClassRegistry` page and `admin-manage-classes` function (replaced by School setup). Still declared in `App.tsx` but never routed: TargetVsAchievement, AdminParentRegistry, AdminFeeManagement, AdminAttendanceDashboard, AdminCommunicationGateway, AdminLibraryManagement, AdminCertificateGenerate, AdminReportCardGenerate, AdminHRManagement, AdminTransportManagement, AdminCurriculumManagement.
 - UAT has no Razorpay keys: "Pay link" fails; offline payments with receipts work.
