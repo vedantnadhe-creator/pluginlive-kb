@@ -519,3 +519,10 @@ and the handler showed a generic "Couldn't move those candidates" (PROD "Industr
 with that message; no workflow → legacy moves. Engine 4xx refusals reach the recruiter with their own message.
 corporate-node DEV `4b6240db` + `74e6d69d`, UAT `7e317220` + `297734d4`, PROD `release-v1.43-hotfix-6` (`b0fa3cd2` + `8b98d9ef`, live 2026-11-24 12:41 UTC) (a short-lived version of 4b6240db let a draft
 role move the legacy way; replaced the same day by product decision).
+
+**Candidate drawer and filter panel (2026-11-25, DEV + UAT; PROD pending).** A form answer holding a link to a
+file (a signed storage URL) shows as the file name with the download icon (`evaluation/fileNameOfUrl.ts`); other
+long links shorten with "…", so the drawer no longer scrolls sideways (corporate-react-v2 DEV `40c250b`, UAT
+`4d719dc`). The open filter panel (`components/ui/FilterPopover.tsx`) stays where it opened while the page scrolls;
+it used to follow the Filter button on every scroll and slide off the top of the screen. It is re-measured only on
+a window resize, and `placeFilterPanel` never puts it above the screen's top edge (DEV `f2e75ea`, UAT `1a54449`).
