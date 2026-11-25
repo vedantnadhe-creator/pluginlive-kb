@@ -42,6 +42,12 @@ PROD got the topic board (`5e536d73d`) plus these two commits only, not Mari's t
   `src/components/curriculum/StarterLesson.tsx`, `src/lib/starterLessonApi.ts`. Migration
   `20261125060000_curriculum_starter_lessons.sql` (DB-Scripts *Banking LMS College Mode*). Tests: `src/test/starterLesson.test.ts`,
   `trainerCurriculumStudentLoad.test.tsx`, `academicCurriculum.test.tsx`.
+- **Learner Trainer Curriculum follows the Academic flow** (UAT `d1321c91a` 2026-11-25, snapshot `20261125T062108Z`; PROD
+  `3579bb58f` tag **`v1.1.49`**, backup `/data/backups/prod-trainer-flow-20261125T062520Z`). `/journey/student/tech?tab=trainer_curricula`
+  (`MyTrainerCurricula.tsx`) no longer stacks every assigned curriculum as a card: curriculum chips (*All curricula* + one per
+  curriculum, `SubjectChips`) open on the curriculum in *Next topic*; one curriculum's panel at a time (feedback, uploaded materials,
+  topic board, assessment, submission); *All curricula* is a compact list (trainer · department · degree, status, due date,
+  "x of y topics done", *Open curriculum*). Search, filters and group-by still apply; group-by groups the list.
 - Gotcha: the UAT deploy's `03_grants.sql` gives `authenticated` table-level SELECT on every public table, including this one;
   with RLS on and no policies it still returns no rows.
 
