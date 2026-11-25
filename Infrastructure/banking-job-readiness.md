@@ -5230,7 +5230,7 @@ The trainer journey fixes found in the end-to-end menu and creation tests are li
 
 | Area | Current behavior |
 |---|---|
-| Trainer → Manage Candidates | Single-candidate onboarding uses the server-side `trainer-bulk-import` start/process/finish flow, so a trainer never attempts a direct browser insert into the RLS-protected `students` table. The existing CSV flow is unchanged. |
+| Trainer → Manage Candidates | Single-candidate onboarding uses the server-side `trainer-bulk-import` start/process/finish flow, so a trainer never attempts a direct browser insert into the RLS-protected `students` table. The Trainer CSV import uses the v3 contract (`name,email,mobile,college,location,degree,department,age_group`; name/email/mobile required), and every resulting `trainer_bulk_jobs` audit record sets `metadata.schema_version` to `"3"`. |
 | Institute → Trainers | Create, edit, approve/reject and delete use the tenant-checked `institute-trainer-actions` Edge Function. It accepts an institute manager or admin JWT, resolves the institute from profile membership, validates email/mobile uniqueness, writes canonical `institute_id`/`college` fields, and sends the existing welcome-email flow when configured. The browser no longer performs privileged trainer writes. |
 | Institute workspace | Tenant lookup uses `profiles.institute_id`/name and deployed institute columns. Overview counts avoid the removed `cohorts.status`, use `module_progress.is_completed`, and clear the loading state on success or failure. Trainer lists read both canonical institute mappings and legacy college names, with duplicate rows removed. |
 | Admin → Trainer Assignments | The list projection includes `mobile` and `location`, so editing a trainer name no longer clears those fields. |
