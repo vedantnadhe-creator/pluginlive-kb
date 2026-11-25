@@ -9,6 +9,38 @@ Code: `bankingjobreadiness` — `supabase/functions/college-curriculum-agent`, `
 live on **UAT** (`e89cd43bb` + `69cf6c3ae`, 2026-11-18) and **PROD** (`release/prod-v1.1` `b831175c2`, tag `v1.1.27`, 2026-11-18, backup
 `/data/backups/prod-20261118T045457Z`). Migration `20261118100000_curriculum_quality_controls.sql` is applied on DEV, UAT and PROD.
 
+
+## Topic completion and saved AI starter lessons (UAT 2026-11-25)
+
+Live on **UAT** at `039169813` (GitHub `UAT`; deploy snapshot `~/banking-sb/snapshots/20261125T054324Z`). Builds on the topic board (`5e536d73d`).
+
+- **Academic "Complete" needs a passed practice quiz.** A topic shows *Complete* only when every lesson is read **and**, where the
+  lesson has practice questions, the latest attempt scored 60% or more (`trainerTopicComplete`, the Trainer Curriculum rule;
+  server-side the same pass is `curriculum_topic_progress.completed` written by `record_academic_learning`). Read but not passed =
+  *Practice due*. Lesson rows show "Practice x/y · Passed / Not passed"; *Practise* opens the first lesson still to pass.
+  Code: `academicLessonDone` in `src/components/college/AcademicTopicBoard.tsx`. The topic count "n of m topics done" uses this rule.
+- **Saved AI starter lessons** (Trainer Curriculum topics with no lesson text). *Get AI starter lesson* no longer sends a fresh prompt
+  to AI Coach. Edge function `curriculum-starter-lesson` (`{action:"get"|"pdf", topic_id}`):
+  - reads the topic with the **caller's own token** (curriculum RLS decides access; academic curricula excluded; returns
+    `replaced` once the topic or any lesson has text);
+  - one lesson **per topic**, shared by every learner, stored in `public.curriculum_starter_lessons` (service-role only: RLS on,
+    no policies) keyed by `topic_id` + `source_hash` (curriculum/subject/topic title, description, outcome) — an outline edit
+    regenerates it;
+  - generation runs in the background (`EdgeRuntime.waitUntil`) after an atomic claim, `public.claim_curriculum_starter_lesson()`
+    (one writer; failed attempts retry after 2 min, max 5; stuck claims after 6 min). The UI polls every 4 s ("Preparing your
+    starter lesson…"), max 5 min;
+  - AI task **`pl/banking-starter-lesson`** (gemini-2.5-flash → gemini-3-flash-preview → gpt-5.4-mini, 70 s), on the `banking-app`
+    virtual key; output validated by `cleanStarterLesson` (2–4 sections, 3–5 key points, example, one 4-option practice question);
+  - PDF rendered once by the shared renderer (`CERT_RENDERER_URL`) and cached at
+    `curriculum-sources/starter-lessons/<topic>/<hash>.pdf`; the link is a 2-minute signed URL rewritten to `SUPABASE_PUBLIC_URL`.
+  - The starter lesson's practice question is self-check only; it does not count towards completion.
+  Code: `supabase/functions/curriculum-starter-lesson/index.ts`, `supabase/functions/_shared/starter-lesson.ts`,
+  `src/components/curriculum/StarterLesson.tsx`, `src/lib/starterLessonApi.ts`. Migration
+  `20261125060000_curriculum_starter_lessons.sql` (DB-Scripts *Banking LMS College Mode*). Tests: `src/test/starterLesson.test.ts`,
+  `trainerCurriculumStudentLoad.test.tsx`, `academicCurriculum.test.tsx`.
+- Gotcha: the UAT deploy's `03_grants.sql` gives `authenticated` table-level SELECT on every public table, including this one;
+  with RLS on and no policies it still returns no rows.
+
 ## Production release and content scope (2026-11-22)
 
 The user explicitly requested GitHub push and PROD deployment. Release `5bc68b2c0dada9a810392d59229b39e95a84304e`
