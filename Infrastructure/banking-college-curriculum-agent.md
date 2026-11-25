@@ -388,6 +388,23 @@ topic are available through the preparation workflow on both environments.
 - **Trainer Curriculum** remains a separate destination and retains existing published corporate/general
   training assignments and module materials. A learner with both kinds of assignment can see both journeys;
   college enrollment no longer replaces the trainer-content menu or grants its subscription entitlement.
+- **Topic board (UAT `5e536d73d`, 2026-11-25; not on PROD).** Both learner menus now list topics as numbered
+  rows (aividya layout) with status badge and four actions. Shared UI: `src/components/curriculum/TopicBoard.tsx`.
+  - *Academic Curriculum* opens on the subject the learner is working on, with subject chips across the top
+    (**All subjects** = old subject list, `?browse=` param). Rows are grouped by unit and show lessons, practice
+    question count, textbook/page and status (Not started / In progress / Complete = every mapped lesson read;
+    topics without lessons show their readiness, e.g. Preparation pending). Actions: **Start/Continue/Review**
+    (reader at that topic), **Lessons** (inline list, read state, practice score), **Practise** (reader on the
+    quiz tab: `?tab=quiz&lesson=`), **Robo class** (reader with Robo Faculty open: `?tutor=1`; hidden while the
+    syllabus is validation-pending). Topics with no lessons offer *Start Robo class* from the approved syllabus.
+    Component: `src/components/college/AcademicTopicBoard.tsx` (shares the `academic-content` query cache).
+  - *Trainer Curriculum* (`TrainerTopicOutline.tsx`) keeps one card per curriculum (files, assessment,
+    submission) but its topics are now rows with **Start/Continue/Review** (full content), **Lessons**
+    ("Lessons in <topic>" index), **Practise** and **AI tutor** (AI Coach, grounded on the topic's lesson text).
+    A topic without trainer lesson text shows **Get AI starter lesson** (AI Coach, prompt only, nothing stored;
+    the trainer's lessons replace it once published); open topics also offer **Revise with AI**.
+  - Known on UAT: Trainer Curriculum for a learner with 3 curricula took ~87 s to load (per-curriculum
+    sequential queries, pre-existing); a missing uploaded file shows "File unavailable" (storage sign 400).
 - `trainer_curricula.audience_type` is `college_academic`, `corporate_training` or `general_trainer`.
   The migration classifies proven academic links and exclusive corporate institute mappings. Ambiguous
   legacy rows remain general; no assignments or content are deleted. New academic-agent rows are classified
