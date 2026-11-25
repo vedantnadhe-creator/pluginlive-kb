@@ -44,17 +44,13 @@ third-party keys (MSG91, Gemini, ElevenLabs, mail) shared with UAT.
 
 ## Student and trainer password sign-in on DEV, UAT and production
 
-Students and trainers enter their registered email or mobile at `/login/candidate` or `/login/trainer` and choose **Password** or **Send OTP**. They can use **Forgot Password?** to set a password through their registered mailbox. DEV also offers `/lms/login`. Production administrators can now choose **Password** or **Send OTP** too; password sign-in remains unchanged.
+Students and trainers enter their registered email or mobile at `/login/candidate` or `/login/trainer` and choose **Password** or **Send OTP**. They can use **Forgot Password?** to set a password through their registered mailbox. DEV also offers `/lms/login`.
 
-**Admin sign-in on DEV, UAT and production**
-- **Password:** unchanged. A `@bankready.app` ID or short ID signs in directly; any other email goes through `admin-email-login`.
-- **OTP:** needs an email or mobile.
-  - `request-login-otp` with `role: "admin"` compares every `admin`/`super_admin` user's Auth email (incl. the `<mobile>@bankready.app`
-    alias) and profile email/mobile; exactly one must match.
-    - Fix 2026-11-24: the first version only checked `profiles.mobile`. Admin 9080814197 has an empty profile mobile, so Send OTP sent nothing.
-    - Commits: UAT `027bfd1b5`, Development `921e69003`, PROD `58d528df8` (v1.1.41).
-  - The new **`admin-otp-login`** consumes the challenge (role `admin`) and returns a magic-link `token_hash`. It never rotates the password.
-  - The browser then runs the same admin-role check (`enterAdminConsole`) as the password path.
+**Admin sign-in on UAT and production**
+
+The role links on `/login` lead to separate candidate, staff and admin forms. Signing in at `/login/admin` with a password sends the email, mobile or legacy ID to `admin-email-login`. The server resolves one administrator and attempts the password once. An approved trainer email can identify its linked administrator. Codes and recovery links go to that administrator's registered contact. [Admin sign-in and password recovery](banking-admin-password-recovery.md)
+
+Admin OTP sign-in needs an email or mobile number. `admin-otp-login` consumes the challenge, and the browser verifies the session and checks the admin role before opening the dashboard.
 
 **OTP delivery: email first (unchanged rule, confirmed 2026-11-24)**
 - Whether the user types an email or a mobile number, the code goes to the account's registered email.
@@ -62,16 +58,13 @@ Students and trainers enter their registered email or mobile at `/login/candidat
 - On UAT, after an email code, "Send SMS instead" is the explicit SMS recovery (verified phones only).
 - History: a mobile → SMS / email → email rule was live for about an hour on 2026-11-24 (UAT `7de3cadf1`/`ebb65bd20`) and was reverted at the
   user's request (UAT `7629965d6`, Development `119cd9f1b`).
-- Kept from that work:
-  - Admin Resend has the 30 s countdown.
-  - Candidate/trainer **Resend** asks again with no channel, under the same email-first rule. An SMS-only account's Resend is a plain new code
-    (before, it was refused as "SMS recovery").
+- Candidate and trainer **Resend** uses the normal email-first rule. An SMS-only account can request another SMS after the countdown.
 
 **Candidate and trainer OTP recovery on UAT and PROD**
 
-Each candidate or trainer sign-in email has a four-character reference in its subject. The login page shows the matching reference from `request-login-otp` (`email_reference`). After a successful resend, the page shows the new reference and clears the code field. If verification rejects a code, the form prevents another submission of those digits for that request. A connection error allows the learner to retry.
+Candidate, trainer and admin sign-in emails have a four-character reference in the subject. The login page shows the matching reference from `request-login-otp` (`email_reference`). After a successful resend, the page shows the new reference and clears the code field. If verification rejects a learner's code, the form prevents another submission of those digits for that request. A connection error allows the learner to retry.
 
-The server allows five wrong guesses per code and ten across codes for the same sign-in identifier and role in its one-hour window. The 30-second resend cooldown returns HTTP 429 with `otp_cooldown`. An account lock returns HTTP 429 with `otp_locked` on both request and verification. The page uses `retry_after_seconds` to display the local retry time and re-enable code requests when the wait expires. Candidates and trainers who have set a password can use it during the wait.
+The server allows five wrong guesses per code and ten across codes for the same sign-in identifier and role in its one-hour window. The resend cooldown is 30 seconds on UAT and 60 seconds on production. Early requests return HTTP 429 with `otp_cooldown`. An account lock returns HTTP 429 with `otp_locked` on candidate and trainer requests and verification. Candidates and trainers who have set a password can use it during the wait.
 
 This change reached UAT on 2026-11-24 in `9f5549cc9`. The published bundle is `index-mmdBdGRm.js` and the UAT rollback snapshot is `~/banking-sb/snapshots/20261124T111604Z`.
 

@@ -2,21 +2,32 @@
 
 ## Current behavior
 
-On UAT and PROD, `/login/admin` accepts an administrator's registered email or legacy mobile/short ID plus password. `admin-email-login` checks the password against the Auth identity and verifies `admin`/`super_admin` in `user_roles` before returning tokens. A registered email may identify a mobile-backed Auth account (`<mobile>@bankready.app`). The internal alias is not its recovery mailbox.
+On UAT and PROD, `/login` offers Candidate, Trainer / Institute and Admin. Administrators can go directly to `/login/admin`. Signed-out trainer and institute links open the staff sign-in page and retain the requested destination. An institute administrator can reach the institute workspace with an active institute role and profile even when the account has no trainer roster row.
 
-Forgot Password calls `request-password-reset`. For registered admin emails, the shared `adminProfilesForEmail` helper excludes legacy trainer-only profiles before selecting the account. One admin and one trainer sharing an email no longer prevent recovery. Multiple administrator matches remain ambiguous: no reset is issued; use a unique mobile/admin ID. Unknown/non-admin/mailboxless accounts keep the same generic public response without disclosing account existence.
+Admin password sign-in accepts an email, mobile number or legacy short ID. `admin-email-login` resolves the identifier through `resolveAdminLoginIdentity`, verifies the assigned `admin` or `super_admin` role, and checks the password once against the matched Auth owner. Admin OTP and public password recovery use the same resolver. An exact Auth or profile match takes priority. When an email has no such match, a single approved trainer roster row can identify its linked administrator. Ambiguous matches cannot issue a session or a recovery link.
 
-The generated recovery token belongs to the existing Auth account. Delivery uses a real Auth email when present; for an internal alias it uses the registered profile email. Alias recovery needs an application email provider, since Auth SMTP alone sends to the Auth identifier. Both deployed environments currently use `pluginlive_relay` with the configured notification sender. Provider/configuration failures return an error and remain retryable in the dialog.
+Recovery mail and email OTPs go to the administrator's real Auth mailbox, or to the registered profile mailbox when Auth uses an internal alias. The same contact rule applies when a multi-role administrator signs in through the trainer or candidate form. A roster alias only identifies the account. Both environments use `pluginlive_relay`. Unknown and mailboxless accounts receive a generic acknowledgement. A provider failure leaves the recovery dialog open for a retry.
 
 Recovery messages contain both a button and the complete reset URL as visible, copyable text in the HTML and plaintext parts. The delivery helper creates a recovery token with the Auth admin API and sends the user directly to the approved LMS `/reset-password` route with `type=recovery` and `token_hash`. The public bases are `https://lms.pluginlive.com/sb` and `https://banking.uat.pluginlive.com/sb`.
 
-The reset page does not redeem `token_hash` on page load. It displays a **Continue** action and redeems the token only after that action, so an email-security scanner or preview can inspect the link without consuming the one-time recovery token. This replaces the previous `/auth/v1/verify` redirect, which could reach the unrelated certificate `/verify` route and be spent by a mail scanner.
+The reset page redeems `token_hash` when the person presses **Continue**, so email previews can open a link without spending it. An expired link returns the person to the sign-in page for the role in the link.
 
 When an administrator sets a managed user's password, the backend completes that update first and then sends the same recovery email so the user can choose a private password. The UI reports a failed delivery separately. It does not retry an ambiguous timeout or gateway error, because a retry could replace the first valid recovery link.
 
 The reset page establishes the recovery session and permits password entry before platform privacy consent. Consent is still required when entering the admin dashboard. The authenticated admin saves through `admin-user-actions` (with the existing dedicated fallback), which sets `app_metadata.admin_password_set=true` with the password. This prevents subsequent candidate/trainer OTP login from rotating an admin's chosen password. The fallback also authorizes Super Admin callers. Ordinary candidate/trainer OTP accounts retain their existing login rules.
 
 After a successful save, the recovery session ends and the user returns to Admin Login. The old password and consumed recovery link are rejected. Missing, expired or used links show an action to request a new link. Wrong password remains HTTP 401; a rate limit returns 429 and service failures are distinguished from incorrect credentials.
+
+## Role sign-in release on 2026-11-25
+
+| Environment | GitHub revision | Served bundle | Rollback snapshot |
+| --- | --- | --- | --- |
+| UAT | [87fd14775](https://github.com/PluginLive-Technologies/bankingjobreadiness/commit/87fd147757b372febab51db855f5973b4526908a) | `index-CSYJqSY_.js` | `~/banking-sb/snapshots/20261125T015646Z` |
+| Production | [8392ab4cb](https://github.com/PluginLive-Technologies/bankingjobreadiness/commit/8392ab4cb7f01fc476fe6c29750edb97068a7a94) | `index-CO5cijiV.js` | `/data/backups/prod-role-login-20261125T020121Z` |
+
+The UAT branch passed 325 focused tests. Password sign-in against the published UAT service returned the correct account for candidate, trainer, faculty, institute administrator, platform administrator and super administrator fixtures. The platform administrator used its approved trainer email. All six temporary users were removed. In each environment the eight changed backend files matched the GitHub revision.
+
+Browser checks on UAT and production covered all three public sign-in forms, protected-route redirects, reset-link previews, and the return from an expired link. Unregistered QA identifiers produced the expected generic OTP and reset acknowledgements. Delivery to a production inbox still needs a dedicated QA mailbox. [Production tag v1.1.46](https://github.com/PluginLive-Technologies/bankingjobreadiness/tree/v1.1.46)
 
 ## Incident and release — 2026-11-23
 
