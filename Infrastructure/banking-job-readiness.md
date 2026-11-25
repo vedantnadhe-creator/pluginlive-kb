@@ -72,6 +72,35 @@ Production deployed `e8558ff71` on `release/prod-v1.1` at 11:29 UTC on 2026-11-2
 
 All 92 authentication regression tests passed. Browser checks on the production pages used simulated OTP responses to verify the email reference, resend, rejected-code handling, local retry time, and access to password sign-in. Separate requests to the live request and verification endpoints used unregistered test addresses for both roles. Both deployed handlers matched their GitHub checksums.
 
+**Student Google sign-in goes through our server (2026-11-25), DEV + UAT, PROD not deployed**
+- **Why:** GoTrue's Google provider matched only login accounts whose Auth email is the Gmail address. Student Auth emails are
+  `<mobile>@bankready.app` (or don't exist before the first sign-in), so it worked for 12 of 2,257 UAT students (10 of 2,281 on PROD) and
+  failed for the rest with "Signups not allowed for this instance" (422).
+- **Flow:**
+  1. The button calls `candidate-otp-login` with `{google_start, state}`, which returns Google's consent URL. `redirect_uri` is
+     `<SITE_URL>/auth/google`; the state is kept in localStorage.
+  2. Google returns to the SPA page `/auth/google` (`pages/GoogleCallback.tsx`), which checks the state and sends
+     `{google_code, redirect_uri, role: "candidate"}` back.
+  3. `_shared/google-login.ts` exchanges the code (client secret is server-side only) and checks the ID token with Google `tokeninfo`:
+     aud = client, Google issuer, `email_verified`, not expired.
+  4. The verified email continues as the OTP identifier: registered-email lookup, account gates, link or create the login account,
+     magic-link `token_hash`. Only the OTP challenge step is skipped.
+  5. Errors return to the starting login page as `?google_error=…`.
+- **Students only:** trainer and admin roles are refused; on UAT the "use Admin Login" guard also applies.
+- **Config per env:**
+  - Google OAuth client `641154247196-9b3p…` must list `https://<host>/auth/google` as an authorised redirect URI. Added 2026-11-25
+    for banking.dev, banking.uat and lms.pluginlive.com.
+  - `~/banking-sb/functions-secrets.env` needs `GOOGLE_OAUTH_CLIENT_ID` and `GOOGLE_OAUTH_SECRET` (copied from `.env`), then recreate the
+    functions container. Done on DEV and UAT; PROD still needs it.
+  - GoTrue's own `GOTRUE_EXTERNAL_GOOGLE_*` is no longer used by the app.
+- **Commits:** UAT `f0ab48747`, Development `492352e9d`.
+- **Verified on DEV and UAT:**
+  - Both student pages reach Google with the new redirect.
+  - A bad code returns a clear error. Google answered `invalid_grant`, which proves the client ID and secret are right.
+  - A forged state is refused, and the trainer page has no Google button.
+  - Tester `saileshragavan6@gmail.com` resolves to their student record.
+  - A real Google login needs a human.
+
 **Google sign-in is students only (2026-11-25):** `/login/trainer` and `/login/admin` no longer show "Sign in with Google";
 `/login/candidate` (and `/lms/login` on DEV) keep it. `Login.tsx`: `googleOAuthEnabled = GOOGLE_SIGN_IN_ENABLED && activeTab === "candidate"`.
 Commits: UAT `4ab0ed2c0`, Development `cf74da6ab`. PROD not deployed.
