@@ -289,3 +289,12 @@ complete primary/fallback provider-model pair. Those rows document the applicati
 is the routing source of truth. On UAT both task policies and the virtual-key grants were validated with a normal call
 (Gemini 3 Flash Preview) and a forced `mock_timeout` fallback (GPT-5.4 Mini), all HTTP 200. The UAT policy backup is
 `~/litellm/policy-backups/tasks-20261123T115841Z.json`. No PROD policy, key or caller was changed.
+
+### Banking lesson diagrams — `pl/banking-lesson-diagrams` (UAT + PROD, 2026-11-25)
+
+gemini-2.5-flash (reasoning disable) → gemini-3-flash-preview → gpt-5.4-mini, 30 s, 0 retries, text. Caller: edge function
+`academic-lesson-diagrams` (Academic Curriculum RoboBoard diagrams). Granted to `banking-app` (UAT gateway, backup
+`~/litellm/policy-backups/tasks-20261125T132206Z.json`) and `banking-app-prod` (PROD ConfigMap, 61 tasks, backup
+`policy-backups/tasks-20261125T143616Z.json`). Normal call and `mock_timeout` forced fallback verified on both. Trainer starter-lesson
+diagrams use the existing `pl/banking-starter-lesson` call (no new task).
+

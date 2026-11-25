@@ -66,7 +66,7 @@ PROD got the topic board (`5e536d73d`) plus these two commits only, not Mari's t
     `content_viewed` is saved when the learner leaves the Learn parts. Topics without lesson text show the saved AI starter
     lesson (label "AI starter lesson · your trainer's version will appear here", PDF). The curriculum assessment and
     submissions stay on the curriculum panel.
-- **Board diagrams (UAT `e695d7884` 2026-11-25; PROD not yet).** The Board's visual panel used to stay empty for banking topics
+- **Board diagrams (UAT `e695d7884`; PROD `v1.1.51` 2026-11-25).** The Board's visual panel used to stay empty for banking topics
   (the fallback board only drew tally/pictograph visuals on those keywords). Now the panel shows an **AI-drawn diagram**:
   `steps` (3–6 labels, a process) or `compare` (two columns, 2–4 rows). Typed JSON only, validated on the server
   (`cleanSectionVisual` in `_shared/starter-lesson.ts`: max 2 per lesson, labels ≤ 60 chars, bad diagrams dropped without
@@ -83,10 +83,11 @@ PROD got the topic board (`5e536d73d`) plus these two commits only, not Mari's t
     stored 0.1 s. Code: `_shared/lesson-diagrams.ts`, `src/lib/academicDiagramsApi.ts`, `AcademicTopicFlow.tsx`.
   - Gateway: `pl/banking-lesson-diagrams` registered on the **UAT** gateway 2026-11-25 (gemini-2.5-flash → gemini-3-flash-preview
     → gpt-5.4-mini, 30 s; backup `~/litellm/policy-backups/tasks-20261125T132206Z.json`) and granted to key `banking-app`;
-    normal call and forced fallback (`mock_timeout`) verified. **PROD gateway: not registered** — add it to ConfigMap
-    `litellm-task-policy` and key `banking-app-prod` before a PROD release, or Academic diagrams return 503 (the lesson still works).
+    normal call and forced fallback (`mock_timeout`) verified. **PROD gateway** (same policy, 2026-11-25 14:36Z): ConfigMap
+    `litellm-task-policy` (61 tasks; backup `policy-backups/tasks-20261125T143616Z.json` on the PROD builder, candidate
+    `tasks-lesson-diagrams-20261125.json`), granted to `banking-app-prod`; normal 0.9 s, forced fallback 1.1 s (gemini-3-flash-preview).
   - Tests: `starterLesson.test.ts`, `lessonDiagrams.test.ts`, `topicLearnFlow.test.ts`, `roboBoardDiagram.test.tsx`.
-- **Trainer Curriculum loads in one read (UAT `0d935ccaa` 2026-11-25; PROD not yet).** The learner page took **87–107 s** before
+- **Trainer Curriculum loads in one read (UAT `0d935ccaa`; PROD `v1.1.51` 2026-11-25).** The learner page took **87–107 s** before
   the first topic showed: it read curricula, subjects, topics, subtopics, videos, quizzes, quiz questions and resources table by
   table (~8 requests per curriculum), and those tables' RLS policies re-check each other row by row (subtopic → topic → subject →
   curriculum, plus restrictive `curriculum_audience_read` on each) — one 10-row read touched ~830k buffers. New
@@ -95,8 +96,33 @@ PROD got the topic board (`5e536d73d`) plus these two commits only, not Mari's t
   curriculum: the row, subjects, topics (except unapproved `academic_packages` topics), their subtopics/videos/quizzes/questions,
   and resources, in table shape. UAT: ~110 ms vs 73 s for the same learner, identical counts to the RLS reads for two learners;
   page shows topics in ~10 s (rest is the journey shell, assignments, submissions, attempts, progress, assessments).
-  Migration `20261125140000_my_trainer_curriculum_content.sql` — **apply before the frontend** (applied on UAT; DEV/PROD not).
-  The underlying RLS cost still affects other readers of these tables (trainer/admin screens).
+  Migration `20261125140000_my_trainer_curriculum_content.sql` — **apply before the frontend** (applied UAT + PROD; DEV not).
+- **Curriculum read rules computed once per query (UAT `fa0966891`; PROD `v1.1.51` 2026-11-25).** Root cause of the slow
+  reads for every role: the restrictive `curriculum_audience_read` policies called `private.curriculum_subject_access` /
+  `curriculum_topic_access` / `curriculum_read_access` per row, and with the default function cost (100) the planner ran them
+  over whole tables (one topic check evaluated the subject check for all subjects: ~44k buffers). The helpers are
+  SECURITY DEFINER owned by a superuser, so this was not RLS recursion. Migration
+  `20261125160000_curriculum_rls_per_query_access.sql`:
+  - `COST 10000` on the access functions (`COST 1000` on `is_course_student`, `academic_validation_ok`,
+    `can_contribute_curriculum`) — planner only;
+  - per-query sets (InitPlans, `= any ((select private.f())::uuid[])`): `my_curriculum_subject_ids` (= subjects where
+    `curriculum_subject_access`), `my_curriculum_topic_ids` (= topics where `curriculum_topic_access`, with exact
+    shortcuts: non-package topic or curriculum in `my_curriculum_staff_ids`), `my_curriculum_material_ids` (quiz questions and
+    resources: `curriculum_read_access` + the old trainer_curricula EXISTS incl. its visibility). The seven restrictive
+    `curriculum_audience_read` policies (subjects, topics, subtopics, videos, quizzes, quiz_questions, resources) use them;
+    permissive and write policies are unchanged. **Access is still defined only by the original functions — edit those.**
+  - `set lock_timeout = '5s'`: ALTER POLICY needs an exclusive lock; never let it queue user reads behind a slow one.
+  - Proof: rolled-back before/after on UAT against the live rules — identical visible ids for learner, unassigned candidate,
+    owning trainer, other trainer, admin, college student × 8 tables (48/48); PROD rehearsal 21/21 identical. UAT timings:
+    subtopics 96–134 s → 0.8–3.4 s, videos 51–413 s → 0.3–0.8 s, quiz questions 7–12 s → 0.1–0.2 s, resources 4 s → 0.1 s;
+    quizzes 0.5 s → 0.8–1.3 s on UAT (near-empty), faster on PROD. PROD after deploy (read-only, real learner): videos 63 s → 0.6 s.
+  - Test `src/test/curriculumRlsPerQuery.test.ts` pins the shape. Still slow (not changed): `curriculum_assignments` reads (~8 s
+    on the learner page on UAT) — the learner page is now ~10 s end to end, most of it that query.
+- **PROD release `v1.1.51`** (2026-11-25 15:14Z, `release/prod-v1.1` `bf97b7625`, cherry-picks of UAT `d05e51c50` (study flow,
+  a dependency of the board), `11886bc89`, `0d935ccaa`, `5c8787319`, `58ff0bbed`, `16102b6ff`, `5c2c96a40`, `4c6b7f22e`, `e695d7884`,
+  `fa0966891`; not Mari's `4ab0ed2c0` / Google sign-in `f0ab48747`). Staged `/opt/banking/staged-board-diagrams-bf97b7625`
+  (driver `deploy-release.py`, both migrations in one transaction); rollback snapshot
+  `/data/backups/prod-board-diagrams-20261125T151429Z`; bundle `index-DpJC8PPA.js`.
 - Gotcha: the UAT deploy's `03_grants.sql` gives `authenticated` table-level SELECT on every public table, including this one;
   with RLS on and no policies it still returns no rows.
 
