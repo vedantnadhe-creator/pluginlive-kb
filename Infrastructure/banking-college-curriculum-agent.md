@@ -66,6 +66,37 @@ PROD got the topic board (`5e536d73d`) plus these two commits only, not Mari's t
     `content_viewed` is saved when the learner leaves the Learn parts. Topics without lesson text show the saved AI starter
     lesson (label "AI starter lesson · your trainer's version will appear here", PDF). The curriculum assessment and
     submissions stay on the curriculum panel.
+- **Board diagrams (UAT `e695d7884` 2026-11-25; PROD not yet).** The Board's visual panel used to stay empty for banking topics
+  (the fallback board only drew tally/pictograph visuals on those keywords). Now the panel shows an **AI-drawn diagram**:
+  `steps` (3–6 labels, a process) or `compare` (two columns, 2–4 rows). Typed JSON only, validated on the server
+  (`cleanSectionVisual` in `_shared/starter-lesson.ts`: max 2 per lesson, labels ≤ 60 chars, bad diagrams dropped without
+  failing the lesson), rendered as React text (`DiagramVisual` in `RoboBoardLesson.tsx`, labelled "AI-drawn from this lesson",
+  full contrast, table-fixed with wrapping). Keyword tally/graph visuals still apply where no diagram exists.
+  - *Trainer starter lessons*: the diagram comes in the same `pl/banking-starter-lesson` call (optional `visual` per section,
+    flat union-free schema `sectionVisualSchema`) and is stored with the lesson. Lessons stored earlier have none.
+  - *Academic approved lessons*: edge function **`academic-lesson-diagrams`** (`{offering_id, lesson_id}` → `{visuals:{[heading]: diagram}}`)
+    reads the lesson with the caller's token via `academic_subject_content` (not enrolled → 403, anon → 401), skips
+    validation-pending subjects, and asks **`pl/banking-lesson-diagrams`** for ≤ 2 diagrams tied to the lesson's own section
+    headings. Most approved lessons are plain prose: then the whole lesson is one section, key `""`, drawn on the single Learn
+    part. Stored once per lesson version (`ai_content_bank` kind `academic_lesson_diagrams`, scope = lesson id + content
+    fingerprint; "no diagram" is stored too). The approved lesson text is not changed. Measured on UAT: first call 1.7–3.3 s,
+    stored 0.1 s. Code: `_shared/lesson-diagrams.ts`, `src/lib/academicDiagramsApi.ts`, `AcademicTopicFlow.tsx`.
+  - Gateway: `pl/banking-lesson-diagrams` registered on the **UAT** gateway 2026-11-25 (gemini-2.5-flash → gemini-3-flash-preview
+    → gpt-5.4-mini, 30 s; backup `~/litellm/policy-backups/tasks-20261125T132206Z.json`) and granted to key `banking-app`;
+    normal call and forced fallback (`mock_timeout`) verified. **PROD gateway: not registered** — add it to ConfigMap
+    `litellm-task-policy` and key `banking-app-prod` before a PROD release, or Academic diagrams return 503 (the lesson still works).
+  - Tests: `starterLesson.test.ts`, `lessonDiagrams.test.ts`, `topicLearnFlow.test.ts`, `roboBoardDiagram.test.tsx`.
+- **Trainer Curriculum loads in one read (UAT `0d935ccaa` 2026-11-25; PROD not yet).** The learner page took **87–107 s** before
+  the first topic showed: it read curricula, subjects, topics, subtopics, videos, quizzes, quiz questions and resources table by
+  table (~8 requests per curriculum), and those tables' RLS policies re-check each other row by row (subtopic → topic → subject →
+  curriculum, plus restrictive `curriculum_audience_read` on each) — one 10-row read touched ~830k buffers. New
+  `public.my_trainer_curriculum_content_v1()` (SECURITY DEFINER, `authenticated` only) applies the learner rule once —
+  published, not `college_academic`, `student_has_curriculum(auth.uid(), id)` (same as `my_assigned_curricula`) — and returns per
+  curriculum: the row, subjects, topics (except unapproved `academic_packages` topics), their subtopics/videos/quizzes/questions,
+  and resources, in table shape. UAT: ~110 ms vs 73 s for the same learner, identical counts to the RLS reads for two learners;
+  page shows topics in ~10 s (rest is the journey shell, assignments, submissions, attempts, progress, assessments).
+  Migration `20261125140000_my_trainer_curriculum_content.sql` — **apply before the frontend** (applied on UAT; DEV/PROD not).
+  The underlying RLS cost still affects other readers of these tables (trainer/admin screens).
 - Gotcha: the UAT deploy's `03_grants.sql` gives `authenticated` table-level SELECT on every public table, including this one;
   with RLS on and no policies it still returns no rows.
 
