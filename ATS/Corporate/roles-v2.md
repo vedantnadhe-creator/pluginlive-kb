@@ -32,7 +32,7 @@ Saving: `resolveEligibility` maps a master label ("Bachelor Of Technology · Civ
 
 A whole-degree pick is stored as a degree-only item with no map id, so every save rebuilds `degree_stream_map_ids` and `domainIds` for kept items from the master. Without that, the next autosave left the ids empty and AI Suggested showed 0 colleges.
 
-AI Suggested lists every match, not a page: the wizard calls `matched-institutes` with `limit=100000` (the route's ceiling, above the whole campus table) in one response, about 0.9 KB a college. So the tab count, search, tiers and Select all cover all matches on the client. Cards and the Selected column mount 100 at a time as they scroll (`useRevealOnScroll`). Measured on DEV: 13,497 colleges for an 809-map draft took 7.8 s and 12 MB. Other colleges still loads 40 rows per search from `institutes/v2`. Publish inserts and mails invited campuses one at a time in the request, so a very large Select all is slow there.
+AI Suggested lists every match, not a page: the wizard calls `matched-institutes` with `limit=100000` (the route's ceiling, above the whole campus table) in one response, about 0.9 KB a college. So the tab count, search, tiers and Select all cover all matches on the client. Cards and the Selected column mount 100 at a time as they scroll (`useRevealOnScroll`). Measured on DEV: 13,497 colleges for an 809-map draft took 7.8 s and 12 MB. Other colleges (since 2026-11-25) loads the first 40 enriched rows from `institutes/v2`, then every other match with `lite=1`, so its list and Select all cover the count on the tab (see the 2026-11-25 section below). Publish inserts and mails invited campuses one at a time in the request, so invites are capped at 200 per role.
 
 A draft stores invited campuses as ids (`invite_email_template.campusIds`); the role response adds `inviteCampusNames` (`findCampusNames`), which the wizard seeds its name map from so Resume draft lists them by name.
 
@@ -526,3 +526,40 @@ long links shorten with "…", so the drawer no longer scrolls sideways (corpora
 `4d719dc`). The open filter panel (`components/ui/FilterPopover.tsx`) stays where it opened while the page scrolls;
 it used to follow the Filter button on every scroll and slide off the top of the screen. It is re-measured only on
 a window resize, and `placeFilterPanel` never puts it above the screen's top edge (DEV `f2e75ea`, UAT `1a54449`).
+
+**Create role fixes (2026-11-25, DEV + UAT; PROD pending).** Four PROD reports from corporate.pluginlive.com/v2:
+
+- *Review step blank below 1600px (e.g. 90% zoom on a laptop).* Under 1600px every `.live-preview` becomes a floating
+  drawer opened by a Preview button (`opacity: 0; visibility: hidden` until `.is-open`). The Review step's role page
+  (`.live-preview--page`) has no button, so it stayed hidden. The drawer rules now use
+  `.live-preview:not(.live-preview--page)` (`roles/new/role-create.css`).
+- *"Pay structure: Fixed" on the apply page when none was picked.* The wizard sent `"fixed"` for a blank pick and
+  corporate-node defaulted to Fixed. Now nothing picked crosses as `compensationStructure: null` (create / PUT; PATCH
+  `changes` accepts `""`), stores `job_roles.ctc_type = NULL` (already nullable Json, no migration), and reads back
+  `""`, so the role card and apply page show no pay structure. Older rows with `ctc_type` NULL now read as "not set"
+  too. Stipend roles still store FIXED.
+- *After publishing, the success dialog shared the previous role's link.* The PROD data was right (each role has its
+  own `role_apply_short_links` code); the dialog was wrong. Next 16 reuses its cached Roles page **including its URL**:
+  after a second publish, `router.replace('/roles?created=<new>')` landed on `/roles?created=<previous>` (seen on DEV
+  by logging `history.replaceState`), and `useSearchParams` kept the stripped query too. Create role now hands the
+  new role over in sessionStorage (`roles.arrival`, `handOffArrival` in `roles/_components/CreatedRoleDialog.tsx`,
+  read once and deleted); the dialog never reads `?created=` / `?evaluationReady=` (it only strips them), so a sidebar
+  return or refresh doesn't replay it. **Never drive a one-shot list notice from the query string on this app.**
+- *Select all on 105 Chennai colleges picked 39.* Other colleges fetched 40 rows (`limit=40`) while the tab showed
+  `total`; Select all covered only loaded rows (40 minus 1 already in AI Suggested). `GET
+  /corporates/:id/institutes/v2?lite=1` (BFF `/api/institutes?lite=1`) returns every match up to 5000 without the
+  per-campus domains / invite-history laterals: about 0.25 s for all 1,577 DEV campuses, against about 19 s with
+  them. The list shows the enriched first page, then the light rows (`useCampusSearch().all`), mounted 100 at a time.
+
+**Invites capped at 200 per role in the UI (since 2026-11-25).** corporate-node's `inviteCampusIds` allows at most
+200 (`vArray(..., { max: 200 })`, from the first Roles v2 API commit). Publish creates the invite row, short apply
+link and email per college one after another inside the request, so the cap bounds that request. The wizard now
+enforces it across both tabs (`MAX_INVITED_INSTITUTES` in `roles/new/_constants.ts`): Select all takes what fits
+("Select 87"), unpicked checkboxes disable at 200 and a note explains; Clear all still works. A draft saved with more
+than 200 must be trimmed before Continue. Raising the cap means moving invites and emails to a background job.
+
+corporate-node DEV `e4f6ff11`, UAT `cd21f34c`. corporate-react-v2 DEV `4ee573e` `80cfa49` `ea2ec2d` `e3d18b6`, UAT
+`17e2d1d` `08391c6` `4cb52bc` `7758399` (cherry-picked). Verified in a browser on DEV and UAT (1440px window):
+Review preview visible; Chennai Select all 135/135 (DEV) and lite 136/136 (UAT); second publish shows its own role
+and link, no replay from the sidebar; pay structure saves blank and reads back blank.
+
