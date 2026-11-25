@@ -48,6 +48,24 @@ PROD got the topic board (`5e536d73d`) plus these two commits only, not Mari's t
   curriculum, `SubjectChips`) open on the curriculum in *Next topic*; one curriculum's panel at a time (feedback, uploaded materials,
   topic board, assessment, submission); *All curricula* is a compact list (trainer · department · degree, status, due date,
   "x of y topics done", *Open curriculum*). Search, filters and group-by still apply; group-by groups the list.
+- **Topics open in the aividya study flow** (UAT `d05e51c50` 2026-11-25, snapshot `20261125T120536Z`; **PROD not yet**). Ported from
+  aividya `frontend/src/components/student/TopicLearnFlow.tsx` + `RoboBoardLesson.tsx` to `src/components/curriculum/` (helpers
+  `src/lib/topicLearnFlow.ts`, `roboBoard.ts`, `roboBoardAudio.ts`): Learn (one part per screen, "Part X of N", Next part) → Example →
+  Key points → Quiz (one question at a time) → Done; Read / Board toggle; Listen; Robo Teacher board with Play, speed, seek.
+  - Board = aividya's zero-cost `fallbackRoboBoardManifest`, built in the browser from the lesson text (heading + first 3
+    sentences per part); narration via `elevenlabs-tts` (≤ 2,400 chars per part). aividya's AI board agents
+    (`pl/lesson-board`, `pl/lesson-visual-plan`) are not used.
+  - **Academic** (`AcademicTopicFlow.tsx`): topic Start / Continue / Practise / lesson rows → one approved lesson in the flow
+    (`?subject&unit&topic[&lesson][&tab=quiz]`; page header hidden). Reading is saved (`record_academic_learning`, null answers)
+    when the learner leaves the Learn parts; the quiz is server-scored at the end (answer key never in the browser), then a
+    review with correct answers and explanations. PDF, videos and simulation kept. *Open full subject* and Robo class
+    (`tutor=1`) still use `AcademicSubjectReader`; a topic with no approved lesson falls back to the reader.
+  - **Trainer** (`TrainerTopicFlow.tsx`): topic Start / Continue / Review / Practise and the *Next topic* card open the flow
+    (`TrainerTopicOutline` `onStart`). Topic content/description + published lessons are the Learn parts, lesson key points the
+    Key points step; the topic's practice quiz is scored in the browser and saved to `curriculum_topic_progress`;
+    `content_viewed` is saved when the learner leaves the Learn parts. Topics without lesson text show the saved AI starter
+    lesson (label "AI starter lesson · your trainer's version will appear here", PDF). The curriculum assessment and
+    submissions stay on the curriculum panel.
 - Gotcha: the UAT deploy's `03_grants.sql` gives `authenticated` table-level SELECT on every public table, including this one;
   with RLS on and no policies it still returns no rows.
 
