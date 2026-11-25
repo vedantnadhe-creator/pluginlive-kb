@@ -551,12 +551,20 @@ a window resize, and `placeFilterPanel` never puts it above the screen's top edg
   per-campus domains / invite-history laterals: about 0.25 s for all 1,577 DEV campuses, against about 19 s with
   them. The list shows the enriched first page, then the light rows (`useCampusSearch().all`), mounted 100 at a time.
 
-**Invites capped at 200 per role in the UI (since 2026-11-25).** corporate-node's `inviteCampusIds` allows at most
-200 (`vArray(..., { max: 200 })`, from the first Roles v2 API commit). Publish creates the invite row, short apply
-link and email per college one after another inside the request, so the cap bounds that request. The wizard now
-enforces it across both tabs (`MAX_INVITED_INSTITUTES` in `roles/new/_constants.ts`): Select all takes what fits
-("Select 87"), unpicked checkboxes disable at 200 and a note explains; Clear all still works. A draft saved with more
-than 200 must be trimmed before Continue. Raising the cap means moving invites and emails to a background job.
+**Any number of invited institutes (since 2026-11-25, replaces the same-day 200 cap).** `inviteCampusIds` accepts
+up to 20,000 ids (a sanity bound; 20k ids is about 0.8 MB, under corporate-node's 5 MB body limit), and the wizard's
+`MAX_INVITED_INSTITUTES` is 20,000, so Select all takes every match (UAT AI Suggested: 5,497). Publish
+(`RoleWriteService.publishRole`): invite rows and metrics rows are bulk-inserted 500 at a time (`createMany`, metrics
+with `skipDuplicates` on its unique (campus, role) key). Up to `INLINE_INVITES` = 200 campuses publish exactly as
+before (links and mails inside the request). Above 200, the general apply link is written before the response (the
+success dialog shares it), then `finishLargeInvite` writes the per-campus links in batches, sends the in-app notice
+and one invitation mail per campus **after** the response, in-process. Follow a run in the container log:
+`large invite started` / `large invite done: role <id>, N campuses, M emailed, S s`. The role activity records
+`emailQueued: true` instead of the emailed count. A pod restart mid-run leaves the rest unlinked/unmailed
+(`is_email_sent` false); Resend on the role recovers them. Upgrade path: a BullMQ job. DEV test (emails off): 1,577
+colleges published in 5.3 s, all 1,577 links done 17 s later. **Manage institutes on the role page
+(`POST …/institutes`) still allows 200 per request** (`MAX_INVITES` in `corporateRoleApplicantsV2InstitutesHandler.js`).
+corporate-node DEV `1e165373`, UAT `994446c5`; corporate-react-v2 DEV `afc24ee`, UAT `8a9c2cd`.
 
 corporate-node DEV `e4f6ff11`, UAT `cd21f34c`. corporate-react-v2 DEV `4ee573e` `80cfa49` `ea2ec2d` `e3d18b6`, UAT
 `17e2d1d` `08391c6` `4cb52bc` `7758399` (cherry-picked). Verified in a browser on DEV and UAT (1440px window):
