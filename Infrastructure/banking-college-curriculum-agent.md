@@ -10,9 +10,13 @@ live on **UAT** (`e89cd43bb` + `69cf6c3ae`, 2026-11-18) and **PROD** (`release/p
 `/data/backups/prod-20261118T045457Z`). Migration `20261118100000_curriculum_quality_controls.sql` is applied on DEV, UAT and PROD.
 
 
-## Topic completion and saved AI starter lessons (UAT 2026-11-25)
+## Topic completion and saved AI starter lessons (UAT + PROD 2026-11-25)
 
-Live on **UAT** at `039169813` (GitHub `UAT`; deploy snapshot `~/banking-sb/snapshots/20261125T054324Z`). Builds on the topic board (`5e536d73d`).
+Live on **UAT** at `039169813` (GitHub `UAT`; deploy snapshot `~/banking-sb/snapshots/20261125T054324Z`) and **PROD** at
+`release/prod-v1.1` `fa6d0b990`, tag **`v1.1.48`** (2026-11-25 06:05 UTC; backup `/data/backups/prod-starter-lessons-20261125T060543Z`).
+PROD got the topic board (`5e536d73d`) plus these two commits only, not Mari's trainer-login change `4ab0ed2c0`. Gateway task
+`pl/banking-starter-lesson` is registered on the UAT gateway (key `banking-app`) and the PROD gateway (ConfigMap `litellm-task-policy`,
+60 tasks, key `banking-app-prod`); normal and forced-fallback calls verified on both.
 
 - **Academic "Complete" needs a passed practice quiz.** A topic shows *Complete* only when every lesson is read **and**, where the
   lesson has practice questions, the latest attempt scored 60% or more (`trainerTopicComplete`, the Trainer Curriculum rule;
