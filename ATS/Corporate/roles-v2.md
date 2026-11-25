@@ -580,3 +580,17 @@ the copy had no process, so Setup evaluation (Only Evaluation path, or later on 
 process: UAT "AR caller" with 2 rounds came back with 5. The copy's workflow mode is "full" (the Only Evaluation path
 sets "quick" when it starts). A failed copy never fails the duplicate. Candidates, invites and assessment results are
 still not copied. corporate-node DEV `774c51e7`, UAT `ec737ed2`.
+
+## Applicant list: age and college location fallbacks (since 2026-11-25, DEV + UAT)
+
+corporate-node `RoleApplicantsV2.baseCte` (Development `40fc530a`, UAT `4077e149`; PROD pending):
+
+- `age_months` = profile `dob` (`YYYY-MM-DD`) as before; with no DOB it falls back to a whole-number `age` /
+  `age in years` form answer × 12, so the Age filter matches the age the drawer shows (UAT role
+  60534466: the two age-25 candidates were excluded by 23y 11m–25y 6m; now returned). `age cq` answers
+  ("0 years 0 months 22 days") are not ages and are ignored.
+- `institute_location` falls back to the current course's `city, state` when the candidate has no campus link
+  (form/bulk candidates); normalization now stamps that from the matched campus.
+- The Skills filter (`s.skill_ids` names) only matches once normalization/create-full fill `skill_ids` (see
+  `Infrastructure/form-data-normalization.md`, 2026-11-25); applicants normalized before that have none.
+

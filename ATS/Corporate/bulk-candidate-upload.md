@@ -183,6 +183,15 @@ keep their old labels; only re-screened candidates pick it up.**
 
 ## Gotchas
 
+- **Columns the form never asked reach normalization** (since 2026-11-25, corporate-node Development `40fc530a`,
+  UAT `4077e149`). `recordApplicationResponses` appends every answered column the role's Google Sheet lacks to its
+  header row (`headersWithAnsweredColumns`, case-insensitive, campus headers excluded) before appending the rows.
+  Before, only the form's columns were written, so Class X/XII marks, PG, internship etc. were silently dropped
+  and the student was created without them (they stayed visible only as raw answers in the drawer).
+- **Percentage cells are read as shown** (same commits). An Excel cell formatted `88.20%` stores `0.882`;
+  `readMappedRows` now reads percentage-formatted numeric cells as their display text (`readPercentCellsAsShown`).
+  Other cells stay raw (mobiles keep 10 digits). Date cells already arrive as `YYYY-MM-DD` (`cellText`).
+
 - **Only sheets the admin mapped are ingested.** Our own template ships an
   `Instructions` tab; without this guard uploading it created 21 junk candidates
   from its prose. Skipped sheets come back as `skipped_sheets`.

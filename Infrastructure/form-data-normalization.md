@@ -1249,6 +1249,43 @@ the `education[]` row with the same `degreeId`; no match leaves it blank so the 
 Known gap: student-node then drops that `education` row (currentCourse owns the level) and the row's matched
 `institutionId` goes with it; the CV gap-fill leaves `institutionName` blank, so the college is not shown for these rows.
 
+### Behavior — skills, date of birth, college city and 1–10 marks (2026-11-25, DEV + UAT)
+
+Sprint 44 (ISS-mwfue08w395687 skills filter, ISS-mwj27xzz5f72cc age, ISS-mweqwd1q32fe97 college city,
+ISS-mwp87nzp4255df marks). Development `33b86d8` + `acc6b8d`, UAT `a2229af` + `13c253c`; PROD pending.
+
+- **Skills → master ids.** `_attach_skills` (end of `map_to_final_schema`) collects skill text from form slugs and
+  raw headers containing "skill", work/internship/project skill rows and the parsed CV (`cv_data.skills`,
+  `resume.*.skill_set`), splits on `, ; | newline bullets`, and matches each name to `student.skills` (status 1):
+  exact on a case/space/punctuation-free key (`skill_key`, keeps `+`/`#`), else rapidfuzz `ratio >= 92` for keys of
+  5+ chars. Of duplicate master rows the **oldest** wins. Matches go to `currentCourse.skills` as `{id, name}`;
+  student-node derives `students.skill_ids` from there (see below). The master is cached per worker for 1 h
+  (`SKILL_INDEX_TTL_S`). **Unmatched names are never added to the master**; they are in the logged create-full
+  request at `details->'payload'->'_skillMatch'->'unmatched'` (key stripped before the HTTP call). There is no
+  vector-search `skill` entity type ("Entity type 'skill' not registered"), hence the in-process matcher.
+- **student-node create-full** (Development `3ef45078`, UAT `5c3ee495`) no longer hard-codes `skillIds: []`; it uses
+  `studentSkills({currentCourse, educationProfile: education, resume})`, the same derivation every profile save uses,
+  so the ids survive the student's first edit. Before this, 0 of 805 recent UAT applicants had a skill id.
+- **Date of birth** (`canonical_dob`): `admin.dob` is `YYYY-MM-DD` or empty. Accepts ISO/timestamps, dd/mm/yyyy
+  (always day first), dd-mm-yyyy, dd.mm.yyyy, "12 Mar 2004", "March 12, 2004", Excel serials; drops anything giving
+  an age outside 14–70 (ages typed as a DOB, 2025 "birth dates"). Age-only forms: the corporate list falls back to
+  the whole-years `age` / `age in years` answer (no age column in the master).
+- **College city.** Form students have no `instituteCampusId` (by design), so their college had no location.
+  `_stamp_college_locations` copies city/cityId/state/stateId from the matched campus (`institutionId`, via
+  `_campus_location`) onto each `education[]` row, else keeps the form's `education_<lvl>_city`; `currentCourse`
+  copies the row at its own level. corporate-node's applicant list falls back to `cc.city/cc.state` for
+  `institute_location`.
+- **Marks.** `cgpa_marks_to_percentage` (module-level now): any 1–10 mark is a CGPA (×10) whatever
+  `cumulative_type` the model gave; <1 is a sheet fraction (×100). Seen: a percentage-formatted `0.89` came back as
+  `8.9` "Percentage".
+- Tests: `tests/test_skills_and_dob.py`, `tests/test_college_location_and_cgpa.py`.
+- **Not done yet (data clean-up phase):** ~150 case/space duplicate skills in the master (UAT 10,747 rows /
+  10,590 names; names with mixed casing like "Ms excel"); student-node `Student.update` still auto-creates
+  UPPERCASE skills from free text; 75 UAT profiles hold an age in `dob`, 3,542 have an impossible year; existing
+  applicants need a re-normalize to gain skills/city/marks.
+- UAT note: the `UAT` branch still has the `candidate_id` NameError in the specialisation-lookup error path
+  (fixed on Development; 3 `test_current_course_from_erp_sheet` tests fail on UAT because of it).
+
 ### Gotcha — `cumulativeType` enum rejection (FST_ERR_VALIDATION)
 
 student-node's create-full Fastify schema restricts both `currentCourse.cumulativeType`
