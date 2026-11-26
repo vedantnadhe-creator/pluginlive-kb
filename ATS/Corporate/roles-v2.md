@@ -42,6 +42,19 @@ Known gap: `12th` and `Certifications` are offered by the picker but exist in ne
 
 **Export Sheet** on the candidate list's selection bar downloads the server workbook for the ticked rows: `POST /corporates/:corporateId/roles/v2/:roleId/applicants/export.xlsx` with `{ applicantIds }` (BFF `POST /api/roles/:id/applicants/export`, `exportApplicants` permission, up to 5,000 ids, 422 otherwise). `GET` on the same path exports by list filter. Both add one column per application form question from `job_role_response`; FILE_UPLOAD questions are left out. The stage and final-candidates drawers still export their own short CSV of the tier on screen.
 
+Score columns (since 2026-11-26, DEV + UAT; PROD pending): "Avg. Performance Score", then one column per assessment
+stage when there are 2 or more (a finished Behavior stage shows its level, e.g. "Practitioner"). Then
+`breakdownColumns` (`corporateRoleApplicantsV2Handler.js`) adds, from the raw round results (`scores.loadRoundResults`):
+for a **Mix & Match (Multiple Assessments) stage**, one column per assessment in it ("<Stage> · <Type>": score, status
+or Behavior level); and for **every scored assessment**, standalone or a part, one column per section ("<Stage> ·
+<Section>", or "<Stage> · <Type> · <Section>" for a part). Sections come from the same breakdown as the candidate
+report (`CorporateAssessmentDetailV2.buildTypeReports`): Aptitude categories, Communication's four skills, Role Based
+and Custom sections, and AI Interview parameters. Section cells are filled only once that attempt has a score;
+columns appear only for what an exported candidate has. `combineParts` now keeps `typeName` on a single-assessment
+result for this. corporate-node DEV `59a0e7b2` + `73939fd8`, UAT `1569f693` + `16c5570f`. Checked on UAT role
+"QA-BRC-REPLICA Private Banker" (Mix & Match Communication + Aptitude, JD-Based, Psychometric) and DEV "Senior Full
+Stack Developer" (Role Based sections).
+
 ## Empty lists
 
 The Roles and Assessments lists tell "nothing exists" from "filters hid everything" with `isNarrowed` (a status tab, search or filter is on; `useRoleFilters`, `useAssessmentFilters`). Not narrowed: the first-run empty state, "No roles yet" / "No assessments yet" / "No candidates yet", with no button of its own because the top bar's Create action is already there and permission-aware. Narrowed: "No ... match these filters" with Clear filters, which also returns the list to the All tab.
