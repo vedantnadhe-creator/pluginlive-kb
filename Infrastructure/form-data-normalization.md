@@ -1312,11 +1312,18 @@ Development `076c884` `3325e9c` `33a7e0c` `484856f` `e910bc7`; UAT `02e129d` `4c
   the matcher service itself returning a different one of two duplicate college masters for the same input
   ("Anna University"/Chennai vs "Anna university "/Kalpakkam; two "Government Engineering College Thrissur"
   rows) — master-data clean-up, not caching.
-- **UAT connection headroom gotcha.** UAT Postgres `max_connections=100` with ~86 held (mostly idle pools from
-  the app box). The faster worker made a 10-row bulk sheet burst (5 candidates in parallel + 5 create-full
-  calls) hit "too many clients" for ~2 min on 2026-11-26 08:02Z; 2 rows failed in create-full and succeeded on
-  re-queue. The worker's own pools are unchanged (2+3 per engine) — the limit is the DB's. PROD has 450.
-  create-full failures are still not retried automatically (re-queue the row).
+- **UAT connection budget (since 2026-11-26).** UAT Postgres has `max_connections=100` (3 reserved), 16 GB / 2 vCPU,
+  `idle_session_timeout=10min`. On 2026-11-26 it sat at 100/100 ("too many clients already", even for the superuser):
+  UAT's FDN still had the per-call `DBService()` engines (`154d1f5`, never cherry-picked), every matcher class
+  (institute … department, 8 of them) plus `AssessmentService` and the `main.py` checks each opened their own default
+  pool (5 + 10 overflow), times 5 containers = 42 connections, plus admin/corporate/student/vectorsearch pools.
+  Fixed: FDN `a1761e1` (UAT `7c8829e` + `ae8c5aa`) — every engine is `db_service._shared_engine` (2 + 3 per URL per
+  process); pg-vector-api-service `7027afe` (UAT `0501570`) reads `DB_POOL_MIN`/`DB_POOL_MAX` (default 5/20, UAT `.env` 1/5);
+  UAT `.env.uat` + `.env` caps: corporate-node `connection_limit=10` (was 30), student-node 8 per URL (was 20),
+  admin-node `connection_limit=5` on `DATABASE_URL_ADMIN`/`_ASSESSMENT` + `ASSIGNMENT_PG_POOL_MAX=5` (backups `*.bak-poolcap-*`).
+  Result: 100+ → ~51 connections, no pool timeouts. `auto_deploy.sh form-data-normalization` only recreates the
+  `datanormalization` API container — the worker/talent-worker/export-worker/cron containers keep their old image until
+  recreated (same env/cmd) on the new `datanormalization:api`. PROD has 450.
 
 ### Gotcha — `cumulativeType` enum rejection (FST_ERR_VALIDATION)
 
