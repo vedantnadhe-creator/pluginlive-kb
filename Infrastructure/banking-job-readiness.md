@@ -23,6 +23,20 @@ tags: [service, frontend, uat, supabase, lovable]
 `https://<banking host>/v2/` (DEV, UAT, and `lms.pluginlive.com/v2` on PROD) is **not this app**: it is `lmsv2`, a separate copy with its own repo (`PluginLive-Technologies/lmsv2`), stack (`lmsv2-sb-*`), database and files. The banking nginx sites only `include snippets/lmsv2-v2.conf`. Do not deploy banking code to `/v2` or lmsv2 code to `/`. See [lmsv2.md](lmsv2.md).
 
 
+## Trainer Dashboard Export to Excel (UAT `84178b378`, 2026-11-26; PROD not yet)
+
+Trainer Journey → Overview & Candidates → **Dashboard** (`src/components/trainer/TrainerDashboard.tsx`) has **Refresh** and
+**Export** in its header, like the Admin Dashboard. Export writes `trainer_dashboard_<YYYY-MM-DD>.xlsx`:
+Summary (the dashboard card numbers + average progress/score), Candidates (same columns as the Candidate Progress tab's CSV:
+Name, Email, Institute, Location, Mobile, Progress %, Modules Completed, Avg Score %), Module Progress (candidate × module),
+Live Sessions, Assigned Modules, Simulations. Sheets are built by `src/lib/trainerDashboardExport.ts`.
+- Candidates = the roster `TrainerJourney` already loads with `useTrainerData` (trainer_students, onboarded_by, or the trainer's
+  institute); Export is disabled ("Candidate progress is still loading") until that progress has loaded, so it never writes
+  partial zeroes. Refresh also reloads the roster. UAT check: trainer 2344322344 → 1001 candidates = the DB count for that rule.
+- Admin Dashboard export and this one share `downloadWorkbook()` in `src/lib/sheetColumns.ts` (admin output unchanged).
+- Test `src/test/trainerDashboardExport.test.ts`. Headless downloads: snap Chromium has a private /tmp — set Playwright
+  `downloadsPath` under the home directory.
+
 ## Left menu Back retention (UAT `acedbc787`, PROD `v1.1.52`, 2026-11-26)
 
 Every journey renders its sidebar inside the page, so a page change remounted it (scroll reset to the top) and access checks then
