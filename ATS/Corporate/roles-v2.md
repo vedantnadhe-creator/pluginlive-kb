@@ -522,6 +522,20 @@ The lookup now replaces every JS-`\s` character (`NAME_SPACES` in `CorporateSave
 corporate-node DEV `0248212a`, UAT `5a9ff521`, PROD `release-v1.43-hotfix-5` `6db5fa02` (live 2026-11-24 10:42 UTC; draft fd06ddfe then saved with COMPUTER TECHNOLOGY). Find such rows:
 `SELECT id, name FROM institute.streams WHERE status = 1 AND name ~ '[  -​  　﻿]';`
 
+**Cancel on Setup evaluation leaves no draft (since 2026-11-26, DEV + UAT; PROD pending).** Opening Setup evaluation
+applies the AI-tailored process and autosaves it as a DRAFT workflow 1.5 s later (`useWorkflow.autosave`, PUT
+`autosave: true`). Cancel used to only close the dialog, so a role that had no process was left with a draft: the
+pipeline bar showed its rounds and every move answered "Finish Setup evaluation before moving candidates." (the rule
+below). PROD: Equity Advisor 313319a6 and Project Manager 6dd99317, 2026-11-26. Now `useWorkflow` records, on its
+first load, whether the role had no process (workflow id "" or the untouched seeded placeholder). If so, Cancel and
+"Discard changes" (`EvaluationSetupModal`) wait for any in-flight autosave, stop later ones, and call
+`DELETE /corporates/:id/roles/v2/:roleId/workflow` (BFF `DELETE /api/roles/:id/workflow`, `manageEvaluation`), then the
+role page reloads its evaluation. corporate-node `WorkflowService.discardDraft` → `RoleWorkflowsV2.deleteUnusedDraft`
+deletes only a draft with no stage_progression, stage_dispatches, stage_runs or interview_records (stages cascade);
+a live or used draft is refused with 409. A role that already had a draft when the dialog opened keeps it. Drafts
+created before this fix stay until Setup Now (or a manual delete). corporate-node DEV `91a596a1`, UAT `691171a5`;
+corporate-react-v2 DEV `c0a4bf5`, UAT `0d83c48`.
+
 **Moving candidates while the evaluation is a draft (since 2026-11-24, DEV + UAT + PROD).** A role whose
 evaluation workflow is still a Draft (Setup evaluation opened and edited, Setup Now not clicked) moves no one:
 Move to a Stage and Mark offered answer 409 "Finish Setup evaluation before moving candidates." (Resend: "…before
