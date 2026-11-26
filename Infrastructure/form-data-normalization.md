@@ -1360,6 +1360,30 @@ Development `5a13236` `7bbce64` `07a4a9d` `57f0348`; UAT `f24123d` `27d0d7a` `47
   a worker restart (stale reclaim only runs when the sheet has pending rows) — re-queue them by hand.
 - Tests: `tests/test_completeness_placeholders.py`, `tests/test_http_client_reuse.py`.
 
+### Behavior — explicit prompt caching through the gateway; batching tried (2026-11-26, DEV + UAT)
+
+Development `441dfde` `4007581`; UAT `c6bded6` `b6d245a`; PROD pending.
+
+- **Caching.** The per-candidate call (`NormalizationService._call_openai_sync`, OpenAI client → LiteLLM
+  `pl/normalization`) now sends the fixed ~10k-token system prompt (rules + 817-slug TARGET_SCHEMA) as a system
+  message part with `cache_control: {"type": "ephemeral"}`; LiteLLM 1.89 turns it into a Gemini cachedContents
+  entry. `GeminiClient` (column mapper, other callers) does the same via `_gateway_messages`. Short prompts below
+  Gemini's cache minimum pass through uncached without error; the OpenAI fallback accepts the message shape.
+  `GEMINI_CONTEXT_CACHE=false` restores the old plain messages. Before this, the explicit-cache code only existed
+  on the direct-to-Google path (dead since the gateway move) and Gemini's implicit cache hit ~17-24% of tokens.
+- **Measured (UAT, same 81 candidates):** cached input 17.2% → 82.6%, normalization AI spend $0.73 → $0.33 for the
+  set (−55%), per-call latency unchanged (~5 s); per-candidate median 15.5 s → 13.7 s. Controlled gateway test:
+  9,359 of 9,427 prompt tokens cached on every call including the first.
+- **Batching (several candidates per AI call) — tested, NOT implemented.** Experiment on 30 real UAT prompts, 5
+  per call, cached system prompt: total time 153 s → 88 s, input tokens −77%, no value leaked between candidates
+  (0/142 identity fields); kept 87% of the values a single call reproduces run-to-run (single cached call: 92%) —
+  the gap is alias keys the model skips (e.g. `ug_year_of_passing` vs `education_ug_year_of_passing`); one real
+  value lost in each variant (country_code). Needs worker restructuring (rows are claimed and processed one by
+  one) and an end-to-end payload check before use; candidate for bulk uploads only.
+- **Matcher run-to-run variation** (not caused by this): ambiguous/duplicated college names flip between runs with
+  identical settings, e.g. "JPR college of engineering" → two "Jeppiaar Engineering College" records or "JP
+  College of Engineering". Master-data duplicates are the fix.
+
 ### Gotcha — `cumulativeType` enum rejection (FST_ERR_VALIDATION)
 
 student-node's create-full Fastify schema restricts both `currentCourse.cumulativeType`
