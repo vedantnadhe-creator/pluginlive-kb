@@ -36,6 +36,15 @@ AI Suggested lists every match, not a page: the wizard calls `matched-institutes
 
 A draft stores invited campuses as ids (`invite_email_template.campusIds`); the role response adds `inviteCampusNames` (`findCampusNames`), which the wizard seeds its name map from so Resume draft lists them by name.
 
+Degree chips and preview (since 2026-11-26, DEV; UAT branch pushed, deploy pending): the picker field groups picks
+per degree (`roles/new/_components/degreeChips.ts`). A degree with every department and specialisation ticked is
+kept in the form as its bare name (`compactWholeDegrees`, the same compaction corporate-node does on save) and shows
+as ONE chip in its full name, whose × removes it; untick any option and it expands back to the remaining picks,
+each a chip in the master's short form ("BBA · Artificial Intelligence", full text on hover; no short form → full
+name). The role page preview's "Degree & department" (`eligibilitySummary`, also the apply page card) reads per
+degree: the full name for a whole degree, else "Degree: Dept, Dept with Spec, …" listing every pick (was "first +N
+more"). corporate-react-v2 DEV `27d3281` + `0149a00`, UAT `97488a7`.
+
 Known gap: `12th` and `Certifications` are offered by the picker but exist in neither the master nor `DEGREE_CATALOGUE`, so picking one fails on save with "Some degrees are not known". Test rows in the master ("BACHELOR OF TEST DEGREE") show up on DEV and UAT.
 
 ## Applicant export
