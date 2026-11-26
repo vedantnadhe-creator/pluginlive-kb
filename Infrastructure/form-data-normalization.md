@@ -1374,7 +1374,16 @@ Development `441dfde` `4007581`; UAT `c6bded6` `b6d245a`; PROD pending.
 - **Measured (UAT, same 81 candidates):** cached input 17.2% → 82.6%, normalization AI spend $0.73 → $0.33 for the
   set (−55%), per-call latency unchanged (~5 s); per-candidate median 15.5 s → 13.7 s. Controlled gateway test:
   9,359 of 9,427 prompt tokens cached on every call including the first.
-- **Batching (several candidates per AI call) — tested, NOT implemented.** Experiment on 30 real UAT prompts, 5
+- **Batching in the pipeline (2026-11-26, built, OFF by default).** `services/normalization_batcher.py` groups
+  first-attempt normalization calls that are ready together (sent when full, when no candidate is still preparing,
+  or after `NORMALIZATION_BATCH_WINDOW_MS`=1500) and hands each caller its own answer; retries are never batched and
+  any miss falls back to a single call. Development `13d03d3` + default-off `b67bb2f`; UAT `f98cf0d` + `834f19e`.
+  `NORMALIZATION_BATCH_SIZE`=1 (off). UAT A/B, same 110 bulk rows (4 test sheets, 4–70 filled columns): off 464 s
+  vs on 488 s, AI calls 110 vs 101 — the sheet worker runs candidates as a rolling 5-wide pipeline (AI call early,
+  then 5–30 s of matching/create-full), so calls rarely coincide. Payloads identical for 79/90 (differences = matcher
+  run-to-run picks between duplicate masters, e.g. "Institute of Chemical Technology" Chennai vs Mumbai). Enabling it
+  pays only with a two-phase worker: normalize the whole claimed batch first, then match/create.
+- **Batching (several candidates per AI call) — offline experiment.** Experiment on 30 real UAT prompts, 5
   per call, cached system prompt: total time 153 s → 88 s, input tokens −77%, no value leaked between candidates
   (0/142 identity fields); kept 87% of the values a single call reproduces run-to-run (single cached call: 92%) —
   the gap is alias keys the model skips (e.g. `ug_year_of_passing` vs `education_ug_year_of_passing`); one real
