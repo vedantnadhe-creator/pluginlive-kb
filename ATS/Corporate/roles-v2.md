@@ -545,6 +545,14 @@ a live or used draft is refused with 409. A role that already had a draft when t
 created before this fix stay until Setup Now (or a manual delete). corporate-node DEV `91a596a1`, UAT `691171a5`;
 corporate-react-v2 DEV `c0a4bf5`, UAT `0d83c48`.
 
+**The role page shows a draft's rounds nowhere (since 2026-11-26, DEV + UAT; PROD pending).** A draft can also come
+from the Create-role wizard: its evaluation step autosaves the draft and the role can be floated Live without Setup Now
+(UAT "manual tester" b9609484, 2026-11-26). The candidates bar, its stage filter and the KPI row on the role page now
+take stages only from a **live** workflow (`ApplicantsTab` `stages`, `page.tsx` → `RoleKpiRow`), the same rule as the
+roles list (`usePipelineDetails` `isSetUp`). With a draft the bar shows Applied and the outcomes only, and Setup
+evaluation stays. This covers drafts from every path (wizard, dialog, duplicated role) and old drafts with no data
+fix. Guard: `tests/role-page-one-view.test.cjs`. corporate-react-v2 DEV `88f4c7b`, UAT `bdb1189`.
+
 **Moving candidates while the evaluation is a draft (since 2026-11-24, DEV + UAT + PROD).** A role whose
 evaluation workflow is still a Draft (Setup evaluation opened and edited, Setup Now not clicked) moves no one:
 Move to a Stage and Mark offered answer 409 "Finish Setup evaluation before moving candidates." (Resend: "…before
