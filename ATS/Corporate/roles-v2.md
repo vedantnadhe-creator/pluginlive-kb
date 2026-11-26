@@ -661,3 +661,17 @@ corporate-node `RoleApplicantsV2.baseCte` (Development `40fc530a`, UAT `4077e149
   section shown under its own title (wizard preview + public apply page). Before, "Benefits:" and its lines showed as
   bullets under "What we're looking for". Intro text before the lists is unchanged.
 - corporate-react-v2 UAT `04b7255` (with the sheet preview, see bulk-candidate-upload.md).
+
+## Closing a moved-off round's link is best effort (since 2026-11-26, DEV + UAT; PROD hotfix ready)
+
+Moving a candidate off a round calls admin-node `POST /assessment/candidateAccess` (corporate-node
+`services/evaluation/adminNode.setCandidateAccess`, from `dispatch.closeStageAssessment` / `reopenStageAssessment` and
+`roleAccess`) so the old round's link stops working. PROD admin-node `release-v1.43` does **not** have that route: it
+was reverted on 2026-11-18 (`fc8b5cc`) with the attempt-integrity hold, because it writes `valid_until` and reads
+`integrity_retry_of_id`. On PROD every move off a round therefore failed with "admin-node /assessment/candidateAccess
+responded 404: Route POST:/assessment/candidateAccess not found" — the new stage's dispatch was created but jrsm was not
+synced, so the row kept its old status (Digital Marketing Manager 0a233035, a Mix & Match reject moved to AI Interview).
+Now a 404 from that route is logged and skipped (the old link stays open, as before 2026-11-06); any other admin-node
+error still fails the move. `AdminNodeError` carries `.status`. Remove the 404 branch once PROD admin-node ships the
+route with attempt-integrity. corporate-node DEV `082b01b0` / UAT `8967bbac`; PROD branch `release-v1.43-hotfix-7`
+(`f4a7ec61`, local, not pushed).
