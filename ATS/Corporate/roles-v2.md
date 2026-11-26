@@ -649,3 +649,15 @@ corporate-node `RoleApplicantsV2.baseCte` (Development `40fc530a`, UAT `4077e149
 - The Skills filter (`s.skill_ids` names) only matches once normalization/create-full fill `skill_ids` (see
   `Infrastructure/form-data-normalization.md`, 2026-11-25); applicants normalized before that have none.
 
+
+## 2026-11-26 fixes: stage names, JD headings (DEV + UAT; PROD pending)
+
+- **A stage needs a name.** The evaluation builder (Quick Evaluation step, Setup evaluation dialog, wizard step) counts
+  an unnamed stage as unfinished: Continue / Setup Now / Save stay off with "Name the untitled stage to continue.", and
+  the empty Stage name field is marked invalid (required, max 200 like the server). Before, Continue let it through and
+  Start evaluation failed with "stages[0]: name is required" (UAT role f394f7d8).
+- **JD headings after the lists get their own section.** `components/jobs/jd.ts` `splitJd`: after "Responsibilities" /
+  "What we're looking for", a heading-only line ("Benefits:", "## Perks", "**Why join us**") starts an `extras`
+  section shown under its own title (wizard preview + public apply page). Before, "Benefits:" and its lines showed as
+  bullets under "What we're looking for". Intro text before the lists is unchanged.
+- corporate-react-v2 UAT `04b7255` (with the sheet preview, see bulk-candidate-upload.md).

@@ -234,3 +234,17 @@ it with `./auto_deploy.sh form-data-normalization <branch>` on the target box.
 `corporate-react-v2` uses `./auto_deploy.sh corporate-react-v2 UAT` (menu 24);
 `corporate-node-v2` is **not** in the UAT deploy menu and is pulled, built and
 restarted by hand (`systemctl restart corporate-node-v2.service`).
+
+## Sheet preview on drop (since 2026-11-26, DEV + UAT; PROD pending)
+
+On the role screens (Create role › Add candidates, role page › Add candidates) a dropped XLSX/CSV is read at once
+through this pipeline's `inspect`: the column mapper (headers + sample values) finds the name / email / phone columns
+whatever they are called ("Candidate Name", "Name of the Student" + "Last Name", "College Mail", "WhatsApp No.", or a
+header like "Details" whose values are names). `inspect` now returns per sheet `preview: [{name, email, mobile}]` — the
+proposed mapping applied to every row with the same `_apply_mapping` commit uses (first + last name joined, ExcelReader's
+"N/A" blanks dropped, 9876543210.0 → 9876543210). corporate-node passes it through; corporate-react-v2
+(`useAddCandidates` → `readRoleSheet`) lists it read-only (Name / Email / Phone, first 50 then "and N more"); rows with
+no valid email or a duplicate are counted in the "skipped" notice. Takes ~3–4 s (the mapper call). Continue is
+unchanged: it still inspects + commits the original file, so each sheet costs one extra mapper call and leaves one
+unused `awaiting_mapping` batch. The assessment wizard keeps admin-node's fixed-alias reader. FDN DEV `7d746a5`→
+Development / UAT `2fae4f0`; corporate-node UAT `8b72694b`; corporate-react-v2 UAT `04b7255`.
