@@ -1324,6 +1324,8 @@ Development `076c884` `3325e9c` `33a7e0c` `484856f` `e910bc7`; UAT `02e129d` `4c
   Result: 100+ → ~51 connections, no pool timeouts. `auto_deploy.sh form-data-normalization` only recreates the
   `datanormalization` API container — the worker/talent-worker/export-worker/cron containers keep their old image until
   recreated (same env/cmd) on the new `datanormalization:api`. PROD has 450.
+  A 2026-11-26 08:02Z burst made 2 bulk-sheet rows fail in create-full; create-full failures are still not
+  retried automatically (re-queue the row).
 
 ### Gotcha — `cumulativeType` enum rejection (FST_ERR_VALIDATION)
 
