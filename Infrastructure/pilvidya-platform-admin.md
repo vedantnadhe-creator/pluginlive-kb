@@ -27,6 +27,20 @@ curriculum management) and 11 dead route declarations.
 - Logout (`hardLogout`) revokes the session globally (all devices) and clears `pilvidya_*` / `sb-*` keys.
 - Check: `~/pilvidya-checks/nav/nav-check.cjs` (every menu item per role: header Back, browser Back/Forward, reload keeps
   session, Home, Logout + back/protected URL → sign-in), `inpage-back.cjs`.
+- **Scroll + left-menu retention (743932e6, LIVE UAT 2026-11-26):** `lib/scrollMemory.ts`, mounted once in `App.tsx`
+  (`PageScrollMemory`) and in `RoleNavSidebar`. Page scroll is saved per history entry (`location.key`, sessionStorage
+  `aividya_page_scroll`, newest 100): Back/Forward (POP) restores it, retrying up to 2.5 s while data loads and stopping
+  as soon as the user scrolls; PUSH starts at the top; REPLACE (tab canonicalisation, redirects) leaves the position.
+  `history.scrollRestoration = "manual"`. The left menu keeps its own scroll per role (`aividya_menu_scroll`) across
+  remounts and moves only the minimum needed to show the active item (never scrolls the page). Native
+  `window.location.hash =` assignments were replaced with `navigate("#…")`; a hash that bypasses React Router has no
+  `idx`, so header Back fell back to the dashboard. Generic "Back to X" buttons on TeacherDashboard,
+  TeacherLiveClassManagement, AdminStudentBulkUpload, StudentLiveClasses, TopicLessons, EvidenceAnalytics,
+  CounselorDashboard (was "Home" → `/` marketing page) and SchoolLLMConfig (was a full reload) now use `goBack`.
+  Parent `/parent` with no hash shows Today.
+- Check: `~/pilvidya-checks/nav/menu-retention.cjs` (admin/teacher/student: menu highlight, menu not jumping, page scroll
+  restored on header + browser Back; `BASE=` for UAT; local dev needs `--disable-web-security`, UAT CORS rejects
+  localhost). 75/75 on UAT; the previous build failed 14.
 
 ## Roles and two-factor
 - `platform_admin_roles` (super_admin, sales, support, content, finance). **An admin with no row is a super admin.**
