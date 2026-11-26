@@ -1286,6 +1286,38 @@ ISS-mwp87nzp4255df marks). Development `33b86d8` + `acc6b8d`, UAT `a2229af` + `1
 - UAT note: the `UAT` branch still has the `candidate_id` NameError in the specialisation-lookup error path
   (fixed on Development; 3 `test_current_course_from_erp_sheet` tests fail on UAT because of it).
 
+### Behavior — worker speed: NOTIFY wake-up, parallel matchers, shared matcher cache (2026-11-26, DEV + UAT)
+
+Development `076c884` `3325e9c` `33a7e0c` `484856f` `e910bc7`; UAT `02e129d` `4cb450c` `27009a8` `73af569` `f216f38`; PROD pending.
+
+- **Wake-up instead of a 15 s poll.** Trigger `trg_normalization_pending_insert` / `_update` on
+  `candidates_raw_data` (DB-Scripts "Form Data Normalization Worker Wake-up", applied DEV + UAT 2026-11-26)
+  NOTIFYs `normalization_pending` when a row is inserted as / reset to `pending`. The sheet worker LISTENs
+  (`services/pending_listener.py`) with a 60 s fallback poll (`SHEET_WORKER_FALLBACK_POLL_SECONDS`); if the trigger
+  is absent it keeps the old 15 s poll. Constant payload → one wake-up per transaction (a 5,000-row upload = 1).
+  LISTEN needs a direct connection (no transaction-mode pooler). The listener strips POSTGRES_URL's un-encoded
+  `?options=` query (libpq rejects it). Queue wait 13 s → 0.01 s on DEV. `SHEET_WORKER_LISTEN=false` disables.
+- **Matchers in parallel.** UG/PG/polytechnic college lookups run with `asyncio.gather` as a background task
+  through the degree block (ids collected right after it); city, education-city and department lookups are
+  prefetched (`prefetch_lookups`, same inputs/labels/order as the blocks that use them); the per-candidate cache
+  holds in-flight tasks so nothing is sent twice. State/country are not prefetched (only asked when the city fails).
+- **Shared matcher cache** (`services/matcher_cache.py`): entity-normalizer answers reused across candidates per
+  worker process — key = entity type + trimmed lower-cased input (+ pincode for college and non-education city,
+  whose requests send it); match 1 h, no-match 10 min, errors/timeouts never; LRU 20,000; deep copies.
+  `MATCHER_CACHE_ENABLED=false` disables. A hit writes no per-candidate `*_matcher_api` log row.
+- **Measured.** DEV, 4 test candidates: 18.1 s avg → 14.8 s (parallel) → 5–9 s with a warm cache; matched ids
+  identical. UAT A/B on 81 real candidates (40 role sheets: 71 form, 10 bulk, 11 wide rows, 54 with marks,
+  73 with a college), cold cache: per-candidate median 27.4 s → 19.4 s, p90 50.5 → 40.1 s; whole set
+  1,238.6 s → 953.9 s; matcher API calls 255 → 136. 77/79 matched-id sets identical; the 2 differences were
+  the matcher service itself returning a different one of two duplicate college masters for the same input
+  ("Anna University"/Chennai vs "Anna university "/Kalpakkam; two "Government Engineering College Thrissur"
+  rows) — master-data clean-up, not caching.
+- **UAT connection headroom gotcha.** UAT Postgres `max_connections=100` with ~86 held (mostly idle pools from
+  the app box). The faster worker made a 10-row bulk sheet burst (5 candidates in parallel + 5 create-full
+  calls) hit "too many clients" for ~2 min on 2026-11-26 08:02Z; 2 rows failed in create-full and succeeded on
+  re-queue. The worker's own pools are unchanged (2+3 per engine) — the limit is the DB's. PROD has 450.
+  create-full failures are still not retried automatically (re-queue the row).
+
 ### Gotcha — `cumulativeType` enum rejection (FST_ERR_VALIDATION)
 
 student-node's create-full Fastify schema restricts both `currentCourse.cumulativeType`
