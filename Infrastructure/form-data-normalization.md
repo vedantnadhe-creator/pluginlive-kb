@@ -1327,6 +1327,39 @@ Development `076c884` `3325e9c` `33a7e0c` `484856f` `e910bc7`; UAT `02e129d` `4c
   A 2026-11-26 08:02Z burst made 2 bulk-sheet rows fail in create-full; create-full failures are still not
   retried automatically (re-queue the row).
 
+### Behavior — speed round 2: no false retries, parallel per-level lookups, keep-alive HTTP, matcher cap (2026-11-26, DEV + UAT)
+
+Development `5a13236` `7bbce64` `07a4a9d` `57f0348`; UAT `2c3fe0d..787ca22` (cherry-picks); PROD pending.
+
+- **False "incomplete output" retries removed.** `_validate_normalization` counted placeholder answers as input
+  fields while the output count ignored them; the role sheet writes "N/A" into every unanswered question
+  (1,003 in 81 UAT rows), so 32/81 candidates re-sent the ~10k-token prompt up to twice more (46 of 137 calls).
+  Both counts now use `PLACEHOLDER_ANSWERS` (n/a, na, nil, null, none, -, not answered, not applicable, unknown).
+  Normalization AI calls 137 → ~90 per 81 candidates.
+- **Per-level degree/department/college resolvers run together** (`asyncio.gather` over the 21 `_process_<level>_*`
+  steps; each writes only its own `education_<level>_*` entry via one atomic `UPDATE`).
+- **One keep-alive HTTP client** (`_http_client()`, per worker + event loop) for matcher and create-full calls
+  (~50-130 ms per call saved). DB connections were already pooled.
+- **`MATCHER_MAX_CONCURRENCY` = 5** (was a hard-coded 10). Each matcher request runs 4 DB searches in
+  pg-vector-api-service (asyncpg pool max 20); at 10 in flight that pool filled and pushed UAT Postgres
+  (`max_connections=100`) over the limit — 434 TooManyConnections, 38 failed candidates. 5 = the old peak.
+- **Tried and reverted — matcher "thinking" off.** Setting the gateway policy reasoning for `pl/query-rewrite`,
+  `pl/entity-disambiguation`, `pl/pincode-resolution` to `disable` cut matcher LLM calls 3.7 s → 1.0 s, but
+  quality dropped: abbreviations stopped expanding ("wcc" → Women's Christian College, "scd" → SCAD lost) and
+  disambiguation accepted weak guesses ("hennai college" → Hindustan College). All three are back to `low` on DEV
+  and UAT (policy backups `~/litellm/policy-backups/tasks-20261126T0958*.json`). Keep reasoning on these tasks.
+- **Not done:** shrinking the ~10k-token normalization prompt / lowering `pl/normalization` reasoning — needs its
+  own output-quality A/B (the matcher experiment shows reasoning cuts are not free).
+- **UAT A/B, 81 real candidates** (same set as the round-1 test): per-candidate median 28.1 s → 15.5 s, p90
+  50.5 → 33.5 s, whole set 1,238.6 → 739.6 s, matcher calls 267 → 140, 0 failures, matched ids identical for
+  78/81 — the 3 differences are duplicate college masters (CVR College of Engineering ×2, Govt Engg College
+  Thrissur ×2, Sailesh College ×n) the matcher picks between.
+- **Gotchas found.** DEV's `vectorsearch` container points at the UAT database (shared `uat_pluginlive`); its pool
+  held 20 UAT connections after DEV testing and starved UAT (export/talent workers crash-looped on start) until
+  the idle DEV sessions were terminated. Rows claimed by a batch that dies on DB errors stay `in_progress` until
+  a worker restart (stale reclaim only runs when the sheet has pending rows) — re-queue them by hand.
+- Tests: `tests/test_completeness_placeholders.py`, `tests/test_http_client_reuse.py`.
+
 ### Gotcha — `cumulativeType` enum rejection (FST_ERR_VALIDATION)
 
 student-node's create-full Fastify schema restricts both `currentCourse.cumulativeType`
