@@ -1329,7 +1329,7 @@ Development `076c884` `3325e9c` `33a7e0c` `484856f` `e910bc7`; UAT `02e129d` `4c
 
 ### Behavior — speed round 2: no false retries, parallel per-level lookups, keep-alive HTTP, matcher cap (2026-11-26, DEV + UAT)
 
-Development `5a13236` `7bbce64` `07a4a9d` `57f0348`; UAT `2c3fe0d..787ca22` (cherry-picks); PROD pending.
+Development `5a13236` `7bbce64` `07a4a9d` `57f0348`; UAT `787ca22` `7c8829e` `ae8c5aa` `2fae4f0`; PROD pending.
 
 - **False "incomplete output" retries removed.** `_validate_normalization` counted placeholder answers as input
   fields while the output count ignored them; the role sheet writes "N/A" into every unanswered question
