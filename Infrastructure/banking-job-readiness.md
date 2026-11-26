@@ -22,6 +22,27 @@ tags: [service, frontend, uat, supabase, lovable]
 
 `https://<banking host>/v2/` (DEV, UAT, and `lms.pluginlive.com/v2` on PROD) is **not this app**: it is `lmsv2`, a separate copy with its own repo (`PluginLive-Technologies/lmsv2`), stack (`lmsv2-sb-*`), database and files. The banking nginx sites only `include snippets/lmsv2-v2.conf`. Do not deploy banking code to `/v2` or lmsv2 code to `/`. See [lmsv2.md](lmsv2.md).
 
+
+## Left menu Back retention (UAT `acedbc787`, PROD `v1.1.52`, 2026-11-26)
+
+Every journey renders its sidebar inside the page, so a page change remounted it (scroll reset to the top) and access checks then
+added items over a few seconds. On Back the URL changed but the menu stayed where the user had scrolled for the next item.
+- `SidebarContent` (`src/components/ui/sidebar.tsx`, shared by candidate, trainer, admin, admin journey and institute menus) runs
+  `useSidebarScrollMemory` (`src/hooks/useSidebarScrollMemory.ts`): menu scroll per history entry in sessionStorage
+  `lms:sidebar-scroll:v1`; Back/Forward (POP) restores that entry, a new navigation keeps the current position; the position is
+  re-applied for 3 s while items load (until the user scrolls), then the selected item is nudged into view only if off-screen.
+  The element is passed through state, not a ref (a child's layout effect runs before the parent's ref is attached).
+- Selected item = `data-active="true"` (sub-item over its group), `aria-current="page"` only as fallback. Trainer, institute and
+  admin-journey menu buttons now pass `isActive`. `src/components/NavLink.tsx`: React Router marked every `/admin?tab=…` link
+  `aria-current="page"` (it ignores the query); now only the open tab (or the item's own `data-active`).
+- `InstituteJourneyWorkspace`: open tab from `?tab=`, clicks push history (they replaced it, so Back left the app).
+  `TechStudentJourney.selectTab` (in-page tab/module moves) pushes history.
+- Verified with a browser probe (click A low in the menu, click B, Back): candidate, trainer, admin, admin journey, institute all
+  FAIL before, PASS after on UAT; workspace Back returns to the previous tab. Tests `src/test/sidebarScrollMemory.test.tsx`.
+- PROD: `release/prod-v1.1` `756d6eed6` (cherry-pick), frontend only, staged `/opt/banking/staged-sidebar-back-756d6eed6`, rollback
+  `/data/backups/prod-sidebar-back-20261126T082152Z`. UAT build note: the first UAT build hung the box under memory pressure
+  (box rebooted by another session); rebuilt with `NODE_OPTIONS=--max-old-space-size=2048`, `nice`, detached — 55 s, ≥3.4 GB free.
+
 ## Branching strategy (from 2026-11-09)
 
 | Env | Branch | Deploy |
