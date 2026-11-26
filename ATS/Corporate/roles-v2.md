@@ -531,6 +531,13 @@ The lookup now replaces every JS-`\s` character (`NAME_SPACES` in `CorporateSave
 corporate-node DEV `0248212a`, UAT `5a9ff521`, PROD `release-v1.43-hotfix-5` `6db5fa02` (live 2026-11-24 10:42 UTC; draft fd06ddfe then saved with COMPUTER TECHNOLOGY). Find such rows:
 `SELECT id, name FROM institute.streams WHERE status = 1 AND name ~ '[  -​  　﻿]';`
 
+**Candidates bar while the evaluation is a draft (since 2026-11-26, DEV + UAT; PROD pending).** The bar is Applied →
+the process's rounds → Offered (Rejected is a filter only). A DRAFT process shows no rounds (corporate-react-v2
+`bdb1189`/`88f4c7b`, Raj) and, since `b6d5f01` (UAT `0d17b94`), no Offered either: a draft refuses every move,
+Mark offered included, so Offered was unreachable (UAT "manual tester" b41afe0b had "1 (Applied) · 0 (Offered)").
+`ApplicantsTab` `draftProcess` = `workflowStatus === "draft"` and not every stage `config.seeded` (the untouched
+placeholder still allows legacy moves, so it keeps Offered, as do a live process and `workflowStatus: "legacy"`).
+
 **Cancel on Setup evaluation leaves no draft (since 2026-11-26, DEV + UAT; PROD pending).** Opening Setup evaluation
 applies the AI-tailored process and autosaves it as a DRAFT workflow 1.5 s later (`useWorkflow.autosave`, PUT
 `autosave: true`). Cancel used to only close the dialog, so a role that had no process was left with a draft: the
