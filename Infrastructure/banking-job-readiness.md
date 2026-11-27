@@ -23,7 +23,7 @@ tags: [service, frontend, uat, supabase, lovable]
 `https://<banking host>/v2/` (DEV, UAT, and `lms.pluginlive.com/v2` on PROD) is **not this app**: it is `lmsv2`, a separate copy with its own repo (`PluginLive-Technologies/lmsv2`), stack (`lmsv2-sb-*`), database and files. The banking nginx sites only `include snippets/lmsv2-v2.conf`. Do not deploy banking code to `/v2` or lmsv2 code to `/`. See [lmsv2.md](lmsv2.md).
 
 
-## Create User: a reused mobile number is reported as such (UAT `915a855d7`, 2026-11-27; PROD staged v1.1.58)
+## Create User: a reused mobile number is reported as such (UAT `915a855d7`; PROD `v1.1.58` `55a40270a`, 2026-11-27, rollback `/data/backups/prod-dup-mobile-20261127T050647Z`)
 
 Admin → Users & Roles → Create New User / Bulk upload (`bulk-create-users`). Candidates, trainers and other non-admin
 roles sign in with their **mobile number**: the Auth login identity is `<mobile>@bankready.app`
