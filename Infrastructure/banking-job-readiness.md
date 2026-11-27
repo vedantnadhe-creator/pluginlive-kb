@@ -23,6 +23,19 @@ tags: [service, frontend, uat, supabase, lovable]
 `https://<banking host>/v2/` (DEV, UAT, and `lms.pluginlive.com/v2` on PROD) is **not this app**: it is `lmsv2`, a separate copy with its own repo (`PluginLive-Technologies/lmsv2`), stack (`lmsv2-sb-*`), database and files. The banking nginx sites only `include snippets/lmsv2-v2.conf`. Do not deploy banking code to `/v2` or lmsv2 code to `/`. See [lmsv2.md](lmsv2.md).
 
 
+## LMS idle logout on UAT and PROD (2026-11-27)
+
+Candidates, trainers, institute users and admins see a warning after 58 minutes of inactivity. After 60 idle minutes the LMS signs the user out of that browser. User input, visible native media playback or **Continue session** restarts the timer. Tabs for the same account share the last activity time.
+
+| Environment | Deployed commit | Served entry bundle | Rollback snapshot |
+|---|---|---|---|
+| UAT | `2e14d6274` | `index-vrQOm9Hr.js` | `/home/ubuntu/banking-sb/snapshots/20261127T112325Z` |
+| PROD v1.1.60 | `e5feb268d` | `index-Cbfh0ris.js` | `/data/backups/prod-idle-timeout-20261127T112707Z` |
+
+Both sites passed browser checks for candidate and trainer sessions using simulated account responses and a controlled clock. Each session stayed open at 15 minutes, restarted after keyboard input, warned at 58 idle minutes and returned to sign-in at 60. The trainer also renewed the session from the warning. The public sign-in pages and live Auth health endpoint passed on both hosts.
+
+The production release extends v1.1.59. Both hosts built from the recorded Git commits with their own environment settings. The Banking GitHub credential expired on 2026-11-27. Publication of the feature branch, the `UAT` and `release/prod-v1.1` branches, and the local annotated `v1.1.60` tag is pending. The release worktrees on DEV are `/home/ubuntu/worktrees/banking-idle-timeout-60m` and `/home/ubuntu/worktrees/banking-prod-idle-timeout-60m`.
+
 ## Trainer Journey session recovery on UAT and PROD (2026-11-27)
 
 The browser checks the signed-in user on page load, when the tab becomes visible and every minute while it is visible. An HTTP 403 from this check now clears the old browser's session and returns the trainer to sign-in with the message “Your account was signed in on another device.” HTTP 401 follows the same path. OTP throttling still uses the server's retry time.
@@ -34,7 +47,7 @@ The browser checks the signed-in user on page load, when the tab becomes visible
 
 Each host passed five browser checks. The public trainer sign-in page loaded in clean Chromium, and the live OTP form displayed the validation message for a malformed identifier. The other checks used browser-local API fixtures for trainer OTP login, rejected OTP requests and session revocation. A trainer with a revoked session returned to sign-in immediately on reload and after 59 seconds in an already-open dashboard. The browser cleared its stored credentials and a subsequent visit to the protected route stayed at sign-in. On a 429 the form displayed the retry time and disabled the send button. The reported audio and `content-all.js` warnings did not reproduce. Production published static assets while a bulk video job was open. Auth, REST and Edge worker start times stayed the same.
 
-GitHub accepted the UAT branch before the organization credential expired. The production branch and annotated `v1.1.59` tag still need publishing from `/home/ubuntu/worktrees/banking-trainer-session-console-prod-20261127` once write access is restored. The production host already serves the release.
+GitHub accepted the UAT branch before the organization credential expired. The local annotated `v1.1.59` tag remains in `/home/ubuntu/worktrees/banking-trainer-session-console-prod-20261127`. The later v1.1.60 release includes this production commit.
 
 ## Create User: a reused mobile number is reported as such (UAT `915a855d7`; PROD `v1.1.58` `55a40270a`, 2026-11-27, rollback `/data/backups/prod-dup-mobile-20261127T050647Z`)
 
