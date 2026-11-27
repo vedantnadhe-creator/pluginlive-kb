@@ -427,6 +427,30 @@ is the first shown, matching the assessments list. Coverage:
 `test/corporateDashboardV2.spec.js` "assessment ordering". Deployed DEV
 `a776a3bb`, UAT `bef4aa2e`; PROD pending.
 
+### Roster checkbox: one box, and page CSS class names must not clash (DEV + UAT, 2026-11-27)
+
+The roster's select checkbox drew **a box inside a box** once the user had opened any
+Roles page first. Cause: Next.js route stylesheets are global and **stay in the
+document after a client-side navigation**. The roster's wrapper `label.tcbx` and
+`roles/[id]/role-page.css`'s `input.tcbx` (18px bordered box) shared the name, so
+after visiting Roles both rules applied to the roster's wrapper. Bug since 2026-07-25
+(`1ef2928`, the Roles style).
+
+Fix (corporate-react-v2 `32bda55` on Development, cherry-picked to UAT as `b0f6de8`):
+the roster class is renamed `.acbx` (`assessments/[id]/assessment-detail.css`,
+`CandidatesTable.tsx`). `prebuild` now runs `scripts/check-css-class-collisions.mjs`,
+which **fails the build when a class is newly styled as the leading selector in more
+than one stylesheet under `src/app`**. Existing shared classes are frozen in
+`scripts/css-class-collisions.baseline.json`. To fix a failure, rename the page-local
+class or move a shared atom into `src/styles/ds/` (not scanned). After a deliberate
+change, regenerate with `node scripts/check-css-class-collisions.mjs --write`.
+
+Gotcha: **the baseline is per branch.** UAT still has 7 shared classes that
+Development has since removed (`.applied*`, `.fchip`, `.filterbar`, `.ma-card`), so the
+Development baseline failed the UAT build. The UAT commit carries a baseline regenerated
+from UAT. When you cherry-pick to UAT or PROD, run the check there and `--write` if
+only pre-existing clashes are reported.
+
 ### Sorting the roster is a three-state cycle (DEV + UAT, 2026-09-08)
 
 A score column cycles **ascending → descending → newest assignment first**. It used to toggle between the two directions only, so the first click on
