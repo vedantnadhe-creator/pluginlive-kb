@@ -23,6 +23,19 @@ tags: [service, frontend, uat, supabase, lovable]
 `https://<banking host>/v2/` (DEV, UAT, and `lms.pluginlive.com/v2` on PROD) is **not this app**: it is `lmsv2`, a separate copy with its own repo (`PluginLive-Technologies/lmsv2`), stack (`lmsv2-sb-*`), database and files. The banking nginx sites only `include snippets/lmsv2-v2.conf`. Do not deploy banking code to `/v2` or lmsv2 code to `/`. See [lmsv2.md](lmsv2.md).
 
 
+## Trainer Journey session recovery on UAT and PROD (2026-11-27)
+
+The browser checks the signed-in user on page load, when the tab becomes visible and every minute while it is visible. An HTTP 403 from this check now clears the old browser's session and returns the trainer to sign-in with the message “Your account was signed in on another device.” HTTP 401 follows the same path. OTP throttling still uses the server's retry time.
+
+| Environment | Live commit | Served entry bundle | Rollback snapshot |
+|---|---|---|---|
+| UAT | `9c435316352937a75da2b52c516d57fb44f902ed` | `index-DBBdcU-8.js` | `/home/ubuntu/banking-sb/snapshots/20261127T103144Z` |
+| PROD v1.1.59 | `a801e5b775ace1e0d5456a7922c88d85eb10b0fe` | `index-BOFWljNV.js` | `/data/backups/prod-trainer-session-20261127T104138Z` |
+
+The public trainer sign-in page loaded in clean Chromium on each host. Tests against each deployed frontend used browser-local API fixtures for trainer OTP login, a revoked session, invalid input and the OTP cooldown. Reloading a revoked trainer session cleared its stored credentials and returned it to the trainer login. A subsequent visit to the protected route stayed at sign-in. All three checks passed twice on each host. Production published static assets while a bulk video job was open. Auth, REST and Edge worker start times stayed the same.
+
+GitHub accepted the UAT branch before the organization credential expired. The production branch and annotated `v1.1.59` tag still need publishing from `/home/ubuntu/worktrees/banking-trainer-session-console-prod-20261127` once write access is restored. The production host already serves the release.
+
 ## Create User: a reused mobile number is reported as such (UAT `915a855d7`; PROD `v1.1.58` `55a40270a`, 2026-11-27, rollback `/data/backups/prod-dup-mobile-20261127T050647Z`)
 
 Admin → Users & Roles → Create New User / Bulk upload (`bulk-create-users`). Candidates, trainers and other non-admin
