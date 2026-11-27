@@ -123,20 +123,19 @@ case-insensitively — v1's own nav item uses the lowercase form too.
 (v2 is mounted at `<host>/v2`, v1 at `<host>/`), so a bare absolute path is
 already an ATS link and the session is shared.
 
-## Feature-based sign-in landing (DEV + UAT, 2026-09-17)
+## Sign-in landing: every corporate lands on v2 (DEV + UAT, 2026-11-27)
 
-Corporate sign-in chooses its initial dashboard from the corporate's fresh
-`accessLevel` in `GET /corporates/:corporateId`:
+Every corporate user now lands on **`/v2/dashboard`** after sign-in, whatever the corporate's
+`accessLevel` (0 = neither, 1 = ATS, 2 = Assessment, 3 = both). A failed corporate lookup also goes to v2.
+`getCorporateLandingPath()` in `src/utils/corporateLanding.js` returns `/v2/dashboard` unconditionally
+(corporate-react `e2818bb59` on `Development`, cherry-picked to UAT as `517589cae`). ATS users reach the ATS
+screens through v2's sidebar bridge (`hasAtsAccess` = level 1 or 3), which links back into v1.
 
-| Feature access | accessLevel | Landing |
-|---|---|---|
-| Neither | 0 | v1 `/dashboard` |
-| ATS only | 1 | v1 `/dashboard` |
-| Assessment only | 2 | v2 `/v2/dashboard` |
-| Both | 3 | v1 `/dashboard` |
+History: from 2026-09-17 only Assessment-only corporates (level 2) went to v2 and all others to v1
+`/dashboard`. On PROD (still on that rule) that sent 84 of 87 corporates to v1, e.g. the level-3
+"Client Demo Corporate". **PROD has not received the always-v2 change yet.**
+The v1 sidebar still has a Dashboard item pointing to v1 `/dashboard`.
 
-Missing/unknown access levels or a failed corporate lookup fall back to v1.
-This affects sign-in landing, not authorization or explicit dashboard links.
 The shared authentication service still sends users to corporate `/signin`.
 `UserSignin` waits for `SignIn`/`corporateDetails` to return before choosing the
 destination; a new URL token takes precedence over a previous account's session.
@@ -153,8 +152,7 @@ UAT commits: `73b097a2f` (landing rule), `1adc22d5c` (exclusive routing).
 The UAT Docker build stage uses `node:20-bullseye` with its bundled build tools
 (`bbc76d382`); installing those tools into the slim image failed with HTTP 404s
 from the Bullseye security package mirror. The final nginx runtime is unchanged.
-Regression check: `node --test tests/corporate-landing.test.cjs` (23 tests).
-Production has not received these changes.
+Regression check: `node --test tests/corporate-landing.test.cjs` (23 tests, now expecting v2 for every level).
 
 ## ATS bridge visibility (UAT, 2026-09-17)
 

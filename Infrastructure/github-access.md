@@ -4,7 +4,7 @@ How the DEV / UAT / PROD boxes authenticate to `github.com/PluginLive-Technologi
 Read this when a `git pull`/`git push` on any box returns **403**, or when a deploy script fails
 at its `git fetch` step.
 
-## Current credential (as of 2026-10-28)
+## Current credential (as of 2026-11-27)
 
 | | |
 |---|---|
@@ -12,12 +12,25 @@ at its `git fetch` step.
 | GitHub account | **RajPluginLive** |
 | Resource owner | `PluginLive-Technologies` (the org — *not* a personal account) |
 | Permissions | `Contents: Read and write`, `Metadata: Read` |
-| Expiry | **2026-11-27** — it will expire and break every box |
-| Where the value lives | `~/.git-credentials` on each box (mode 600). Never committed here. |
+| Expiry | **2027-02-25 11:30 UTC** (90 days) — rotate before then or every box breaks |
+| Where the value lives | `~/.git-credentials` and `~/.github-org-token` on DEV + UAT (mode 600), embedded in each checkout's `origin`. Never committed here. |
 
 Installed on **DEV**, **UAT** (`uat.pluginlive.com`) and **PROD** (`140.245.25.134`).
 
-## Status 2026-11-27 — UAT re-rotated
+## Status 2026-11-27 (afternoon) — new token, DEV + UAT fully rotated
+
+- Every org token on DEV and UAT was dead (`Invalid username or token`), so `corporate-react` could not push and the
+  DEV CI deploy and UAT `auto_deploy.sh` could not pull. A new RajPluginLive fine-grained token (expires
+  **2027-02-25**) was installed with the procedure below: **DEV** credential store + 786 embedded origins
+  (incl. worktrees and `actions-runner/_work`), **UAT** credential store + 40 origins; `git ls-remote` /
+  `fetch --dry-run` verified on both. The `gh` CLI on DEV is logged in as RajPluginLive with it too
+  (it cannot read Actions runs: `403 Resource not accessible by personal access token`).
+- The raw value is also kept in `~/.github-org-token` (600) on DEV and UAT, so a rotation can be scripted
+  with `TOKEN=$(cat ~/.github-org-token)`.
+- **Still open:** PROD (`140.245.25.134`) and the GCP VM `pl-prod-app-01` still have the expired token, so
+  the next PROD release will fail at `git fetch` until they are rotated.
+
+## Status 2026-11-27 (morning) — UAT re-rotated
 
 - The 10-28 org token expired on 2026-11-27, and every UAT `git fetch` failed with `Invalid username or token` (`auto_deploy.sh` exit 128).
   DEV already had a newer working token, but only in some checkouts' `origin` URLs; DEV's `~/.git-credentials` still holds the expired one.
