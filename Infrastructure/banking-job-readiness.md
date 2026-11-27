@@ -62,6 +62,21 @@ Candidate Journey → **Trainer Curriculum** (`/journey/student/tech?tab=trainer
   normal 1.1 s, forced fallback 1.2 s (gemini-3-flash-preview). Verified (QA admin `qa.banking.admin.20261015`): 110-page
   PDF summary 6.4 s / cached 0.9 s, "page 5" question cited page 5, 5-question quiz, DOCX example; unknown file 404, anon 401;
   QA candidate page 0 errors. `ENV=prod node ui.cjs <test-user-id>` (test accounts only).
+- **Languages, charts, pictures (UAT `f3dbd218b`, 2026-11-27; PROD staged as `44f1df897` / v1.1.57, not published yet).**
+  - **Answer in**: Indian English (default) + 14 Indian languages (Hindi, Bengali, Telugu, Marathi, Tamil, Gujarati, Urdu,
+    Kannada, Odia, Malayalam, Punjabi, Assamese, Nepali, Sanskrit) — the same list and saved choice
+    (`robo-faculty-language:<user>`) as the course Robo Faculty. The server checks the script (`usesClassScript`, quiz items via
+    `questionInClassLanguage`) and retries once; Listen speaks in that language. Summaries are cached per file version + language.
+  - **Chart & diagram** action (`visualise`) and charts on any answer: `chart` {bar|line|pie, labels, values, unit} drawn with
+    recharts (`DocumentChart.tsx`, numbers also as a table). **A chart is kept only if every value is printed in the excerpts
+    the model saw** (`cleanChart`), so no invented figures; otherwise the answer shows text/diagram only.
+  - **Show a picture**: each answer may name a `picture_topic`; the learner's click calls action `picture`, which makes one
+    illustration via the existing image providers (`makeTopicVisual`, Admin → LLM settings → AI image generation, monthly
+    budget) and pools it for every learner of that file (`ai_content_bank` kind `robo_faculty_visual`, bucket
+    `robo-faculty-visuals/doc-tutor/`). Picture calls count toward the 80/day learner cap. Generators sometimes add text
+    despite the prompt; the caption says to check facts against the document.
+  - Verified on UAT: Hindi/Tamil/Kannada answers + Kannada quiz, `fr` → 400; NISM workbook chart of Nifty call premiums by
+    strike (values from the PDF); picture 10 s first time, pooled 0 s; browser: Hindi + diagram + picture, 0 page errors.
 - Running the full vitest suite rewrites the tracked `test-assessment-report.pdf`; don't `git add -A` after it (UAT needed a restore commit).
 
 ## Trainer Dashboard Export to Excel (UAT `84178b378`, 2026-11-26; PROD `v1.1.55` `97d6385b7`, 2026-11-27)
