@@ -5937,7 +5937,7 @@ On 27 November 2026, the LMS added two optional roster identifiers to manual can
 | Journey | Add one candidate | Upload candidates |
 | --- | --- | --- |
 | Admin Journey → Users | **Add User** | **Bulk upload candidates**, with an Excel template and support for XLSX, XLS and CSV |
-| Trainer Journey → Manage Students | **Add Candidate** | **Bulk Upload Students (Candidates)**, with a downloadable CSV template |
+| Trainer Journey → User Management → Manage Candidates | **Add Candidate** | **Bulk Upload Students (Candidates)**, with a downloadable CSV template |
 | Admin Dashboard → User Management | **All Users** → **Create User** with role **Candidate** | **Create / Bulk** |
 
 **Candidate UID** is the existing `students.learner_code` used by the learner and certificates. A roster may supply its own UID, including one with leading zeros. Leaving it blank assigns the next LMS learner code. The database enforces uniqueness across Admin and Trainer submissions. The `PL-STU-` numeric sequence is reserved for LMS-generated codes.
