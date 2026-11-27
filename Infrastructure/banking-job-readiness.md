@@ -62,7 +62,7 @@ Candidate Journey → **Trainer Curriculum** (`/journey/student/tech?tab=trainer
   normal 1.1 s, forced fallback 1.2 s (gemini-3-flash-preview). Verified (QA admin `qa.banking.admin.20261015`): 110-page
   PDF summary 6.4 s / cached 0.9 s, "page 5" question cited page 5, 5-question quiz, DOCX example; unknown file 404, anon 401;
   QA candidate page 0 errors. `ENV=prod node ui.cjs <test-user-id>` (test accounts only).
-- **Languages, charts, pictures (UAT `f3dbd218b`, 2026-11-27; PROD staged as `44f1df897` / v1.1.57, not published yet).**
+- **Languages, charts, pictures (UAT `f3dbd218b`; PROD `v1.1.57` `44f1df897`, 2026-11-27; rollback `/data/backups/prod-doc-tutor-lang-20261127T044058Z`).** PROD check (QA admin): `Goal_Based_Portfolio_Simulator.xlsx` → bar chart of goal achieved by market scenario (69/87/99 %, from the sheet), Tamil summary + diagram, Hindi answer, picture 7.8 s.
   - **Answer in**: Indian English (default) + 14 Indian languages (Hindi, Bengali, Telugu, Marathi, Tamil, Gujarati, Urdu,
     Kannada, Odia, Malayalam, Punjabi, Assamese, Nepali, Sanskrit) — the same list and saved choice
     (`robo-faculty-language:<user>`) as the course Robo Faculty. The server checks the script (`usesClassScript`, quiz items via
