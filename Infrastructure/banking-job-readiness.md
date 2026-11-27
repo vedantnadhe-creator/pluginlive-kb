@@ -23,7 +23,7 @@ tags: [service, frontend, uat, supabase, lovable]
 `https://<banking host>/v2/` (DEV, UAT, and `lms.pluginlive.com/v2` on PROD) is **not this app**: it is `lmsv2`, a separate copy with its own repo (`PluginLive-Technologies/lmsv2`), stack (`lmsv2-sb-*`), database and files. The banking nginx sites only `include snippets/lmsv2-v2.conf`. Do not deploy banking code to `/v2` or lmsv2 code to `/`. See [lmsv2.md](lmsv2.md).
 
 
-## Trainer Dashboard Export to Excel (UAT `84178b378`, 2026-11-26; PROD not yet)
+## Trainer Dashboard Export to Excel (UAT `84178b378`, 2026-11-26; PROD `v1.1.55` `97d6385b7`, 2026-11-27)
 
 Trainer Journey → Overview & Candidates → **Dashboard** (`src/components/trainer/TrainerDashboard.tsx`) has **Refresh** and
 **Export** in its header, like the Admin Dashboard. Export writes `trainer_dashboard_<YYYY-MM-DD>.xlsx`:
@@ -36,6 +36,13 @@ Live Sessions, Assigned Modules, Simulations. Sheets are built by `src/lib/train
 - Admin Dashboard export and this one share `downloadWorkbook()` in `src/lib/sheetColumns.ts` (admin output unchanged).
 - Test `src/test/trainerDashboardExport.test.ts`. Headless downloads: snap Chromium has a private /tmp — set Playwright
   `downloadsPath` under the home directory.
+- **PROD (2026-11-27):** cherry-pick of `84178b378` onto `release/prod-v1.1` → `97d6385b7`, tag `v1.1.55`, frontend only
+  (staged driver `/opt/banking/staged-trainer-export-97d6385b7`, backup `/data/backups/prod-trainer-export-20261127T015043Z`).
+- **Verified by real download** (`~/banking-checks/trainer-export/export.cjs`, `ENV=uat|prod`, minted trainer session, parses the
+  .xlsx): UAT trainers with 1001 / 13 / 12 candidates and PROD trainers with 1000 / 252 candidates — all six sheets, candidate
+  counts = the roster, success toast, no failed API calls or page errors.
+- A trainer who has not accepted the privacy notice (version 2026-11-17) sees that consent dialog over the dashboard first;
+  Export works once they agree.
 
 ## Left menu Back retention (UAT `acedbc787`, PROD `v1.1.52`, 2026-11-26)
 
