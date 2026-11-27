@@ -23,6 +23,20 @@ tags: [service, frontend, uat, supabase, lovable]
 `https://<banking host>/v2/` (DEV, UAT, and `lms.pluginlive.com/v2` on PROD) is **not this app**: it is `lmsv2`, a separate copy with its own repo (`PluginLive-Technologies/lmsv2`), stack (`lmsv2-sb-*`), database and files. The banking nginx sites only `include snippets/lmsv2-v2.conf`. Do not deploy banking code to `/v2` or lmsv2 code to `/`. See [lmsv2.md](lmsv2.md).
 
 
+## Create User: a reused mobile number is reported as such (UAT `915a855d7`, 2026-11-27; PROD staged v1.1.58)
+
+Admin → Users & Roles → Create New User / Bulk upload (`bulk-create-users`). Candidates, trainers and other non-admin
+roles sign in with their **mobile number**: the Auth login identity is `<mobile>@bankready.app`
+(`_shared/onboarding-auth-identity.ts`), so **one mobile = one account**. Re-using a mobile that already signs in to
+someone made Auth return "A user with this email address has already been registered" — misleading, because the email
+the admin typed was new (PROD 11-27: trainer "Jershini Y", `jershini.y+tns@…`, mobile 3213213213 = existing candidate
+account `jershini.y+rajeevclg1@…` created by candidate OTP login on 11-02). Now the row fails with
+"mobile N already signs in to another account (name, email). Each mobile number can sign in to only one account: use a
+different mobile number, or edit that existing user in All Users." Admins (email login) get "<email> already has a
+sign-in account". Nothing is created on that failure (UAT check: auth users 140 → 140). Tests in
+`src/test/onboardingAuthIdentity.test.ts`. Not changed: one person cannot hold two roles under one mobile through Create
+User — change the existing user's role instead.
+
 ## Trainer Curriculum: track switch, real progress, Explain with Robo Faculty (UAT `cb75ea630`; PROD `v1.1.56` `9971d2511`, 2026-11-27)
 
 Candidate Journey → **Trainer Curriculum** (`/journey/student/tech?tab=trainer_curricula`).
