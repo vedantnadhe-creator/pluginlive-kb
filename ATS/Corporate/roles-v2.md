@@ -728,3 +728,15 @@ corporate-react-v2 DEV `97e6178` / UAT `4d1d3ad`.
   false/null; the bell reads "Not emailed yet — send the invite email…", and a successful send marks the campus emailed.
 - Commits: corporate-react-v2 DEV `cbfba1d` / UAT `1156e95`; corporate-node DEV `59129c66` / UAT `e09ad08e`;
   user-management-node DEV `b3ae625` / UAT `860865e`.
+
+## Publish email follows the Invite template dialog (since 2026-11-27, DEV + UAT; PROD pending)
+
+The wizard's Invite template dialog pre-fills a default ("Hiring at <company>: <role> — invitation for [Institute name]",
+"Dear Placement Officer, <company> is hiring for <role> …", role / company / location / compensation / apply-by lines).
+"Save & continue" on an unchanged default saved nothing (`onSave(null)`), as did never opening the dialog, so
+`invite_email_template` stayed null and Publish fell back to corporate-node's old v1 copy ("Job Opportunity for
+Students - Application Form …") — UAT role 19c448ce. Now, with campuses picked and no saved edit, the wizard's submit
+sends the dialog's default for this role (`InviteTemplateModal.defaultTemplate`, company from `/api/me/corporate`); it is
+saved on the role, so later Manage institutes invites and reminders use it too. corporate-node `inviteCopy`'s fallback
+(roles with no template, e.g. older ones) uses the same subject/body without the terms lines. corporate-node DEV
+`53b2717a` / UAT `f471a421`; corporate-react-v2 DEV `bdb286a` / UAT `db84ecd`.
