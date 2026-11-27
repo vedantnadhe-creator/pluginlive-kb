@@ -130,6 +130,16 @@ its scoring semaphore → scoring still works but with **no speedup**. Live
 proctoring / AI-interview endpoints are `PRIORITY_PATHS` and bypass that
 semaphore, so raising it does not affect live traffic.
 
+**`/resume-match/evaluate` and `/extract-criteria` run their LLM call off the event loop (since 2026-11-27,
+DEV + UAT; PROD pending).** Both routes are `async def` and used to call the blocking Gemini call
+(`evaluate_candidate_against_criteria` / `extract_criteria_from_jd`) inline, so each call froze the whole
+single-process AI engine for its 6–13 s. Scoring therefore ran one at a time regardless of the settings above, and
+every other request queued behind it. During a bulk re-score (UAT 2026-11-27, ~59 busy min/hour) JD parse
+(`/jd-parser/parse/text`) took ~55 s although its own LLM call took ~7 s. Now both use `run_in_threadpool`, like
+`jd_parser`; AI-usage contextvars carry over. fastapi-ai-engine DEV `d528754` / UAT `3457115`; guard test
+`tests/test_resume_match_nonblocking.py`. If JD parse or other AI calls are slow again while a re-score runs, look
+for another `async def` route making a blocking LLM call.
+
 ## Shared Redis — per-environment queue namespacing
 
 DEV and UAT **share one Redis instance** (`129.154.231.72:6377`) but have
