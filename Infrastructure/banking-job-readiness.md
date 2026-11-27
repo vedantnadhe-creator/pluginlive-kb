@@ -5929,3 +5929,23 @@ Trainer/admin **Coordinator Review → Candidate Review** (`src/components/share
 - The Candidate cell shows the learner reference and email under the name (deduplicated). The table still shows at most 100 rows.
 - Commits: DEV `Development` `80afa9948`; UAT `UAT` `7d9445bff` (cherry-pick, merged with UAT-only `cb7d0711b` learner reference + export lines). UAT snapshot `20261126T103249Z`, bundle `index-CwcmwRTz.js`. **PROD 2026-11-26 11:07Z:** `release/prod-v1.1` `5f56865a3` (tag `v1.1.53`, cherry-pick of UAT `7d9445bff` on `756d6eed6`; file byte-identical to UAT), frontend only, no migration. Staged `/opt/banking/staged-coord-search-5f56865a3` (`publish.sh`: preflight live commit/.env/no foreign hosts/shared assets identical → backup → add assets, swap `index.html` → verify → auto-restore on failure); bundle `index-DGuRJsz1.js`; rollback `/data/backups/prod-coord-search-20261126T110729Z`. PROD has 2,313 active students (old search reached only the first 500). Verified on lms.pluginlive.com as trainer Jershini: email of a student past row 1,500 and learner code `PL-STU-001366` → exactly 1 matching row each, 0 API errors, 0 page errors.
 - Check: `ENV=dev|uat|prod [PH='<placeholder>'] node ~/banking-checks/coordsearch.cjs <trainer-uid> <term>` — read-only (writes blocked), sets the value through the UAT privacy-consent modal, PASS only if every row contains the term. UAT/PROD placeholder is `Search name, email, learner code…`, DEV `Search name, email, institute…`. Passed 11-26 on UAT (email past row 500, `PL-STU-001599`, `RGCMSFIN2026021`) and DEV.
+
+## Candidate UIDs and batch IDs in Admin and Trainer onboarding
+
+On 27 November 2026, the LMS added two optional roster identifiers to manual candidate creation and bulk upload.
+
+| Journey | Add one candidate | Upload candidates |
+| --- | --- | --- |
+| Admin Journey → Users | **Add User** | **Bulk upload candidates**, with an Excel template and support for XLSX, XLS and CSV |
+| Trainer Journey → Manage Students | **Add Candidate** | **Bulk Upload Students (Candidates)**, with a downloadable CSV template |
+| Admin Dashboard → User Management | **All Users** → **Create User** with role **Candidate** | **Create / Bulk** |
+
+**Candidate UID** is the existing `students.learner_code` used by the learner and certificates. A roster may supply its own UID, including one with leading zeros. Leaving it blank assigns the next LMS learner code. The database enforces uniqueness across Admin and Trainer submissions. The `PL-STU-` numeric sequence is reserved for LMS-generated codes.
+
+**Batch ID** is stored in `students.metadata.batch_id`. Use the same ID on new rows to add them to an existing intake. Within an upload, all rows with an empty Batch ID share one generated ID, including rows processed in later chunks. A manual addition with an empty Batch ID starts a new batch. The LMS trims supplied IDs and stores them in uppercase. Display and search use these same IDs in both journeys. Earlier learners retain their existing UIDs and batch history.
+
+Trainer CSV schema v4 adds optional `batch_id` and `candidate_uid` columns. Earlier files can still be imported. Admin Excel uses **Batch ID** and **Candidate UID**. Trainer-created candidates keep their trainer and institute mapping. Sharing a batch label grants no roster access.
+
+UAT commit `ceb6eea2c`. PROD release [v1.1.62](https://github.com/PluginLive-Technologies/bankingjobreadiness/tree/v1.1.62) at `b52c4593d`. The release updates the website and the existing `bulk-create-users`, `trainer-bulk-import` and `trainer-csv-schema` functions. It uses the existing student table and unique learner-code index.
+
+Signed-in browser checks on UAT and PROD created students through all four journey actions and verified the saved identifiers, trainer and institute ownership, and roster search. Both template downloads worked. The checks covered leading zeros, automatic IDs, a shared batch within each file and duplicate UID rejection. Temporary users, students and import jobs were removed. A final count found 2,290 distinct learner codes for 2,290 UAT students and 2,324 for 2,324 PROD students. UAT snapshot `20261127T124258Z`. PROD rollback snapshot `/data/backups/prod-student-batch-20261127T124749Z`.
