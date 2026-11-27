@@ -23,6 +23,24 @@ tags: [service, frontend, uat, supabase, lovable]
 `https://<banking host>/v2/` (DEV, UAT, and `lms.pluginlive.com/v2` on PROD) is **not this app**: it is `lmsv2`, a separate copy with its own repo (`PluginLive-Technologies/lmsv2`), stack (`lmsv2-sb-*`), database and files. The banking nginx sites only `include snippets/lmsv2-v2.conf`. Do not deploy banking code to `/v2` or lmsv2 code to `/`. See [lmsv2.md](lmsv2.md).
 
 
+## Trainer Modules tab: headings are Module Groups (UAT + PROD v1.1.61, 2026-11-27)
+
+Trainer Journey → Curriculum Setup → **Modules** (`AIModuleCreator`, trainer audience) lists modules under **one heading per Module Group**. A module's groups are its `admin_modules.module_group_id` (or `metadata.module_group_id`) plus every `module_group_items` row for its id or its legacy `source_module_id`. A module in several groups is listed under each, so the headings can add up to more than "All Modules (N)". Modules in no group are under **No module group** (last). Same-name groups merge into one heading (case-insensitive). The **admin** catalogue (`Modules & Videos`) still groups by **Domain** (`domain_id`; none = "Uncategorised").
+
+Before this, the trainer page also grouped by Domain. A module mapped to a group but with no domain showed as "Uncategorised" (PROD, TNS - Curriculum, 11-27).
+
+Grouping logic: `src/lib/moduleCategories.ts` (test `src/test/moduleCategories.test.ts`). Frontend only, no migration. Trainers read `module_groups` / `module_group_items` directly (RLS lets authenticated users read both). Which modules a trainer sees is unchanged (`private.trainer_module_ids()`).
+
+| Environment | Commit | Bundle | Rollback |
+|---|---|---|---|
+| Development | `0b57e8bc0` | not deployed | — |
+| UAT | `94dd0a426` | `index-D8bLCJmE.js` | `/home/ubuntu/banking-sb/snapshots/20261127T120238Z` |
+| PROD v1.1.61 | `63605ee4b` | `index-C-WCM0w0.js` | `/data/backups/prod-group-headings-20261127T120713Z` |
+
+Check: `ENV=uat|prod node ~/banking-checks/module-group-headings-20261127/ui.cjs <trainer-auth-uid>` (read-only; fails on an "Uncategorised" heading). UAT "Jershini tsm 2": 5 group headings + No module group, which matches the DB. PROD TNS trainer Jershini Y: TNS - Curriculum (1) and No module group (1).
+
+GitHub: the Banking publish credential that expired on 11-27 was replaced by the DEV `gh` account (push via `https://x-access-token:$(gh auth token)@github.com/...`). `UAT`, `release/prod-v1.1`, `fix/lms-idle-timeout-60m` and tags `v1.1.59`–`v1.1.61` are now on GitHub. `Development` does not have the idle-timeout commit `2e14d6274` yet.
+
 ## LMS idle logout on UAT and PROD (2026-11-27)
 
 Candidates, trainers, institute users and admins see a warning after 58 minutes of inactivity. After 60 idle minutes the LMS signs the user out of that browser. User input, visible native media playback or **Continue session** restarts the timer. Tabs for the same account share the last activity time.
@@ -34,7 +52,7 @@ Candidates, trainers, institute users and admins see a warning after 58 minutes 
 
 Both sites passed browser checks for candidate and trainer sessions using simulated account responses and a controlled clock. Each session stayed open at 15 minutes, restarted after keyboard input, warned at 58 idle minutes and returned to sign-in at 60. The trainer also renewed the session from the warning. The public sign-in pages and live Auth health endpoint passed on both hosts.
 
-The production release extends v1.1.59. Both hosts built from the recorded Git commits with their own environment settings. The Banking GitHub credential expired on 2026-11-27. Publication of the feature branch, the `UAT` and `release/prod-v1.1` branches, and the local annotated `v1.1.60` tag is pending. The release worktrees on DEV are `/home/ubuntu/worktrees/banking-idle-timeout-60m` and `/home/ubuntu/worktrees/banking-prod-idle-timeout-60m`.
+The production release extends v1.1.59. Both hosts built from the recorded Git commits with their own environment settings. The feature branch, the `UAT` and `release/prod-v1.1` branches, and the `v1.1.60` tag were published to GitHub later on 2026-11-27 (see the Module Groups section). The release worktrees on DEV are `/home/ubuntu/worktrees/banking-idle-timeout-60m` and `/home/ubuntu/worktrees/banking-prod-idle-timeout-60m`.
 
 ## Trainer Journey session recovery on UAT and PROD (2026-11-27)
 
