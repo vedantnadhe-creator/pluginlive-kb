@@ -13,9 +13,19 @@ at its `git fetch` step.
 | Resource owner | `PluginLive-Technologies` (the org — *not* a personal account) |
 | Permissions | `Contents: Read and write`, `Metadata: Read` |
 | Expiry | **2027-02-25 11:30 UTC** (90 days) — rotate before then or every box breaks |
-| Where the value lives | `~/.git-credentials` and `~/.github-org-token` on DEV + UAT (mode 600), embedded in each checkout's `origin`. Never committed here. |
+| Where the value lives | `~/.git-credentials` and `~/.github-org-token` on DEV + UAT + PROD (mode 600), embedded in each checkout's `origin`. Never committed here. |
 
 Installed on **DEV**, **UAT** (`uat.pluginlive.com`) and **PROD** (`140.245.25.134`).
+
+## Status 2026-11-27 (evening) — PROD rotated
+
+- The same RajPluginLive token (expires **2027-02-25**) was installed on the **PROD builder** (`140.245.25.134`):
+  `~/.git-credentials` (as `https://x-access-token:…@github.com`) + `~/.github-org-token` (600) + **42 embedded
+  origins** (`~/repositories/{api,frontend}/*`, `.hotfix-prepared/*`, `builder-jenkins` workspaces + git cache,
+  `medverse-build`, `call-interview-build`). `fetch --dry-run` verified on corporate-node, corporate-react-v2, student-node.
+  Backup `~/.git-credentials.bak.1795792489` (it was already 0 bytes: git's store helper erases a credential
+  GitHub rejects, so a failed fetch empties the file).
+- **Still open:** GCP VM `pl-prod-app-01`.
 
 ## Status 2026-11-27 (afternoon) — new token, DEV + UAT fully rotated
 
@@ -27,8 +37,7 @@ Installed on **DEV**, **UAT** (`uat.pluginlive.com`) and **PROD** (`140.245.25.1
   (it cannot read Actions runs: `403 Resource not accessible by personal access token`).
 - The raw value is also kept in `~/.github-org-token` (600) on DEV and UAT, so a rotation can be scripted
   with `TOKEN=$(cat ~/.github-org-token)`.
-- **Still open:** PROD (`140.245.25.134`) and the GCP VM `pl-prod-app-01` still have the expired token, so
-  the next PROD release will fail at `git fetch` until they are rotated.
+- PROD done the same evening (see above); the GCP VM is still open.
 
 ## Status 2026-11-27 (morning) — UAT re-rotated
 
