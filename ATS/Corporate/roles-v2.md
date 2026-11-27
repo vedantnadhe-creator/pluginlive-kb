@@ -675,3 +675,23 @@ Now a 404 from that route is logged and skipped (the old link stays open, as bef
 error still fails the move. `AdminNodeError` carries `.status`. Remove the 404 branch once PROD admin-node ships the
 route with attempt-integrity. corporate-node DEV `082b01b0` / UAT `8967bbac`; PROD branch `release-v1.43-hotfix-7`
 (`f4a7ec61`, local, not pushed).
+
+## Campus invite emails go out from the recruiter's own Gmail (since 2026-11-27, DEV + UAT; PROD pending)
+
+As v1 Role Links' "Send Email": every v2 campus mail — invites on Publish (campuses picked in the wizard), Manage
+institutes › Invite / Add new institute, and Send reminder — is sent from the signed-in recruiter's Gmail, not from
+`mandate@pluginlive.com`. corporate-node `helpers/roleInviteEmail.emailCampus` → `UserService.sendGmailAsUser` →
+user-management `POST /gmail/sendRoleEmail` (v1's endpoint; the per-user encrypted Google refresh token
+`user_management.users.google_refresh_token_custom_email`). It posts with the **recruiter's own JWT** from the request
+(RestClient pins SYSTEMJWT, which would look up the system user). No PluginLive fallback, as in v1: a recruiter who
+has not connected Gmail gets `GMAIL_NOT_CONNECTED` — invite returns `gmailNotConnected` and stops mailing, remind
+answers 409, publish stops mailing. Recipients, wording, links and CC are unchanged.
+
+corporate-react-v2: before sending, `lib/gmailConnect.ensureGmailConnected` checks BFF `GET /api/gmail`
+(auth `gmail/isAuthorized`); if not connected it opens Google's consent screen in a popup (BFF `POST /api/gmail` →
+auth `gmail/auth/start`; URL must be `https://accounts.google.com/…`) and re-checks when the popup closes. A user who
+connected in v1 is not asked again. Closing it without connecting: "Connect your Gmail to email campuses — invitations
+go out from your own mailbox." and nothing is sent. Gmail / Google Workspace only (as v1); Outlook/Zoho users cannot
+send. Callbacks: `https://api-auth.<env>.pluginlive.com/auth/google/callback` (must be an authorised redirect URI on
+the Google OAuth client; PROD had 5 connected users on 2026-11-27). corporate-node DEV `ec0d4477` / UAT `9ee71270`;
+corporate-react-v2 DEV `97e6178` / UAT `4d1d3ad`.
