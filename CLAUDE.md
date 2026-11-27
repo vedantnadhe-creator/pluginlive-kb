@@ -27,6 +27,7 @@ When working on a feature, check the relevant file here **before asking the user
 
 **Infrastructure & DevOps:**
 - `Infrastructure/gcp-prod-migration.md` — **GCP PROD copy on `*.v2.pluginlive.com`** (app VM + DB VM in `pl-prod-511404`): infra, DB restore, compose generator, Phone Interview and messaging test restrictions, Question Manager, performance fixes and cutover steps
+- `Infrastructure/oci-prod-v2-migration.md` — **current PROD v2 on OCI (`*.v2.pluginlive.com`)**: status + Monday 2026-11-30 go-live checklist, uploads copy, cost, topology, branch policy (supersedes the GCP doc above)
 - `Infrastructure/lmsv2.md` — **lmsv2 = separate app at `/v2`** on the banking hosts (DEV/UAT/`lms.pluginlive.com/v2`): own repo, stack `lmsv2-sb` (ports 5444/8220/8230), own DB copy + keys + `lmsv2/` file prefix; deploy commands per env
 - `Infrastructure/github-access.md` — GitHub credentials for every checkout (fine-grained PAT, ≤90-day expiry, rotation steps) — **read this on any `git` 403**
 - `Infrastructure/README.md` — server access overview (Dev, UAT, Prod)

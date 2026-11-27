@@ -1,7 +1,78 @@
 # OCI PROD v2 — isolated migration copy
 
-Updated **2026-10-30**. The `*.v2.pluginlive.com` test hostnames now reach the new
-OCI environment, **not the earlier GCP copy**. Real PROD has not cut over.
+Updated **2026-11-27**. The `*.v2.pluginlive.com` test hostnames reach the new
+OCI environment, **not the earlier GCP copy**. Real PROD has not cut over; go-live
+is planned for **Monday 2026-11-30** (see *Status and go-live checklist* below —
+read that first; the sections after it are the history of how v2 got here).
+
+## Status and go-live checklist (2026-11-27)
+
+**Done**
+
+| Area | State |
+|---|---|
+| Load / performance gate | Final full run on the go-live build **passed 2026-11-12**: 0 errors in 27,684 requests, submit p95 148 ms, DB CPU 64 %. Refresh rehearsals 8m23s / 8m42s (limit 30 min). Dress rehearsal 2026-11-09 passed. |
+| Soak | 2026-11-04 → 11-18 finished; `tools/soak-report.sh` still runs daily from DEV cron. |
+| Workers / security | `BACKGROUND_JOBS=off` web pods + 4 `<svc>-worker` containers on pl-v2-app; admin-node `isPrivate` restored on 40 routes (`e3b5bd91`); internal NLB `10.40.2.239` for mail-relay.v2 / corp-ats.v2. |
+| Worker mail | Fixed: workers resolve `mail-relay.v2.pluginlive.com` to the internal NLB and reach it (returns 401 without the app key, i.e. reachable). The 11-04 "EMAIL_ENDPOINT unreachable" note is closed. |
+| Role-metrics fix | `74b77e60` (the 10-30 `de7f1ed4` fix) is in corporate-node `v2-release` and deployed (`v2-release-0ed8a4e2`). **Not** in PROD `release-v1.43*` or `Development` — keep it when merging the new PROD release into `v2-release`. |
+| Alerts | Topic `pl-v2-alerts`: 2 email subscribers ACTIVE, 2 PENDING confirmation. Budget `pl-prod-v2-monthly` ₹30,000 with 2 rules. |
+| Weekend pause | Nodes + app VM stopped 11-21, restarted 11-23 by `~/pl-v2-setup/pause/v2-start.sh`. |
+
+**Decisions (2026-11-27)**
+- JWT: v2 keeps the **same JWT secret as PROD** (sessions survive the cut-over).
+- Region: **Mumbai only**, no Hyderabad DR copy.
+
+**PROD AWS uploads → OCI (`pl-prod-uploads`)** — bulk copy **done 2026-11-27** (10:27–11:20 UTC) from
+pl-v2-app with `rclone copy aws:pluginlive-prod oci:pl-prod-uploads` (Docker `rclone/rclone`, config + log in
+`~/s3copy/`, mode 600, start time in `bulk-started-at`). Verified exact: **201,036 objects / 68,650,291,757 bytes**
+on both sides. Early PutObject 404s were IAM propagation and were retried by rclone. The v2 storage key
+(group `pl-v2-storage`) was granted `manage objects` on `pl-prod-uploads` in tenancy policy `pl-v2-storage-policy`
+(old statements backed up in `~/pl-v2-setup/pl-v2-storage-policy-backup-20261127.json`).
+At cut-over, after PROD writes stop, run the same `rclone copy` again as the delta (it only copies new/changed objects).
+The apps still point at `pl-v2-uploads`; switching upload/CV reads to `pl-prod-uploads` is a go-live step.
+
+**Question Manager** — deployed 2026-11-27 at `https://question.v2.pluginlive.com` (Helm `question-manager` in `pl-web`,
+values `deploy/values/question-manager.yaml`). Frontend only; calls admin-node `/questionManager/*`. Image
+`pl-question-manager:v2-main-750cb2d` = PROD's image with the hardcoded "Production" admin URL changed to
+`api-admin.v2.pluginlive.com` (otherwise v2 would edit live PROD's question bank). **At go-live switch back to
+PROD's unchanged image.** Its GET routes (e.g. `getCountInfoOfQuestions`) answer without login, same as PROD.
+
+**Release workflow** — `.github/workflows/v2-release.yml` in `pl-oci-v2-infra` (`release-v2`, manual trigger only,
+self-hosted `pl-v2-runner`), script `deploy/release/v2-release.sh`, service list `deploy/release/services.txt`,
+how-to + rollback in `deploy/RELEASE.md`. Builds arm64 image `<ref>-<sha8>` from the app repo (default `v2-release`),
+writes backend `.env.prod` from Vault, re-applies the `oci-uploads` S3_ENDPOINT edits (corporate/student `v2-release`
+lack them), fails a frontend whose bundle has non-`*.v2` pluginlive hosts, `helm upgrade --atomic` + host check with
+auto `helm rollback`, updates matching worker containers on pl-v2-app. Deployer SA `pl-release/v2-deployer`
+(only pl-api/pl-web/pl-ai). Proven 2026-11-27 with admin-react-v2 (same commit, Helm rev 5). Before first use:
+add repo secret **`V2_SOURCE_TOKEN`** (fine-grained, Contents: read on the app repos) and start the runner
+(`python3 tools/runner.py start`). fast-api needs `retinaface.h5` + `credentials.json` in `~/build-extras/fast-api/`
+on the runner; institute-node uses a stored `package-lock.json` in `~/build-extras/institute-node/`;
+student-node's Dockerfile runs `prisma migrate deploy` against the v2 DB during the build (same as PROD's build).
+
+**Rollback replay** — `tools/rollback/` (`rb.py snapshot|diff|replay`, `changelog-install.sql`,
+`changelog-remove.sql`, README). At cut-over, after the final restore and before DNS moves: install the change-log
+triggers, run `snapshot`, keep old PROD frozen. To roll back: stop v2 writes → `diff` → `replay` (dry run) →
+`--check` → `--apply` (one transaction) → DNS back. Timestamps alone miss updates on 140 of 291 tables and all
+deletes, so the change log is required. Tested on scratch DBs (13/13 changes replayed, md5 match); never run against
+old PROD. Not covered: files uploaded to v2 buckets after cut-over, v2-only schema changes, trigger cost under exam load.
+
+**Unauthenticated admin-node routes (SQL reviewed 2026-11-27)**
+- `POST /assessment/assign-practice-assessment` — all SQL is Prisma tagged templates (parameterised), no injection. But it has no auth: anyone can create practice assignments for any email. Caller: Assessment-React `src/utils/assignPracticeAssessment.js` (axios without a token). Fix = send the student token and check the body email against it; needs a frontend + backend change.
+- `GET /admin/curd/export/:key` — Prisma ORM only, `key` picks a `switch` branch; no injection. Exports system-config tables (screens/events/sub-events). No auth because admin-react opens it with `window.open` (no token). Low risk.
+
+**Cost (actual OCI usage, 2026-11-23 → 26)** — ≈ **₹1,075/day ≈ ₹32,300/month**, above the ₹30k budget
+and the old ₹21–23k estimate (which assumed 1 OCPU DB). PostgreSQL ≈ ₹684/day (64 %; 2 OCPU/16 GB E5
+plus the per-OCPU service fee), compute A1 ≈ ₹281/day, block storage ≈ ₹66/day, LB ≈ ₹28/day, logging ≈ ₹14/day.
+Add after go-live: `pl-prod-uploads` storage (~69 GB + versions) and the build runner when it runs.
+
+**Monday 2026-11-30 (go-live day), in order**
+1. Merge PROD's current release branch (keep corporate-node `74b77e60`) (`release-v1.43-hotfix-*`) into each repo's `v2-release`, rebuild and deploy through the v2 release workflow; apply the DB-Scripts PROD got after the v2 copy, and the `Assessment Performance Indexes` scripts still "PROD — pending".
+2. Stop PROD crons/background jobs; final PROD dump → v2; reset `drive_state` webhook + `start_page_token`; install rollback change log + `rb.py snapshot`.
+3. Delta copy of `pluginlive-prod` → `pl-prod-uploads`; point uploads at it; switch question-manager back to PROD's image.
+4. Messaging switches: auth-node `SMS_ENABLED`, `WHATSAPP_DISABLED`, `WA_OTP_ENABLED` to PROD values; remove `MAIL_ALLOWED_RECIPIENT_DOMAINS` and the `[v2]` tag; `SLACK_ACTIVITY_ENV` to PROD's; MSG91 delivery webhook → v2.
+5. Move `*.pluginlive.com` DNS to the v2 LB `130.210.5.156`. Certificates are HTTP-01, so each live host only gets its certificate after its DNS points at v2 — expect a short TLS gap per host unless certificates are pre-issued with DNS-01 (needs a Route 53 key).
+6. Cut a new release branch; run Jev sanity on the live hosts.
 The current rebuild plan is `~/oci-plan/pluginlive-oci-rebuild-plan-2026-10-27.html`
 (version 2.0, 2026-10-28). Phase 5 is load testing, regression, refresh rehearsals
 and a two-week soak; go-live remains a separately approved phase.
