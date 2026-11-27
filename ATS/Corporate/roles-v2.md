@@ -116,6 +116,8 @@ Code: corporate-node DEV `ee5f352d` / UAT `5f6182bc`; admin-node DEV `4cb6da1` /
 
 New roles start with **First Name, Last Name, Primary Email Address and Mobile Number**, retaining the server's question IDs and validation. Selecting a PluginLive template loads its full questions; company templates retain their saved questions. Reset returns to the four contact fields. Resumed drafts and edited roles keep their saved forms. A CV remains required when the recruiter includes a required upload question.
 
+**Which PluginLive template a new form starts on** (`pickTemplateType`, `src/lib/roles/applicationForm.ts`) follows the role until the recruiter picks one from "Use a template": every picked degree a diploma (master names like "Ug Diploma", "Diploma In Technology"; post-graduate diplomas excluded — the same regex as corporate-node `defaultTemplateType`) → DIPLOMA; every picked degree ITI ("ITI", "Industrial Training Institute") → ITI; with no degree picked, Educational qualifications only "Diploma" → DIPLOMA, only "ITI" → ITI; otherwise by experience (fresher → OFF_CAMPUS_FRESHER, experienced → EXPERIENCED, both → OFF_CAMPUS_BOTH). The chosen type is saved with the form. Before 2026-11-27 the rule compared the degree to exactly "Diploma", so master-catalogue names never switched it (corporate-react-v2 DEV `75cf0f4` / UAT `747ab25`; PROD pending).
+
 The intake and normalization pipeline accepts missing CV/address/education. Applicants expose missing facts as null or empty collections. With a Screening stage, an applicant without a CV and score is immediately held for the recruiter, with a missing-resume reason rather than a pending scoring message. The screening pass does not queue a CV match for this state. Once a CV is available, the missing-resume hold permits a scoring retry, including after an earlier failed match. Workflows without Screening still enter the first enabled stage.
 
 Frontend: DEV `f714083`, UAT `af842be`. Screening: corporate-node DEV `ee5f352d`, UAT `5f6182bc`. Verification covers four-field intake, required-CV validation, sparse applicant responses, holds and retry after a CV is added.
@@ -545,12 +547,13 @@ The lookup now replaces every JS-`\s` character (`NAME_SPACES` in `CorporateSave
 corporate-node DEV `0248212a`, UAT `5a9ff521`, PROD `release-v1.43-hotfix-5` `6db5fa02` (live 2026-11-24 10:42 UTC; draft fd06ddfe then saved with COMPUTER TECHNOLOGY). Find such rows:
 `SELECT id, name FROM institute.streams WHERE status = 1 AND name ~ '[  -​  　﻿]';`
 
-**Candidates bar while the evaluation is a draft (since 2026-11-26, DEV + UAT; PROD pending).** The bar is Applied →
-the process's rounds → Offered (Rejected is a filter only). A DRAFT process shows no rounds (corporate-react-v2
-`bdb1189`/`88f4c7b`, Raj) and, since `b6d5f01` (UAT `0d17b94`), no Offered either: a draft refuses every move,
-Mark offered included, so Offered was unreachable (UAT "manual tester" b41afe0b had "1 (Applied) · 0 (Offered)").
-`ApplicantsTab` `draftProcess` = `workflowStatus === "draft"` and not every stage `config.seeded` (the untouched
-placeholder still allows legacy moves, so it keeps Offered, as do a live process and `workflowStatus: "legacy"`).
+**Candidates bar shows Offered only for a live evaluation (since 2026-11-27, DEV + UAT; PROD pending).** The bar is
+Applied → the process's rounds → Offered (Rejected is a filter only). A DRAFT process shows no rounds (corporate-react-v2
+`bdb1189`/`88f4c7b`, Raj). Offered is reachable only through a live process's final round, so `ApplicantsTab`
+`showOffered` = `workflowStatus === "live"` **or** someone already sits in Offered (an older move, so the count never
+vanishes). No evaluation at all, a draft, or the untouched seeded placeholder → the bar is just Applied. History:
+`b6d5f01` (UAT `0d17b94`, 11-26) hid it for drafts only; a role with no evaluation still showed "1 (Applied) · 0
+(Offered)" (UAT role d49ae26f, 11-27) → corporate-react-v2 DEV `8f87500` / UAT `acf5e3b`.
 
 **Cancel on Setup evaluation leaves no draft (since 2026-11-26, DEV + UAT; PROD pending).** Opening Setup evaluation
 applies the AI-tailored process and autosaves it as a DRAFT workflow 1.5 s later (`useWorkflow.autosave`, PUT
