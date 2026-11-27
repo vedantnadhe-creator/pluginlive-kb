@@ -23,6 +23,38 @@ tags: [service, frontend, uat, supabase, lovable]
 `https://<banking host>/v2/` (DEV, UAT, and `lms.pluginlive.com/v2` on PROD) is **not this app**: it is `lmsv2`, a separate copy with its own repo (`PluginLive-Technologies/lmsv2`), stack (`lmsv2-sb-*`), database and files. The banking nginx sites only `include snippets/lmsv2-v2.conf`. Do not deploy banking code to `/v2` or lmsv2 code to `/`. See [lmsv2.md](lmsv2.md).
 
 
+## Trainer Curriculum: track switch, real progress, Explain with Robo Faculty (UAT `cb75ea630`, 2026-11-27)
+
+Candidate Journey → **Trainer Curriculum** (`/journey/student/tech?tab=trainer_curricula`).
+- **Combined / Domain / Tech** now filters this tab. A curriculum follows its own `metadata.tracks`/`track`, else the track of
+  its linked module (`trainer_curricula.module_id`; built-in `src/data/modules` = Tech); a curriculum with neither shows in
+  every track. "Module materials" lists only the selected track's modules. Track-aware empty state ("None of your N curricula
+  are part of the Domain journey. Switch to Combined…"). Logic: `src/lib/journeyTrackProgress.ts` (+ test).
+- **Overall Progress** (header) = the selected track's assigned modules (best of `module_progress` and
+  `student_module_progress`, aliases via `source_module_id`) **plus** each assigned trainer-curriculum topic of that track
+  (100 when `curriculum_topic_progress.completed`, else 0), averaged per item. Topics come from
+  `my_trainer_curriculum_content_v1` (cached 5 min). Saving topic progress fires `lovable:progress-updated`, so the header
+  updates at once. Each curriculum card/header and each module-materials group shows its own %.
+- **Explain with Robo Faculty** on every readable module material (`module_resources`, module-level `topic_attachments`)
+  and curriculum file (`curriculum_resources.file_path`): PDF, DOCX, PPTX, XLSX, TXT/CSV/MD. Dialog
+  (`DocumentTutorDialog.tsx`): Summarise, Explain a section, Workplace example, Quiz me (5 MCQs, scored in place), free
+  questions, follow-ups, **Listen** (server TTS), steps/compare **diagram**, and "From page(s) N" / slide / section citations.
+- Edge function **`document-tutor`** (`supabase/functions/document-tutor`, shared logic `_shared/document-tutor.ts` + test):
+  the file row is read with the **caller's token, so table RLS is the access check** (not assigned → 404, anon → 401); the
+  service role only downloads. Text is extracted once per file version and shared by all learners
+  (`ai_content_bank` kind `doc_tutor_text`; first-time summaries kind `doc_tutor_summary`). The model sees ≤ 9,000 chars of
+  excerpts (keyword retrieval; a "page N"/"slide N" the learner names is always included) and invalid citations are dropped.
+  Limit 80 calls / learner / 24 h (counted in `llm_usage_logs` feature `document-tutor`). Curriculum-file use records an
+  `opened` event via `record_curriculum_resource_activity`. Scanned PDFs (no text) and video files are not supported.
+- **Gateway:** task **`pl/banking-doc-tutor`** (same chain as `pl/banking-starter-lesson`: gemini-2.5-flash →
+  gemini-3-flash-preview → gpt-5.4-mini, 35 s/hop, 0 retries). UAT: policy backup `policy-backups/tasks-20261127T030603Z.json`,
+  `banking-app` key granted (key backup `policy-backups/banking-app-key-<TS>.json`); normal call 1.1 s, forced
+  `mock_timeout` → gemini-3-flash-preview. No schema change.
+- **Verified on UAT:** summary 11 s first time / 0.9 s cached (110-page PDF), page-5 question cited "page 5", quiz 5 items,
+  DOCX explain/example cited by section; cross-learner file → 404; browser (demo 9820065335, Certificate Test Learner):
+  Combined 3 % / Domain 3 % / Tech 1 %, materials hidden in Tech, 0 page errors, no progress refetch loop. Kit:
+  `~/banking-checks/doc-tutor-20261127/ui.cjs <auth-user-id>`.
+
 ## Trainer Dashboard Export to Excel (UAT `84178b378`, 2026-11-26; PROD `v1.1.55` `97d6385b7`, 2026-11-27)
 
 Trainer Journey → Overview & Candidates → **Dashboard** (`src/components/trainer/TrainerDashboard.tsx`) has **Refresh** and
