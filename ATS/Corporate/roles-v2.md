@@ -740,3 +740,25 @@ sends the dialog's default for this role (`InviteTemplateModal.defaultTemplate`,
 saved on the role, so later Manage institutes invites and reminders use it too. corporate-node `inviteCopy`'s fallback
 (roles with no template, e.g. older ones) uses the same subject/body without the terms lines. corporate-node DEV
 `53b2717a` / UAT `f471a421`; corporate-react-v2 DEV `bdb286a` / UAT `db84ecd`.
+
+## Invite review, application deadline, assessment start (since 2026-11-27, DEV + UAT; PROD pending)
+
+Design port (corporate-react-v2 `4c4d472` + `18dbf3f`, Abhimanyu) plus the backend wiring of its B1–B3:
+
+- **Manage Invites → Invite → "Review the invite email".** Invite opens the invite-template dialog (CC, subject,
+  body) prefilled from the role's saved template (else the default for the role); **Send email** sends exactly what is
+  on screen as `inviteTemplate` on `POST …/institutes`. corporate-node `parseInviteTemplate` checks it (subject ≤ 200,
+  body ≤ 10,000, CC ≤ 10 valid emails → 422), saves it as the role's `invite_email_template` (merged, wizard campus
+  picks kept) and uses it for this send — later invites/reminders match. Mail goes from the recruiter's own Gmail.
+- **Screening → Application deadline** (`stage.config.applicationDeadline`, yyyy-mm-dd) **is the role's apply-by
+  date.** `WorkflowService.saveWorkflow` calls `RoleWriteService.setApplicationDeadline` before saving: `job_roles.end_date`
+  = that day 23:59:59.999 IST (the existing close rule: RoleIntakeV2 `hasEnded` → apply page "ended"), Tally form close
+  dates synced; a past day or one before the start date → 422. `editRole` mirrors an apply-by change back onto the
+  Screening stage (`mirrorDeadlineToScreening`, only when the stage already has a deadline). Last edited wins.
+- **Assessment stage → Assessment start** (`stage.config.trigger` = `{ afterDays?, time? "HH:MM" }`, IST).
+  `dispatchToStage` (assessment kind, not `ignoreTrigger`) writes a `stage_dispatches` row with status `scheduled` and
+  `external_ref.scheduledFor` instead of sending (`scheduledStart.scheduledStartOf`: N days after at HH:MM; time only →
+  next HH:MM; days only → N×24 h). The 5-min `advance.role` pass (`advance.sendDueScheduled`) sends due rows only to
+  candidates still on that stage and not closed. No schema change. UI: "Scheduled — link goes out at the set start time".
+- Commits: corporate-node DEV `68c4f36f` / UAT `81f7a284`; corporate-react-v2 DEV `e3d16eb` / UAT `53d64f4`,
+  `40edc78`, `46f9615`.
