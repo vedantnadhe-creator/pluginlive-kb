@@ -1,11 +1,38 @@
 # Banking LMS — menus and plans per organisation type (College / Corporate)
 
-Status: **LIVE on DEV, UAT and PROD.** UAT: commit `7ff6ee12e` on GitHub `UAT`, deployed 2026-11-25 (snapshot `20261125T125056Z`).
+Organisation-specific menus and plans launched on **DEV, UAT and PROD**. Original UAT release: commit `7ff6ee12e` on GitHub `UAT`, deployed 2026-11-25 (snapshot `20261125T125056Z`).
 PROD (`lms.pluginlive.com`): **v1.1.50** = `da3109644` on `release/prod-v1.1` (cherry-pick of `7ff6ee12e` onto v1.1.49 only;
 the aividya lesson flow and other UAT-only commits are not in it), live 2026-11-25 14:25 UTC, rollback backup
 `/data/backups/prod-org-access-20261125T142518Z` (dist, functions, full `banking_prod` dump).
 Migration: `supabase/migrations/20261125130000_org_type_menu_access_and_plans.sql`
 (DB-Scripts: `Banking LMS Institute Plans/20261125T124134Z__org_type_menu_access_and_plans.sql`, applied DEV/UAT/PROD).
+
+## Canonical menu controls
+
+Admin Journey → Subscriptions → Menu Access Controls shows one switch for each audience, menu and plan tier. The plan comparison, Plan Menu Access table and matrix use the same controls. Editing a switch updates that menu and tier. In the RBAC permission matrix, each role has one row per destination. Existing permissions that only apply to a role remain editable. Similar names that refer to separate audiences are labelled by audience.
+
+| Active controls | Before cleanup | After cleanup |
+|---|---:|---:|
+| Candidate plan menus | 69 | 59 |
+| Trainer plan menus | 57 | 52 |
+| Teacher plan menus | 40 | 40 |
+| Institute Admin plan menus | 20 | 20 |
+| Platform Admin plan menus | 23 | 22 |
+| All plan menu controls | 209 | 193 |
+| RBAC role permissions | 198 | 179 |
+
+The migration retires old keys and retains their original settings for audit. When a destination already has a rule, that rule supplies the tier flags or role actions. Candidate Module Quiz and Module Videos are locked on Free. Trainer Project Reviews has one control. Trainer RBAC Reports grants View and Export. The prior duplicate also listed Configure. Organisation and institute overrides retain their precedence, and candidates’ and admins’ individual permission lists are preserved.
+
+Migration file `supabase/migrations/20261127164000_canonical_menu_controls.sql`. The application uses `src/lib/menuCatalog.ts` for audience-specific aliases and `src/lib/roleMenuCatalog.ts` for role permissions.
+
+The cleanup went live on 27 November 2026. GitHub `UAT` and `fix/menu-access-duplicates` point to `591b5fc42`. The production release is `d253146c6` on `release/prod-v1.1`, live at 17:11 UTC. [GitHub release v1.1.63](https://github.com/PluginLive-Technologies/bankingjobreadiness/tree/v1.1.63)
+
+| Environment | Served bundle | Backup before release |
+|---|---|---|
+| UAT | `index-C6LSpNC_.js` | `~/banking-sb/snapshots/20261127T170345Z` |
+| PROD | `index-9_cOeiQy.js` | `/data/backups/prod-menu-access-20261127T171127Z` |
+
+On both environments, a temporary QA admin signed in through the password form and opened Menu Access Controls, the Plan Menu Access table and matrix, and the Trainer permission matrix. The browser confirmed the counts and settings above. Database checks matched the migration rehearsal, including the saved plan flags, role actions, individual permission lists and service-function privileges. The QA accounts and their permissions were removed after the checks.
 
 ## What it does
 
