@@ -705,3 +705,23 @@ go out from your own mailbox." and nothing is sent. Gmail / Google Workspace onl
 send. Callbacks: `https://api-auth.<env>.pluginlive.com/auth/google/callback` (must be an authorised redirect URI on
 the Google OAuth client; PROD had 5 connected users on 2026-11-27). corporate-node DEV `ec0d4477` / UAT `9ee71270`;
 corporate-react-v2 DEV `97e6178` / UAT `4d1d3ad`.
+
+## 2026-11-27 fixes: big roles, bulk actions, Gmail reconnect (DEV + UAT; PROD pending)
+
+- **Role page loads every candidate.** `useApplicants` used to read one page of 1,000, so a bigger role (PROD Operating
+  Engineer Trainee, 3,062 applied) showed Total candidates / pipeline bar / table capped at 1,000. It now reads every page
+  (limit 1000, pages 2… three at a time; order `applied_at DESC, id` is stable; de-duped by id). UAT check: 1,582-applicant
+  role → 1,000 + 582, no overlap.
+- **Bulk actions over 500 go in batches.** corporate-node caps every bulk applicant call at 500 (`MAX_BULK`: move, delete,
+  fitness, resend, …) — Select all → Move on 1,000 failed "moves must hold 1 to 500 items". `ApplicantsTab.mutate` now
+  splits any `moves` / `submissionIds` / `applicantIds` / `changes` list over 500 into sequential calls and reports one
+  total (`bulkBatches.ts`); a failure mid-way says how many went through and reloads. Selection itself has no cap.
+- **Dead Gmail connection = reconnect.** A saved Google token Google no longer accepts (`invalid_grant`: revoked/expired)
+  made invites fail silently while `gmail/isAuthorized` still said connected (UAT Front line sales c83e8c73 "Not emailed").
+  user-management `checkGmailAuth` now asks Google for an access token: `invalid_grant` → token cleared, `authorized:false`
+  (so the consent popup shows before Publish/Invite); other failures keep the user connected. `sendRoleEmail` clears it too
+  and answers 400 "not authorized for Gmail (connection expired…)". corporate-node maps `invalid_grant` to GMAIL_NOT_CONNECTED.
+- **"Not emailed" campuses can be emailed at once.** `reminderBlockReason` skips the 1.5-day wait when `is_email_sent` is
+  false/null; the bell reads "Not emailed yet — send the invite email…", and a successful send marks the campus emailed.
+- Commits: corporate-react-v2 DEV `cbfba1d` / UAT `1156e95`; corporate-node DEV `59129c66` / UAT `e09ad08e`;
+  user-management-node DEV `b3ae625` / UAT `860865e`.
