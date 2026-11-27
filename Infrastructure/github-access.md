@@ -17,6 +17,13 @@ at its `git fetch` step.
 
 Installed on **DEV**, **UAT** (`uat.pluginlive.com`) and **PROD** (`140.245.25.134`).
 
+## Status 2026-11-27 — UAT re-rotated
+
+- The 10-28 org token expired on 2026-11-27, and every UAT `git fetch` failed with `Invalid username or token` (`auto_deploy.sh` exit 128).
+  DEV already had a newer working token, but only in some checkouts' `origin` URLs; DEV's `~/.git-credentials` still holds the expired one.
+- UAT: that working token was installed with the procedure below (credential store plus 40 embedded `origin` URLs); fetch verified. Backup: `~/.git-credentials.bak.<epoch>`.
+- **Still open:** DEV `~/.git-credentials` plus any DEV checkouts with the old URL, PROD, and the GCP VM were not swept here. Record the new expiry date when known.
+
 ## Status 2026-10-28 — rotated
 
 - The old org token expired on 2026-10-28 (`Bad credentials` on every box).
