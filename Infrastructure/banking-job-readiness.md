@@ -23,7 +23,7 @@ tags: [service, frontend, uat, supabase, lovable]
 `https://<banking host>/v2/` (DEV, UAT, and `lms.pluginlive.com/v2` on PROD) is **not this app**: it is `lmsv2`, a separate copy with its own repo (`PluginLive-Technologies/lmsv2`), stack (`lmsv2-sb-*`), database and files. The banking nginx sites only `include snippets/lmsv2-v2.conf`. Do not deploy banking code to `/v2` or lmsv2 code to `/`. See [lmsv2.md](lmsv2.md).
 
 
-## Trainer Curriculum: track switch, real progress, Explain with Robo Faculty (UAT `cb75ea630`, 2026-11-27)
+## Trainer Curriculum: track switch, real progress, Explain with Robo Faculty (UAT `cb75ea630`; PROD `v1.1.56` `9971d2511`, 2026-11-27)
 
 Candidate Journey → **Trainer Curriculum** (`/journey/student/tech?tab=trainer_curricula`).
 - **Combined / Domain / Tech** now filters this tab. A curriculum follows its own `metadata.tracks`/`track`, else the track of
@@ -54,6 +54,15 @@ Candidate Journey → **Trainer Curriculum** (`/journey/student/tech?tab=trainer
   DOCX explain/example cited by section; cross-learner file → 404; browser (demo 9820065335, Certificate Test Learner):
   Combined 3 % / Domain 3 % / Tech 1 %, materials hidden in Tech, 0 page errors, no progress refetch loop. Kit:
   `~/banking-checks/doc-tutor-20261127/ui.cjs <auth-user-id>`.
+- **PROD (2026-11-27):** 7 commits cherry-picked onto `release/prod-v1.1` (`97d6385b7` → `9971d2511`), tag `v1.1.56`; all 12
+  touched files and their dependencies byte-identical to UAT. Staged driver `/opt/banking/staged-doc-tutor-9971d2511`
+  (frontend + new `document-tutor` function, functions restarted), rollback `/data/backups/prod-doc-tutor-20261127T032431Z`.
+  PROD gateway: `pl/banking-doc-tutor` in ConfigMap `litellm-task-policy` (backup on the builder
+  `policy-backups/tasks-20261127T032113Z.json`, candidate `tasks-doc-tutor-20261127.json`), granted to `banking-app-prod`;
+  normal 1.1 s, forced fallback 1.2 s (gemini-3-flash-preview). Verified (QA admin `qa.banking.admin.20261015`): 110-page
+  PDF summary 6.4 s / cached 0.9 s, "page 5" question cited page 5, 5-question quiz, DOCX example; unknown file 404, anon 401;
+  QA candidate page 0 errors. `ENV=prod node ui.cjs <test-user-id>` (test accounts only).
+- Running the full vitest suite rewrites the tracked `test-assessment-report.pdf`; don't `git add -A` after it (UAT needed a restore commit).
 
 ## Trainer Dashboard Export to Excel (UAT `84178b378`, 2026-11-26; PROD `v1.1.55` `97d6385b7`, 2026-11-27)
 
