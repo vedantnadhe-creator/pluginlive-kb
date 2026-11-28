@@ -30,3 +30,18 @@ Found by full end-to-end runs of all four journeys; re-runnable kits under `~/pi
 
 Gotcha: `/parent` is the parent home — the header Back button is hidden there by design (same rule as /student, /teacher, /admin).
 DB-Scripts: `EduSpeak Postgres Migration/…proctoring_student_writes.sql`, `…state_regional_language_curriculum.sql` (UAT applied, PROD pending).
+
+## Third-language student and teacher journey — UAT verified 2026-11-28 (`9228f1ee`)
+
+- The deployed Class 9 third-language flow is verified with a disposable CBSE school: principal programme setup and
+  Gujarati choice; teacher chapter assignment; actual Student Entry mobile/password authentication; Gujarati lesson
+  completion with a Tamil study guide; student evidence submission; teacher portal feedback; marks, independent
+  moderation, and the parent progress report.
+- Student device replacement is part of the release check. A second sign-in invalidates the first device session; the
+  first device returns to Student Entry and, after re-authentication, resumes the original
+  `/student/robo-teacher?course=r3` lesson rather than losing the third-language deep link.
+- The browser-level UAT check is `~/pilvidya-checks/language-programmes-uat.j0QAPCqx/uat-language-smoke.py`. It
+  confirms the deployed manifest version, uses normal student and teacher sign-in (not injected local storage), and
+  removes its synthetic school, accounts, choices, evidence, marks, and report after every run.
+- `frontend/src/lib/i18n/rtl.ts` now has one registry entry per language and font. The duplicate CJK and Indian-font
+  keys that produced Vite warnings were removed; the production build is clean of those duplicate-key warnings.
