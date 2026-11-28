@@ -559,7 +559,7 @@ remaining). Read-only SRM verification found 21 offerings for a sampled enrolled
 exposed six units / 29 syllabus topics and no approved textbook lessons. Latest UAT deployment backup:
 `/home/ubuntu/banking-sb/snapshots/20261121T152153Z`; final app/remote revision `7a64c09b4`.
 
-## Curriculum-linked global language practice (UAT 2026-11-28; PROD pending)
+## Curriculum-linked global language practice (UAT and PROD 2026-11-28)
 
 UAT revision `fafad8db1` adds a first language-elective pathway to the existing Academic Curriculum and Robo
 Faculty surfaces. It is deliberately course-scoped: it is not a standalone learner sidebar destination and it does
@@ -590,8 +590,17 @@ not claim a qualification, award credit or set a grade. The UAT snapshot is
 Deployment verification on UAT: the migration created four menu-control rows and four role-policy rows; the deployed
 `robo-faculty` source hash matched the UAT checkout; the built bundle contains `foreign_language_practice`; and the
 live Edge Function CORS preflight returned 200. Sixty focused student, faculty, language and RBAC tests passed before
-release. Existing lint diagnostics in UAT's shared LLM/TTS fixtures were unchanged. Production remains pending its
-separately user-run database migration and release promotion.
+release. Existing lint diagnostics in UAT's shared LLM/TTS fixtures were unchanged.
+
+Production v1.1.65 is GitHub revision `9703d350d` on `release/prod-v1.1`. The migration committed in one
+transaction in `banking_prod`. It registered four menu controls and four role policies and added the entitlement
+to all 278 existing student access lists. All five plan tiers were enabled at release. The 81 focused student,
+faculty, speech and RBAC tests passed on the release revision. The live site served the verified production bundle
+`index-CpUSlZaq.js`, all nine deployed Edge Function files matched the revision, and anonymous browser checks
+on `/academic-curriculum` and `/my-courses` reached sign-in.
+
+The pre-migration backup of the three RBAC tables is in `/data/backups/prod-college-language-rbac-20261128T075535Z`
+on the Banking production VM. The application rollback snapshot is in `/data/backups/prod-college-language-20261128T080002Z`.
 
 ## SRM Semester 1 journey verification and repairs (UAT 2026-11-21; PROD 2026-11-22)
 
