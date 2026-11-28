@@ -17,6 +17,21 @@ The NCERT catalogue links 44 readers for Classes 6 and 9, representing 528 chapt
 
 The CBSE Class 9 rubric totals 100 marks. Teachers record eight distinct listening and speaking observations worth 5 marks each, creative writing worth 15, reading worth 20, resource-based writing worth 10, and project work with viva worth 15. The principal reviews the evidence before publishing and can export a component-level CSV. [CBSE assessment framework](https://cbseacademic.nic.in/web_material/Circulars/2026/46_Circular_2026.pdf)
 
+## Maharashtra and Karnataka language pilots on UAT
+
+The 2026–27 pilot has two private state-board demo schools, `UAT-LANG-MH-2627` for Marathi and `UAT-LANG-KA-2627` for Kannada. Each school has a Class 6, 10, 11 and 12 pilot section. A learner enrolled in one of these sections can open an original reading or writing activity, follow its official source, choose a study guide and submit work to the pilot teacher. [UAT language programmes](https://pilvidya.uat.pluginlive.com/student/robo-teacher?course=r3)
+
+| Class | Maharashtra Marathi | Karnataka Kannada |
+|---|---|---|
+| 6 | Sequence the events in a short passage. | Retell a short passage using two details. |
+| 10 | SSC second-language reading with *Aksharbharati* as the reference. | SSLC second-language reading with the Karnataka Textbook Society's Kannada reader as the reference. |
+| 11 | Write a notice for a college book exchange. | Write an I PUC report distinguishing an observed result from a missing observation. |
+| 12 | Use two sources in an HSC letter to the editor. | Use two sources in an II PUC letter to the editor. |
+
+The four invited learners at the CBSE demo school use their existing logins. Each has two individually assigned reading quizzes in **Assessments**, one per language. Classes 11 and 12 also have one written paper per language. Their CBSE classes and formal language choices are preserved. [UAT assessments](https://pilvidya.uat.pluginlive.com/student/assessments) · [UAT written papers](https://pilvidya.uat.pluginlive.com/student/written-papers)
+
+On 28 November 2026 all eight state-school demo logins opened the lesson, guide and reading questions in Chromium. Class 6 demo learners completed both state quizzes, Class 10 demo learners submitted language work and the two pilot teachers could retrieve the senior writing samples. Access-policy checks verified the four invited accounts could read their own assignments and questions. [Balbharati textbooks](https://ebooks.ebalbharati.in/) · [Karnataka pre-university papers](https://dpue-pragathi.karnataka.gov.in/MQP/)
+
 ## Class 6 conversation practice
 
 Current CBSE Class 6 sections can use six classroom activities in each of 182 target and support language directions across 14 Indian languages. The scenarios cover introductions, the canteen, fruit stall, bus, library and playground. In School setup → R3 offerings, the principal picks the support language and practice roster. The roster follows formal R3 choices recorded for that section. Teachers review and assign a practice activity in Robo Classes. Teacher recordings are required for Kashmiri and Sanskrit practice.
