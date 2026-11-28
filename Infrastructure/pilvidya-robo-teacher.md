@@ -1,6 +1,6 @@
 # PilVidya (aividya) — Robo Teacher
 
-Robo Vidya teaches curriculum topics and foreign-language themes in one-to-one spoken classes. The Indian language programmes release is live on UAT at commit `1cd4d403`. [UAT](https://pilvidya.uat.pluginlive.com) · [GitHub release](https://github.com/PluginLive-Technologies/eduspeak-india/commit/1cd4d403fbc5f45753f3baeef2307abf8ab4cd0e)
+Robo Vidya teaches curriculum topics and foreign-language themes in one-to-one spoken classes. The Indian language programmes and the Maharashtra and Karnataka pilots are live on UAT at commit `51203fc4`. [UAT](https://pilvidya.uat.pluginlive.com) · [GitHub release](https://github.com/PluginLive-Technologies/eduspeak-india/commit/51203fc40a34b8055628d2dd09e8f4d2154da2c8)
 
 ## Indian language programmes on UAT
 
@@ -31,6 +31,8 @@ The 2026–27 pilot has two private state-board demo schools, `UAT-LANG-MH-2627`
 The four invited learners at the CBSE demo school use their existing logins. Each has two individually assigned reading quizzes in **Assessments**, one per language. Classes 11 and 12 also have one written paper per language. Their existing class teachers can review the assigned work. Their CBSE classes and formal language choices are preserved. [UAT assessments](https://pilvidya.uat.pluginlive.com/student/assessments) · [UAT written papers](https://pilvidya.uat.pluginlive.com/student/written-papers)
 
 On 28 November 2026 all eight state-school demo logins opened the lesson, guide and reading questions in Chromium. In each state, the Class 6 demo learner completed the reading quiz and the Class 10 demo learner submitted language work. Both pilot teachers could retrieve the senior writing samples. Access-policy checks verified the four invited accounts could read their own assignments and questions. [Balbharati textbooks](https://ebooks.ebalbharati.in/) · [Karnataka pre-university papers](https://dpue-pragathi.karnataka.gov.in/MQP/)
+
+Release `51203fc4` adds the eight original lessons, 16 reading quiz questions and four senior writing prompts to the application repository. After the UAT build, all eight demo classes passed the learner checks, both pilot teachers could read submitted Class 10 work, and the four invited accounts could still access their 12 assignments. [Versioned pilot materials](https://github.com/PluginLive-Technologies/eduspeak-india/blob/51203fc40a34b8055628d2dd09e8f4d2154da2c8/supabase/seeds/mh_ka_language_pilot_2026_27.json)
 
 ## Class 6 conversation practice
 
