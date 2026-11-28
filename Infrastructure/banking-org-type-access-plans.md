@@ -7,6 +7,19 @@ the aividya lesson flow and other UAT-only commits are not in it), live 2026-11-
 Migration: `supabase/migrations/20261125130000_org_type_menu_access_and_plans.sql`
 (DB-Scripts: `Banking LMS Institute Plans/20261125T124134Z__org_type_menu_access_and_plans.sql`, applied DEV/UAT/PROD).
 
+## Locked menu feedback
+
+Selecting a locked Trainer, Institute or Candidate menu keeps the current page open. The LMS shows one notification, “Please upgrade your plan or contact your Trainer / Admin.” Repeated clicks reuse the notification. On the Trainer Journey, the **Upgrade** button opens the plan comparison.
+
+Opening a restricted Trainer or Institute tab from a saved link shows the message in the page. A revoked Admin tab and candidate practice denied by menu permissions use the same wording. When the candidate’s permission lookup fails, the practice page asks them to refresh and try again.
+
+| Environment | Deployed commit | Entry bundle | Rollback snapshot |
+|---|---|---|---|
+| UAT | `2adbbb834` | `index-CDPqtP98.js` | `~/banking-sb/snapshots/20261128T004026Z` |
+| PROD v1.1.64 | `8008435ae` | `index-BnuLSayB.js` | `/data/backups/prod-locked-menu-20261128T004419Z` |
+
+Production went live on 28 November 2026 at 00:44 UTC. Five Chromium checks passed against each deployed frontend using browser-local role and plan fixtures. They covered Coordinator Review on desktop and mobile, Institute and Candidate menu locks, a revoked Admin tab and a failed permission lookup. Separate live checks confirmed that the sign-in pages loaded and that signed-out access to Coordinator Review returned to trainer sign-in. [GitHub release v1.1.64](https://github.com/PluginLive-Technologies/bankingjobreadiness/tree/v1.1.64)
+
 ## Canonical menu controls
 
 Admin Journey → Subscriptions → Menu Access Controls shows one switch for each audience, menu and plan tier. The plan comparison, Plan Menu Access table and matrix use the same controls. Editing a switch updates that menu and tier. In the RBAC permission matrix, each role has one row per destination. Existing permissions that only apply to a role remain editable. Similar names that refer to separate audiences are labelled by audience.
