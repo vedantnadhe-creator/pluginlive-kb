@@ -562,9 +562,9 @@ exposed six units / 29 syllabus topics and no approved textbook lessons. Latest 
 ## Curriculum-linked global language practice (UAT and PROD 2026-11-28)
 
 UAT revision `fafad8db1` adds a first language-elective pathway to the existing Academic Curriculum and Robo
-Faculty surfaces. It is deliberately course-scoped: it is not a standalone learner sidebar destination and it does
-not claim a qualification, award credit or set a grade. The UAT snapshot is
-`/home/ubuntu/banking-sb/snapshots/20261128T072359Z`; the UAT-built bundle is `index-DgStfxbe.js`.
+Faculty surfaces. It is deliberately course-scoped: it does not claim a qualification, award credit or set a grade.
+The original UAT snapshot is `/home/ubuntu/banking-sb/snapshots/20261128T072359Z`; the UAT-built bundle was
+`index-DgStfxbe.js`.
 
 - A conservative course-title classifier recognises named **German, French, Spanish and Japanese** language-study
   electives, plus a generic `Foreign language` / `Modern language` title when a named target cannot be established.
@@ -587,10 +587,31 @@ not claim a qualification, award credit or set a grade. The UAT snapshot is
   course-level reading, listening, speaking and writing practice where the unit supports it. Faculty remain the
   assessors of proficiency, grades and academic credit.
 
+### Menu visibility correction (UAT and PROD 2026-11-28)
+
+The original data/RBAC release correctly enabled the entitlement, but did not render a discoverable navigation entry
+in the relevant journeys. UAT revision `eb9c6b673` and production v1.1.66 revision `3b8dbc1e5` correct that UI
+visibility without changing the database or broadening access:
+
+- **Student:** **Curriculum & Modules → Foreign Language Practice** opens
+  `/academic-curriculum?focus=foreign-language`. It appears only when the student's own enrolled courses include a
+  recognised language elective; the focused view contains only those language courses and keeps the focus while the
+  student opens and returns from learning content.
+- **Trainer / Faculty:** **College → Foreign Language Practice** uses the existing course workspace, filtered to
+  language offerings the user teaches or heads. Existing course and `robo_faculty_role` checks still govern all
+  content and practice actions.
+- **Institute / college:** **Academics → Foreign Language Practice** is college-only, respects the existing
+  `institute` menu control, and opens the academic course view filtered to recognised language offerings.
+- **Platform admin:** **Users & Roles → Foreign Language Practice** opens Plan Menu Access pre-filtered to
+  `foreign_language_practice`; the existing Plan Menu Access permission still governs that page.
+
 Deployment verification on UAT: the migration created four menu-control rows and four role-policy rows; the deployed
 `robo-faculty` source hash matched the UAT checkout; the built bundle contains `foreign_language_practice`; and the
 live Edge Function CORS preflight returned 200. Sixty focused student, faculty, language and RBAC tests passed before
-release. Existing lint diagnostics in UAT's shared LLM/TTS fixtures were unchanged.
+the original release. The visibility correction was rebuilt on UAT from revision `eb9c6b673`, with bundle
+`index-Cox54v1c.js` and snapshot `/home/ubuntu/banking-sb/snapshots/20261128T153939Z`; 43 focused navigation,
+curriculum, course-filter and RBAC tests passed. Existing lint diagnostics in UAT's shared LLM/TTS fixtures were
+unchanged.
 
 Production v1.1.65 is GitHub revision `9703d350d` on `release/prod-v1.1`. The migration committed in one
 transaction in `banking_prod`. It registered four menu controls and four role policies and added the entitlement
@@ -598,6 +619,13 @@ to all 278 existing student access lists. All five plan tiers were enabled at re
 faculty, speech and RBAC tests passed on the release revision. The live site served the verified production bundle
 `index-CpUSlZaq.js`, all nine deployed Edge Function files matched the revision, and anonymous browser checks
 on `/academic-curriculum` and `/my-courses` reached sign-in.
+
+Production v1.1.66 is tag `v1.1.66`, GitHub revision `3b8dbc1e5`, and is a frontend-only menu-visibility correction
+(no migration). The live bundle is `index-gw9vIOxM.js`; the application snapshot is
+`/data/backups/prod-language-menu-20261128T154810Z`. The public focused curriculum route and asset returned the
+released bundle, all seven changed frontend source files matched the release manifest, and the bundle contained no
+development or UAT origins. Production data verification remains four enabled audience controls, four view-capable
+role policies, and 278 student permission lists containing `foreign_language_practice`.
 
 The pre-migration backup of the three RBAC tables is in `/data/backups/prod-college-language-rbac-20261128T075535Z`
 on the Banking production VM. The application rollback snapshot is in `/data/backups/prod-college-language-20261128T080002Z`.
