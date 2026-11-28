@@ -1,22 +1,33 @@
 # PilVidya (aividya) — Robo Teacher
 
-A spoken, one-to-one class with "Robo Vidya" on a curriculum topic (Board → Class → Subject → Topic) or a
-foreign-language theme. Current voice release on UAT: `feat/chat-simulations` `ce17e640` (2026-11-18); no PROD yet.
+Robo Vidya teaches curriculum topics and foreign-language themes in one-to-one spoken classes. The Indian language programmes release is live on UAT at commit `1cd4d403`. [UAT](https://pilvidya.uat.pluginlive.com) · [GitHub release](https://github.com/PluginLive-Technologies/eduspeak-india/commit/1cd4d403fbc5f45753f3baeef2307abf8ab4cd0e)
 
-## Class 6 Gujarati as a third language
+## Indian language programmes on UAT
 
-The Class 6 Indian Languages (R3) pilot is live on Aividya UAT at `7f6ea2f8`. Gujarati is the playable course, with Marathi support. School setup lists 14 languages for planning and identifies which course is available. The six original classroom activities cover the canteen, introductions, fruit stall, bus, library and playground. The teacher preview links to the NCERT Class 6 Gujarati reader. [Sabarmati](https://ncert.nic.in/textbook/pdf/fgujrati1ps.pdf)
+Schools can approve language offerings, record teacher qualifications and enrol each learner in their selected pathway. The programme catalogue includes 22 scheduled Indian languages. It supports CBSE R3 by class and academic year, CISCE third- and second-language pathways, school-specific state syllabuses, IB MYP and Diploma placement, senior electives and classical study. A principal records the reference from their school’s OASIS declaration for CBSE R3. The school register retains learner choices and transfers and can be downloaded as CSV.
 
 | Role | Where to go | What happens |
 |---|---|---|
-| Principal | School Admin → School setup → R3 offerings | Choose a current CBSE Class 6 section, confirm R2, select its Gujarati teacher and enrol the students who opted in. |
-| Teacher | Robo Classes → Indian Languages (R3) | Preview the Gujarati activity and Marathi hints, approve it and assign it to the selected section and term. My Day lists work awaiting review. Insights and Student Progress open the individual responses. |
-| Student | Today → Continue Gujarati, or Subjects → Gujarati (R3) | Robo Teacher opens the selected assignment. The student listens to Gujarati, records or types a reply, reads and writes. The app saves the current step and any follow-up across reloads. My Progress shows the teacher’s published feedback. |
-| Parent | Family & settings → Settings, This Week, Report Cards | A verified guardian can grant or withdraw AI learning consent per child. This Week shows signed teacher feedback and a home activity. Report Cards shows the formal assessment after the principal publishes it in Principal Brief. |
+| Principal | School Admin → School setup → School language programmes | Approve an offering and record each learner’s R1, R2 and R3 where applicable. Review or return CBSE Class 9 assessments and publish approved marks. |
+| Teacher | Robo Classes → Indian languages and electives | Approve a source, chapter and activity, then assign it to the class. Review learner work, publish feedback and send Class 9 marks for moderation. |
+| Student | Learn → Robo Teacher → Indian languages and electives | Open a chapter, choose a study-guide language, play teacher audio where provided and submit written work or a reference to classroom work. My Progress shows reviewed work and published marks. |
+| Parent | This Week and Report Cards | A verified guardian sees signed feedback and the published Class 9 report. Parent Settings controls AI learning consent for conversation practice. |
 
-The teacher can rate speaking when the server has transcribed the recording. A typed speaking turn stays available for review and the oral observation reads “Not observed”. The interpreter can select a follow-up from the teacher-reviewed activity. For example, after “નમસ્તે!” it asks “તમારું નામ શું છે?” and accepts a short name. A refusal such as “મારે એક ટિકિટ નથી જોઈતી” stays with the teacher for interpretation. Withdrawing consent closes the saved lesson link and hides language feedback for that child until consent is granted again.
+The NCERT catalogue links 44 readers for Classes 6 and 9, representing 528 chapter references. Teachers can assign those chapters or use a verified school textbook or resource. The lesson form offers editable activity templates for listening, speaking, reading and writing. Learners can choose study guidance in 14 Indian languages. Schools approve the chapter, learner instructions and any model recording before publishing. [NCERT language resources](https://ncert.nic.in/R3_learning_Resources.php)
 
-On 28 November 2026 the UAT browser checks exercised both staff roles, an enrolled learner, an un-enrolled peer and a verified parent. All six activities and 24 responses completed. A synthesized Gujarati microphone sample went through the deployed transcription service. The run also verified typed and recorded evidence, a Gujarati paraphrase, parent consent withdrawal, and the principal’s report-card approval. The temporary school and accounts were removed. [Application release](https://github.com/PluginLive-Technologies/eduspeak-india/commit/7f6ea2f8f4ac0b6e095ccbbbeb01b4f25f590740)
+The CBSE Class 9 rubric totals 100 marks. Teachers record eight distinct listening and speaking observations worth 5 marks each, creative writing worth 15, reading worth 20, resource-based writing worth 10, and project work with viva worth 15. The principal reviews the evidence before publishing and can export a component-level CSV. [CBSE assessment framework](https://cbseacademic.nic.in/web_material/Circulars/2026/46_Circular_2026.pdf)
+
+## Class 6 conversation practice
+
+Current CBSE Class 6 sections can use six classroom activities in each of 182 target and support language directions across 14 Indian languages. The scenarios cover introductions, the canteen, fruit stall, bus, library and playground. In School setup → R3 offerings, the principal picks the support language and practice roster. The roster follows formal R3 choices recorded for that section. Teachers review and assign a practice activity in Robo Classes. Teacher recordings are required for Kashmiri and Sanskrit practice.
+
+The learner needs active AI learning consent from a verified guardian. Conversation practice saves the current step across reloads. The teacher can assess speaking when the server has transcribed the recording. A typed response is saved for review and the oral observation reads “Not observed”. Principal Brief handles the publication of formal conversation assessments to Report Cards.
+
+UAT received the Class 6 language expansion and school language programme migrations on 28 November 2026. The deployment rebuilt the frontend on UAT and synced the edge functions. [DB-Scripts](https://github.com/PluginLive-Technologies/DB-Scripts/tree/4b38403/EduSpeak%20Postgres%20Migration)
+
+The live Class 9 check enrolled a learner, assigned an NCERT chapter, displayed the Tamil guide and accepted Gujarati evidence in Chromium. The teacher recorded the marks, the principal moderated and published them, and the verified family received the report. The test also checked that an unverified child link was refused. The temporary school and accounts were removed.
+
+The original Gujarati and Marathi pilot checks completed all six activities and 24 responses on UAT. They covered microphone transcription, typed and recorded evidence, a Gujarati paraphrase, withdrawn consent and school report-card approval. [Original pilot release](https://github.com/PluginLive-Technologies/eduspeak-india/commit/7f6ea2f8f4ac0b6e095ccbbbeb01b4f25f590740)
 
 ## Student flow (`/student/robo-teacher`, menu Learn → Robo Teacher)
 1. **Setup:** the student picks a subject and a topic from their own curriculum (`curriculum_topics`: global plus their school's), or a foreign language, a CEFR level (A1/A2/B1) and a theme. They pick the teaching language (14 Indian languages) and can set their subject target (`goal_target`). Global CBSE 3-10 topics follow the official 2026-27 books, and languages are grouped apart in the picker: see [pilvidya-board-curriculum-sources.md](pilvidya-board-curriculum-sources.md).
