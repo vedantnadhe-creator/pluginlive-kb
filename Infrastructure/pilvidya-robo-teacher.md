@@ -3,6 +3,21 @@
 A spoken, one-to-one class with "Robo Vidya" on a curriculum topic (Board → Class → Subject → Topic) or a
 foreign-language theme. Current voice release on UAT: `feat/chat-simulations` `ce17e640` (2026-11-18); no PROD yet.
 
+## Class 6 Gujarati as a third language
+
+The Class 6 Indian Languages (R3) pilot is live on Aividya UAT at `7f6ea2f8`. Gujarati is the playable course, with Marathi support. School setup lists 14 languages for planning and identifies which course is available. The six original classroom activities cover the canteen, introductions, fruit stall, bus, library and playground. The teacher preview links to the NCERT Class 6 Gujarati reader. [Sabarmati](https://ncert.nic.in/textbook/pdf/fgujrati1ps.pdf)
+
+| Role | Where to go | What happens |
+|---|---|---|
+| Principal | School Admin → School setup → R3 offerings | Choose a current CBSE Class 6 section, confirm R2, select its Gujarati teacher and enrol the students who opted in. |
+| Teacher | Robo Classes → Indian Languages (R3) | Preview the Gujarati activity and Marathi hints, approve it and assign it to the selected section and term. My Day lists work awaiting review. Insights and Student Progress open the individual responses. |
+| Student | Today → Continue Gujarati, or Subjects → Gujarati (R3) | Robo Teacher opens the selected assignment. The student listens to Gujarati, records or types a reply, reads and writes. The app saves the current step and any follow-up across reloads. My Progress shows the teacher’s published feedback. |
+| Parent | Family & settings → Settings, This Week, Report Cards | A verified guardian can grant or withdraw AI learning consent per child. This Week shows signed teacher feedback and a home activity. Report Cards shows the formal assessment after the principal publishes it in Principal Brief. |
+
+The teacher can rate speaking when the server has transcribed the recording. A typed speaking turn stays available for review and the oral observation reads “Not observed”. The interpreter can select a follow-up from the teacher-reviewed activity. For example, after “નમસ્તે!” it asks “તમારું નામ શું છે?” and accepts a short name. A refusal such as “મારે એક ટિકિટ નથી જોઈતી” stays with the teacher for interpretation. Withdrawing consent closes the saved lesson link and hides language feedback for that child until consent is granted again.
+
+On 28 November 2026 the UAT browser checks exercised both staff roles, an enrolled learner, an un-enrolled peer and a verified parent. All six activities and 24 responses completed. A synthesized Gujarati microphone sample went through the deployed transcription service. The run also verified typed and recorded evidence, a Gujarati paraphrase, parent consent withdrawal, and the principal’s report-card approval. The temporary school and accounts were removed. [Application release](https://github.com/PluginLive-Technologies/eduspeak-india/commit/7f6ea2f8f4ac0b6e095ccbbbeb01b4f25f590740)
+
 ## Student flow (`/student/robo-teacher`, menu Learn → Robo Teacher)
 1. **Setup:** the student picks a subject and a topic from their own curriculum (`curriculum_topics`: global plus their school's), or a foreign language, a CEFR level (A1/A2/B1) and a theme. They pick the teaching language (14 Indian languages) and can set their subject target (`goal_target`). Global CBSE 3-10 topics follow the official 2026-27 books, and languages are grouped apart in the picker: see [pilvidya-board-curriculum-sources.md](pilvidya-board-curriculum-sources.md).
 2. **Class:** the stages are Warm-up → Teach → Worked example → Case study → Video → Check understanding → Assessment → Wrap-up.
