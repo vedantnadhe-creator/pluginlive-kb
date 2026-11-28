@@ -559,6 +559,40 @@ remaining). Read-only SRM verification found 21 offerings for a sampled enrolled
 exposed six units / 29 syllabus topics and no approved textbook lessons. Latest UAT deployment backup:
 `/home/ubuntu/banking-sb/snapshots/20261121T152153Z`; final app/remote revision `7a64c09b4`.
 
+## Curriculum-linked global language practice (UAT 2026-11-28; PROD pending)
+
+UAT revision `fafad8db1` adds a first language-elective pathway to the existing Academic Curriculum and Robo
+Faculty surfaces. It is deliberately course-scoped: it is not a standalone learner sidebar destination and it does
+not claim a qualification, award credit or set a grade. The UAT snapshot is
+`/home/ubuntu/banking-sb/snapshots/20261128T072359Z`; the UAT-built bundle is `index-DgStfxbe.js`.
+
+- A conservative course-title classifier recognises named **German, French, Spanish and Japanese** language-study
+  electives, plus a generic `Foreign language` / `Modern language` title when a named target cannot be established.
+  A target locale is exposed only for a genuine language-study title; courses such as *French Revolution* or
+  *Japanese Literature* do not become language electives. CEFR is displayed only when the course code or title names
+  one level.
+- An approved language elective shows the **Global language pathway** in Academic Curriculum. It can prefill a Robo
+  Faculty class in the course language (German `de-DE`, French `fr-FR`, Spanish `es-ES` or Japanese `ja-JP`), while
+  retaining the existing Indian-language guidance choices. Validation-pending syllabi remain hidden from students.
+  The college retains assessment authority: Robo Faculty is practice, not a certificate, grade or credit service.
+- Student access requires all three server-side conditions: enrollment in the offering, an approved/validated language
+  syllabus, and the `foreign_language_practice` entitlement. The Robo Faculty outline, class start and existing-class
+  read/continue actions enforce that entitlement. The user sees a clear account-access message when it is disabled.
+- The migration `20261128100000_foreign_language_practice_rbac.sql` registers the entitlement for the student,
+  trainer, teacher and institute audiences, mirrors it into role policies (`student` view; staff create/edit/view),
+  and appends it to existing student allow-lists. All plan tiers start enabled, so an administrator can deliberately
+  control it through the existing Menu Access/RBAC screens without silently removing current course access.
+- Course faculty and college leaders continue to need their existing `robo_faculty_role` course authorization. Their
+  Instructor playbook now displays the target language and named CEFR level, and its generation prompt asks for
+  course-level reading, listening, speaking and writing practice where the unit supports it. Faculty remain the
+  assessors of proficiency, grades and academic credit.
+
+Deployment verification on UAT: the migration created four menu-control rows and four role-policy rows; the deployed
+`robo-faculty` source hash matched the UAT checkout; the built bundle contains `foreign_language_practice`; and the
+live Edge Function CORS preflight returned 200. Sixty focused student, faculty, language and RBAC tests passed before
+release. Existing lint diagnostics in UAT's shared LLM/TTS fixtures were unchanged. Production remains pending its
+separately user-run database migration and release promotion.
+
 ## SRM Semester 1 journey verification and repairs (UAT 2026-11-21; PROD 2026-11-22)
 
 UAT revisions `fe7dc5cf6` and `7e6cab441` repair extraction and recover completed textbook builds after a lost
